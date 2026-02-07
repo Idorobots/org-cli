@@ -8,19 +8,17 @@ This document provides essential information for AI coding agents working in the
 
 **Tech Stack:**
 - Python 3.14.2
-- `orgparse` library (0.4.20251020)
-- `pytest` for testing (97% code coverage)
+- See `requirements.txt` for the dependencies & their versions.
 
 **Project Structure:**
 ```
 orgstats/
 ├── src/
-│   ├── core.py          # Core business logic (100% coverage)
-│   ├── cli.py           # CLI interface
-│   └── main.py          # Entry point (backwards compatible)
+│   ├── core.py          # Core business logic
+│   └── cli.py           # CLI interface
 ├── tests/
 │   ├── fixtures/        # Test Org-mode files
-│   ├── test_*.py        # 78 tests across 7 test files
+│   ├── test_*.py        # Logic test files
 │   └── __init__.py
 ├── examples/            # Sample Org-mode archive files
 ├── requirements.txt     # Python dependencies (includes pytest)
@@ -29,51 +27,43 @@ orgstats/
 ```
 
 ## Development Setup
+A helpful `Makefile` file is available that automates running mundane tasks. It should be used whenever possible instead of running individual commans.
 
 ### Initial Setup
 ```bash
-# Create virtual environment
-python -m venv dev
-
-# Activate virtual environment
-source dev/bin/activate  # Linux/Mac
-# OR
-.\dev\Scripts\activate   # Windows
-
-# Install dependencies
-pip install -r requirements.txt
+make init
 ```
 
 ### Running the Application
 ```bash
 # Basic usage
-python src/main.py examples/ARCHIVE_small
+python src/cli.py examples/ARCHIVE_small
 
 # View help and all options
-python src/main.py --help
+python src/cli.py --help
 
 # Limit number of results displayed
-python src/main.py --max-results 50 examples/ARCHIVE_small
-python src/main.py -n 50 examples/ARCHIVE_small
+python src/cli.py --max-results 50 examples/ARCHIVE_small
+python src/cli.py -n 50 examples/ARCHIVE_small
 
 # Filter by task difficulty
-python src/main.py --tasks hard examples/ARCHIVE_small
-python src/main.py --tasks simple -n 20 examples/ARCHIVE_small
+python src/cli.py --tasks hard examples/ARCHIVE_small
+python src/cli.py --tasks simple -n 20 examples/ARCHIVE_small
 
 # Use custom stopword files (one word per line)
-python src/main.py --exclude-tags my_tags.txt examples/ARCHIVE_small
-python src/main.py --exclude-heading my_heading_words.txt examples/ARCHIVE_small
-python src/main.py --exclude-body my_body_words.txt examples/ARCHIVE_small
+python src/cli.py --exclude-tags my_tags.txt examples/ARCHIVE_small
+python src/cli.py --exclude-heading my_heading_words.txt examples/ARCHIVE_small
+python src/cli.py --exclude-body my_body_words.txt examples/ARCHIVE_small
 
 # Combine multiple options
-python src/main.py -n 25 --tasks regular --exclude-tags tags.txt --exclude-heading heading.txt examples/ARCHIVE_small
+python src/cli.py -n 25 --tasks regular --exclude-tags tags.txt --exclude-heading heading.txt examples/ARCHIVE_small
 
 # Process multiple files
-python src/main.py file1.org file2.org file3.org
+python src/cli.py file1.org file2.org file3.org
 
 # Or make it executable
-chmod +x src/main.py
-./src/main.py examples/ARCHIVE_small
+chmod +x src/cli.py
+./src/cli.py examples/ARCHIVE_small
 ```
 
 **CLI Arguments:**
@@ -90,48 +80,14 @@ chmod +x src/main.py
 - `--help` / `-h` - Show help message
 
 ## Build/Lint/Test Commands
-
-### Testing
-**Status:** 150 tests with 95% code coverage ✓
+All checks should be run with a single command:
 
 ```bash
-# Run all tests
-pytest
-
-# Run all tests with verbose output
-pytest -v
-
-# Run a single test file
-pytest tests/test_normalize.py
-
-# Run a specific test function
-pytest tests/test_normalize.py::test_normalize_basic
-
-# Run with coverage report
-pytest --cov=src --cov-report=term-missing
-
-# Run with HTML coverage report
-pytest --cov=src --cov-report=html
-
-# Run tests in parallel (faster)
-pytest -n auto
+make check
 ```
-
-**Test Categories:**
-- `test_mapped.py` - Tag mapping logic (9 tests)
-- `test_normalize.py` - Tag normalization (13 tests)
-- `test_clean.py` - Stop word filtering (13 tests)
-- `test_analyze.py` - Core analysis function (18 tests)
-- `test_integration.py` - End-to-end tests (13 tests)
-- `test_cli.py` - CLI subprocess tests (8 tests)
-- `test_cli_direct.py` - CLI direct tests (4 tests)
-- `test_cli_argparse.py` - Argparse functionality tests (15 tests)
-
 ### Linting & Formatting
-**Status:** ✅ Fully configured with Ruff and mypy
-
 **Tools Configured:**
-- **Ruff** - Fast, comprehensive linter and formatter (replaces Flake8, Black, isort, pyupgrade)
+- **Ruff** - Fast, comprehensive linter and formatter
 - **mypy** - Static type checker with strict mode enabled
 - **Pre-commit hook** - Automatically runs all checks before commits
 
@@ -142,24 +98,6 @@ pytest -n auto
 - Strict type checking enabled
 - Import sorting configured
 
-**Commands:**
-```bash
-# Run all linting checks
-ruff check src/ tests/
-
-# Auto-fix linting issues
-ruff check --fix src/ tests/
-
-# Format code
-ruff format src/ tests/
-
-# Type checking
-mypy src/
-
-# Run all checks (what pre-commit hook runs)
-ruff format --check src/ tests/ && ruff check src/ tests/ && mypy src/ && pytest
-```
-
 **Pre-commit Hook:**
 The repository has a git pre-commit hook installed at `.git/hooks/pre-commit` that automatically:
 1. Checks code formatting
@@ -168,6 +106,18 @@ The repository has a git pre-commit hook installed at `.git/hooks/pre-commit` th
 4. Runs test suite
 
 If any check fails, the commit is blocked. The hook activates automatically on `git commit`.
+
+### Testing
+
+**Test Categories:**
+- `test_mapped.py` - Tag mapping logic
+- `test_normalize.py` - Tag normalization
+- `test_clean.py` - Stop word filtering
+- `test_analyze.py` - Core analysis function
+- `test_integration.py` - End-to-end tests
+- `test_cli.py` - CLI subprocess tests
+- `test_cli_direct.py` - CLI direct tests
+- `test_cli_argparse.py` - Argparse functionality tests
 
 ### Dependency Management
 ```bash
@@ -187,7 +137,9 @@ pip freeze > requirements.txt
 - Self-documenting code over excessive comments
 - Avoid using the `Any` type as much as possible. Avoid changing any existing types to `Any`.
 - Avoid adding comments explaining which method of a class is used (things like `# Uses Frequency.__eq__(int)`).
+- Avoid adding comments unless the behavior is not obivous.
 - Avoid adding updates to comments (`now with extra functionality`), prefer to skip the addition or rewrite the comment if the change is significant.
+- Avoid mocking in tests as much as possible.
 
 ### Python Style
 
@@ -196,18 +148,6 @@ pip freeze > requirements.txt
 - Maximum line length: 100 characters
 - Two blank lines between top-level functions/classes
 - One blank line between methods
-
-**Indentation:**
-```python
-# CORRECT (4 spaces)
-def mapped(mapping, t):
-    if t in mapping:
-        return mapping[t]
-    else:
-        return t
-
-# Note: All code now follows PEP 8 with 4-space indentation
-```
 
 ### Imports
 ```python
@@ -252,7 +192,7 @@ def analyze(nodes: list) -> tuple[int, int, dict, dict, dict]:
   ```python
   # GOOD
   tags = {t.lower().strip() for t in node.tags}
-  
+
   # AVOID
   tags = set()
   for t in node.tags:
@@ -303,11 +243,11 @@ if ns is not None:  # Use "is not None" instead of "!= None"
   ```python
   def clean(allowed: set, tags: dict) -> dict:
       """Remove tags from the allowed set.
-      
+
       Args:
           allowed: Set of tags to filter out
           tags: Dictionary of tag frequencies
-          
+
       Returns:
           Dictionary with allowed tags removed
       """
@@ -339,7 +279,7 @@ git status
 git checkout -b feature/description
 
 # Stage and commit
-git add src/main.py
+git add src/cli.py
 git commit -m "Add feature: description"
 
 # Push to remote (when configured)
@@ -377,5 +317,5 @@ TAGS = {
 
 ---
 
-**Last Updated:** 2026-02-06  
-**Maintained By:** AI Coding Agents
+**Last Updated:** 2026-02-06
+**Maintained By:** AI Coding Agents (sometimes)

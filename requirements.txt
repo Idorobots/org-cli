@@ -1,4 +1,4 @@
-orgparse
+orgparse>=0.4.20251020
 pytest>=7.4.0
 pytest-cov>=4.1.0
 ruff>=0.1.0
