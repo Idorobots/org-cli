@@ -46,18 +46,44 @@ pip install -r requirements.txt
 
 ### Running the Application
 ```bash
-# From project root
+# Basic usage
 python src/main.py examples/ARCHIVE_small
+
+# View help and all options
+python src/main.py --help
+
+# Limit number of results displayed
+python src/main.py --max-results 50 examples/ARCHIVE_small
+python src/main.py -n 50 examples/ARCHIVE_small
+
+# Use custom stopword files (one word per line)
+python src/main.py --exclude-tags my_tags.txt examples/ARCHIVE_small
+python src/main.py --exclude-heading my_heading_words.txt examples/ARCHIVE_small
+python src/main.py --exclude-body my_body_words.txt examples/ARCHIVE_small
+
+# Combine multiple options
+python src/main.py -n 25 --exclude-tags tags.txt --exclude-heading heading.txt examples/ARCHIVE_small
+
+# Process multiple files
+python src/main.py file1.org file2.org file3.org
 
 # Or make it executable
 chmod +x src/main.py
 ./src/main.py examples/ARCHIVE_small
 ```
 
+**CLI Arguments:**
+- `files` - Org-mode archive files to analyze (positional arguments)
+- `--max-results N` / `-n N` - Maximum number of results to display (default: 100)
+- `--exclude-tags FILE` - File with tags to exclude (one per line, replaces default TAGS)
+- `--exclude-heading FILE` - File with heading words to exclude (one per line, replaces default HEADING)
+- `--exclude-body FILE` - File with body words to exclude (one per line, replaces default BODY)
+- `--help` / `-h` - Show help message
+
 ## Build/Lint/Test Commands
 
 ### Testing
-**Status:** 78 tests with 97% code coverage ✓
+**Status:** 93 tests with 97% code coverage ✓
 
 ```bash
 # Run all tests
@@ -90,6 +116,7 @@ pytest -n auto
 - `test_integration.py` - End-to-end tests (13 tests)
 - `test_cli.py` - CLI subprocess tests (8 tests)
 - `test_cli_direct.py` - CLI direct tests (4 tests)
+- `test_cli_argparse.py` - Argparse functionality tests (15 tests)
 
 ### Linting & Formatting
 **Status:** ✅ Fully configured with Ruff and mypy
