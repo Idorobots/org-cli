@@ -359,6 +359,11 @@ TAGS = {
 - Prefer comprehensions over explicit loops
 - Consider generators for large file processing
 
+## Other rules
+- Be concise and straight-to-the-point.
+- Avoid emojis and colorful language.
+- Do not summarize work done unless explicitly asked to do that.
+
 ---
 
 **Last Updated:** 2026-02-06  
