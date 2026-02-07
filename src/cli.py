@@ -111,28 +111,32 @@ def main() -> None:
                 nodes = nodes + list(ns[1:])
 
     # Analyze nodes
-    (total, done, tags, heading, body) = analyze(nodes)
+    result = analyze(nodes)
 
     def order_by_frequency(item: tuple[str, Frequency]) -> int:
         """Sort by frequency (descending)."""
         return -item[1].total
 
     # Display results
-    print("\nTotal tasks: ", total)
-    print("\nDone tasks: ", done)
+    print("\nTotal tasks: ", result.total_tasks)
+    print("\nDone tasks: ", result.done_tasks)
     print(
         "\nTop tags:\n",
-        sorted(clean(exclude_tags, tags).items(), key=order_by_frequency)[0 : args.max_results],
+        sorted(clean(exclude_tags, result.tag_frequencies).items(), key=order_by_frequency)[
+            0 : args.max_results
+        ],
     )
     print(
         "\nTop words in headline:\n",
-        sorted(clean(exclude_heading, heading).items(), key=order_by_frequency)[
+        sorted(clean(exclude_heading, result.heading_frequencies).items(), key=order_by_frequency)[
             0 : args.max_results
         ],
     )
     print(
         "\nTop words in body:\n",
-        sorted(clean(exclude_body, body).items(), key=order_by_frequency)[0 : args.max_results],
+        sorted(clean(exclude_body, result.body_frequencies).items(), key=order_by_frequency)[
+            0 : args.max_results
+        ],
     )
 
 

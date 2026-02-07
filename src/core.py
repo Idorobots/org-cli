@@ -43,6 +43,25 @@ class Frequency:  # noqa: PLW1641
         return self.total
 
 
+@dataclass
+class AnalysisResult:
+    """Represents the complete result of analyzing Org-mode nodes.
+
+    Attributes:
+        total_tasks: Total number of tasks analyzed
+        done_tasks: Number of completed tasks
+        tag_frequencies: Dictionary mapping tags to their frequency counts
+        heading_frequencies: Dictionary mapping heading words to their frequency counts
+        body_frequencies: Dictionary mapping body words to their frequency counts
+    """
+
+    total_tasks: int
+    done_tasks: int
+    tag_frequencies: dict[str, Frequency]
+    heading_frequencies: dict[str, Frequency]
+    body_frequencies: dict[str, Frequency]
+
+
 MAP = {
     "test": "testing",
     "sysadmin": "devops",
@@ -101,16 +120,14 @@ def normalize(tags: set[str]) -> set[str]:
     return {mapped(MAP, t) for t in norm}
 
 
-def analyze(
-    nodes: list[orgparse.node.OrgNode],
-) -> tuple[int, int, dict[str, Frequency], dict[str, Frequency], dict[str, Frequency]]:
+def analyze(nodes: list[orgparse.node.OrgNode]) -> AnalysisResult:
     """Analyze org-mode nodes and extract task statistics.
 
     Args:
         nodes: List of org-mode nodes from orgparse
 
     Returns:
-        Tuple of (total_tasks, done_tasks, tag_frequencies, heading_word_frequencies, body_word_frequencies)
+        AnalysisResult containing task counts and frequency dictionaries
     """
     total = 0
     done = 0
@@ -142,7 +159,13 @@ def analyze(
                 words[tag] = Frequency()
             words[tag].total += count
 
-    return (total, done, tags, heading, words)
+    return AnalysisResult(
+        total_tasks=total,
+        done_tasks=done,
+        tag_frequencies=tags,
+        heading_frequencies=heading,
+        body_frequencies=words,
+    )
 
 
 TAGS = {

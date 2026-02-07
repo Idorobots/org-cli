@@ -92,4 +92,3 @@ def test_main_with_no_files_direct():
     finally:
         sys.argv = original_argv
         sys.stdout = original_stdout
-
