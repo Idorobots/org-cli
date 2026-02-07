@@ -137,3 +137,86 @@ def test_cli_tag_filtering():
     assert result.returncode == 0
     # Output should contain tag frequencies as tuples
     assert "[(" in result.stdout or "[]" in result.stdout
+    # Should show integer tuples, not Frequency objects
+    assert "Frequency(" not in result.stdout
+
+
+def test_cli_tasks_simple_sorting():
+    """Test that --tasks simple sorts by simple count."""
+    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
+
+    result = subprocess.run(
+        [sys.executable, "src/cli.py", "--tasks", "simple", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    # simpletag has 2 simple tasks, should appear near top
+    assert "simpletag" in result.stdout
+    # Output should be integer tuples
+    assert "Frequency(" not in result.stdout
+
+
+def test_cli_tasks_hard_sorting():
+    """Test that --tasks hard sorts by hard count."""
+    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
+
+    result = subprocess.run(
+        [sys.executable, "src/cli.py", "--tasks", "hard", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    # hardtag has 3 hard tasks, should appear near top
+    assert "hardtag" in result.stdout
+
+
+def test_cli_tasks_output_format():
+    """Test that output format is integer tuples, not Frequency objects."""
+    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
+
+    result = subprocess.run(
+        [sys.executable, "src/cli.py", "--tasks", "total", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    # Should have tuples with integers
+    assert "[(" in result.stdout
+    # Should NOT have Frequency objects
+    assert "Frequency(" not in result.stdout
+    assert "simple=" not in result.stdout
+    assert "regular=" not in result.stdout
+    assert "hard=" not in result.stdout
+
+
+def test_cli_tasks_combined_options():
+    """Test --tasks with other CLI options."""
+    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
+    stopwords_path = os.path.join(FIXTURES_DIR, "stopwords_tags.txt")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "src/cli.py",
+            "--tasks",
+            "regular",
+            "-n",
+            "5",
+            "--exclude-tags",
+            stopwords_path,
+            fixture_path,
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout

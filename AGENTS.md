@@ -56,13 +56,17 @@ python src/main.py --help
 python src/main.py --max-results 50 examples/ARCHIVE_small
 python src/main.py -n 50 examples/ARCHIVE_small
 
+# Filter by task difficulty
+python src/main.py --tasks hard examples/ARCHIVE_small
+python src/main.py --tasks simple -n 20 examples/ARCHIVE_small
+
 # Use custom stopword files (one word per line)
 python src/main.py --exclude-tags my_tags.txt examples/ARCHIVE_small
 python src/main.py --exclude-heading my_heading_words.txt examples/ARCHIVE_small
 python src/main.py --exclude-body my_body_words.txt examples/ARCHIVE_small
 
 # Combine multiple options
-python src/main.py -n 25 --exclude-tags tags.txt --exclude-heading heading.txt examples/ARCHIVE_small
+python src/main.py -n 25 --tasks regular --exclude-tags tags.txt --exclude-heading heading.txt examples/ARCHIVE_small
 
 # Process multiple files
 python src/main.py file1.org file2.org file3.org
@@ -75,6 +79,11 @@ chmod +x src/main.py
 **CLI Arguments:**
 - `files` - Org-mode archive files to analyze (positional arguments)
 - `--max-results N` / `-n N` - Maximum number of results to display (default: 100)
+- `--tasks TYPE` - Task type to display and sort by: simple, regular, hard, or total (default: total)
+  - `simple` - Tasks with gamify_exp < 10
+  - `regular` - Tasks with 10 ≤ gamify_exp < 20
+  - `hard` - Tasks with gamify_exp ≥ 20
+  - `total` - All tasks combined (default)
 - `--exclude-tags FILE` - File with tags to exclude (one per line, replaces default TAGS)
 - `--exclude-heading FILE` - File with heading words to exclude (one per line, replaces default HEADING)
 - `--exclude-body FILE` - File with body words to exclude (one per line, replaces default BODY)
@@ -83,7 +92,7 @@ chmod +x src/main.py
 ## Build/Lint/Test Commands
 
 ### Testing
-**Status:** 93 tests with 97% code coverage ✓
+**Status:** 150 tests with 95% code coverage ✓
 
 ```bash
 # Run all tests

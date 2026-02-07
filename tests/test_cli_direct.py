@@ -92,3 +92,31 @@ def test_main_with_no_files_direct():
     finally:
         sys.argv = original_argv
         sys.stdout = original_stdout
+
+
+def test_main_with_tasks_parameter():
+    """Test main function with --tasks parameter."""
+    from cli import main
+
+    original_argv = sys.argv
+    original_stdout = sys.stdout
+
+    try:
+        sys.stdout = StringIO()
+
+        fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
+        sys.argv = ["cli.py", "--tasks", "hard", fixture_path]
+
+        main()
+
+        output = sys.stdout.getvalue()
+
+        # Verify output
+        assert "Processing" in output
+        assert "Total tasks:" in output
+        # Should show integer tuples, not Frequency objects
+        assert "Frequency(" not in output
+
+    finally:
+        sys.argv = original_argv
+        sys.stdout = original_stdout

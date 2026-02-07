@@ -26,6 +26,7 @@ def test_argparse_help():
     assert "--exclude-tags" in result.stdout
     assert "--exclude-heading" in result.stdout
     assert "--exclude-body" in result.stdout
+    assert "--tasks" in result.stdout
 
 
 def test_argparse_max_results_long():
@@ -269,3 +270,128 @@ def test_load_stopwords_function():
     empty_path = os.path.join(FIXTURES_DIR, "stopwords_empty.txt")
     result = load_stopwords(empty_path)
     assert result == set()
+
+
+def test_argparse_tasks_default():
+    """Test default --tasks behavior (should be total)."""
+    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
+
+    result = subprocess.run(
+        [sys.executable, "src/cli.py", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
+    # Should show integer tuples, not Frequency objects
+    assert "Frequency(" not in result.stdout
+
+
+def test_argparse_tasks_simple():
+    """Test --tasks simple flag."""
+    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
+
+    result = subprocess.run(
+        [sys.executable, "src/cli.py", "--tasks", "simple", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
+    assert "Frequency(" not in result.stdout
+
+
+def test_argparse_tasks_regular():
+    """Test --tasks regular flag."""
+    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
+
+    result = subprocess.run(
+        [sys.executable, "src/cli.py", "--tasks", "regular", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
+
+
+def test_argparse_tasks_hard():
+    """Test --tasks hard flag."""
+    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
+
+    result = subprocess.run(
+        [sys.executable, "src/cli.py", "--tasks", "hard", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
+
+
+def test_argparse_tasks_total():
+    """Test explicit --tasks total flag."""
+    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
+
+    result = subprocess.run(
+        [sys.executable, "src/cli.py", "--tasks", "total", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
+
+
+def test_argparse_tasks_invalid():
+    """Test invalid --tasks value."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+
+    result = subprocess.run(
+        [sys.executable, "src/cli.py", "--tasks", "invalid", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "invalid choice" in result.stderr
+
+
+def test_argparse_tasks_with_max_results():
+    """Test combining --tasks with -n flag."""
+    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
+
+    result = subprocess.run(
+        [sys.executable, "src/cli.py", "--tasks", "hard", "-n", "3", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
+
+
+def test_argparse_tasks_in_help():
+    """Test that --tasks appears in help output."""
+    result = subprocess.run(
+        [sys.executable, "src/cli.py", "--help"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "--tasks" in result.stdout
+    assert "simple" in result.stdout
+    assert "regular" in result.stdout
+    assert "hard" in result.stdout
+    assert "total" in result.stdout

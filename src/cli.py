@@ -84,6 +84,15 @@ def parse_arguments() -> argparse.Namespace:
         help="File containing body words to exclude (one per line)",
     )
 
+    parser.add_argument(
+        "--tasks",
+        type=str,
+        choices=["simple", "regular", "hard", "total"],
+        default="total",
+        metavar="TYPE",
+        help="Task type to display and sort by: simple, regular, hard, or total (default: total)",
+    )
+
     return parser.parse_args()
 
 
@@ -113,29 +122,47 @@ def main() -> None:
     # Analyze nodes
     result = analyze(nodes)
 
-    def order_by_frequency(item: tuple[str, Frequency]) -> int:
-        """Sort by frequency (descending)."""
-        return -item[1].total
+    def order_by_frequency(item: tuple[str, Frequency]) -> tuple[int, int]:
+        """Sort by selected task type frequency (descending), then by total."""
+        freq = item[1]
+        primary = getattr(freq, args.tasks)
+        secondary = freq.total
+        return (-primary, -secondary)
+
+    def format_item(item: tuple[str, Frequency]) -> tuple[str, int]:
+        """Format item to show only the selected task type count."""
+        tag, freq = item
+        count = getattr(freq, args.tasks)
+        return (tag, count)
 
     # Display results
     print("\nTotal tasks: ", result.total_tasks)
     print("\nDone tasks: ", result.done_tasks)
     print(
         "\nTop tags:\n",
-        sorted(clean(exclude_tags, result.tag_frequencies).items(), key=order_by_frequency)[
-            0 : args.max_results
+        [
+            format_item(item)
+            for item in sorted(
+                clean(exclude_tags, result.tag_frequencies).items(), key=order_by_frequency
+            )[0 : args.max_results]
         ],
     )
     print(
         "\nTop words in headline:\n",
-        sorted(clean(exclude_heading, result.heading_frequencies).items(), key=order_by_frequency)[
-            0 : args.max_results
+        [
+            format_item(item)
+            for item in sorted(
+                clean(exclude_heading, result.heading_frequencies).items(), key=order_by_frequency
+            )[0 : args.max_results]
         ],
     )
     print(
         "\nTop words in body:\n",
-        sorted(clean(exclude_body, result.body_frequencies).items(), key=order_by_frequency)[
-            0 : args.max_results
+        [
+            format_item(item)
+            for item in sorted(
+                clean(exclude_body, result.body_frequencies).items(), key=order_by_frequency
+            )[0 : args.max_results]
         ],
     )
 
