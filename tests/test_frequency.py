@@ -25,7 +25,7 @@ def test_frequency_initialization_with_value():
 def test_frequency_repr():
     """Test Frequency.__repr__ returns correct format."""
     freq = Frequency(5)
-    assert repr(freq) == "Frequency(total=5)"
+    assert repr(freq) == "Frequency(total=5, simple=0, regular=0, hard=0)"
 
 
 def test_frequency_eq_with_int():

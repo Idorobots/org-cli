@@ -13,12 +13,15 @@ from core import analyze
 class MockNode:
     """Mock node object for testing analyze()."""
 
-    def __init__(self, todo="TODO", tags=None, heading="", body="", repeated_tasks=None):
+    def __init__(  # noqa: PLR0913
+        self, todo="TODO", tags=None, heading="", body="", repeated_tasks=None, properties=None
+    ):
         self.todo = todo
         self.tags = tags if tags is not None else []
         self.heading = heading
         self.body = body
         self.repeated_tasks = repeated_tasks if repeated_tasks is not None else []
+        self.properties = properties if properties is not None else {}
 
 
 class MockRepeatedTask:
