@@ -10,8 +10,8 @@ class MockNode:
         self.properties = properties if properties is not None else {}
 
 
-def test_filter_nodes_total_returns_all():
-    """Test that 'total' filter returns all nodes."""
+def test_filter_nodes_all_returns_all():
+    """Test that 'all' filter returns all nodes."""
     nodes = [
         MockNode(properties={"gamify_exp": "5"}),
         MockNode(properties={"gamify_exp": "15"}),
@@ -19,7 +19,7 @@ def test_filter_nodes_total_returns_all():
         MockNode(properties={}),
     ]
 
-    result = filter_nodes(nodes, "total")
+    result = filter_nodes(nodes, "all")
 
     assert len(result) == 4
     assert result == nodes
@@ -147,7 +147,7 @@ def test_filter_nodes_empty_list():
     """Test filtering an empty list returns empty list."""
     nodes = []
 
-    assert filter_nodes(nodes, "total") == []
+    assert filter_nodes(nodes, "all") == []
     assert filter_nodes(nodes, "simple") == []
     assert filter_nodes(nodes, "regular") == []
     assert filter_nodes(nodes, "hard") == []

@@ -192,7 +192,7 @@ def test_cli_relations_omitted_when_none():
 
 
 def test_cli_max_relations_with_other_options():
-    """Test --max-relations combined with --tasks, -n, etc."""
+    """Test --max-relations combined with --filter, -n, etc."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
     result = subprocess.run(
@@ -202,8 +202,8 @@ def test_cli_max_relations_with_other_options():
             "orgstats",
             "--max-relations",
             "2",
-            "--tasks",
-            "total",
+            "--filter",
+            "all",
             "-n",
             "5",
             fixture_path,

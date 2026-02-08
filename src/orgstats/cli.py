@@ -334,12 +334,12 @@ def filter_nodes(nodes: list[orgparse.node.OrgNode], task_type: str) -> list[org
 
     Args:
         nodes: List of org-mode nodes to filter
-        task_type: Type of tasks to include ("simple", "regular", "hard", or "total")
+        task_type: Type of tasks to include ("simple", "regular", "hard", or "all")
 
     Returns:
         Filtered list of nodes
     """
-    if task_type == "total":
+    if task_type == "all":
         return nodes
 
     filtered = []
@@ -409,12 +409,13 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--tasks",
+        "--filter",
+        "-f",
         type=str,
-        choices=["simple", "regular", "hard", "total"],
-        default="total",
+        choices=["simple", "regular", "hard", "all"],
+        default="all",
         metavar="TYPE",
-        help="Task type to display and sort by: simple, regular, hard, or total (default: total)",
+        help="Filter tasks by difficulty: simple, regular, hard, or all (default: all)",
     )
 
     parser.add_argument(
@@ -475,7 +476,7 @@ def main() -> None:
                 nodes = nodes + list(ns[1:])
 
     # Filter nodes based on task type
-    filtered_nodes = filter_nodes(nodes, args.tasks)
+    filtered_nodes = filter_nodes(nodes, args.filter)
 
     # Analyze filtered nodes with custom mapping
     result = analyze(filtered_nodes, mapping)

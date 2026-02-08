@@ -139,12 +139,12 @@ def test_cli_tag_filtering():
     assert "Frequency(" not in result.stdout
 
 
-def test_cli_tasks_simple_sorting():
-    """Test that --tasks simple sorts by simple count."""
+def test_cli_filter_simple_sorting():
+    """Test that --filter simple filters simple tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--tasks", "simple", fixture_path],
+        [sys.executable, "-m", "orgstats", "--filter", "simple", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -157,12 +157,12 @@ def test_cli_tasks_simple_sorting():
     assert "Frequency(" not in result.stdout
 
 
-def test_cli_tasks_hard_sorting():
-    """Test that --tasks hard sorts by hard count."""
+def test_cli_filter_hard_sorting():
+    """Test that --filter hard filters hard tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--tasks", "hard", fixture_path],
+        [sys.executable, "-m", "orgstats", "--filter", "hard", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -173,12 +173,12 @@ def test_cli_tasks_hard_sorting():
     assert "hardtag" in result.stdout
 
 
-def test_cli_tasks_output_format():
+def test_cli_filter_output_format():
     """Test that output format is integer tuples, not Frequency objects."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--tasks", "total", fixture_path],
+        [sys.executable, "-m", "orgstats", "--filter", "all", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -194,8 +194,8 @@ def test_cli_tasks_output_format():
     assert "hard=" not in result.stdout
 
 
-def test_cli_tasks_combined_options():
-    """Test --tasks with other CLI options."""
+def test_cli_filter_combined_options():
+    """Test --filter with other CLI options."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
     exclude_list_path = os.path.join(FIXTURES_DIR, "exclude_list_tags.txt")
 
@@ -204,7 +204,7 @@ def test_cli_tasks_combined_options():
             sys.executable,
             "-m",
             "orgstats",
-            "--tasks",
+            "--filter",
             "regular",
             "-n",
             "5",

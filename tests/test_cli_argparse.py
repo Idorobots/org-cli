@@ -26,7 +26,7 @@ def test_argparse_help():
     assert "--exclude-tags" in result.stdout
     assert "--exclude-heading" in result.stdout
     assert "--exclude-body" in result.stdout
-    assert "--tasks" in result.stdout
+    assert "--filter" in result.stdout
 
 
 def test_argparse_max_results_long():
@@ -273,8 +273,8 @@ def test_load_exclude_list_function():
     assert result == set()
 
 
-def test_argparse_tasks_default():
-    """Test default --tasks behavior (should be total)."""
+def test_argparse_filter_default():
+    """Test default --filter behavior (should be all)."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
@@ -290,12 +290,12 @@ def test_argparse_tasks_default():
     assert "Frequency(" not in result.stdout
 
 
-def test_argparse_tasks_simple():
-    """Test --tasks simple flag."""
+def test_argparse_filter_simple():
+    """Test --filter simple flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--tasks", "simple", fixture_path],
+        [sys.executable, "-m", "orgstats", "--filter", "simple", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -306,12 +306,12 @@ def test_argparse_tasks_simple():
     assert "Frequency(" not in result.stdout
 
 
-def test_argparse_tasks_regular():
-    """Test --tasks regular flag."""
+def test_argparse_filter_regular():
+    """Test --filter regular flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--tasks", "regular", fixture_path],
+        [sys.executable, "-m", "orgstats", "--filter", "regular", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -321,12 +321,12 @@ def test_argparse_tasks_regular():
     assert "Processing" in result.stdout
 
 
-def test_argparse_tasks_hard():
-    """Test --tasks hard flag."""
+def test_argparse_filter_hard():
+    """Test --filter hard flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--tasks", "hard", fixture_path],
+        [sys.executable, "-m", "orgstats", "--filter", "hard", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -336,12 +336,12 @@ def test_argparse_tasks_hard():
     assert "Processing" in result.stdout
 
 
-def test_argparse_tasks_total():
-    """Test explicit --tasks total flag."""
+def test_argparse_filter_all():
+    """Test explicit --filter all flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--tasks", "total", fixture_path],
+        [sys.executable, "-m", "orgstats", "--filter", "all", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -351,12 +351,12 @@ def test_argparse_tasks_total():
     assert "Processing" in result.stdout
 
 
-def test_argparse_tasks_invalid():
-    """Test invalid --tasks value."""
+def test_argparse_filter_invalid():
+    """Test invalid --filter value."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--tasks", "invalid", fixture_path],
+        [sys.executable, "-m", "orgstats", "--filter", "invalid", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -366,12 +366,12 @@ def test_argparse_tasks_invalid():
     assert "invalid choice" in result.stderr
 
 
-def test_argparse_tasks_with_max_results():
-    """Test combining --tasks with -n flag."""
+def test_argparse_filter_with_max_results():
+    """Test combining --filter with -n flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--tasks", "hard", "-n", "3", fixture_path],
+        [sys.executable, "-m", "orgstats", "--filter", "hard", "-n", "3", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -381,8 +381,8 @@ def test_argparse_tasks_with_max_results():
     assert "Processing" in result.stdout
 
 
-def test_argparse_tasks_in_help():
-    """Test that --tasks appears in help output."""
+def test_argparse_filter_in_help():
+    """Test that --filter appears in help output."""
     result = subprocess.run(
         [sys.executable, "-m", "orgstats", "--help"],
         cwd=PROJECT_ROOT,
@@ -391,8 +391,8 @@ def test_argparse_tasks_in_help():
     )
 
     assert result.returncode == 0
-    assert "--tasks" in result.stdout
+    assert "--filter" in result.stdout
     assert "simple" in result.stdout
     assert "regular" in result.stdout
     assert "hard" in result.stdout
-    assert "total" in result.stdout
+    assert "all" in result.stdout

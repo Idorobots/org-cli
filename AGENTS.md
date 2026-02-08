@@ -53,8 +53,8 @@ poetry run orgstats --max-results 50 examples/ARCHIVE_small
 poetry run orgstats -n 50 examples/ARCHIVE_small
 
 # Filter by task difficulty
-poetry run orgstats --tasks hard examples/ARCHIVE_small
-poetry run orgstats --tasks simple -n 20 examples/ARCHIVE_small
+poetry run orgstats --filter hard examples/ARCHIVE_small
+poetry run orgstats --filter simple -n 20 examples/ARCHIVE_small
 
 # Use custom stopword files (one word per line)
 poetry run orgstats --exclude-tags my_tags.txt examples/ARCHIVE_small
@@ -62,7 +62,7 @@ poetry run orgstats --exclude-heading my_heading_words.txt examples/ARCHIVE_smal
 poetry run orgstats --exclude-body my_body_words.txt examples/ARCHIVE_small
 
 # Combine multiple options
-poetry run orgstats -n 25 --tasks regular --exclude-tags tags.txt --exclude-heading heading.txt examples/ARCHIVE_small
+poetry run orgstats -n 25 --filter regular --exclude-tags tags.txt --exclude-heading heading.txt examples/ARCHIVE_small
 
 # Process multiple files
 poetry run orgstats file1.org file2.org file3.org
@@ -71,11 +71,11 @@ poetry run orgstats file1.org file2.org file3.org
 **CLI Arguments:**
 - `files` - Org-mode archive files to analyze (positional arguments)
 - `--max-results N` / `-n N` - Maximum number of results to display (default: 100)
-- `--tasks TYPE` - Task type to display and sort by: simple, regular, hard, or total (default: total)
+- `--filter TYPE` / `-f TYPE` - Filter tasks by difficulty: simple, regular, hard, or all (default: all)
   - `simple` - Tasks with gamify_exp < 10
   - `regular` - Tasks with 10 ≤ gamify_exp < 20
   - `hard` - Tasks with gamify_exp ≥ 20
-  - `total` - All tasks combined (default)
+  - `all` - All tasks combined (default)
 - `--exclude-tags FILE` - File with tags to exclude (one per line, replaces default TAGS)
 - `--exclude-heading FILE` - File with heading words to exclude (one per line, replaces default HEADING)
 - `--exclude-body FILE` - File with body words to exclude (one per line, replaces default BODY)

@@ -179,7 +179,7 @@ Move the `MAP` value and the `TAGS`, `HEADING` and `BODY` exclusion lists to the
 
 Comment. This was easy enough, no comments here.
 
-## Only consider the relevant tasks
+## ✅ Only consider the relevant tasks
 The `analyze()` function currently makes a distinction on the task type based on the value of the `gamify_exp` field which it then uses to compute frequencies for all types. I'd like to move that distinction logic outside of the `analyze()` function, so that it accepts a pre-filtered list of nodes which are then analyzed.
 
 To achieve that we first need to remove the `simple`, `regular` and `hard` fileds from the `Frequency` class and only leave the `total` field. The `compute_frequencies()` function needs to only update the `total` count.
@@ -196,8 +196,12 @@ The parameter will take on more values in the future, but don't worry about that
 The node list passed to `analyze()` must be filtered before being passed into the function according to the value of the `--tasks` parameter. That can be done as part of the `main()` function. Please simplify the test cases for the `analyze()` function with the assumption that the node filtering will be performed beforehand.
 Make sure to test the functionality of the node list filtering.
 
+Comment: This one was a long one, but the AI aced it. At least as far as I can tell.
+
 ## Rename --tasks
 Rename the `--tasks` CLI parameter to `--filter` and the values that in can take to `simple`, `regular`, `hard` and `all`. The values should determine the behaviour the same as before, only the name of the `total` value is changed to `all`. The default value for this parameter should now be `all`.
+
+Comment: Somehow the AI made this into a very long and time consuming task. Exhausting the remaining quota.
 
 ## Only consider the relevant data
 Only compute the statistics in tags or heading or body, depending on the value of the `--show` CLI parameter.

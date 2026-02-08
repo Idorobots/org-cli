@@ -67,8 +67,8 @@ def test_main_with_multiple_files_direct():
         sys.stdout = original_stdout
 
 
-def test_main_with_tasks_parameter():
-    """Test main function with --tasks parameter."""
+def test_main_with_filter_parameter():
+    """Test main function with --filter parameter."""
     from orgstats.cli import main
 
     original_argv = sys.argv
@@ -78,7 +78,7 @@ def test_main_with_tasks_parameter():
         sys.stdout = StringIO()
 
         fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-        sys.argv = ["cli.py", "--tasks", "hard", fixture_path]
+        sys.argv = ["cli.py", "--filter", "hard", fixture_path]
 
         main()
 
