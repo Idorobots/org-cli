@@ -8,7 +8,8 @@ This document provides essential information for AI coding agents working in the
 
 **Tech Stack:**
 - Python 3.14.2
-- See `requirements.txt` for the dependencies & their versions.
+- Poetry for build & dependency management
+- See `pyproject.toml` for the dependencies & their versions.
 
 **Project Structure:**
 ```
@@ -21,49 +22,46 @@ orgstats/
 │   ├── test_*.py        # Logic test files
 │   └── __init__.py
 ├── examples/            # Sample Org-mode archive files
-├── requirements.txt     # Python dependencies (includes pytest)
+├── poetry.lock          # Poetry dependency lock file
 ├── dev/                 # Python virtual environment (git-ignored)
 └── .gitignore
 ```
 
 ## Development Setup
-A helpful `Makefile` file is available that automates running mundane tasks. It should be used whenever possible instead of running individual commans.
+Several helpful Poetry tasks are defined in `pyproject.toml`  that automate running mundane tasks. These tasks should be used whenever possible instead of running individual commands.
 
 ### Initial Setup
 ```bash
-make init
+# Install all dependencies
+poetry install --no-root
 ```
 
 ### Running the Application
 ```bash
 # Basic usage
-python src/cli.py examples/ARCHIVE_small
+poetry run python src/cli.py examples/ARCHIVE_small
 
 # View help and all options
-python src/cli.py --help
+poetry run python src/cli.py --help
 
 # Limit number of results displayed
-python src/cli.py --max-results 50 examples/ARCHIVE_small
-python src/cli.py -n 50 examples/ARCHIVE_small
+poetry run python src/cli.py --max-results 50 examples/ARCHIVE_small
+poetry run python src/cli.py -n 50 examples/ARCHIVE_small
 
 # Filter by task difficulty
-python src/cli.py --tasks hard examples/ARCHIVE_small
-python src/cli.py --tasks simple -n 20 examples/ARCHIVE_small
+poetry run python src/cli.py --tasks hard examples/ARCHIVE_small
+poetry run python src/cli.py --tasks simple -n 20 examples/ARCHIVE_small
 
 # Use custom stopword files (one word per line)
-python src/cli.py --exclude-tags my_tags.txt examples/ARCHIVE_small
-python src/cli.py --exclude-heading my_heading_words.txt examples/ARCHIVE_small
-python src/cli.py --exclude-body my_body_words.txt examples/ARCHIVE_small
+poetry run python src/cli.py --exclude-tags my_tags.txt examples/ARCHIVE_small
+poetry run python src/cli.py --exclude-heading my_heading_words.txt examples/ARCHIVE_small
+poetry run python src/cli.py --exclude-body my_body_words.txt examples/ARCHIVE_small
 
 # Combine multiple options
-python src/cli.py -n 25 --tasks regular --exclude-tags tags.txt --exclude-heading heading.txt examples/ARCHIVE_small
+poetry run python src/cli.py -n 25 --tasks regular --exclude-tags tags.txt --exclude-heading heading.txt examples/ARCHIVE_small
 
 # Process multiple files
-python src/cli.py file1.org file2.org file3.org
-
-# Or make it executable
-chmod +x src/cli.py
-./src/cli.py examples/ARCHIVE_small
+poetry run python src/cli.py file1.org file2.org file3.org
 ```
 
 **CLI Arguments:**
@@ -83,7 +81,14 @@ chmod +x src/cli.py
 All checks should be run with a single command:
 
 ```bash
-make check
+# Run all validation checks
+poetry run task check
+
+# Attempt to fix formatting errors automatically
+poetry run task format
+
+# Attempt to fix linting errors automatically
+poetry run task lint-fix
 ```
 ### Linting & Formatting
 **Tools Configured:**
@@ -122,10 +127,7 @@ If any check fails, the commit is blocked. The hook activates automatically on `
 ### Dependency Management
 ```bash
 # Install new dependency
-pip install <package>
-pip freeze > requirements.txt
-
-# Or manually add to requirements.txt with pinned version
+poetry add <package>
 ```
 
 ## Code Style Guidelines
@@ -288,21 +290,10 @@ git push origin feature/description
 
 ## Common Tasks
 
-### Adding a New Tag Mapping
-Edit the `MAP` dictionary in `src/core.py`:
-```python
-MAP = {
-    'test': "testing",
-    'newabbrev': "canonical_term",  # Add here
-}
-```
-
-### Adding Stop Words
-Edit `TAGS`, `HEADING`, or `WORDS` sets in `src/core.py`:
-```python
-TAGS = {
-    "comp", "computer", "newtag",  # Add here
-}
+### Running validation checks
+```bash
+# Run all validation checks
+poetry run task check
 ```
 
 ### Performance Optimization
@@ -317,5 +308,5 @@ TAGS = {
 
 ---
 
-**Last Updated:** 2026-02-06
+**Last Updated:** 2026-02-08
 **Maintained By:** AI Coding Agents (sometimes)
