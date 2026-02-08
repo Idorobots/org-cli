@@ -20,8 +20,9 @@ class MockNode:
 class MockRepeatedTask:
     """Mock repeated task for testing."""
 
-    def __init__(self, after="TODO"):
+    def __init__(self, after="TODO", start=None):
         self.after = after
+        self.start = start
 
 
 def test_analyze_empty_nodes():
@@ -37,6 +38,9 @@ def test_analyze_empty_nodes():
     assert result.tag_relations == {}
     assert result.heading_relations == {}
     assert result.body_relations == {}
+    assert result.tag_time_ranges == {}
+    assert result.heading_time_ranges == {}
+    assert result.body_time_ranges == {}
 
 
 def test_analyze_single_done_task():
@@ -248,6 +252,9 @@ def test_analyze_returns_tuple():
     assert hasattr(result, "tag_relations")
     assert hasattr(result, "heading_relations")
     assert hasattr(result, "body_relations")
+    assert hasattr(result, "tag_time_ranges")
+    assert hasattr(result, "heading_time_ranges")
+    assert hasattr(result, "body_time_ranges")
 
 
 def test_analyze_accumulates_across_nodes():

@@ -94,12 +94,22 @@ The CLI output should not be affected yet.
 
 Comment: The AI implemented the functionality pretty well, it did miss some refactoring opportunities and disabled Linter rules complaining about code complexity.
 
-## Refactor analyze()
+## ✅ Refactor analyze()
 The `analyze()` function is fairly large and there are some opportunities for refactoring. Please move the normalized tag lists above the for loops computing the frequencties and abstract the frequency computation into a separate function called `compute_frequencies()`. The function should take the set of items to consider, a dictionary mapping items into their frequencies and a count of repetitions. Difficulty should also be passed to the function. Please remove the linter exclusion from `analyze()` and ensure that it conforms to the linter rules.
 Please refactor the relevant tests to test the new function separately.
 
+Comment: The AI has done a good job, doing exactly what I asked for without any extra bits.
+
 ## Skill time ranges
-Compute time distributions for all tags
+I'd like to compute the time ranges for all tags/words.
+For that functionality, please add a new class called `TimeRange` with two fields `earliest`, `latest`. Both of these fields will be dates the tag was first and last encountered.
+The values for these field will come from the tasks stated completion times. That is, for repeated tasks, take the earliest task that is in `DONE` state (`repeated_task.after == "DONE"`).
+As a fallback, if a task does not have any repeats, assume the closed timestamp as the time of occurance (`task.closed`).
+If closed timestamp is not available, assume the scheduled time as the time of occurance (`task.scheduled`). If that is missing too, assume the deadline time as the time of occurance (`task.deadline`). Otherwise ignore the task.
+For each such occurance, the tags time range should be updated so that the `earliest` timestamp represent the earliest date encountered in the data, while the `latest` timestamp represents the latest date encountered in the data.
+Do not modify the CLI output just yet.
+
+Comment: The AI explored the structure of `orgparse.OrgNode` and repeated tasks ignoring the details presented on the prompt.
 
 ## Devcontainers setup
 A docker container for running the repo commands in.

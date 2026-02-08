@@ -1,6 +1,7 @@
 """Core logic for orgstats - Org-mode archive file analysis."""
 
 from dataclasses import dataclass
+from datetime import date, datetime
 
 import orgparse
 
@@ -75,6 +76,37 @@ class Relations:
 
 
 @dataclass
+class TimeRange:
+    """Represents time range for a tag/word occurrence.
+
+    Attributes:
+        earliest: Earliest timestamp this tag/word was encountered
+        latest: Latest timestamp this tag/word was encountered
+    """
+
+    earliest: datetime | None = None
+    latest: datetime | None = None
+
+    def __repr__(self) -> str:
+        """Return string representation of TimeRange."""
+        return f"TimeRange(earliest={self.earliest}, latest={self.latest})"
+
+    def update(self, timestamp: datetime | date) -> None:
+        """Update time range with a new timestamp.
+
+        Args:
+            timestamp: Timestamp to incorporate into the range (datetime or date)
+        """
+        if isinstance(timestamp, date) and not isinstance(timestamp, datetime):
+            timestamp = datetime.combine(timestamp, datetime.min.time())
+
+        if self.earliest is None or timestamp < self.earliest:
+            self.earliest = timestamp
+        if self.latest is None or timestamp > self.latest:
+            self.latest = timestamp
+
+
+@dataclass
 class AnalysisResult:
     """Represents the complete result of analyzing Org-mode nodes.
 
@@ -87,6 +119,9 @@ class AnalysisResult:
         tag_relations: Dictionary mapping tags to their Relations objects
         heading_relations: Dictionary mapping heading words to their Relations objects
         body_relations: Dictionary mapping body words to their Relations objects
+        tag_time_ranges: Dictionary mapping tags to their TimeRange objects
+        heading_time_ranges: Dictionary mapping heading words to their TimeRange objects
+        body_time_ranges: Dictionary mapping body words to their TimeRange objects
     """
 
     total_tasks: int
@@ -97,6 +132,9 @@ class AnalysisResult:
     tag_relations: dict[str, Relations]
     heading_relations: dict[str, Relations]
     body_relations: dict[str, Relations]
+    tag_time_ranges: dict[str, TimeRange]
+    heading_time_ranges: dict[str, TimeRange]
+    body_time_ranges: dict[str, TimeRange]
 
 
 MAP = {
@@ -244,6 +282,65 @@ def compute_frequencies(
             frequencies[item].hard += count
 
 
+def extract_timestamp(node: orgparse.node.OrgNode) -> list[datetime]:
+    """Extract timestamps from a node following priority rules.
+
+    Priority order:
+    1. Repeated tasks (all DONE tasks)
+    2. Closed timestamp
+    3. Scheduled timestamp
+    4. Deadline timestamp
+
+    Args:
+        node: Org-mode node to extract timestamps from
+
+    Returns:
+        List of datetime objects (may be empty if no timestamps found)
+    """
+    timestamps = []
+
+    if node.repeated_tasks:
+        done_tasks = [rt for rt in node.repeated_tasks if rt.after == "DONE"]
+        if done_tasks:
+            timestamps.extend([rt.start for rt in done_tasks])
+            return timestamps
+
+    if hasattr(node, "closed") and node.closed and node.closed.start:
+        timestamps.append(node.closed.start)
+        return timestamps
+
+    if hasattr(node, "scheduled") and node.scheduled and node.scheduled.start:
+        timestamps.append(node.scheduled.start)
+        return timestamps
+
+    if hasattr(node, "deadline") and node.deadline and node.deadline.start:
+        timestamps.append(node.deadline.start)
+        return timestamps
+
+    return timestamps
+
+
+def compute_time_ranges(
+    items: set[str], time_ranges: dict[str, TimeRange], timestamps: list[datetime]
+) -> None:
+    """Compute time ranges for a set of items.
+
+    Args:
+        items: Set of items (tags or words) to compute time ranges for
+        time_ranges: Dictionary to store/update TimeRange objects
+        timestamps: List of timestamps to incorporate
+    """
+    if not timestamps:
+        return
+
+    for item in items:
+        if item not in time_ranges:
+            time_ranges[item] = TimeRange()
+
+        for timestamp in timestamps:
+            time_ranges[item].update(timestamp)
+
+
 def analyze(nodes: list[orgparse.node.OrgNode]) -> AnalysisResult:
     """Analyze org-mode nodes and extract task statistics.
 
@@ -261,6 +358,9 @@ def analyze(nodes: list[orgparse.node.OrgNode]) -> AnalysisResult:
     tag_relations: dict[str, Relations] = {}
     heading_relations: dict[str, Relations] = {}
     body_relations: dict[str, Relations] = {}
+    tag_time_ranges: dict[str, TimeRange] = {}
+    heading_time_ranges: dict[str, TimeRange] = {}
+    body_time_ranges: dict[str, TimeRange] = {}
 
     for node in nodes:
         total = total + max(1, len(node.repeated_tasks))
@@ -296,6 +396,11 @@ def analyze(nodes: list[orgparse.node.OrgNode]) -> AnalysisResult:
         compute_relations(normalized_heading, heading_relations, count)
         compute_relations(normalized_body, body_relations, count)
 
+        timestamps = extract_timestamp(node)
+        compute_time_ranges(normalized_tags, tag_time_ranges, timestamps)
+        compute_time_ranges(normalized_heading, heading_time_ranges, timestamps)
+        compute_time_ranges(normalized_body, body_time_ranges, timestamps)
+
     return AnalysisResult(
         total_tasks=total,
         done_tasks=done,
@@ -305,6 +410,9 @@ def analyze(nodes: list[orgparse.node.OrgNode]) -> AnalysisResult:
         tag_relations=tag_relations,
         heading_relations=heading_relations,
         body_relations=body_relations,
+        tag_time_ranges=tag_time_ranges,
+        heading_time_ranges=heading_time_ranges,
+        body_time_ranges=body_time_ranges,
     )
 
 

@@ -20,8 +20,9 @@ class MockNode:
 class MockRepeatedTask:
     """Mock repeated task for testing."""
 
-    def __init__(self, after="TODO"):
+    def __init__(self, after="TODO", start=None):
         self.after = after
+        self.start = start
 
 
 def test_analyze_empty_nodes_has_empty_relations():
