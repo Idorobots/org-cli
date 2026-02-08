@@ -129,7 +129,7 @@ Please add some rudimentary tests for this new CLI output, but don't bother with
 
 Comment: The AI took the "don't bother" part very seriously and didn't write any tests for the CLI output of the time ranges. It did add some tests for the representation of `TimeRange` though.
 
-## CLI switch to select tags, heading and body
+## ✅ CLI switch to select tags, heading and body
 Add a CLI parameter called `--show` that takes either `tags`, `heading` or `body` with a default of `tags`.
 This switch will control what the CLI is displaying - either top tags & time range or heading or body.
 The application should compute all the values regardless of the switch (we will address that later).
@@ -138,6 +138,25 @@ In either case, both the top frequencies and time ranges should be shown.
 The output should be adjusted to list each tag on a separate line with frequency, earliest and latest dates and the top day plus the count on that day.
 Please don't adjust the `__repr__` functions and instead compute these values as part of the `cli.py` module for display purposes only.
 
+Comment: The AI did good. No comments here.
+
+## Relations in command output
+Add a new CLI parameter called `--max_relations` that takes an integer and defaults to 3.
+Display the top `max_relations` relations for each of the top results in the output.
+Each relation can be a separate line following each tag line, but make sure to indent these so they are visually distinct.
+For each relation display the name of the other tag in the relation and the frequency of occurrances of that relation.
+Here's an example output:
+
+```
+devops: count=2481, earliest=2011-11-18, latest=2026-02-05, top_day=2023-03-26 (11)
+    linux (147)
+    aws (42)
+    azure (21)
+algorithms: count=1208, earliest=2013-01-07, latest=2024-12-11, top_day=2014-08-16 (25)
+...
+```
+
+Add some rudimentary tests for this functionality (not very complex, just sanity check if the output looks a-ok).
 
 ## Compute relations separately for different difficulties
 

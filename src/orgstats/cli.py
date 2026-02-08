@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 import orgparse
 
-from orgstats.core import BODY, HEADING, TAGS, Frequency, TimeRange, analyze, clean
+from orgstats.core import BODY, HEADING, TAGS, Frequency, Relations, TimeRange, analyze, clean
 
 
 def load_stopwords(filepath: str | None) -> set[str]:
@@ -54,19 +54,21 @@ def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
 
 def display_category(
     category_name: str,
-    data: tuple[dict[str, Frequency], dict[str, TimeRange], set[str]],
+    data: tuple[dict[str, Frequency], dict[str, TimeRange], set[str], dict[str, Relations]],
     max_results: int,
+    max_relations: int,
     order_fn: Callable[[tuple[str, Frequency]], tuple[int, int]],
 ) -> None:
     """Display formatted output for a single category.
 
     Args:
         category_name: Display name for the category (e.g., "tags", "heading words")
-        data: Tuple of (frequencies, time_ranges, exclude_set)
+        data: Tuple of (frequencies, time_ranges, exclude_set, relations_dict)
         max_results: Maximum number of results to display
+        max_relations: Maximum number of relations to display per item
         order_fn: Function to sort items by
     """
-    frequencies, time_ranges, exclude_set = data
+    frequencies, time_ranges, exclude_set, relations_dict = data
     cleaned = clean(exclude_set, frequencies)
     sorted_items = sorted(cleaned.items(), key=order_fn)[0:max_results]
 
@@ -86,6 +88,14 @@ def display_category(
                 parts.append(f"top_day={top_day_info[0]} ({top_day_info[1]})")
 
         print(f"  {name}: {', '.join(parts)}")
+
+        if name in relations_dict and relations_dict[name].relations:
+            sorted_relations = sorted(
+                relations_dict[name].relations.items(), key=lambda x: x[1], reverse=True
+            )[0:max_relations]
+
+            for related_name, count in sorted_relations:
+                print(f"    {related_name} ({count})")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -155,12 +165,24 @@ def parse_arguments() -> argparse.Namespace:
         help="Category to display: tags, heading, or body (default: tags)",
     )
 
+    parser.add_argument(
+        "--max-relations",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Maximum number of relations to display per item (default: 3, must be >= 1)",
+    )
+
     return parser.parse_args()
 
 
 def main() -> None:
     """Main CLI entry point."""
     args = parse_arguments()
+
+    if args.max_relations < 1:
+        print("Error: --max-relations must be at least 1", file=sys.stderr)
+        sys.exit(1)
 
     # Load stopwords from files or use defaults
     exclude_tags = load_stopwords(args.exclude_tags) or TAGS
@@ -199,22 +221,35 @@ def main() -> None:
     if args.show == "tags":
         display_category(
             "tags",
-            (result.tag_frequencies, result.tag_time_ranges, exclude_tags),
+            (result.tag_frequencies, result.tag_time_ranges, exclude_tags, result.tag_relations),
             args.max_results,
+            args.max_relations,
             order_by_frequency,
         )
     elif args.show == "heading":
         display_category(
             "heading words",
-            (result.heading_frequencies, result.heading_time_ranges, exclude_heading),
+            (
+                result.heading_frequencies,
+                result.heading_time_ranges,
+                exclude_heading,
+                result.heading_relations,
+            ),
             args.max_results,
+            args.max_relations,
             order_by_frequency,
         )
     else:
         display_category(
             "body words",
-            (result.body_frequencies, result.body_time_ranges, exclude_body),
+            (
+                result.body_frequencies,
+                result.body_time_ranges,
+                exclude_body,
+                result.body_relations,
+            ),
             args.max_results,
+            args.max_relations,
             order_by_frequency,
         )
 
