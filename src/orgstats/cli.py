@@ -90,9 +90,14 @@ def display_category(
         print(f"  {name}: {', '.join(parts)}")
 
         if name in relations_dict and relations_dict[name].relations:
-            sorted_relations = sorted(
-                relations_dict[name].relations.items(), key=lambda x: x[1], reverse=True
-            )[0:max_relations]
+            filtered_relations = {
+                rel_name: count
+                for rel_name, count in relations_dict[name].relations.items()
+                if rel_name not in exclude_set
+            }
+            sorted_relations = sorted(filtered_relations.items(), key=lambda x: x[1], reverse=True)[
+                0:max_relations
+            ]
 
             for related_name, count in sorted_relations:
                 print(f"    {related_name} ({count})")

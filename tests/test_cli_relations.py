@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -282,3 +283,131 @@ def test_cli_relations_with_show_body():
 
     assert result.returncode == 0
     assert "Top body words:" in result.stdout
+
+
+def test_cli_relations_filtered_by_exclude_tags():
+    """Test that relations exclude tags from the TAGS exclude list."""
+    fixture_path = os.path.join(FIXTURES_DIR, "relations_filter_test.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--max-relations", "5", "-n", "10", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+
+    lines = result.stdout.split("\n")
+
+    for i, line in enumerate(lines):
+        if line.startswith("  python:") and "count=" in line:
+            j = i + 1
+            while j < len(lines) and lines[j].startswith("    "):
+                rel_line = lines[j].strip()
+                assert "comp" not in rel_line.lower()
+                assert "home" not in rel_line.lower()
+                j += 1
+            break
+
+
+def test_cli_relations_filtered_with_custom_exclude_file():
+    """Test that relations are filtered when using custom exclude file."""
+    fixture_path = os.path.join(FIXTURES_DIR, "relations_filter_test.org")
+    exclude_file = os.path.join(FIXTURES_DIR, "custom_exclude_tags.txt")
+
+    with open(exclude_file, "w", encoding="utf-8") as f:
+        f.write("comp\n")
+        f.write("home\n")
+        f.write("testing\n")
+
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "orgstats",
+                "--max-relations",
+                "5",
+                "-n",
+                "10",
+                "--exclude-tags",
+                exclude_file,
+                fixture_path,
+            ],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0
+
+        lines = result.stdout.split("\n")
+
+        for i, line in enumerate(lines):
+            if line.startswith("  python:") and "count=" in line:
+                j = i + 1
+                relations_found = []
+                while j < len(lines) and lines[j].startswith("    "):
+                    rel_line = lines[j].strip()
+                    if "(" in rel_line and ")" in rel_line:
+                        tag_name = rel_line.split("(")[0].strip()
+                        relations_found.append(tag_name)
+                    j += 1
+
+                for rel_tag in relations_found:
+                    assert rel_tag not in ["comp", "home", "testing"]
+                    assert rel_tag in ["debugging"]
+                break
+
+    finally:
+        if Path(exclude_file).exists():
+            Path(exclude_file).unlink()
+
+
+def test_cli_relations_max_applied_after_filtering():
+    """Test that max_relations limit is applied after filtering excluded tags."""
+    fixture_path = os.path.join(FIXTURES_DIR, "relations_filter_test.org")
+    exclude_file = os.path.join(FIXTURES_DIR, "custom_exclude_for_limit.txt")
+
+    with open(exclude_file, "w", encoding="utf-8") as f:
+        f.write("comp\n")
+        f.write("home\n")
+
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "orgstats",
+                "--max-relations",
+                "2",
+                "-n",
+                "10",
+                "--exclude-tags",
+                exclude_file,
+                fixture_path,
+            ],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0
+
+        lines = result.stdout.split("\n")
+
+        for i, line in enumerate(lines):
+            if line.startswith("  python:") and "count=" in line:
+                j = i + 1
+                relations_count = 0
+                while j < len(lines) and lines[j].startswith("    "):
+                    relations_count += 1
+                    j += 1
+
+                assert relations_count <= 2
+                break
+
+    finally:
+        if Path(exclude_file).exists():
+            Path(exclude_file).unlink()
