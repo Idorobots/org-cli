@@ -1,15 +1,10 @@
 """Integration tests using real Org-mode files."""
 
 import os
-import sys
-
-
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import orgparse
 
-from core import BODY, HEADING, TAGS, analyze, clean
+from orgstats.core import BODY, HEADING, TAGS, analyze, clean
 
 
 # Path to fixtures directory

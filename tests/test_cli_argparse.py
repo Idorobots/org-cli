@@ -13,7 +13,7 @@ FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 def test_argparse_help():
     """Test --help output."""
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--help"],
+        [sys.executable, "-m", "orgstats", "--help"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -34,7 +34,7 @@ def test_argparse_max_results_long():
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--max-results", "5", fixture_path],
+        [sys.executable, "-m", "orgstats", "--max-results", "5", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -50,7 +50,7 @@ def test_argparse_max_results_short():
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "-n", "10", fixture_path],
+        [sys.executable, "-m", "orgstats", "-n", "10", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -66,7 +66,7 @@ def test_argparse_exclude_tags():
     stopwords_path = os.path.join(FIXTURES_DIR, "stopwords_tags.txt")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--exclude-tags", stopwords_path, fixture_path],
+        [sys.executable, "-m", "orgstats", "--exclude-tags", stopwords_path, fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -83,7 +83,7 @@ def test_argparse_exclude_heading():
     stopwords_path = os.path.join(FIXTURES_DIR, "stopwords_heading.txt")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--exclude-heading", stopwords_path, fixture_path],
+        [sys.executable, "-m", "orgstats", "--exclude-heading", stopwords_path, fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -99,7 +99,7 @@ def test_argparse_exclude_body():
     stopwords_path = os.path.join(FIXTURES_DIR, "stopwords_body.txt")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--exclude-body", stopwords_path, fixture_path],
+        [sys.executable, "-m", "orgstats", "--exclude-body", stopwords_path, fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -119,7 +119,8 @@ def test_argparse_all_options():
     result = subprocess.run(
         [
             sys.executable,
-            "src/cli.py",
+            "-m",
+            "orgstats",
             "--max-results",
             "20",
             "--exclude-tags",
@@ -144,7 +145,7 @@ def test_argparse_invalid_max_results():
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--max-results", "not-a-number", fixture_path],
+        [sys.executable, "-m", "orgstats", "--max-results", "not-a-number", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -161,7 +162,7 @@ def test_argparse_missing_stopwords_file():
     nonexistent_file = os.path.join(FIXTURES_DIR, "does_not_exist.txt")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--exclude-tags", nonexistent_file, fixture_path],
+        [sys.executable, "-m", "orgstats", "--exclude-tags", nonexistent_file, fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -177,7 +178,7 @@ def test_argparse_empty_stopwords_file():
     empty_file = os.path.join(FIXTURES_DIR, "stopwords_empty.txt")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--exclude-tags", empty_file, fixture_path],
+        [sys.executable, "-m", "orgstats", "--exclude-tags", empty_file, fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -195,7 +196,7 @@ def test_argparse_backward_compatibility():
 
     # Old style: just filenames as positional arguments
     result = subprocess.run(
-        [sys.executable, "src/cli.py", fixture1, fixture2],
+        [sys.executable, "-m", "orgstats", fixture1, fixture2],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -210,7 +211,7 @@ def test_argparse_backward_compatibility():
 def test_argparse_no_files_provided():
     """Test behavior when no files are provided."""
     result = subprocess.run(
-        [sys.executable, "src/cli.py"],
+        [sys.executable, "-m", "orgstats"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -225,7 +226,7 @@ def test_argparse_options_before_files():
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "-n", "50", fixture_path],
+        [sys.executable, "-m", "orgstats", "-n", "50", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -240,7 +241,7 @@ def test_argparse_options_after_files():
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", fixture_path, "-n", "50"],
+        [sys.executable, "-m", "orgstats", fixture_path, "-n", "50"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -252,8 +253,7 @@ def test_argparse_options_after_files():
 
 def test_load_stopwords_function():
     """Test load_stopwords helper function directly."""
-    sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))
-    from cli import load_stopwords
+    from orgstats.cli import load_stopwords
 
     # Test with None
     result = load_stopwords(None)
@@ -277,7 +277,7 @@ def test_argparse_tasks_default():
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", fixture_path],
+        [sys.executable, "-m", "orgstats", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -294,7 +294,7 @@ def test_argparse_tasks_simple():
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--tasks", "simple", fixture_path],
+        [sys.executable, "-m", "orgstats", "--tasks", "simple", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -310,7 +310,7 @@ def test_argparse_tasks_regular():
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--tasks", "regular", fixture_path],
+        [sys.executable, "-m", "orgstats", "--tasks", "regular", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -325,7 +325,7 @@ def test_argparse_tasks_hard():
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--tasks", "hard", fixture_path],
+        [sys.executable, "-m", "orgstats", "--tasks", "hard", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -340,7 +340,7 @@ def test_argparse_tasks_total():
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--tasks", "total", fixture_path],
+        [sys.executable, "-m", "orgstats", "--tasks", "total", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -355,7 +355,7 @@ def test_argparse_tasks_invalid():
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--tasks", "invalid", fixture_path],
+        [sys.executable, "-m", "orgstats", "--tasks", "invalid", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -370,7 +370,7 @@ def test_argparse_tasks_with_max_results():
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--tasks", "hard", "-n", "3", fixture_path],
+        [sys.executable, "-m", "orgstats", "--tasks", "hard", "-n", "3", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -383,7 +383,7 @@ def test_argparse_tasks_with_max_results():
 def test_argparse_tasks_in_help():
     """Test that --tasks appears in help output."""
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--help"],
+        [sys.executable, "-m", "orgstats", "--help"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,

@@ -1,7 +1,10 @@
 # Initial state
 The project started as a very simple script that would do rudimentary task counting using `orgparse` (about 115 lines of Python, no tests). The remainder was implemented by Claude Sonnet 4.5 (with a touch of Opus and Haiku) on the Pro plan via Emacs agent-shell & OpenCode.
 
-Following are the prompts I used for expanding the project. Whenever clarifying questions were asked I provided answers (not included). Each time a plan was made with the `plan` agent, then I would switch the agent to `build` and ask it to proceed according to the plan. Some manual intervention was needed here and there to contain the slop.
+Following are the prompts I used for expanding the project.
+Whenever clarifying questions were asked I provided answers (not included). Each time a plan was made with the `plan` agent, then I would switch the agent to `build` and ask it to proceed according to the plan. Some manual intervention was needed here and there to contain the slop.
+
+The Quota on the Pro plan was quick to run out due to a myriad of individual tool calls when making edits and repeated, duplicate command runs (e.g `pytest` followed by `pytest --cov`), a set of helpers was introduced manually to try to contain the AI's thirst for spinning in circles.
 
 # Features built with AI
 
@@ -58,3 +61,27 @@ Make sure to adjust the README with the updated usage.
 Make sure to run the test suite and fix the issues that might have been introduced.
 
 Comment: The AI got fixated on the potential breaking changes and needed multiple confirmations that it is indeed OK. It computed a very large plan of action and estimated abotu 85 minutes (!) for its execution. The plan alone took 15% of the quota, but the execution was actually swift, taking about 5 minutes and extra 30% of quota (!) ending prematurely before it got to run the linter & test suite to confirm that the change actually didn't break anything. I did that manually and it was all good.
+
+## ✅ Proper build setup
+While the quota ran out I added Poetry as a build system for this project, but currently the code itself doesn't conform to the prefered CLI application layout of a Python project. Please add a `orgstats` as a package-level directory in `src/` and move the code logic to that package. Please adjust the build configuration in @pyproject.toml to build a CLI (there is a commented out stub that you can expand). Please adjust the AGENTS.md file to reflect the new project layout. Please make sure the application works as expected by running all the validation checks via `poetry run task check`, fix any issues that might have been introduced.
+
+Comment: The AI did well making all the changes correctly. It made a lot fewer command calls to validate that each step works, as expected, but still halucinated the need to verify runnig the application three different styles "for backwards compatibility".
+
+## Devcontainers setup
+A docker container for running the repo commands in.
+
+## Pair-wise relations
+Compute which tags are frequently used together.
+
+## Skill time ranges
+Compute time distributions for all tags
+
+## Graphviz/Dot output
+
+## D3 visualization - tag cloud
+
+## D3 visualization - relations graph
+Node size is how many tasks are related to a tag. Closeness is how related these are.
+
+## D3 visualization - tag charts over time
+Allow selecting specific tags or top tags.

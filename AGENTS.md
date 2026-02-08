@@ -15,15 +15,20 @@ This document provides essential information for AI coding agents working in the
 ```
 orgstats/
 ├── src/
-│   ├── core.py          # Core business logic
-│   └── cli.py           # CLI interface
+│   └── orgstats/             # Main package
+│       ├── __init__.py       # Package initialization (exports main, version, etc.)
+│       ├── __main__.py       # Entry point for `python -m orgstats`
+│       ├── cli.py            # CLI interface
+│       └── core.py           # Core business logic
 ├── tests/
-│   ├── fixtures/        # Test Org-mode files
-│   ├── test_*.py        # Logic test files
+│   ├── fixtures/             # Test Org-mode files
+│   ├── test_*.py             # Logic test files
+│   ├── conftest.py           # Shared test fixtures
 │   └── __init__.py
-├── examples/            # Sample Org-mode archive files
-├── poetry.lock          # Poetry dependency lock file
-├── dev/                 # Python virtual environment (git-ignored)
+├── examples/                 # Sample Org-mode archive files
+├── pyproject.toml            # Poetry configuration & build settings
+├── poetry.lock               # Poetry dependency lock file
+├── dev/                      # Python virtual environment (git-ignored)
 └── .gitignore
 ```
 
@@ -32,36 +37,42 @@ Several helpful Poetry tasks are defined in `pyproject.toml`  that automate runn
 
 ### Initial Setup
 ```bash
-# Install all dependencies
-poetry install --no-root
+# Install all dependencies and the package itself
+poetry install
 ```
 
 ### Running the Application
 ```bash
-# Basic usage
-poetry run python src/cli.py examples/ARCHIVE_small
+# Recommended: Use the installed CLI command (after poetry install)
+poetry run orgstats examples/ARCHIVE_small
+
+# Alternative: Run as a Python module
+poetry run python -m orgstats examples/ARCHIVE_small
+
+# Fallback: Direct module execution
+poetry run python src/orgstats/cli.py examples/ARCHIVE_small
 
 # View help and all options
-poetry run python src/cli.py --help
+poetry run orgstats --help
 
 # Limit number of results displayed
-poetry run python src/cli.py --max-results 50 examples/ARCHIVE_small
-poetry run python src/cli.py -n 50 examples/ARCHIVE_small
+poetry run orgstats --max-results 50 examples/ARCHIVE_small
+poetry run orgstats -n 50 examples/ARCHIVE_small
 
 # Filter by task difficulty
-poetry run python src/cli.py --tasks hard examples/ARCHIVE_small
-poetry run python src/cli.py --tasks simple -n 20 examples/ARCHIVE_small
+poetry run orgstats --tasks hard examples/ARCHIVE_small
+poetry run orgstats --tasks simple -n 20 examples/ARCHIVE_small
 
 # Use custom stopword files (one word per line)
-poetry run python src/cli.py --exclude-tags my_tags.txt examples/ARCHIVE_small
-poetry run python src/cli.py --exclude-heading my_heading_words.txt examples/ARCHIVE_small
-poetry run python src/cli.py --exclude-body my_body_words.txt examples/ARCHIVE_small
+poetry run orgstats --exclude-tags my_tags.txt examples/ARCHIVE_small
+poetry run orgstats --exclude-heading my_heading_words.txt examples/ARCHIVE_small
+poetry run orgstats --exclude-body my_body_words.txt examples/ARCHIVE_small
 
 # Combine multiple options
-poetry run python src/cli.py -n 25 --tasks regular --exclude-tags tags.txt --exclude-heading heading.txt examples/ARCHIVE_small
+poetry run orgstats -n 25 --tasks regular --exclude-tags tags.txt --exclude-heading heading.txt examples/ARCHIVE_small
 
 # Process multiple files
-poetry run python src/cli.py file1.org file2.org file3.org
+poetry run orgstats file1.org file2.org file3.org
 ```
 
 **CLI Arguments:**
@@ -160,8 +171,9 @@ import os
 # Third-party imports next
 import orgparse
 
-# Local imports last (when applicable)
-from src.utils import helper
+# Local package imports last
+from orgstats.core import analyze, Frequency
+from orgstats.cli import main
 ```
 
 ### Naming Conventions

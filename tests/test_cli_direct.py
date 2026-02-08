@@ -5,16 +5,12 @@ import sys
 from io import StringIO
 
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
 def test_main_function_directly():
     """Test the main() function directly for coverage."""
-    # Import after path is set
-    from cli import main
+    from orgstats.cli import main
 
     # Save original argv and stdout
     original_argv = sys.argv
@@ -47,7 +43,7 @@ def test_main_function_directly():
 
 def test_main_with_multiple_files_direct():
     """Test main() with multiple files."""
-    from cli import main
+    from orgstats.cli import main
 
     original_argv = sys.argv
     original_stdout = sys.stdout
@@ -73,7 +69,7 @@ def test_main_with_multiple_files_direct():
 
 def test_main_with_no_files_direct():
     """Test main() with no files."""
-    from cli import main
+    from orgstats.cli import main
 
     original_argv = sys.argv
     original_stdout = sys.stdout
@@ -96,7 +92,7 @@ def test_main_with_no_files_direct():
 
 def test_main_with_tasks_parameter():
     """Test main function with --tasks parameter."""
-    from cli import main
+    from orgstats.cli import main
 
     original_argv = sys.argv
     original_stdout = sys.stdout

@@ -1,13 +1,6 @@
 """Tests for the clean() function."""
 
-import os
-import sys
-
-
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-from core import BODY, HEADING, TAGS, Frequency, clean
+from orgstats.core import BODY, HEADING, TAGS, Frequency, clean
 
 
 def freq_dict_from_ints(d: dict[str, int]) -> dict[str, Frequency]:

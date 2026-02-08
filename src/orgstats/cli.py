@@ -6,7 +6,7 @@ import sys
 
 import orgparse
 
-from core import BODY, HEADING, TAGS, Frequency, analyze, clean
+from orgstats.core import BODY, HEADING, TAGS, Frequency, analyze, clean
 
 
 def load_stopwords(filepath: str | None) -> set[str]:

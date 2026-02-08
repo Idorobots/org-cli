@@ -15,7 +15,7 @@ def test_cli_runs_successfully():
     fixture_path = os.path.join(FIXTURES_DIR, "single_task.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", fixture_path],
+        [sys.executable, "-m", "orgstats", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -33,7 +33,7 @@ def test_cli_with_multiple_files():
     fixture2 = os.path.join(FIXTURES_DIR, "single_task.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", fixture1, fixture2],
+        [sys.executable, "-m", "orgstats", fixture1, fixture2],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -50,7 +50,7 @@ def test_cli_outputs_statistics():
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", fixture_path],
+        [sys.executable, "-m", "orgstats", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -69,7 +69,7 @@ def test_cli_with_archive_small():
     archive_path = os.path.join(PROJECT_ROOT, "examples", "ARCHIVE_small")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", archive_path],
+        [sys.executable, "-m", "orgstats", archive_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -87,7 +87,7 @@ def test_cli_via_cli_module():
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", fixture_path],
+        [sys.executable, "-m", "orgstats", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -102,7 +102,7 @@ def test_cli_handles_24_00_time():
     fixture_path = os.path.join(FIXTURES_DIR, "edge_cases.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", fixture_path],
+        [sys.executable, "-m", "orgstats", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -116,7 +116,7 @@ def test_cli_handles_24_00_time():
 def test_cli_no_arguments():
     """Test CLI behavior with no arguments."""
     result = subprocess.run(
-        [sys.executable, "src/cli.py"], cwd=PROJECT_ROOT, capture_output=True, text=True
+        [sys.executable, "-m", "orgstats"], cwd=PROJECT_ROOT, capture_output=True, text=True
     )
 
     # Should complete without error even with no files
@@ -128,7 +128,7 @@ def test_cli_tag_filtering():
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", fixture_path],
+        [sys.executable, "-m", "orgstats", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -146,7 +146,7 @@ def test_cli_tasks_simple_sorting():
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--tasks", "simple", fixture_path],
+        [sys.executable, "-m", "orgstats", "--tasks", "simple", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -164,7 +164,7 @@ def test_cli_tasks_hard_sorting():
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--tasks", "hard", fixture_path],
+        [sys.executable, "-m", "orgstats", "--tasks", "hard", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -180,7 +180,7 @@ def test_cli_tasks_output_format():
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "src/cli.py", "--tasks", "total", fixture_path],
+        [sys.executable, "-m", "orgstats", "--tasks", "total", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -204,7 +204,8 @@ def test_cli_tasks_combined_options():
     result = subprocess.run(
         [
             sys.executable,
-            "src/cli.py",
+            "-m",
+            "orgstats",
             "--tasks",
             "regular",
             "-n",

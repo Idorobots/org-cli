@@ -1,13 +1,6 @@
 """Tests for the AnalysisResult dataclass."""
 
-import os
-import sys
-
-
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-from core import AnalysisResult, Frequency
+from orgstats.core import AnalysisResult, Frequency
 
 
 def test_analysis_result_initialization():

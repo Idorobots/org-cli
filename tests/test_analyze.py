@@ -1,13 +1,6 @@
 """Tests for the analyze() function."""
 
-import os
-import sys
-
-
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-from core import analyze
+from orgstats.core import analyze
 
 
 class MockNode:
@@ -238,10 +231,10 @@ def test_analyze_empty_body():
 
 def test_analyze_returns_tuple():
     """Test that analyze returns an AnalysisResult object."""
+    from orgstats.core import AnalysisResult
+
     nodes = []
     result = analyze(nodes)
-
-    from core import AnalysisResult
 
     assert isinstance(result, AnalysisResult)
     assert hasattr(result, "total_tasks")

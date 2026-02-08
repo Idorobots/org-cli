@@ -1,13 +1,6 @@
 """Tests for the mapped() function."""
 
-import os
-import sys
-
-
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-from core import MAP, mapped
+from orgstats.core import MAP, mapped
 
 
 def test_mapped_found_in_mapping():

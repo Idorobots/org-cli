@@ -1,12 +1,6 @@
 """Tests for gamify_exp parsing and difficulty tracking."""
 
-import os
-import sys
-
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-from core import Frequency, analyze, parse_gamify_exp
+from orgstats.core import Frequency, analyze, parse_gamify_exp
 
 
 class MockNode:

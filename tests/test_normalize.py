@@ -1,13 +1,6 @@
 """Tests for the normalize() function."""
 
-import os
-import sys
-
-
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-from core import normalize
+from orgstats.core import normalize
 
 
 def test_normalize_basic():
