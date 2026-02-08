@@ -58,9 +58,9 @@ def parse_arguments() -> argparse.Namespace:
         "--max-results",
         "-n",
         type=int,
-        default=100,
+        default=10,
         metavar="N",
-        help="Maximum number of results to display (default: 100)",
+        help="Maximum number of results to display (default: 10)",
     )
 
     parser.add_argument(
@@ -165,6 +165,37 @@ def main() -> None:
             )[0 : args.max_results]
         ],
     )
+
+    # Display time range information for top entries
+    print("\nTag time ranges:")
+    for tag, _ in sorted(
+        clean(exclude_tags, result.tag_frequencies).items(), key=order_by_frequency
+    )[0 : args.max_results]:
+        time_range = result.tag_time_ranges.get(tag)
+        if time_range:
+            print(f"  {tag}: {time_range}")
+        else:
+            print(f"  {tag}: TimeRange(earliest=None, latest=None, top_day=None)")
+
+    print("\nHeading word time ranges:")
+    for word, _ in sorted(
+        clean(exclude_heading, result.heading_frequencies).items(), key=order_by_frequency
+    )[0 : args.max_results]:
+        time_range = result.heading_time_ranges.get(word)
+        if time_range:
+            print(f"  {word}: {time_range}")
+        else:
+            print(f"  {word}: TimeRange(earliest=None, latest=None, top_day=None)")
+
+    print("\nBody word time ranges:")
+    for word, _ in sorted(
+        clean(exclude_body, result.body_frequencies).items(), key=order_by_frequency
+    )[0 : args.max_results]:
+        time_range = result.body_time_ranges.get(word)
+        if time_range:
+            print(f"  {word}: {time_range}")
+        else:
+            print(f"  {word}: TimeRange(earliest=None, latest=None, top_day=None)")
 
 
 if __name__ == "__main__":

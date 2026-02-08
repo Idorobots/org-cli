@@ -229,3 +229,69 @@ def test_time_range_timeline_not_in_repr():
     assert "earliest" in repr_str
     assert "latest" in repr_str
     assert "timeline" not in repr_str
+
+
+def test_time_range_repr_includes_top_day():
+    """Test that repr includes top_day field."""
+    dt1 = datetime(2023, 10, 18, 9, 15)
+    dt2 = datetime(2023, 10, 19, 10, 0)
+    time_range = TimeRange(earliest=dt1, latest=dt2)
+    time_range.update(dt1)
+    time_range.update(dt2)
+
+    repr_str = repr(time_range)
+    assert "top_day=" in repr_str
+    assert "earliest=" in repr_str
+    assert "latest=" in repr_str
+
+
+def test_time_range_top_day_single_occurrence():
+    """Test top_day with single occurrence."""
+    time_range = TimeRange()
+    dt = datetime(2023, 10, 19, 10, 0)
+    time_range.update(dt)
+
+    repr_str = repr(time_range)
+    assert "top_day='2023-10-19'" in repr_str
+
+
+def test_time_range_top_day_multiple_equal_counts():
+    """Test top_day selects earliest date when multiple days have same count."""
+    time_range = TimeRange()
+    dt1 = datetime(2023, 10, 20, 9, 15)
+    dt2 = datetime(2023, 10, 18, 10, 0)
+    dt3 = datetime(2023, 10, 19, 14, 30)
+
+    time_range.update(dt1)
+    time_range.update(dt2)
+    time_range.update(dt3)
+
+    repr_str = repr(time_range)
+    assert "top_day='2023-10-18'" in repr_str
+
+
+def test_time_range_top_day_highest_count():
+    """Test top_day selects day with highest count."""
+    time_range = TimeRange()
+    dt1 = datetime(2023, 10, 18, 9, 15)
+    dt2 = datetime(2023, 10, 19, 10, 0)
+    dt3 = datetime(2023, 10, 19, 15, 30)
+    dt4 = datetime(2023, 10, 20, 8, 0)
+
+    time_range.update(dt1)
+    time_range.update(dt2)
+    time_range.update(dt3)
+    time_range.update(dt4)
+
+    repr_str = repr(time_range)
+    assert "top_day='2023-10-19'" in repr_str
+
+
+def test_time_range_top_day_empty_timeline():
+    """Test top_day is None when timeline is empty."""
+    time_range = TimeRange()
+
+    repr_str = repr(time_range)
+    assert "top_day=None" in repr_str
+    assert "earliest=None" in repr_str
+    assert "latest=None" in repr_str

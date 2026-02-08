@@ -120,11 +120,18 @@ Do not modify the CLI output just yet.
 
 Comment: The AI implemented the change, while I was cleaning some slop resulting in broken test cases. The AI decided it wasn't responsible for these, so it left them as is. When asked to address the failures afterwards, it reinstituted the slop.
 
+## Times in command output
+Display the earliest, latest & most "intense" day for the top `max_results` entries for tags, heading and body.
+To achieve that, update the `TimeRange.__repr__` function to find the most "intense" day (highest number of entries related to that tag on that day) and show it as part of the representation `top_day=<date>`. When there are multiple days with equal number of occurrences, select the first one. If there are no occurrences in the timeline, show `None` as the top day.
+The time range results should follow the "Top tags" etc sections in the output and be limited to just the `max_results` entries, same as the top tags sections.
+This will cause a lot of output to be generated, so modify the default `max_results` parameter value to 10 instead of 100.
+Please add some rudimentary tests for this new CLI output, but don't bother with very complex test cases.
+
+## CLI switch to select tags, heading and body
+Compute all, display just one of these, default to tags.
+
 ## hasattr() slop
 Remove it and use OrgNode instead of Mocks.
-
-## Times in command output
-Display the earliest, latest & most "intense" day for the top `max_results` skills.
 
 ## Devcontainers setup
 A docker container for running the repo commands in.

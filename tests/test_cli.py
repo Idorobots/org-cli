@@ -221,3 +221,49 @@ def test_cli_tasks_combined_options():
 
     assert result.returncode == 0
     assert "Processing" in result.stdout
+
+
+def test_cli_outputs_time_ranges():
+    """Test that CLI outputs time range sections."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Tag time ranges:" in result.stdout
+    assert "Heading word time ranges:" in result.stdout
+    assert "Body word time ranges:" in result.stdout
+
+
+def test_cli_time_ranges_format():
+    """Test that time range output contains expected format."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "TimeRange(" in result.stdout
+    assert "top_day=" in result.stdout
+
+
+def test_cli_default_max_results_is_10():
+    """Test that default max_results is 10."""
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--help"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "default: 10" in result.stdout

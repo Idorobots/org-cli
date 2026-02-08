@@ -90,8 +90,24 @@ class TimeRange:
     timeline: dict[date, int] = field(default_factory=dict)
 
     def __repr__(self) -> str:
-        """Return string representation of TimeRange."""
-        return f"TimeRange(earliest={self.earliest}, latest={self.latest})"
+        """Return string representation of TimeRange including top day.
+
+        Returns:
+            String representation with earliest, latest, and top_day (most intense day).
+            Dates are formatted as ISO strings. None values are printed as None.
+        """
+        top_day = None
+        if self.timeline:
+            max_count = max(self.timeline.values())
+            top_day = min(d for d, count in self.timeline.items() if count == max_count)
+
+        earliest_str = self.earliest.date().isoformat() if self.earliest else None
+        latest_str = self.latest.date().isoformat() if self.latest else None
+        top_day_str = top_day.isoformat() if top_day else None
+
+        return (
+            f"TimeRange(earliest={earliest_str!r}, latest={latest_str!r}, top_day={top_day_str!r})"
+        )
 
     def update(self, timestamp: datetime | date | None) -> None:
         """Update time range with a new timestamp.
