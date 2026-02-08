@@ -28,7 +28,6 @@ orgstats/
 ├── examples/                 # Sample Org-mode archive files
 ├── pyproject.toml            # Poetry configuration & build settings
 ├── poetry.lock               # Poetry dependency lock file
-├── dev/                      # Python virtual environment (git-ignored)
 └── .gitignore
 ```
 
@@ -45,12 +44,6 @@ poetry install
 ```bash
 # Recommended: Use the installed CLI command (after poetry install)
 poetry run orgstats examples/ARCHIVE_small
-
-# Alternative: Run as a Python module
-poetry run python -m orgstats examples/ARCHIVE_small
-
-# Fallback: Direct module execution
-poetry run python src/orgstats/cli.py examples/ARCHIVE_small
 
 # View help and all options
 poetry run orgstats --help
@@ -89,18 +82,24 @@ poetry run orgstats file1.org file2.org file3.org
 - `--help` / `-h` - Show help message
 
 ## Build/Lint/Test Commands
-All checks should be run with a single command:
-
+- All checks should be run with a single command:
 ```bash
 # Run all validation checks
 poetry run task check
+```
 
+- If any errors appear it is worth trying to fix them automatically with the other commands:
+```bash
 # Attempt to fix formatting errors automatically
 poetry run task format
 
 # Attempt to fix linting errors automatically
 poetry run task lint-fix
 ```
+
+- It is sufficient to run the validation command, there is no need to separately check that the application works.
+- Validation should be run after applying multiple changes to avoid repeated checks.
+
 ### Linting & Formatting
 **Tools Configured:**
 - **Ruff** - Fast, comprehensive linter and formatter
@@ -317,6 +316,7 @@ poetry run task check
 - Be concise and straight-to-the-point.
 - Avoid emojis and colorful language.
 - Do not summarize work done unless explicitly asked to do that.
+- When a file requires multiple changes, apply them all to the file in one go instead of performing each edit separately.
 
 ---
 
