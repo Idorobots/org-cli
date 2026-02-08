@@ -292,3 +292,56 @@ def test_analyze_max_count_logic():
     # Node2: count = max(0, 2) = 2
     assert result.tag_frequencies["a"] == 1
     assert result.tag_frequencies["b"] == 2
+
+
+def test_analyze_with_custom_mapping():
+    """Test analyze with custom mapping parameter."""
+    custom_map = {"foo": "bar", "baz": "qux"}
+    node = MockNode(todo="DONE", tags=["foo", "baz", "unmapped"], heading="", body="")
+    nodes = [node]
+
+    result = analyze(nodes, custom_map)
+
+    assert "bar" in result.tag_frequencies
+    assert "qux" in result.tag_frequencies
+    assert "unmapped" in result.tag_frequencies
+    assert "foo" not in result.tag_frequencies
+    assert "baz" not in result.tag_frequencies
+
+
+def test_analyze_with_empty_mapping():
+    """Test analyze with empty mapping (no transformations)."""
+    empty_map = {}
+    node = MockNode(todo="DONE", tags=["test", "sysadmin"], heading="", body="")
+    nodes = [node]
+
+    result = analyze(nodes, empty_map)
+
+    assert "test" in result.tag_frequencies
+    assert "sysadmin" in result.tag_frequencies
+    assert "testing" not in result.tag_frequencies
+    assert "devops" not in result.tag_frequencies
+
+
+def test_analyze_default_mapping_parameter():
+    """Test that default mapping parameter uses MAP."""
+    node = MockNode(todo="DONE", tags=["test", "sysadmin"], heading="", body="")
+    nodes = [node]
+
+    result = analyze(nodes)
+
+    assert "testing" in result.tag_frequencies
+    assert "devops" in result.tag_frequencies
+
+
+def test_analyze_mapping_affects_all_categories():
+    """Test that custom mapping affects tags, heading, and body."""
+    custom_map = {"foo": "bar"}
+    node = MockNode(todo="DONE", tags=["foo"], heading="foo word", body="foo content")
+    nodes = [node]
+
+    result = analyze(nodes, custom_map)
+
+    assert "bar" in result.tag_frequencies
+    assert "bar" in result.heading_frequencies
+    assert "bar" in result.body_frequencies

@@ -136,3 +136,30 @@ def test_normalize_empty_string():
     result = normalize(tags)
     assert "" in result
     assert "valid" in result
+
+
+def test_normalize_with_custom_mapping():
+    """Test normalize with custom mapping parameter."""
+    custom_map = {"foo": "bar", "baz": "qux"}
+    tags = {"foo", "baz", "unmapped"}
+    result = normalize(tags, custom_map)
+    assert "bar" in result
+    assert "qux" in result
+    assert "unmapped" in result
+
+
+def test_normalize_with_empty_mapping():
+    """Test normalize with empty mapping (no transformations)."""
+    empty_map = {}
+    tags = {"test", "sysadmin"}
+    result = normalize(tags, empty_map)
+    assert "test" in result
+    assert "sysadmin" in result
+
+
+def test_normalize_default_mapping_parameter():
+    """Test that default mapping parameter uses MAP."""
+    tags = {"test", "sysadmin"}
+    result = normalize(tags)
+    assert "testing" in result
+    assert "devops" in result

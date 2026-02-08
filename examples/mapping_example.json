@@ -1,0 +1,17 @@
+{
+  "test": "testing",
+  "sysadmin": "devops",
+  "pldesign": "compilers",
+  "webdev": "frontend",
+  "unix": "linux",
+  "gtd": "agile",
+  "foof": "spartan",
+  "typing": "documenting",
+  "notestaking": "documenting",
+  "computernetworks": "networking",
+  "maintenance": "refactoring",
+  "softwareengineering": "softwarearchitecture",
+  "soa": "softwarearchitecture",
+  "uml": "softwarearchitecture",
+  "dia": "softwarearchitecture"
+}

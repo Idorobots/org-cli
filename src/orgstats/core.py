@@ -232,12 +232,13 @@ def parse_gamify_exp(gamify_exp_value: str | None) -> int | None:
     return None
 
 
-def normalize(tags: set[str]) -> set[str]:
+def normalize(tags: set[str], mapping: dict[str, str] = MAP) -> set[str]:
     """Normalize tags by lowercasing, stripping whitespace, removing punctuation,
     and mapping to canonical forms.
 
     Args:
         tags: Set of tags to normalize
+        mapping: Dictionary mapping tags to canonical forms (default: MAP)
 
     Returns:
         Set of normalized and mapped tags
@@ -253,7 +254,7 @@ def normalize(tags: set[str]) -> set[str]:
         .replace("?", "")
         for t in tags
     }
-    return {mapped(MAP, t) for t in norm}
+    return {mapped(mapping, t) for t in norm}
 
 
 def compute_relations(items: set[str], relations_dict: dict[str, Relations], count: int) -> None:
@@ -365,11 +366,12 @@ def compute_time_ranges(
             time_ranges[item].update(timestamp)
 
 
-def analyze(nodes: list[orgparse.node.OrgNode]) -> AnalysisResult:
+def analyze(nodes: list[orgparse.node.OrgNode], mapping: dict[str, str] = MAP) -> AnalysisResult:
     """Analyze org-mode nodes and extract task statistics.
 
     Args:
         nodes: List of org-mode nodes from orgparse
+        mapping: Dictionary mapping tags to canonical forms (default: MAP)
 
     Returns:
         AnalysisResult containing task counts and frequency dictionaries
@@ -408,9 +410,9 @@ def analyze(nodes: list[orgparse.node.OrgNode]) -> AnalysisResult:
         else:
             difficulty = "hard"
 
-        normalized_tags = normalize(node.tags)
-        normalized_heading = normalize(set(node.heading.split()))
-        normalized_body = normalize(set(node.body.split()))
+        normalized_tags = normalize(node.tags, mapping)
+        normalized_heading = normalize(set(node.heading.split()), mapping)
+        normalized_body = normalize(set(node.body.split()), mapping)
 
         compute_frequencies(normalized_tags, tags, count, difficulty)
         compute_frequencies(normalized_heading, heading, count, difficulty)

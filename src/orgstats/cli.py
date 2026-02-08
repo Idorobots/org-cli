@@ -2,12 +2,13 @@
 """CLI interface for orgstats - Org-mode archive file analysis."""
 
 import argparse
+import json
 import sys
 from collections.abc import Callable
 
 import orgparse
 
-from orgstats.core import BODY, HEADING, TAGS, Frequency, Relations, TimeRange, analyze, clean
+from orgstats.core import BODY, HEADING, MAP, TAGS, Frequency, Relations, TimeRange, analyze, clean
 
 
 def load_stopwords(filepath: str | None) -> set[str]:
@@ -33,6 +34,50 @@ def load_stopwords(filepath: str | None) -> set[str]:
         sys.exit(1)
     except PermissionError:
         print(f"Error: Permission denied for '{filepath}'", file=sys.stderr)
+        sys.exit(1)
+
+
+def load_mapping(filepath: str | None) -> dict[str, str]:
+    """Load tag mapping from a JSON file.
+
+    Args:
+        filepath: Path to JSON mapping file, or None for empty dict
+
+    Returns:
+        Dictionary mapping tags to canonical forms
+
+    Raises:
+        SystemExit: If file cannot be read or JSON is invalid
+    """
+    if filepath is None:
+        return {}
+
+    try:
+        with open(filepath, encoding="utf-8") as f:
+            mapping = json.load(f)
+
+        if not isinstance(mapping, dict):
+            print(f"Error: Mapping file '{filepath}' must contain a JSON object", file=sys.stderr)
+            sys.exit(1)
+
+        for key, value in mapping.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                print(
+                    f"Error: All keys and values in '{filepath}' must be strings",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+        return mapping
+
+    except FileNotFoundError:
+        print(f"Error: Mapping file '{filepath}' not found", file=sys.stderr)
+        sys.exit(1)
+    except PermissionError:
+        print(f"Error: Permission denied for '{filepath}'", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in '{filepath}': {e}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -178,6 +223,13 @@ def parse_arguments() -> argparse.Namespace:
         help="Maximum number of relations to display per item (default: 3, must be >= 1)",
     )
 
+    parser.add_argument(
+        "--mapping",
+        type=str,
+        metavar="FILE",
+        help="JSON file containing tag mappings (dict[str, str])",
+    )
+
     return parser.parse_args()
 
 
@@ -188,6 +240,10 @@ def main() -> None:
     if args.max_relations < 1:
         print("Error: --max-relations must be at least 1", file=sys.stderr)
         sys.exit(1)
+
+    # Load mapping from file or use default
+    custom_mapping = load_mapping(args.mapping)
+    mapping = custom_mapping if custom_mapping else MAP
 
     # Load stopwords from files or use defaults
     exclude_tags = load_stopwords(args.exclude_tags) or TAGS
@@ -208,8 +264,8 @@ def main() -> None:
             if ns is not None:
                 nodes = nodes + list(ns[1:])
 
-    # Analyze nodes
-    result = analyze(nodes)
+    # Analyze nodes with custom mapping
+    result = analyze(nodes, mapping)
 
     def order_by_frequency(item: tuple[str, Frequency]) -> tuple[int, int]:
         """Sort by selected task type frequency (descending), then by total."""
