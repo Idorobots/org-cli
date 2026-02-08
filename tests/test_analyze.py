@@ -34,6 +34,9 @@ def test_analyze_empty_nodes():
     assert result.tag_frequencies == {}
     assert result.heading_frequencies == {}
     assert result.body_frequencies == {}
+    assert result.tag_relations == {}
+    assert result.heading_relations == {}
+    assert result.body_relations == {}
 
 
 def test_analyze_single_done_task():
@@ -242,6 +245,9 @@ def test_analyze_returns_tuple():
     assert hasattr(result, "tag_frequencies")
     assert hasattr(result, "heading_frequencies")
     assert hasattr(result, "body_frequencies")
+    assert hasattr(result, "tag_relations")
+    assert hasattr(result, "heading_relations")
+    assert hasattr(result, "body_relations")
 
 
 def test_analyze_accumulates_across_nodes():

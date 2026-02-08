@@ -1,7 +1,7 @@
 """orgstats - Analyze Emacs Org-mode archive files for task statistics."""
 
 from orgstats.cli import main
-from orgstats.core import AnalysisResult, Frequency, analyze
+from orgstats.core import AnalysisResult, Frequency, Relations, analyze
 
 
 __version__ = "0.1.0"
@@ -9,6 +9,7 @@ __version__ = "0.1.0"
 __all__ = [
     "AnalysisResult",
     "Frequency",
+    "Relations",
     "__version__",
     "analyze",
     "main",

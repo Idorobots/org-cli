@@ -58,6 +58,23 @@ class Frequency:  # noqa: PLW1641
 
 
 @dataclass
+class Relations:
+    """Represents pair-wise co-occurrence relationships for a tag/word.
+
+    Attributes:
+        name: The tag or word name
+        relations: Dictionary mapping related tags/words to co-occurrence counts
+    """
+
+    name: str
+    relations: dict[str, int]
+
+    def __repr__(self) -> str:
+        """Return string representation of Relations."""
+        return f"Relations(name={self.name!r}, relations={self.relations})"
+
+
+@dataclass
 class AnalysisResult:
     """Represents the complete result of analyzing Org-mode nodes.
 
@@ -67,6 +84,9 @@ class AnalysisResult:
         tag_frequencies: Dictionary mapping tags to their frequency counts
         heading_frequencies: Dictionary mapping heading words to their frequency counts
         body_frequencies: Dictionary mapping body words to their frequency counts
+        tag_relations: Dictionary mapping tags to their Relations objects
+        heading_relations: Dictionary mapping heading words to their Relations objects
+        body_relations: Dictionary mapping body words to their Relations objects
     """
 
     total_tasks: int
@@ -74,6 +94,9 @@ class AnalysisResult:
     tag_frequencies: dict[str, Frequency]
     heading_frequencies: dict[str, Frequency]
     body_frequencies: dict[str, Frequency]
+    tag_relations: dict[str, Relations]
+    heading_relations: dict[str, Relations]
+    body_relations: dict[str, Relations]
 
 
 MAP = {
@@ -171,7 +194,34 @@ def normalize(tags: set[str]) -> set[str]:
     return {mapped(MAP, t) for t in norm}
 
 
-def analyze(nodes: list[orgparse.node.OrgNode]) -> AnalysisResult:  # noqa: PLR0912
+def compute_relations(items: set[str], relations_dict: dict[str, Relations], count: int) -> None:
+    """Compute pair-wise relations for a set of items.
+
+    Args:
+        items: Set of items (tags or words) to compute relations for
+        relations_dict: Dictionary to store Relations objects
+        count: Count to increment relations by (for repeated tasks)
+    """
+    items_list = sorted(items)
+    for i in range(len(items_list)):
+        for j in range(i + 1, len(items_list)):
+            item_a = items_list[i]
+            item_b = items_list[j]
+
+            if item_a not in relations_dict:
+                relations_dict[item_a] = Relations(name=item_a, relations={})
+            if item_b not in relations_dict:
+                relations_dict[item_b] = Relations(name=item_b, relations={})
+
+            relations_dict[item_a].relations[item_b] = (
+                relations_dict[item_a].relations.get(item_b, 0) + count
+            )
+            relations_dict[item_b].relations[item_a] = (
+                relations_dict[item_b].relations.get(item_a, 0) + count
+            )
+
+
+def analyze(nodes: list[orgparse.node.OrgNode]) -> AnalysisResult:  # noqa: PLR0912, PLR0915
     """Analyze org-mode nodes and extract task statistics.
 
     Args:
@@ -185,6 +235,9 @@ def analyze(nodes: list[orgparse.node.OrgNode]) -> AnalysisResult:  # noqa: PLR0
     tags: dict[str, Frequency] = {}
     heading: dict[str, Frequency] = {}
     words: dict[str, Frequency] = {}
+    tag_relations: dict[str, Relations] = {}
+    heading_relations: dict[str, Relations] = {}
+    body_relations: dict[str, Relations] = {}
 
     for node in nodes:
         total = total + max(1, len(node.repeated_tasks))
@@ -241,12 +294,23 @@ def analyze(nodes: list[orgparse.node.OrgNode]) -> AnalysisResult:  # noqa: PLR0
             else:
                 words[tag].hard += count
 
+        normalized_tags = normalize(node.tags)
+        normalized_heading = normalize(set(node.heading.split()))
+        normalized_body = normalize(set(node.body.split()))
+
+        compute_relations(normalized_tags, tag_relations, count)
+        compute_relations(normalized_heading, heading_relations, count)
+        compute_relations(normalized_body, body_relations, count)
+
     return AnalysisResult(
         total_tasks=total,
         done_tasks=done,
         tag_frequencies=tags,
         heading_frequencies=heading,
         body_frequencies=words,
+        tag_relations=tag_relations,
+        heading_relations=heading_relations,
+        body_relations=body_relations,
     )
 
 

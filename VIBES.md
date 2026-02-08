@@ -72,14 +72,31 @@ When no files are provided to the CLI command the usage message should be printe
 
 Comment: After planning the change I figured it would take the AI longer than applying the change manually, so I aborted the plan execution.
 
-## Devcontainers setup
-A docker container for running the repo commands in.
-
 ## Pair-wise relations
-Compute which tags are frequently used together.
+I'd like to expand the analysis done in `analyze()` to inculde computation of pair-wise relations between tags/words.
+Introduce a new class called `Relations` with a field called `name` and another named `relations`. The `name` property will hold the tag while the `relations` field should be a dictionary representing the frequencies two tags are used together.
+Add fields to the `AnalysisResult` class to store the results of the computation. The fields should be called `tag_relations`, `heading_relations` and `body_relations`, and should be a mapping of tag/word name to the newly created `Relations` objects.
+
+Update the `analyze()` function to compute tag pairs and increment the relation counts in the `Relations` objects. Here's an example:
+- When tags contain `tagA`, `tagB` and `tagC` the function should increment the relation frequencies for:
+  - `tag_relations[tagA].relations[tagB]`
+  - `tag_relations[tagB].relations[tagA]`
+  - `tag_relations[tagA].relations[tagC]`
+  - `tag_relations[tagC].relations[tagA]`
+  - `tag_relations[tagB].relations[tagC]`
+  - `tag_relations[tagC].relations[tagB]`
+
+That is, for each pair increment the frequencies between both tags. Make sure the pairs are not duplicated when computing pair-wise relations, we want to take each pair into account once for each of the tags. It is OK that each relation is duplicated for each tag in the relation.
+Make sure that there are no relations of a tag to itself.
+When repeated tasks are concerned, increment the relations for each repeated task (as if each repetition was an instance of the task).
+The results for tags, heading and body should be computed separately and returned with the `AnalysisResult`. The `gamify_exp` is not to be taken into account.
+The CLI output should not be affected yet.
 
 ## Skill time ranges
 Compute time distributions for all tags
+
+## Devcontainers setup
+A docker container for running the repo commands in.
 
 ## Graphviz/Dot output
 
@@ -90,3 +107,4 @@ Node size is how many tasks are related to a tag. Closeness is how related these
 
 ## D3 visualization - tag charts over time
 Allow selecting specific tags or top tags.
+
