@@ -277,6 +277,13 @@ Tag groups:
 
 Comment: The AI computed a sound plan, but then ran out of quota before it could finish implementing it. The bulk of the quota was spent on the tool calls for all the single-line edits. After the quota reset, it finished the implementation properly.
 
+## ✅ Additional relation filter
+The SCC works great, but the output produced is kinda wonky - it still produces quite a few groups.
+Please add an additional CLI parameter called `--min-group-size` that takes an integer and defaults to 3.
+This parameter should be used to filter out groups smaller than the threshold during display.
+
+Comment: The AI proposed to rename origial `--group-threshold` parameter to something better, like `--min-group-size`. Can't argue with that.
+
 ## Devcontainers setup
 A docker container for running the repo commands in.
 

@@ -409,6 +409,14 @@ def parse_arguments() -> argparse.Namespace:
         help="JSON file containing tag mappings (dict[str, str])",
     )
 
+    parser.add_argument(
+        "--min-group-size",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Minimum group size to display (default: 3)",
+    )
+
     return parser.parse_args()
 
 
@@ -418,6 +426,10 @@ def main() -> None:
 
     if args.max_relations < 1:
         print("Error: --max-relations must be at least 1", file=sys.stderr)
+        sys.exit(1)
+
+    if args.min_group_size < 0:
+        print("Error: --min-group-size must be non-negative", file=sys.stderr)
         sys.exit(1)
 
     # Load mapping from file or use default
@@ -472,7 +484,7 @@ def main() -> None:
         filtered_groups = []
         for group in result.tag_groups:
             filtered_tags = [tag for tag in group.tags if tag not in exclude_set]
-            if len(filtered_tags) >= 2:
+            if len(filtered_tags) >= args.min_group_size:
                 filtered_groups.append(filtered_tags)
 
         if filtered_groups:
