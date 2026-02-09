@@ -61,7 +61,7 @@ def test_analyze_single_task_time_range():
     node = MockNode(todo="DONE", tags=["Python"], heading="Test", body="", closed=closed)
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert "python" in result.tag_time_ranges
     assert result.tag_time_ranges["python"].earliest == dt
@@ -78,7 +78,7 @@ def test_analyze_multiple_tasks_time_range():
         MockNode(todo="DONE", tags=["Python"], heading="", body="", closed=MockTimestamp(dt2)),
     ]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_time_ranges["python"].earliest == dt1
     assert result.tag_time_ranges["python"].latest == dt2
@@ -93,7 +93,7 @@ def test_analyze_time_range_with_repeated_tasks():
     node = MockNode(todo="TODO", tags=["Daily"], heading="", body="", repeated_tasks=repeated)
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_time_ranges["daily"].earliest == dt1
     assert result.tag_time_ranges["daily"].latest == dt2
@@ -106,7 +106,7 @@ def test_analyze_time_range_fallback_to_closed():
     node = MockNode(todo="DONE", tags=["Python"], heading="", body="", closed=closed)
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_time_ranges["python"].earliest == dt
     assert result.tag_time_ranges["python"].latest == dt
@@ -119,7 +119,7 @@ def test_analyze_time_range_fallback_to_scheduled():
     node = MockNode(todo="TODO", tags=["Python"], heading="", body="", scheduled=scheduled)
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_time_ranges["python"].earliest == dt
     assert result.tag_time_ranges["python"].latest == dt
@@ -132,7 +132,7 @@ def test_analyze_time_range_fallback_to_deadline():
     node = MockNode(todo="TODO", tags=["Python"], heading="", body="", deadline=deadline)
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_time_ranges["python"].earliest == dt
     assert result.tag_time_ranges["python"].latest == dt
@@ -143,7 +143,7 @@ def test_analyze_time_range_no_timestamps_ignored():
     node = MockNode(todo="TODO", tags=["Python"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_time_ranges == {}
 
@@ -155,7 +155,7 @@ def test_analyze_time_range_normalized_tags():
     node = MockNode(todo="DONE", tags=["Test", "SysAdmin"], heading="", body="", closed=closed)
     nodes = [node]
 
-    result = analyze(nodes, {"test": "testing", "sysadmin": "devops"})
+    result = analyze(nodes, {"test": "testing", "sysadmin": "devops"}, category="tags")
 
     assert "testing" in result.tag_time_ranges
     assert "devops" in result.tag_time_ranges
@@ -199,7 +199,7 @@ def test_analyze_time_range_earliest_latest():
         MockNode(todo="DONE", tags=["Python"], heading="", body="", closed=MockTimestamp(dt3)),
     ]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_time_ranges["python"].earliest == dt1
     assert result.tag_time_ranges["python"].latest == dt3
@@ -214,7 +214,7 @@ def test_analyze_time_range_same_timestamp():
         MockNode(todo="DONE", tags=["Python"], heading="", body="", closed=MockTimestamp(dt)),
     ]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_time_ranges["python"].earliest == dt
     assert result.tag_time_ranges["python"].latest == dt
@@ -238,7 +238,7 @@ def test_analyze_time_range_multiple_tags():
     node = MockNode(todo="DONE", tags=["Python", "Testing"], heading="", body="", closed=closed)
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_time_ranges["python"].earliest == dt
     assert result.tag_time_ranges["testing"].earliest == dt
@@ -258,7 +258,7 @@ def test_analyze_time_range_repeated_all_done():
     node = MockNode(todo="TODO", tags=["Daily"], heading="", body="", repeated_tasks=repeated)
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_time_ranges["daily"].earliest == dt1
     assert result.tag_time_ranges["daily"].latest == dt3
@@ -271,7 +271,7 @@ def test_analyze_timeline_single_task():
     node = MockNode(todo="DONE", tags=["Python"], heading="", body="", closed=closed)
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert "python" in result.tag_time_ranges
     timeline = result.tag_time_ranges["python"].timeline
@@ -291,7 +291,7 @@ def test_analyze_timeline_multiple_tasks_different_days():
         MockNode(todo="DONE", tags=["Python"], heading="", body="", closed=MockTimestamp(dt3)),
     ]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     timeline = result.tag_time_ranges["python"].timeline
     assert len(timeline) == 3
@@ -310,7 +310,7 @@ def test_analyze_timeline_multiple_tasks_same_day():
         MockNode(todo="DONE", tags=["Python"], heading="", body="", closed=MockTimestamp(dt2)),
     ]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     timeline = result.tag_time_ranges["python"].timeline
     assert len(timeline) == 1
@@ -331,7 +331,7 @@ def test_analyze_timeline_repeated_tasks():
     node = MockNode(todo="TODO", tags=["Daily"], heading="", body="", repeated_tasks=repeated)
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     timeline = result.tag_time_ranges["daily"].timeline
     assert len(timeline) == 3
@@ -354,7 +354,7 @@ def test_analyze_timeline_repeated_tasks_same_day():
     node = MockNode(todo="TODO", tags=["Daily"], heading="", body="", repeated_tasks=repeated)
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     timeline = result.tag_time_ranges["daily"].timeline
     assert len(timeline) == 1
@@ -373,7 +373,7 @@ def test_analyze_timeline_mixed_repeats_and_regular():
         MockNode(todo="DONE", tags=["Python"], heading="", body="", closed=MockTimestamp(dt3)),
     ]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     timeline = result.tag_time_ranges["python"].timeline
     assert len(timeline) == 2

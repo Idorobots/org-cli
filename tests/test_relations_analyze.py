@@ -38,7 +38,7 @@ def test_analyze_single_tag_no_relations():
     node = MockNode(todo="DONE", tags=["Python"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_relations == {}
 
@@ -48,7 +48,7 @@ def test_analyze_two_tags_bidirectional_relation():
     node = MockNode(todo="DONE", tags=["Python", "Testing"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert "python" in result.tag_relations
     assert "testing" in result.tag_relations
@@ -62,7 +62,7 @@ def test_analyze_three_tags_all_relations():
     node = MockNode(todo="DONE", tags=["TagA", "TagB", "TagC"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert "taga" in result.tag_relations
     assert "tagb" in result.tag_relations
@@ -85,7 +85,7 @@ def test_analyze_no_self_relations():
     node = MockNode(todo="DONE", tags=["Python", "Testing"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert "python" not in result.tag_relations["python"].relations
     assert "testing" not in result.tag_relations["testing"].relations
@@ -96,7 +96,7 @@ def test_analyze_relations_normalized():
     node = MockNode(todo="DONE", tags=["Test", "SysAdmin"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, {"test": "testing", "sysadmin": "devops"})
+    result = analyze(nodes, {"test": "testing", "sysadmin": "devops"}, category="tags")
 
     # "Test" -> "test" -> "testing" (mapped)
     # "SysAdmin" -> "sysadmin" -> "devops" (mapped)
@@ -113,7 +113,7 @@ def test_analyze_relations_accumulate():
         MockNode(todo="DONE", tags=["Python", "Testing"], heading="", body=""),
     ]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_relations["python"].relations["testing"] == 2
     assert result.tag_relations["testing"].relations["python"] == 2
@@ -130,7 +130,7 @@ def test_analyze_relations_with_repeated_tasks():
     )
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     # count = max(0, 2) = 2
     assert result.tag_relations["daily"].relations["meeting"] == 2
@@ -205,7 +205,7 @@ def test_analyze_relations_with_different_counts():
         MockNode(todo="TODO", tags=["TagA", "TagB"], heading="", body="", repeated_tasks=repeated2),
     ]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     # First node: count = max(1, 1) = 1
     # Second node: count = max(0, 3) = 3
@@ -222,7 +222,7 @@ def test_analyze_relations_mixed_tags():
         MockNode(todo="DONE", tags=["Testing", "Debugging"], heading="", body=""),
     ]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     # Python appears with Testing (1x) and Debugging (1x)
     assert result.tag_relations["python"].relations["testing"] == 1
@@ -242,7 +242,7 @@ def test_analyze_relations_empty_tags():
     node = MockNode(todo="DONE", tags=[], heading="Task", body="Content")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_relations == {}
 
@@ -252,7 +252,7 @@ def test_analyze_four_tags_six_relations():
     node = MockNode(todo="DONE", tags=["A", "B", "C", "D"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     # With 4 tags, we should have C(4,2) = 6 unique pairs
     # A-B, A-C, A-D, B-C, B-D, C-D
@@ -277,7 +277,7 @@ def test_analyze_relations_result_structure():
     node = MockNode(todo="DONE", tags=["Python", "Testing"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert isinstance(result.tag_relations["python"], Relations)
     assert result.tag_relations["python"].name == "python"

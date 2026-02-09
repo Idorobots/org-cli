@@ -28,7 +28,7 @@ def test_integration_simple_file():
     """Test with the simple.org fixture."""
     nodes = load_org_file("simple.org")
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.total_tasks == 1
     assert result.done_tasks == 1
@@ -71,6 +71,7 @@ def test_integration_multiple_tags():
             "sysadmin": "devops",
             "maintenance": "refactoring",
         },
+        category="tags",
     )
 
     assert result.total_tasks == 3
@@ -93,7 +94,7 @@ def test_integration_edge_cases():
     """Test with edge_cases.org fixture."""
     nodes = load_org_file("edge_cases.org")
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     # All three tasks are DONE
     assert result.total_tasks == 3
@@ -117,7 +118,7 @@ def test_integration_24_00_time_handling():
 
     # Should not crash when parsing file with 24:00
     # (file has 24:00 which is replaced with 00:00)
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.total_tasks > 0
     assert result.done_tasks > 0
@@ -127,7 +128,7 @@ def test_integration_empty_file():
     """Test with empty.org fixture (TODO tasks)."""
     nodes = load_org_file("empty.org")
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.total_tasks == 1
     assert result.done_tasks == 0  # TODO, not DONE
@@ -137,7 +138,7 @@ def test_integration_repeated_tasks():
     """Test with repeated_tasks.org fixture."""
     nodes = load_org_file("repeated_tasks.org")
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     # Note: orgparse may or may not parse repeated tasks from LOGBOOK
     # This depends on orgparse's implementation
@@ -162,7 +163,7 @@ def test_integration_archive_small():
         if ns is not None:
             nodes = list(ns[1:])
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     # All tasks in ARCHIVE_small are DONE
     assert result.total_tasks > 0
@@ -210,7 +211,7 @@ def test_integration_frequency_sorting():
     """Test that results can be sorted by frequency."""
     nodes = load_org_file("multiple_tags.org")
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     # Sort tags by frequency (descending)
     sorted_tags = sorted(result.tag_frequencies.items(), key=lambda item: -item[1].total)
@@ -240,7 +241,7 @@ def test_integration_no_tags_task():
     """Test task without any tags."""
     nodes = load_org_file("simple.org")
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     # Simple task has no tags
     assert len(result.tag_frequencies) == 0 or all(

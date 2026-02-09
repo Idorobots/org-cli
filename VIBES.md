@@ -232,8 +232,18 @@ Adjust the tests accordingly.
 
 Comment: AI, again, fixated on backwards compatibility despite AGENTS.md explicitly stating it's not required. It did refactor the code fine though, but didn't remove the old, no longer used constants because that would break a lot of tests. This seems to be a common pattern - it values its time like a real boy would.
 
-## hasattr() & default args slop
-Remove it and use OrgNode instead of Mocks.
+## ✅*️ Default args slop
+Please remove the default argument values from the `analyze()` function and adjust the tests to pass the value manually.
+Using default argument vaulues is forbidden in this project.
+
+Comment: It computed a sound plan of operation, but then ran out of quota to actually execute it. It was possible to resume the execution of the plan after the quota reset.
+
+## Hasattr slop
+Please remove the usage of `hasattr(node, atrt)` from the function `extract_timestamp()` and adjust the tests to work correctly without using `hasattr()`.
+Using `hasattr()` in the logic to make writing tests easier is bad style and you should feel bad about it.
+
+## Devcontainers setup
+A docker container for running the repo commands in.
 
 ## SCC
 Given the relations between tags, compute the strongly connected components of the graph and expand the display to the command output.
@@ -241,9 +251,6 @@ Given the relations between tags, compute the strongly connected components of t
 ## More filters
 - gamify_exp above
 - gamify_exp under
-
-## Devcontainers setup
-A docker container for running the repo commands in.
 
 ## Output abstraction
 We will be adding more output options, for instance JSON output, visualization output, etc.

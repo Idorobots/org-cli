@@ -330,7 +330,7 @@ def compute_time_ranges(
 
 
 def analyze(
-    nodes: list[orgparse.node.OrgNode], mapping: dict[str, str], category: str = "tags"
+    nodes: list[orgparse.node.OrgNode], mapping: dict[str, str], category: str
 ) -> AnalysisResult:
     """Analyze org-mode nodes and extract task statistics.
 

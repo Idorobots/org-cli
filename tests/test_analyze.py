@@ -28,7 +28,7 @@ class MockRepeatedTask:
 def test_analyze_empty_nodes():
     """Test analyze with empty nodes list."""
     nodes = []
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.total_tasks == 0
     assert result.done_tasks == 0
@@ -42,7 +42,7 @@ def test_analyze_single_done_task():
     node = MockNode(todo="DONE", tags=["Testing"], heading="Write tests", body="Unit tests")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.total_tasks == 1
     assert result.done_tasks == 1
@@ -55,7 +55,7 @@ def test_analyze_single_todo_task():
     node = MockNode(todo="TODO", tags=["Feature"], heading="Implement feature", body="")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.total_tasks == 1
     assert result.done_tasks == 0  # Not result.done_tasks
@@ -69,7 +69,7 @@ def test_analyze_multiple_tasks():
         MockNode(todo="TODO", tags=["Tag3"], heading="Task 3", body=""),
     ]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.total_tasks == 3
     assert result.done_tasks == 2
@@ -83,7 +83,7 @@ def test_analyze_tag_frequencies():
         MockNode(todo="DONE", tags=["Python", "Testing"], heading="", body=""),
     ]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_frequencies["python"] == 3
     assert result.tag_frequencies["testing"] == 1
@@ -131,7 +131,7 @@ def test_analyze_repeated_tasks():
     node = MockNode(todo="TODO", tags=["Recurring"], heading="", body="", repeated_tasks=repeated)
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     # result.total_tasks = max(1, len(repeated_tasks)) = max(1, 3) = 3
     assert result.total_tasks == 3
@@ -164,7 +164,7 @@ def test_analyze_done_task_no_repeats():
     node = MockNode(todo="DONE", tags=["Simple"], heading="Task", body="")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.total_tasks == 1
     assert result.done_tasks == 1
@@ -176,7 +176,7 @@ def test_analyze_normalizes_tags():
     node = MockNode(todo="DONE", tags=["Test", "SysAdmin"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, {"test": "testing", "sysadmin": "devops"})
+    result = analyze(nodes, {"test": "testing", "sysadmin": "devops"}, category="tags")
 
     # "Test" -> "test" -> "testing" (mapped)
     # "SysAdmin" -> "sysadmin" -> "devops" (mapped)
@@ -189,7 +189,7 @@ def test_analyze_multiple_tags_per_task():
     node = MockNode(todo="DONE", tags=["Python", "Testing", "Debugging"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert len(result.tag_frequencies) == 3
     assert "python" in result.tag_frequencies
@@ -202,7 +202,7 @@ def test_analyze_empty_tags():
     node = MockNode(todo="DONE", tags=[], heading="No tags", body="")
     nodes = [node]
 
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert result.tag_frequencies == {}
 
@@ -235,7 +235,7 @@ def test_analyze_returns_tuple():
     from orgstats.core import AnalysisResult
 
     nodes = []
-    result = analyze(nodes, {})
+    result = analyze(nodes, {}, category="tags")
 
     assert isinstance(result, AnalysisResult)
     assert hasattr(result, "total_tasks")
@@ -277,7 +277,7 @@ def test_analyze_max_count_logic():
     ]
     node2 = MockNode(todo="TODO", tags=["B"], heading="", body="", repeated_tasks=repeated2)
 
-    result = analyze([node1, node2], {})
+    result = analyze([node1, node2], {}, category="tags")
 
     # Node1: count = max(1, 0) = 1
     # Node2: count = max(0, 2) = 2
@@ -291,7 +291,7 @@ def test_analyze_with_custom_mapping():
     node = MockNode(todo="DONE", tags=["foo", "baz", "unmapped"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, custom_map)
+    result = analyze(nodes, custom_map, category="tags")
 
     assert "bar" in result.tag_frequencies
     assert "qux" in result.tag_frequencies
@@ -306,7 +306,7 @@ def test_analyze_with_empty_mapping():
     node = MockNode(todo="DONE", tags=["test", "sysadmin"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, empty_map)
+    result = analyze(nodes, empty_map, category="tags")
 
     assert "test" in result.tag_frequencies
     assert "sysadmin" in result.tag_frequencies
@@ -319,7 +319,7 @@ def test_analyze_default_mapping_parameter():
     node = MockNode(todo="DONE", tags=["test", "sysadmin"], heading="", body="")
     nodes = [node]
 
-    result = analyze(nodes, {"test": "testing", "sysadmin": "devops"})
+    result = analyze(nodes, {"test": "testing", "sysadmin": "devops"}, category="tags")
 
     assert "testing" in result.tag_frequencies
     assert "devops" in result.tag_frequencies
