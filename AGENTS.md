@@ -155,6 +155,7 @@ poetry add <package>
 - Avoid mocking in tests as much as possible.
 - Avoid using default function arguments values.
 - Target test coverage is 90% or above.
+- Backwards compatibility is not required, no need to ensure it.
 
 ### Python Style
 
