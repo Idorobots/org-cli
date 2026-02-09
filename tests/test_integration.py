@@ -4,7 +4,7 @@ import os
 
 import orgparse
 
-from orgstats.cli import BODY, HEADING, TAGS
+from orgstats.cli import DEFAULT_EXCLUDE
 from orgstats.core import analyze, clean
 
 
@@ -191,18 +191,18 @@ def test_integration_clean_filters_stopwords():
     result_body = analyze(nodes, {}, category="body")
 
     # Apply cleaning
-    cleaned_tags = clean(TAGS, result_tags.tag_frequencies)
-    cleaned_heading = clean(HEADING, result_heading.tag_frequencies)
-    cleaned_words = clean(BODY, result_body.tag_frequencies)
+    cleaned_tags = clean(DEFAULT_EXCLUDE, result_tags.tag_frequencies)
+    cleaned_heading = clean(DEFAULT_EXCLUDE, result_heading.tag_frequencies)
+    cleaned_words = clean(DEFAULT_EXCLUDE, result_body.tag_frequencies)
 
     # Stop words should be removed
-    for stop_word in TAGS:
+    for stop_word in DEFAULT_EXCLUDE:
         assert stop_word not in cleaned_tags
 
-    for stop_word in HEADING:
+    for stop_word in DEFAULT_EXCLUDE:
         assert stop_word not in cleaned_heading
 
-    for stop_word in BODY:
+    for stop_word in DEFAULT_EXCLUDE:
         assert stop_word not in cleaned_words
 
 

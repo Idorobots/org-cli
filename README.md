@@ -119,9 +119,7 @@ Top tags:
 - `--filter TYPE`, `-f TYPE` - Filter tasks by difficulty: `simple`, `regular`, `hard`, or `all` (default: `all`)
 - `--mapping FILE` - Tag name mapping JSON file to use.
 - `--show CATEGORY` - what category of data to process: `tags`, `heading` or `body` (default: `tags`)
-- `--exclude-tags FILE` - File with tags to exclude (one per line, replaces default)
-- `--exclude-heading FILE` - File with heading words to exclude (one per line, replaces default)
-- `--exclude-body FILE` - File with body words to exclude (one per line, replaces default)
+- `--exclude FILE` - File with tags to exclude (one per line, replaces default)
 
 ### Task Difficulty Levels
 

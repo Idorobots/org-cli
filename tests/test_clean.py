@@ -1,6 +1,6 @@
 """Tests for the clean() function."""
 
-from orgstats.cli import BODY, HEADING, TAGS
+from orgstats.cli import DEFAULT_EXCLUDE
 from orgstats.core import Frequency, clean
 
 
@@ -70,34 +70,13 @@ def test_clean_preserves_frequencies():
     assert freq_dict_to_ints(result) == {"keep1": 42, "keep2": 99}
 
 
-def test_clean_with_tags_constant():
-    """Test clean with the TAGS constant."""
-    # TAGS contains stop words that should be filtered
-    tags = freq_dict_from_ints({"comp": 5, "computer": 3, "programming": 10, "debugging": 8})
-    result = clean(TAGS, tags)
-    # comp and computer are in TAGS
-    assert "comp" not in result
-    assert "computer" not in result
-    assert freq_dict_to_ints(result) == {"programming": 10, "debugging": 8}
-
-
-def test_clean_with_heading_constant():
-    """Test clean with the HEADING constant."""
-    heading_words = freq_dict_from_ints({"the": 50, "to": 30, "implement": 10, "feature": 8})
-    result = clean(HEADING, heading_words)
-    # "the" and "to" are in HEADING
-    assert "the" not in result
-    assert "to" not in result
-    assert freq_dict_to_ints(result) == {"implement": 10, "feature": 8}
-
-
-def test_clean_with_words_constant():
-    """Test clean with the BODY constant."""
+def test_clean_with_default_constant():
+    """Test clean with the DEFAULT_EXCLUDE constant."""
     body_words = freq_dict_from_ints(
         {"end": 20, "logbook": 15, "implementation": 10, "algorithm": 5}
     )
-    result = clean(BODY, body_words)
-    # "end" and "logbook" are in BODY
+    result = clean(DEFAULT_EXCLUDE, body_words)
+    # "end" and "logbook" are in DEFAULT_EXCLUDE
     assert "end" not in result
     assert "logbook" not in result
     assert freq_dict_to_ints(result) == {"implementation": 10, "algorithm": 5}
