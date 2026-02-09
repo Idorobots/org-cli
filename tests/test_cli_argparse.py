@@ -23,9 +23,7 @@ def test_argparse_help():
     assert "usage:" in result.stdout
     assert "orgstats" in result.stdout
     assert "--max-results" in result.stdout
-    assert "--exclude-tags" in result.stdout
-    assert "--exclude-heading" in result.stdout
-    assert "--exclude-body" in result.stdout
+    assert "--exclude" in result.stdout
     assert "--filter" in result.stdout
 
 
@@ -60,13 +58,13 @@ def test_argparse_max_results_short():
     assert "Processing" in result.stdout
 
 
-def test_argparse_exclude_tags():
-    """Test --exclude-tags with custom file."""
+def test_argparse_exclude():
+    """Test --exclude with custom file."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     exclude_list_path = os.path.join(FIXTURES_DIR, "exclude_list_tags.txt")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--exclude-tags", exclude_list_path, fixture_path],
+        [sys.executable, "-m", "orgstats", "--exclude", exclude_list_path, fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -77,44 +75,10 @@ def test_argparse_exclude_tags():
     assert "Total tasks:" in result.stdout
 
 
-def test_argparse_exclude_heading():
-    """Test --exclude-heading with custom file."""
-    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    exclude_list_path = os.path.join(FIXTURES_DIR, "exclude_list_heading.txt")
-
-    result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--exclude-heading", exclude_list_path, fixture_path],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-
-
-def test_argparse_exclude_body():
-    """Test --exclude-body with custom file."""
-    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    exclude_list_path = os.path.join(FIXTURES_DIR, "exclude_list_body.txt")
-
-    result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--exclude-body", exclude_list_path, fixture_path],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-
-
 def test_argparse_all_options():
     """Test using all options together."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    tags_path = os.path.join(FIXTURES_DIR, "exclude_list_tags.txt")
-    heading_path = os.path.join(FIXTURES_DIR, "exclude_list_heading.txt")
-    body_path = os.path.join(FIXTURES_DIR, "exclude_list_body.txt")
+    exclude_path = os.path.join(FIXTURES_DIR, "exclude_list_tags.txt")
 
     result = subprocess.run(
         [
@@ -123,12 +87,8 @@ def test_argparse_all_options():
             "orgstats",
             "--max-results",
             "20",
-            "--exclude-tags",
-            tags_path,
-            "--exclude-heading",
-            heading_path,
-            "--exclude-body",
-            body_path,
+            "--exclude",
+            exclude_path,
             fixture_path,
         ],
         cwd=PROJECT_ROOT,
@@ -162,7 +122,7 @@ def test_argparse_missing_exclude_list_file():
     nonexistent_file = os.path.join(FIXTURES_DIR, "does_not_exist.txt")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--exclude-tags", nonexistent_file, fixture_path],
+        [sys.executable, "-m", "orgstats", "--exclude", nonexistent_file, fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -178,13 +138,13 @@ def test_argparse_empty_exclude_list_file():
     empty_file = os.path.join(FIXTURES_DIR, "exclude_list_empty.txt")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--exclude-tags", empty_file, fixture_path],
+        [sys.executable, "-m", "orgstats", "--exclude", empty_file, fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
     )
 
-    # Empty exclude_list file means no filtering (returns empty set, so defaults are used)
+    # Empty exclude file means no filtering (returns empty set, so defaults are used)
     assert result.returncode == 0
     assert "Processing" in result.stdout
 

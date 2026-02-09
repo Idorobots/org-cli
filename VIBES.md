@@ -226,9 +226,14 @@ Don't worry about backwards compatibility.
 
 Comment: The AI fixated on backwards compatibility and performance gains/penalty (it considered the fact that now one third of the computation is done, but also that the user needs to compute stuff three times). In needed a lot of convincing that this is, in fact, OK.
 
-## Combine exclusion lists
+## ✅*️ Combine exclusion lists
 Combine the CLI parameters called `--exclude-*` into one parameter that accepts a single list of words. That list should be used for the tags & relations filtering. The default value should be a list containing the values from `TAGS` combined with the values from `HEADING` and `BODY` (in the case of `BODY` use the values up to and including the `""` value).
 Adjust the tests accordingly.
+
+Comment: AI, again, fixated on backwards compatibility despite AGENTS.md explicitly stating it's not required. It did refactor the code fine though, but didn't remove the old, no longer used constants because that would break a lot of tests. This seems to be a common pattern - it values its time like a real boy would.
+
+## hasattr() & default args slop
+Remove it and use OrgNode instead of Mocks.
 
 ## SCC
 Given the relations between tags, compute the strongly connected components of the graph and expand the display to the command output.
@@ -236,9 +241,6 @@ Given the relations between tags, compute the strongly connected components of t
 ## More filters
 - gamify_exp above
 - gamify_exp under
-
-## hasattr() & default args slop
-Remove it and use OrgNode instead of Mocks.
 
 ## Devcontainers setup
 A docker container for running the repo commands in.

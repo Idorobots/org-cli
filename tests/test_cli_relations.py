@@ -285,8 +285,8 @@ def test_cli_relations_with_show_body():
     assert "Top body words:" in result.stdout
 
 
-def test_cli_relations_filtered_by_exclude_tags():
-    """Test that relations exclude tags from the TAGS exclude list."""
+def test_cli_relations_filtered_by_exclude():
+    """Test that relations exclude words from the default exclude list."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_filter_test.org")
 
     result = subprocess.run(
@@ -331,7 +331,7 @@ def test_cli_relations_filtered_with_custom_exclude_file():
                 "5",
                 "-n",
                 "10",
-                "--exclude-tags",
+                "--exclude",
                 exclude_file,
                 fixture_path,
             ],
@@ -366,7 +366,7 @@ def test_cli_relations_filtered_with_custom_exclude_file():
 
 
 def test_cli_relations_max_applied_after_filtering():
-    """Test that max_relations limit is applied after filtering excluded tags."""
+    """Test that max_relations limit is applied after filtering excluded words."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_filter_test.org")
     exclude_file = os.path.join(FIXTURES_DIR, "custom_exclude_for_limit.txt")
 
@@ -384,7 +384,7 @@ def test_cli_relations_max_applied_after_filtering():
                 "2",
                 "-n",
                 "10",
-                "--exclude-tags",
+                "--exclude",
                 exclude_file,
                 fixture_path,
             ],

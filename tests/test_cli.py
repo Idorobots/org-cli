@@ -208,7 +208,7 @@ def test_cli_filter_combined_options():
             "regular",
             "-n",
             "5",
-            "--exclude-tags",
+            "--exclude",
             exclude_list_path,
             fixture_path,
         ],

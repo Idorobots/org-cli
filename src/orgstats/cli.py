@@ -96,6 +96,83 @@ HEADING = {
 }
 
 
+DEFAULT_EXCLUDE = TAGS.union(HEADING).union(
+    {
+        "end",
+        "logbook",
+        "cancelled",
+        "scheduled",
+        "suspended",
+        "it",
+        "this",
+        "do",
+        "is",
+        "no",
+        "not",
+        "that",
+        "all",
+        "but",
+        "be",
+        "use",
+        "now",
+        "will",
+        "an",
+        "i",
+        "as",
+        "or",
+        "by",
+        "did",
+        "can",
+        "->",
+        "are",
+        "was",
+        "[x]",
+        "meh",
+        "more",
+        "until",
+        "+",
+        "using",
+        "when",
+        "into",
+        "only",
+        "at",
+        "it's",
+        "have",
+        "about",
+        "just",
+        "2",
+        "etc",
+        "get",
+        "didn't",
+        "can't",
+        "lu",
+        "lu's",
+        "lucyna",
+        "alicja",
+        "my",
+        "does",
+        "nah",
+        "there",
+        "yet",
+        "nope",
+        "should",
+        "i'll",
+        "khhhhaaaaannn't",
+        "zrobiła",
+        "robi",
+        "dysze",
+        "pon",
+        "wto",
+        "śro",
+        "czw",
+        "pią",
+        "sob",
+        "nie",
+        "",
+    }
+)
+
+
 BODY = HEADING.union(
     {
         "end",
@@ -388,24 +465,10 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--exclude-tags",
+        "--exclude",
         type=str,
         metavar="FILE",
-        help="File containing tags to exclude (one per line)",
-    )
-
-    parser.add_argument(
-        "--exclude-heading",
-        type=str,
-        metavar="FILE",
-        help="File containing heading words to exclude (one per line)",
-    )
-
-    parser.add_argument(
-        "--exclude-body",
-        type=str,
-        metavar="FILE",
-        help="File containing body words to exclude (one per line)",
+        help="File containing words to exclude (one per line)",
     )
 
     parser.add_argument(
@@ -456,10 +519,8 @@ def main() -> None:
     # Load mapping from file or use default
     mapping = load_mapping(args.mapping) or MAP
 
-    # Load exclude lists from files or use defaults
-    exclude_tags = load_exclude_list(args.exclude_tags) or TAGS
-    exclude_heading = load_exclude_list(args.exclude_heading) or HEADING
-    exclude_body = load_exclude_list(args.exclude_body) or BODY
+    # Load exclude list from file or use default
+    exclude_set = load_exclude_list(args.exclude) or DEFAULT_EXCLUDE
 
     # Process org files
     nodes: list[orgparse.node.OrgNode] = []
@@ -489,16 +550,9 @@ def main() -> None:
     print("\nTotal tasks: ", result.total_tasks)
     print("\nDone tasks: ", result.done_tasks)
 
-    # Select appropriate exclusion list and category name
-    if args.show == "tags":
-        exclude_set = exclude_tags
-        category_name = "tags"
-    elif args.show == "heading":
-        exclude_set = exclude_heading
-        category_name = "heading words"
-    else:
-        exclude_set = exclude_body
-        category_name = "body words"
+    # Select appropriate category name
+    category_names = {"tags": "tags", "heading": "heading words", "body": "body words"}
+    category_name = category_names[args.show]
 
     # Display results (always use tag_* fields, which hold the selected category's data)
     display_category(
