@@ -2,5 +2,14 @@
     "$schema": "https://opencode.ai/config.json",
     "model": "anthropic/claude-sonnet-4-5",
     "small_model": "anthropic/claude-haiku-4-5",
-    "default_agent": "plan"
+    "default_agent": "plan",
+    "permission": {
+	"bash": {
+	    "*": "allow",
+	    "rm *": "deny"
+	},
+	"webfetch": "ask",
+	"websearch": "ask",
+	"external_directory": "ask"
+    }
 }

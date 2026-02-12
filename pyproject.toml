@@ -3,7 +3,7 @@ name = "orgstats"
 version = "0.1.0"
 description = "Analyze Emacs Org-mode archive files for task statistics"
 readme = "README.md"
-requires-python = ">=3.14,<4.0"
+requires-python = ">=3.12,<4.0"
 
 [build-system]
 requires = ["poetry-core"]

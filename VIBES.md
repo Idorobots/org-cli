@@ -282,17 +282,18 @@ The SCC works great, but the output produced is kinda wonky - it still produces 
 Please add an additional CLI parameter called `--min-group-size` that takes an integer and defaults to 3.
 This parameter should be used to filter out groups smaller than the threshold during display.
 
-Comment: The AI proposed to rename origial `--group-threshold` parameter to something better, like `--min-group-size`. Can't argue with that.
+Comment: The AI proposed to rename origial `--group-threshold` parameter to something better, like `--min-group-size`. Can't argue with that. This was easier to do manually though.
 
-## Devcontainers setup
-A docker container for running the repo commands in.
+## ❌ Typed tests
+I enabled type checking the tests files. Please add type signatures to the test functions and ensure that the type checking passes fine for all the test files.
+You can run the checks by calling `poetry run task check`.
 
-## Typed tests
-Please add type signatures to the test functions and ensure that the type checking passes fine for all the test files.
+Comment: This one I expected to be a lengthy one - there were 428 type errors to begin with. Fortunately, I ran out of the weekly quote before the AI got to waste all the quota.
 
-## ASCII plots
-Use an ascii plotting library to plot tag activity over time. Each plot should be a bar chart with at most 50 buckets. Each bucket will represent 1/50 of the total time range within which te tag was active. If the tag was active for more than 50 days, group the activity into buckets, sum the occurances and plot the sums. If the tag was active for fewer than 50 days, plot only as many buckets as makes sense. Make sure to take into account all days, even those with no tag activity on that day. These should have a value of 0. You can first expand the timeline with the missing days of no activity, then determine the buckets and compute sums of activity per bucket and then plot the results.
-There should be an indication of the start and end dates besides the plot.
+## ❌ Devcontainers setup
+A docker container for running the agentin.
+
+Comment: Since the quote ran out, I implemented this myself.
 
 ## More filters
 - gamify_exp above
@@ -311,6 +312,10 @@ There should be an indication of the start and end dates besides the plot.
 - Over-all time range, earliest task, latest task, including activity plot limited to done tasks
 - Adjust the tag plots to also reflect the same "global"" time range.
 - Add CLI parameters for from & until, with defaults and filter the tasks to only consider the tasks within the given time range.
+
+## ASCII plots
+Use an ascii plotting library to plot tag activity over time. Each plot should be a bar chart with at most 50 buckets. Each bucket will represent 1/50 of the total time range within which te tag was active. If the tag was active for more than 50 days, group the activity into buckets, sum the occurances and plot the sums. If the tag was active for fewer than 50 days, plot only as many buckets as makes sense. Make sure to take into account all days, even those with no tag activity on that day. These should have a value of 0. You can first expand the timeline with the missing days of no activity, then determine the buckets and compute sums of activity per bucket and then plot the results.
+There should be an indication of the start and end dates besides the plot.
 
 ## Better heading & body parsing
 
