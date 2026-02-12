@@ -12,8 +12,8 @@ def test_analyze_empty_nodes() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 0
-    assert result.task_states.values["DONE"] == 0
-    assert result.task_states.values["TODO"] == 0
+    assert result.task_states.values.get("DONE", 0) == 0
+    assert result.task_states.values.get("TODO", 0) == 0
     assert result.tag_frequencies == {}
     assert result.tag_relations == {}
     assert result.tag_time_ranges == {}
@@ -27,7 +27,7 @@ def test_analyze_single_done_task() -> None:
 
     assert result.total_tasks == 1
     assert result.task_states.values["DONE"] == 1
-    assert result.task_states.values["TODO"] == 0
+    assert result.task_states.values.get("TODO", 0) == 0
     assert "testing" in result.tag_frequencies
     assert result.tag_frequencies["testing"] == 1
 
@@ -40,7 +40,7 @@ def test_analyze_single_todo_task() -> None:
 
     assert result.total_tasks == 1
     assert result.task_states.values["TODO"] == 1
-    assert result.task_states.values["DONE"] == 0
+    assert result.task_states.values.get("DONE", 0) == 0
 
 
 def test_analyze_multiple_tasks() -> None:
@@ -153,7 +153,7 @@ def test_analyze_done_task_no_repeats() -> None:
 
     assert result.total_tasks == 1
     assert result.task_states.values["DONE"] == 1
-    assert result.task_states.values["TODO"] == 0
+    assert result.task_states.values.get("TODO", 0) == 0
     assert result.tag_frequencies["simple"] == 1
 
 
@@ -222,8 +222,8 @@ def test_analyze_returns_tuple() -> None:
 
     assert isinstance(result, AnalysisResult)
     assert result.total_tasks == 0
-    assert result.task_states.values["DONE"] == 0
-    assert result.task_states.values["TODO"] == 0
+    assert result.task_states.values.get("DONE", 0) == 0
+    assert result.task_states.values.get("TODO", 0) == 0
     assert result.tag_frequencies == {}
     assert result.tag_relations == {}
     assert result.tag_time_ranges == {}
@@ -344,8 +344,8 @@ def test_analyze_cancelled_task() -> None:
 
     assert result.total_tasks == 1
     assert result.task_states.values["CANCELLED"] == 1
-    assert result.task_states.values["DONE"] == 0
-    assert result.task_states.values["TODO"] == 0
+    assert result.task_states.values.get("DONE", 0) == 0
+    assert result.task_states.values.get("TODO", 0) == 0
 
 
 def test_analyze_suspended_task() -> None:
@@ -363,8 +363,8 @@ def test_analyze_suspended_task() -> None:
 
     assert result.total_tasks == 1
     assert result.task_states.values["SUSPENDED"] == 1
-    assert result.task_states.values["DONE"] == 0
-    assert result.task_states.values["TODO"] == 0
+    assert result.task_states.values.get("DONE", 0) == 0
+    assert result.task_states.values.get("TODO", 0) == 0
 
 
 def test_analyze_delegated_task() -> None:
@@ -382,20 +382,20 @@ def test_analyze_delegated_task() -> None:
 
     assert result.total_tasks == 1
     assert result.task_states.values["DELEGATED"] == 1
-    assert result.task_states.values["DONE"] == 0
-    assert result.task_states.values["TODO"] == 0
+    assert result.task_states.values.get("DONE", 0) == 0
+    assert result.task_states.values.get("TODO", 0) == 0
 
 
 def test_analyze_node_without_state() -> None:
-    """Test analyze with node that has no TODO state (maps to 'other')."""
+    """Test analyze with node that has no TODO state (maps to 'none')."""
     nodes = node_from_org("* Task without state :Feature:\n")
 
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 1
-    assert result.task_states.values["other"] == 1
-    assert result.task_states.values["DONE"] == 0
-    assert result.task_states.values["TODO"] == 0
+    assert result.task_states.values["none"] == 1
+    assert result.task_states.values.get("DONE", 0) == 0
+    assert result.task_states.values.get("TODO", 0) == 0
 
 
 def test_analyze_repeated_tasks_different_states() -> None:
@@ -445,4 +445,4 @@ def test_analyze_all_task_states_mixed() -> None:
     assert result.task_states.values["CANCELLED"] == 1
     assert result.task_states.values["SUSPENDED"] == 1
     assert result.task_states.values["DELEGATED"] == 1
-    assert result.task_states.values["other"] == 1
+    assert result.task_states.values["none"] == 1

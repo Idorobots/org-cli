@@ -432,32 +432,17 @@ def analyze(
     frequencies: dict[str, Frequency] = {}
     relations: dict[str, Relations] = {}
     time_ranges: dict[str, TimeRange] = {}
-    task_states = Histogram(
-        values={
-            "TODO": 0,
-            "DONE": 0,
-            "DELEGATED": 0,
-            "CANCELLED": 0,
-            "SUSPENDED": 0,
-            "other": 0,
-        }
-    )
+    task_states = Histogram(values={"none": 0})
 
     for node in nodes:
         total = total + max(1, len(node.repeated_tasks))
 
-        node_state = node.todo if node.todo else "other"
-        if node_state in task_states.values:
-            task_states.values[node_state] += 1
-        else:
-            task_states.values["other"] += 1
+        node_state = node.todo if node.todo else "none"
+        task_states.values[node_state] = task_states.values.get(node_state, 0) + 1
 
         for repeated_task in node.repeated_tasks:
-            repeat_state = repeated_task.after if repeated_task.after else "other"
-            if repeat_state in task_states.values:
-                task_states.values[repeat_state] += 1
-            else:
-                task_states.values["other"] += 1
+            repeat_state = repeated_task.after if repeated_task.after else "none"
+            task_states.values[repeat_state] = task_states.values.get(repeat_state, 0) + 1
 
         final = (node.todo == "DONE" and 1) or 0
         repeats = len([n for n in node.repeated_tasks if n.after == "DONE"])

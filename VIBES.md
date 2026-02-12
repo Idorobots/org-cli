@@ -314,7 +314,30 @@ Display the values for different todo states in the CLI output. You can create a
 
 Comment: The AI did a nice job. It, correctly, noticed that `orgparse` only handles `DONE` and `TODO` states and worked around it (in tests). The code appeared to work correctly despite the fact that nothing was done to make `orgparse` recognize different states. When confronted about how this was acomplished, the AI noted that it wasn't and figured out that the code working was purely incidental (the logbook repeat state being preferred to the actual todo state of the node).
 
-## Configurable todo, completed and cancelled states.
+## ✅*️ Configurable todo, completed and cancelled states.
+Please add two CLI switches called `--todo-keys` and `--done-keys` with the following semantics:
+- `--todo-keys` names a comma separated list of not completed states a task can be in,
+- `--done-keys` nams a comma separated list of completed states a taks can be in.
+The default values for these parameters should be:
+- for `--todo-keys` - `TODO`,
+- for `--done-keys` - `DONE`.
+
+The values of these keys should be "configured" in the content passed to `orgparse.loads()` as the accepted TODO states.
+The format of that configuration is:
+
+```
+#+TODO: {TODO_KEYS} | {DONE_KEYS}
+```
+
+It should be prepended to the content.
+
+Please update the `analyze()` function not to make an assumption on the set of tags that can be encountered, i.e. omit checking if the actual node state a taks is in is defined in the histogram object. We want to compute the full distribution without making any assumptions on the data. We can't expect the configured `--todo-keys` and `--done-keys` to be the exhaustive list, but it's worth defining these nonetheless.
+
+Please update the semantics of the `other` histogram value to be `none` instead - only the tasks that don't have a state will end up there.
+
+Please update the CLI output to show all detected states, including the `none` state.
+
+Comment: They AI was extatic about the backwards compatibility breaking possibilities and needed convincing that it's fine. It then implemented the feature pretty well, revealing exactly how broken the previous implementation was. It also made the task state counts inconsistent - counting states twice if a task wask repeated. I asked the AI to fix that issue within the same session, just to find out that the quota run out again.
 
 ## General stats - day histogram
 I'd like to add another histogram to the analysis - this time a distribution of tasks completed on different days of the week.

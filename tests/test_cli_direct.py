@@ -93,3 +93,113 @@ def test_main_with_filter_parameter() -> None:
     finally:
         sys.argv = original_argv
         sys.stdout = original_stdout
+
+
+def test_main_with_custom_todo_keys() -> None:
+    """Test main function with --todo-keys parameter."""
+    from orgstats.cli import main
+
+    original_argv = sys.argv
+    original_stdout = sys.stdout
+
+    try:
+        sys.stdout = StringIO()
+
+        fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+        sys.argv = ["cli.py", "--todo-keys", "TODO,WAITING,IN-PROGRESS", fixture_path]
+
+        main()
+
+        output = sys.stdout.getvalue()
+
+        assert "Processing" in output
+        assert "Total tasks:" in output
+        assert "Task states:" in output
+
+    finally:
+        sys.argv = original_argv
+        sys.stdout = original_stdout
+
+
+def test_main_with_custom_done_keys() -> None:
+    """Test main function with --done-keys parameter."""
+    from orgstats.cli import main
+
+    original_argv = sys.argv
+    original_stdout = sys.stdout
+
+    try:
+        sys.stdout = StringIO()
+
+        fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+        sys.argv = ["cli.py", "--done-keys", "DONE,CANCELLED,ARCHIVED", fixture_path]
+
+        main()
+
+        output = sys.stdout.getvalue()
+
+        assert "Processing" in output
+        assert "Total tasks:" in output
+        assert "Task states:" in output
+
+    finally:
+        sys.argv = original_argv
+        sys.stdout = original_stdout
+
+
+def test_main_with_both_todo_and_done_keys() -> None:
+    """Test main function with both --todo-keys and --done-keys."""
+    from orgstats.cli import main
+
+    original_argv = sys.argv
+    original_stdout = sys.stdout
+
+    try:
+        sys.stdout = StringIO()
+
+        fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+        sys.argv = [
+            "cli.py",
+            "--todo-keys",
+            "TODO,WAITING",
+            "--done-keys",
+            "DONE,CANCELLED",
+            fixture_path,
+        ]
+
+        main()
+
+        output = sys.stdout.getvalue()
+
+        assert "Processing" in output
+        assert "Total tasks:" in output
+        assert "Task states:" in output
+
+    finally:
+        sys.argv = original_argv
+        sys.stdout = original_stdout
+
+
+def test_main_displays_none_state() -> None:
+    """Test that tasks without state show as 'none' in output."""
+    from orgstats.cli import main
+
+    original_argv = sys.argv
+    original_stdout = sys.stdout
+
+    try:
+        sys.stdout = StringIO()
+
+        fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+        sys.argv = ["cli.py", fixture_path]
+
+        main()
+
+        output = sys.stdout.getvalue()
+
+        assert "Processing" in output
+        assert "none:" in output
+
+    finally:
+        sys.argv = original_argv
+        sys.stdout = original_stdout

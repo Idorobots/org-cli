@@ -417,7 +417,49 @@ def parse_arguments() -> argparse.Namespace:
         help="Minimum group size to display (default: 3)",
     )
 
+    parser.add_argument(
+        "--todo-keys",
+        type=str,
+        default="TODO",
+        metavar="KEYS",
+        help="Comma-separated list of incomplete task states (default: TODO)",
+    )
+
+    parser.add_argument(
+        "--done-keys",
+        type=str,
+        default="DONE",
+        metavar="KEYS",
+        help="Comma-separated list of completed task states (default: DONE)",
+    )
+
     return parser.parse_args()
+
+
+def validate_and_parse_keys(keys_str: str, option_name: str) -> list[str]:
+    """Parse and validate comma-separated keys.
+
+    Args:
+        keys_str: Comma-separated string of keys
+        option_name: Name of the option for error messages
+
+    Returns:
+        List of validated keys
+
+    Raises:
+        SystemExit: If validation fails
+    """
+    keys = [k.strip() for k in keys_str.split(",") if k.strip()]
+    if not keys:
+        print(f"Error: {option_name} cannot be empty", file=sys.stderr)
+        sys.exit(1)
+
+    for key in keys:
+        if "|" in key:
+            print(f"Error: {option_name} cannot contain pipe character: '{key}'", file=sys.stderr)
+            sys.exit(1)
+
+    return keys
 
 
 def main() -> None:
@@ -431,6 +473,9 @@ def main() -> None:
     if args.min_group_size < 0:
         print("Error: --min-group-size must be non-negative", file=sys.stderr)
         sys.exit(1)
+
+    todo_keys = validate_and_parse_keys(args.todo_keys, "--todo-keys")
+    done_keys = validate_and_parse_keys(args.done_keys, "--done-keys")
 
     # Load mapping from file or use default
     mapping = load_mapping(args.mapping) or MAP
@@ -447,6 +492,10 @@ def main() -> None:
 
             # NOTE Making the file parseable.
             contents = f.read().replace("24:00", "00:00")
+
+            # Prepend TODO configuration for orgparse
+            todo_config = f"#+TODO: {' '.join(todo_keys)} | {' '.join(done_keys)}\n\n"
+            contents = todo_config + contents
 
             ns = orgparse.loads(contents)
             if ns is not None:
@@ -466,8 +515,10 @@ def main() -> None:
     print("\nTotal tasks: ", result.total_tasks)
 
     print("\nTask states:")
-    for state in ["DONE", "TODO", "CANCELLED", "SUSPENDED", "DELEGATED", "other"]:
-        count = result.task_states.values.get(state, 0)
+    sorted_states = sorted(
+        result.task_states.values.items(), key=lambda item: item[1], reverse=True
+    )
+    for state, count in sorted_states:
         print(f"  {state}: {count}")
 
     # Select appropriate category name

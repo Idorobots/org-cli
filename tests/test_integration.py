@@ -133,7 +133,7 @@ def test_integration_empty_file() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 1
-    assert result.task_states.values["DONE"] == 0
+    assert result.task_states.values.get("DONE", 0) == 0
     assert result.task_states.values["TODO"] == 1
 
 
@@ -269,8 +269,8 @@ def test_integration_all_fixtures_parseable() -> None:
 
         # Basic sanity checks
         assert result.total_tasks >= 0
-        assert result.task_states.values["DONE"] >= 0
-        assert result.task_states.values["TODO"] >= 0
+        assert result.task_states.values.get("DONE", 0) >= 0
+        assert result.task_states.values.get("TODO", 0) >= 0
         assert isinstance(result.tag_frequencies, dict)
         assert isinstance(result.tag_relations, dict)
         assert isinstance(result.tag_time_ranges, dict)

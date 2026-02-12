@@ -356,3 +356,245 @@ def test_argparse_filter_in_help() -> None:
     assert "regular" in result.stdout
     assert "hard" in result.stdout
     assert "all" in result.stdout
+
+
+def test_argparse_todo_keys_single() -> None:
+    """Test --todo-keys with single value."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--todo-keys", "TODO", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
+
+
+def test_argparse_todo_keys_multiple() -> None:
+    """Test --todo-keys with comma-separated values."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "orgstats",
+            "--todo-keys",
+            "TODO,WAITING,IN-PROGRESS",
+            fixture_path,
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
+    assert "TODO:" in result.stdout or "WAITING:" in result.stdout
+
+
+def test_argparse_done_keys_single() -> None:
+    """Test --done-keys with single value."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--done-keys", "DONE", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
+
+
+def test_argparse_done_keys_multiple() -> None:
+    """Test --done-keys with comma-separated values."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "orgstats",
+            "--done-keys",
+            "DONE,CANCELLED,ARCHIVED",
+            fixture_path,
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
+
+
+def test_argparse_todo_done_keys_together() -> None:
+    """Test both --todo-keys and --done-keys together."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "orgstats",
+            "--todo-keys",
+            "TODO,WAITING",
+            "--done-keys",
+            "DONE,CANCELLED",
+            fixture_path,
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
+
+
+def test_argparse_todo_keys_empty() -> None:
+    """Test --todo-keys with empty string fails."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--todo-keys", "", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "cannot be empty" in result.stderr
+
+
+def test_argparse_todo_keys_whitespace_only() -> None:
+    """Test --todo-keys with whitespace-only string fails."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--todo-keys", "   ", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "cannot be empty" in result.stderr
+
+
+def test_argparse_todo_keys_with_commas_only() -> None:
+    """Test --todo-keys with commas only fails."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--todo-keys", ",,,", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "cannot be empty" in result.stderr
+
+
+def test_argparse_done_keys_empty() -> None:
+    """Test --done-keys with empty string fails."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--done-keys", "", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "cannot be empty" in result.stderr
+
+
+def test_argparse_done_keys_whitespace_only() -> None:
+    """Test --done-keys with whitespace-only string fails."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--done-keys", "   ", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "cannot be empty" in result.stderr
+
+
+def test_argparse_todo_keys_with_pipe() -> None:
+    """Test --todo-keys with pipe character fails."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--todo-keys", "TODO|WAITING", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "pipe character" in result.stderr
+
+
+def test_argparse_done_keys_with_pipe() -> None:
+    """Test --done-keys with pipe character fails."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--done-keys", "DONE|CANCELLED", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "pipe character" in result.stderr
+
+
+def test_argparse_todo_done_keys_in_help() -> None:
+    """Test that --todo-keys and --done-keys appear in help output."""
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--help"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "--todo-keys" in result.stdout
+    assert "--done-keys" in result.stdout
+    assert "incomplete task states" in result.stdout
+    assert "completed task states" in result.stdout
+
+
+def test_argparse_todo_keys_with_spaces() -> None:
+    """Test --todo-keys with spaces in values (should be stripped)."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "orgstats",
+            "--todo-keys",
+            "TODO , WAITING , IN-PROGRESS",
+            fixture_path,
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Processing" in result.stdout
