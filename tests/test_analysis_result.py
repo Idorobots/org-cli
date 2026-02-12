@@ -1,6 +1,6 @@
 """Tests for the AnalysisResult dataclass."""
 
-from orgstats.core import AnalysisResult, Frequency
+from orgstats.core import AnalysisResult, Frequency, Histogram
 
 
 def test_analysis_result_initialization() -> None:
@@ -9,7 +9,7 @@ def test_analysis_result_initialization() -> None:
 
     result = AnalysisResult(
         total_tasks=10,
-        done_tasks=5,
+        task_states=Histogram(values={"DONE": 5, "TODO": 5}),
         tag_frequencies={"python": Frequency(3)},
         tag_relations={"python": Relations(name="python", relations={})},
         tag_time_ranges={},
@@ -17,7 +17,8 @@ def test_analysis_result_initialization() -> None:
     )
 
     assert result.total_tasks == 10
-    assert result.done_tasks == 5
+    assert result.task_states.values["DONE"] == 5
+    assert result.task_states.values["TODO"] == 5
     assert result.tag_frequencies == {"python": Frequency(3)}
     assert "python" in result.tag_relations
     assert result.tag_time_ranges == {}
@@ -28,7 +29,7 @@ def test_analysis_result_empty_initialization() -> None:
     """Test AnalysisResult with empty data."""
     result = AnalysisResult(
         total_tasks=0,
-        done_tasks=0,
+        task_states=Histogram(values={"DONE": 0, "TODO": 0}),
         tag_frequencies={},
         tag_relations={},
         tag_time_ranges={},
@@ -36,7 +37,8 @@ def test_analysis_result_empty_initialization() -> None:
     )
 
     assert result.total_tasks == 0
-    assert result.done_tasks == 0
+    assert result.task_states.values["DONE"] == 0
+    assert result.task_states.values["TODO"] == 0
     assert result.tag_frequencies == {}
     assert result.tag_relations == {}
     assert result.tag_time_ranges == {}
@@ -47,7 +49,7 @@ def test_analysis_result_attributes() -> None:
     """Test that AnalysisResult has all expected attributes."""
     result = AnalysisResult(
         total_tasks=1,
-        done_tasks=1,
+        task_states=Histogram(values={"DONE": 1, "TODO": 0}),
         tag_frequencies={},
         tag_relations={},
         tag_time_ranges={},
@@ -55,7 +57,7 @@ def test_analysis_result_attributes() -> None:
     )
 
     assert result.total_tasks == 1
-    assert result.done_tasks == 1
+    assert result.task_states.values["DONE"] == 1
     assert result.tag_frequencies == {}
     assert result.tag_relations == {}
     assert result.tag_time_ranges == {}
@@ -73,7 +75,7 @@ def test_analysis_result_repr() -> None:
     """Test the string representation of AnalysisResult."""
     result = AnalysisResult(
         total_tasks=2,
-        done_tasks=1,
+        task_states=Histogram(values={"DONE": 1, "TODO": 1}),
         tag_frequencies={"test": Frequency(1)},
         tag_relations={},
         tag_time_ranges={},
@@ -83,14 +85,14 @@ def test_analysis_result_repr() -> None:
     repr_str = repr(result)
     assert "AnalysisResult" in repr_str
     assert "total_tasks=2" in repr_str
-    assert "done_tasks=1" in repr_str
+    assert "task_states" in repr_str
 
 
 def test_analysis_result_equality() -> None:
     """Test equality comparison of AnalysisResult objects."""
     result1 = AnalysisResult(
         total_tasks=5,
-        done_tasks=3,
+        task_states=Histogram(values={"DONE": 3, "TODO": 2}),
         tag_frequencies={"python": Frequency(2)},
         tag_relations={},
         tag_time_ranges={},
@@ -99,7 +101,7 @@ def test_analysis_result_equality() -> None:
 
     result2 = AnalysisResult(
         total_tasks=5,
-        done_tasks=3,
+        task_states=Histogram(values={"DONE": 3, "TODO": 2}),
         tag_frequencies={"python": Frequency(2)},
         tag_relations={},
         tag_time_ranges={},
@@ -108,7 +110,7 @@ def test_analysis_result_equality() -> None:
 
     result3 = AnalysisResult(
         total_tasks=10,
-        done_tasks=5,
+        task_states=Histogram(values={"DONE": 5, "TODO": 5}),
         tag_frequencies={},
         tag_relations={},
         tag_time_ranges={},
@@ -125,7 +127,7 @@ def test_analysis_result_mutable_fields() -> None:
 
     result = AnalysisResult(
         total_tasks=0,
-        done_tasks=0,
+        task_states=Histogram(values={"DONE": 0, "TODO": 0}),
         tag_frequencies={},
         tag_relations={},
         tag_time_ranges={},
@@ -133,14 +135,16 @@ def test_analysis_result_mutable_fields() -> None:
     )
 
     result.total_tasks = 10
-    result.done_tasks = 5
+    result.task_states.values["DONE"] = 5
+    result.task_states.values["TODO"] = 5
     result.tag_frequencies["new"] = Frequency(1)
     result.tag_relations["test"] = Relations(name="test", relations={})
     result.tag_time_ranges["python"] = TimeRange()
     result.tag_groups.append(Group(tags=["python", "testing"]))
 
     assert result.total_tasks == 10
-    assert result.done_tasks == 5
+    assert result.task_states.values["DONE"] == 5
+    assert result.task_states.values["TODO"] == 5
     assert "new" in result.tag_frequencies
     assert "test" in result.tag_relations
     assert "python" in result.tag_time_ranges
@@ -151,7 +155,7 @@ def test_analysis_result_dict_operations() -> None:
     """Test that dictionary operations work on frequency fields."""
     result = AnalysisResult(
         total_tasks=3,
-        done_tasks=2,
+        task_states=Histogram(values={"DONE": 2, "TODO": 1}),
         tag_frequencies={"python": Frequency(3), "testing": Frequency(2)},
         tag_relations={},
         tag_time_ranges={},

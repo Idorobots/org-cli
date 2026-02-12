@@ -31,7 +31,7 @@ def test_integration_simple_file() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 1
-    assert result.done_tasks == 1
+    assert result.task_states.values["DONE"] == 1
 
 
 def test_integration_single_task() -> None:
@@ -40,7 +40,7 @@ def test_integration_single_task() -> None:
 
     result_tags = analyze(nodes, {}, category="tags", max_relations=3)
     assert result_tags.total_tasks == 1
-    assert result_tags.done_tasks == 1
+    assert result_tags.task_states.values["DONE"] == 2
     # Check tags (Testing, Python -> testing, python)
     assert "testing" in result_tags.tag_frequencies
     assert "python" in result_tags.tag_frequencies
@@ -76,7 +76,8 @@ def test_integration_multiple_tags() -> None:
     )
 
     assert result.total_tasks == 3
-    assert result.done_tasks == 2  # Two DONE, one TODO
+    assert result.task_states.values["DONE"] == 4
+    assert result.task_states.values["TODO"] == 1
 
     # Check tag mappings
     # Test -> testing, WebDev -> webdev -> frontend, Unix -> unix -> linux
@@ -97,9 +98,9 @@ def test_integration_edge_cases() -> None:
 
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
-    # All three tasks are DONE
+    # All three tasks are DONE (node + repeated tasks)
     assert result.total_tasks == 3
-    assert result.done_tasks == 3
+    assert result.task_states.values["DONE"] == 6
 
     # Note: orgparse doesn't parse tags with punctuation in the heading line
     # Only properly formatted tags like :NoBody: are parsed
@@ -122,7 +123,7 @@ def test_integration_24_00_time_handling() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks > 0
-    assert result.done_tasks > 0
+    assert result.task_states.values["DONE"] > 0
 
 
 def test_integration_empty_file() -> None:
@@ -132,7 +133,8 @@ def test_integration_empty_file() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 1
-    assert result.done_tasks == 0  # TODO, not DONE
+    assert result.task_states.values["DONE"] == 0
+    assert result.task_states.values["TODO"] == 1
 
 
 def test_integration_repeated_tasks() -> None:
@@ -168,8 +170,7 @@ def test_integration_archive_small() -> None:
 
     # All tasks in ARCHIVE_small are DONE
     assert result.total_tasks > 0
-    assert result.done_tasks > 0
-    assert result.done_tasks <= result.total_tasks
+    assert result.task_states.values["DONE"] > 0
 
     # Check that some expected tags exist
     # The file has various tags like ProjectManagement, Debugging, etc.
@@ -268,8 +269,8 @@ def test_integration_all_fixtures_parseable() -> None:
 
         # Basic sanity checks
         assert result.total_tasks >= 0
-        assert result.done_tasks >= 0
-        assert result.done_tasks <= result.total_tasks
+        assert result.task_states.values["DONE"] >= 0
+        assert result.task_states.values["TODO"] >= 0
         assert isinstance(result.tag_frequencies, dict)
         assert isinstance(result.tag_relations, dict)
         assert isinstance(result.tag_time_ranges, dict)

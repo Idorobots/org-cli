@@ -295,27 +295,73 @@ A docker container for running the agentin.
 
 Comment: Since the quote ran out, I implemented this myself.
 
-## More filters
+## ✅*️ General stats - todo histogram
+I'd like to add more stats to the analysis.
+
+Please add a new class called `Histogram` that will hold a distribution of tasks in a field called `values: dict[str, int]`. This class will be used to store properties like "how many tasks of a given TODO state there are in the archive" and also other distributions like "how many tasks were done on each day of the week".
+
+For the todo state histogram:
+- extend `AnalysisResults` with a new field called `task_states: Histogram`,
+- take into account the following states: `TODO`, `DONE`, `DELEGATED`, `CANCELLED`, `SUSPENDED` and `other` if a node does not have a todo state,
+- increment the histogram `values` for a given state for each occurance of the task - that includes repeated tasks too,
+- use the `repeated_task.after` property for the state of repeats,
+- use the `node.todo` property for the state of the nodes itself.
+
+Don't worry about the other use cases just yet, we'll add them one at a time.
+Please remove the `done_tasks` field from the `AnalysisResult` class and use the histogram-computed value instead for the CLI output.
+
+Display the values for different todo states in the CLI output. You can create a new section for this and replace the `done tasks` one with it.
+
+Comment: The AI did a nice job. It, correctly, noticed that `orgparse` only handles `DONE` and `TODO` states and worked around it (in tests). The code appeared to work correctly despite the fact that nothing was done to make `orgparse` recognize different states. When confronted about how this was acomplished, the AI noted that it wasn't and figured out that the code working was purely incidental (the logbook repeat state being preferred to the actual todo state of the node).
+
+## Configurable todo, completed and cancelled states.
+
+## General stats - day histogram
+I'd like to add another histogram to the analysis - this time a distribution of tasks completed on different days of the week.
+
+For the day of week histogram:
+- extend `AnalysisResult` with a new field called `task_days: Histogram`,
+- take into account only the tasks in the following states: `DONE`,
+- increment the histogram `values` for each occurance of the task - that includes repeated tasks too,
+- use the timestamp of a task to extract the date and use `datetime.weekday()` to extract the day of week - you might need to map that value to a string representation: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`,
+- the timestamp should be computed the same way as was done in `extract_timestamp()`,
+
+Display the values for week days in the CLI output. You can add that after the todo state breakdown.
+
+## General stats - time range
+I'd like to compute a global time range of all tasks completed that are in the archive.
+
+Extend the `AnalysisResult` class with a new field called `timerange: TimeRange` which will hold the time line for all the completed tasks.
+
+Extend the `analyze()` function to compute the over-all timerange of the tasks:
+- timestamp of the earliest task,
+- timestamp of the latest task,
+- the general timeline - inclusive of all tasks that were completed (in the `DONE` state), including their repeats,
+
+Only consider tasks that are in the `DONE` state. This should be analogous to the per-tag timeranges computed before, but should apply regradless of the datum used to all tasks.
+
+Extend the CLI output to include the earliest & latest timestamps somewhere near the total tasks count.
+
+## General stats - other
+I'd like to add a few more stats to the analysis results:
+
+- total number of tasks in the system (inclusive of their repeats - this is already computed),
+- average tasks done per day (computed as the total number of tasks completed divided by the number of days between the earliest and latest task occurances globally),
+
+Please display these values on the CLI output.
+
+## More task filters
 - gamify_exp above
 - gamify_exp under
-
-## General stats
-- Tasks suspended
-- Tasks cancelled
-- Tasks delegated
-- All of the above on a bar chart
-
-- chart of tasks done per day of week
-
-- average tasks done per day
-
-- Over-all time range, earliest task, latest task, including activity plot limited to done tasks
-- Adjust the tag plots to also reflect the same "global"" time range.
 - Add CLI parameters for from & until, with defaults and filter the tasks to only consider the tasks within the given time range.
 
 ## ASCII plots
 Use an ascii plotting library to plot tag activity over time. Each plot should be a bar chart with at most 50 buckets. Each bucket will represent 1/50 of the total time range within which te tag was active. If the tag was active for more than 50 days, group the activity into buckets, sum the occurances and plot the sums. If the tag was active for fewer than 50 days, plot only as many buckets as makes sense. Make sure to take into account all days, even those with no tag activity on that day. These should have a value of 0. You can first expand the timeline with the missing days of no activity, then determine the buckets and compute sums of activity per bucket and then plot the results.
 There should be an indication of the start and end dates besides the plot.
+
+- pie-chart of the states
+- pie chart of the week days
+- Adjust the tag plots to also reflect the same "global"" time range.
 
 ## Better heading & body parsing
 

@@ -45,6 +45,21 @@ class Frequency:  # noqa: PLW1641
 
 
 @dataclass
+class Histogram:
+    """Represents a distribution of values.
+
+    Attributes:
+        values: Dictionary mapping categories to their counts
+    """
+
+    values: dict[str, int] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        """Return string representation of Histogram."""
+        return f"Histogram(values={self.values})"
+
+
+@dataclass
 class Relations:
     """Represents pair-wise co-occurrence relationships for a tag/word.
 
@@ -133,7 +148,7 @@ class AnalysisResult:
 
     Attributes:
         total_tasks: Total number of tasks analyzed
-        done_tasks: Number of completed tasks
+        task_states: Histogram of task states (TODO, DONE, DELEGATED, CANCELLED, SUSPENDED, other)
         tag_frequencies: Dictionary mapping items to their frequency counts
         tag_relations: Dictionary mapping items to their Relations objects
         tag_time_ranges: Dictionary mapping items to their TimeRange objects
@@ -144,7 +159,7 @@ class AnalysisResult:
     """
 
     total_tasks: int
-    done_tasks: int
+    task_states: Histogram
     tag_frequencies: dict[str, Frequency]
     tag_relations: dict[str, Relations]
     tag_time_ranges: dict[str, TimeRange]
@@ -414,19 +429,39 @@ def analyze(
         AnalysisResult containing task counts and frequency dictionaries for the selected category
     """
     total = 0
-    done = 0
     frequencies: dict[str, Frequency] = {}
     relations: dict[str, Relations] = {}
     time_ranges: dict[str, TimeRange] = {}
+    task_states = Histogram(
+        values={
+            "TODO": 0,
+            "DONE": 0,
+            "DELEGATED": 0,
+            "CANCELLED": 0,
+            "SUSPENDED": 0,
+            "other": 0,
+        }
+    )
 
     for node in nodes:
         total = total + max(1, len(node.repeated_tasks))
 
+        node_state = node.todo if node.todo else "other"
+        if node_state in task_states.values:
+            task_states.values[node_state] += 1
+        else:
+            task_states.values["other"] += 1
+
+        for repeated_task in node.repeated_tasks:
+            repeat_state = repeated_task.after if repeated_task.after else "other"
+            if repeat_state in task_states.values:
+                task_states.values[repeat_state] += 1
+            else:
+                task_states.values["other"] += 1
+
         final = (node.todo == "DONE" and 1) or 0
         repeats = len([n for n in node.repeated_tasks if n.after == "DONE"])
         count = max(final, repeats)
-
-        done = done + count
 
         if category == "tags":
             items = normalize(node.tags, mapping)
@@ -445,7 +480,7 @@ def analyze(
 
     return AnalysisResult(
         total_tasks=total,
-        done_tasks=done,
+        task_states=task_states,
         tag_frequencies=frequencies,
         tag_relations=relations,
         tag_time_ranges=time_ranges,

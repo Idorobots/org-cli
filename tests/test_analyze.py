@@ -12,7 +12,8 @@ def test_analyze_empty_nodes() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 0
-    assert result.done_tasks == 0
+    assert result.task_states.values["DONE"] == 0
+    assert result.task_states.values["TODO"] == 0
     assert result.tag_frequencies == {}
     assert result.tag_relations == {}
     assert result.tag_time_ranges == {}
@@ -25,7 +26,8 @@ def test_analyze_single_done_task() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 1
-    assert result.done_tasks == 1
+    assert result.task_states.values["DONE"] == 1
+    assert result.task_states.values["TODO"] == 0
     assert "testing" in result.tag_frequencies
     assert result.tag_frequencies["testing"] == 1
 
@@ -37,7 +39,8 @@ def test_analyze_single_todo_task() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 1
-    assert result.done_tasks == 0
+    assert result.task_states.values["TODO"] == 1
+    assert result.task_states.values["DONE"] == 0
 
 
 def test_analyze_multiple_tasks() -> None:
@@ -51,7 +54,8 @@ def test_analyze_multiple_tasks() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 3
-    assert result.done_tasks == 2
+    assert result.task_states.values["DONE"] == 2
+    assert result.task_states.values["TODO"] == 1
 
 
 def test_analyze_tag_frequencies() -> None:
@@ -117,8 +121,9 @@ def test_analyze_repeated_tasks() -> None:
 
     # result.total_tasks = max(1, len(repeated_tasks)) = max(1, 3) = 3
     assert result.total_tasks == 3
-    # result.done_tasks = 2 (two DONE in repeated tasks)
-    assert result.done_tasks == 2
+    # Node is TODO (1) + 2 DONE repeats + 1 TODO repeat = 3 TODO, 2 DONE
+    assert result.task_states.values["TODO"] == 2
+    assert result.task_states.values["DONE"] == 2
     # Tags should be counted with count=2
     assert result.tag_frequencies["recurring"] == 2
 
@@ -147,7 +152,8 @@ def test_analyze_done_task_no_repeats() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 1
-    assert result.done_tasks == 1
+    assert result.task_states.values["DONE"] == 1
+    assert result.task_states.values["TODO"] == 0
     assert result.tag_frequencies["simple"] == 1
 
 
@@ -216,7 +222,8 @@ def test_analyze_returns_tuple() -> None:
 
     assert isinstance(result, AnalysisResult)
     assert result.total_tasks == 0
-    assert result.done_tasks == 0
+    assert result.task_states.values["DONE"] == 0
+    assert result.task_states.values["TODO"] == 0
     assert result.tag_frequencies == {}
     assert result.tag_relations == {}
     assert result.tag_time_ranges == {}
@@ -320,3 +327,122 @@ def test_analyze_mapping_affects_all_categories() -> None:
 
     result_body = analyze(nodes, custom_map, category="body", max_relations=3)
     assert "bar" in result_body.tag_frequencies
+
+
+def test_analyze_cancelled_task() -> None:
+    """Test analyze with CANCELLED task (orgparse recognizes it via configuration)."""
+    import orgparse
+
+    content = """#+TODO: TODO | DONE CANCELLED
+
+* CANCELLED Task :Feature:
+"""
+    ns = orgparse.loads(content)
+    nodes = list(ns[1:]) if ns else []
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.total_tasks == 1
+    assert result.task_states.values["CANCELLED"] == 1
+    assert result.task_states.values["DONE"] == 0
+    assert result.task_states.values["TODO"] == 0
+
+
+def test_analyze_suspended_task() -> None:
+    """Test analyze with SUSPENDED task (orgparse recognizes it via configuration)."""
+    import orgparse
+
+    content = """#+TODO: TODO | DONE SUSPENDED
+
+* SUSPENDED Task :Feature:
+"""
+    ns = orgparse.loads(content)
+    nodes = list(ns[1:]) if ns else []
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.total_tasks == 1
+    assert result.task_states.values["SUSPENDED"] == 1
+    assert result.task_states.values["DONE"] == 0
+    assert result.task_states.values["TODO"] == 0
+
+
+def test_analyze_delegated_task() -> None:
+    """Test analyze with DELEGATED task (orgparse recognizes it via configuration)."""
+    import orgparse
+
+    content = """#+TODO: TODO | DONE DELEGATED
+
+* DELEGATED Task :Feature:
+"""
+    ns = orgparse.loads(content)
+    nodes = list(ns[1:]) if ns else []
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.total_tasks == 1
+    assert result.task_states.values["DELEGATED"] == 1
+    assert result.task_states.values["DONE"] == 0
+    assert result.task_states.values["TODO"] == 0
+
+
+def test_analyze_node_without_state() -> None:
+    """Test analyze with node that has no TODO state (maps to 'other')."""
+    nodes = node_from_org("* Task without state :Feature:\n")
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.total_tasks == 1
+    assert result.task_states.values["other"] == 1
+    assert result.task_states.values["DONE"] == 0
+    assert result.task_states.values["TODO"] == 0
+
+
+def test_analyze_repeated_tasks_different_states() -> None:
+    """Test repeated tasks with different states than parent node."""
+    import orgparse
+
+    content = """#+TODO: TODO | DONE CANCELLED
+
+* TODO Task :Feature:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2023-10-20 Fri 09:15]
+- State "CANCELLED"  from "TODO"       [2023-10-19 Thu 09:10]
+:END:
+"""
+    ns = orgparse.loads(content)
+    nodes = list(ns[1:]) if ns else []
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.total_tasks == 2
+    assert result.task_states.values["TODO"] == 1
+    assert result.task_states.values["DONE"] == 1
+    assert result.task_states.values["CANCELLED"] == 1
+
+
+def test_analyze_all_task_states_mixed() -> None:
+    """Test analyze with all task states mixed."""
+    import orgparse
+
+    content = """#+TODO: TODO | DONE CANCELLED SUSPENDED DELEGATED
+
+* TODO Task 1 :A:
+* DONE Task 2 :B:
+* CANCELLED Task 3 :C:
+* SUSPENDED Task 4 :D:
+* DELEGATED Task 5 :E:
+* Task 6 :F:
+"""
+    ns = orgparse.loads(content)
+    nodes = list(ns[1:]) if ns else []
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.total_tasks == 6
+    assert result.task_states.values["TODO"] == 1
+    assert result.task_states.values["DONE"] == 1
+    assert result.task_states.values["CANCELLED"] == 1
+    assert result.task_states.values["SUSPENDED"] == 1
+    assert result.task_states.values["DELEGATED"] == 1
+    assert result.task_states.values["other"] == 1

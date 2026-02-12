@@ -464,7 +464,11 @@ def main() -> None:
 
     # Display results
     print("\nTotal tasks: ", result.total_tasks)
-    print("\nDone tasks: ", result.done_tasks)
+
+    print("\nTask states:")
+    for state in ["DONE", "TODO", "CANCELLED", "SUSPENDED", "DELEGATED", "other"]:
+        count = result.task_states.values.get(state, 0)
+        print(f"  {state}: {count}")
 
     # Select appropriate category name
     category_names = {"tags": "tags", "heading": "heading words", "body": "body words"}

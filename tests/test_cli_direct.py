@@ -33,7 +33,7 @@ def test_main_function_directly() -> None:
         # Verify output
         assert "Processing" in output
         assert "Total tasks:" in output
-        assert "Done tasks:" in output
+        assert "Task states:" in output
 
     finally:
         # Restore original argv and stdout

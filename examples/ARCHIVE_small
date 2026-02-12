@@ -1,4 +1,4 @@
-* DONE Refine some more tasks with the team.                                     :ProjectManagement:
+* CANCELLED Refine some more tasks with the team.                                     :ProjectManagement:
 SCHEDULED: <2023-10-19 czw>
 :PROPERTIES:
 :gamify_exp: 5
@@ -10,11 +10,11 @@ SCHEDULED: <2023-10-19 czw>
 :ARCHIVE_TODO: DONE
 :END:
 :LOGBOOK:
-- State "DONE"       from "TODO"       [2023-10-19 czw 15:38]
+- State "CANCELLED"       from "TODO"       [2023-10-19 czw 15:38]
 :END:
 
-* DONE Try to debug the ejabberd_tls:send timouts.                :Debugging:Erlang:XMPP:
-SCHEDULED: <2023-10-20 pią>
+* SUSPENDED Try to debug the ejabberd_tls:send timouts.                :Debugging:Erlang:XMPP:
+SCHEDULED: [2023-10-20 pią]
 :PROPERTIES:
 :gamify_exp: 7
 :capture_time: [2023-10-20 pią 14:42]
@@ -25,7 +25,7 @@ SCHEDULED: <2023-10-20 pią>
 :ARCHIVE_TODO: DONE
 :END:
 :LOGBOOK:
-- State "DONE"       from "TODO"       [2023-10-20 pią 14:43]
+- State "SUSPENDED"       from "TODO"       [2023-10-20 pią 14:43]
 :END:
 
 * DONE Investigate the multiple session errors in ejabberd.            :Erlang:Debugging:
@@ -474,7 +474,7 @@ SCHEDULED: <2023-11-14 wto>
 :END:
 
 
-* DONE Create a slide deck about our Kubernetes migration lessons.           :Documenting:Entrepreneurship:
+* TODO Create a slide deck about our Kubernetes migration lessons.           :Documenting:Entrepreneurship:
 SCHEDULED: <2023-11-14 wto>
 :PROPERTIES:
 :gamify_exp: 10

@@ -24,7 +24,7 @@ def test_cli_runs_successfully() -> None:
     assert result.returncode == 0
     assert "Processing" in result.stdout
     assert "Total tasks:" in result.stdout
-    assert "Done tasks:" in result.stdout
+    assert "Task states:" in result.stdout
 
 
 def test_cli_with_multiple_files() -> None:
@@ -58,7 +58,7 @@ def test_cli_outputs_statistics() -> None:
 
     assert result.returncode == 0
     assert "Total tasks:" in result.stdout
-    assert "Done tasks:" in result.stdout
+    assert "Task states:" in result.stdout
     assert "Top tags:" in result.stdout
 
 
@@ -77,7 +77,7 @@ def test_cli_with_archive_small() -> None:
     assert "Processing" in result.stdout
     assert "ARCHIVE_small" in result.stdout
     assert "Total tasks:" in result.stdout
-    assert "Done tasks:" in result.stdout
+    assert "Task states:" in result.stdout
 
 
 def test_cli_via_cli_module() -> None:
