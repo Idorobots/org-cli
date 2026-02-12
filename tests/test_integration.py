@@ -1,6 +1,7 @@
 """Integration tests using real Org-mode files."""
 
 import os
+from typing import Any
 
 import orgparse
 
@@ -12,19 +13,19 @@ from orgstats.core import analyze, clean
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
-def load_org_file(filename):
+def load_org_file(filename: str) -> list[Any]:
     """Load and parse an Org-mode file."""
     filepath = os.path.join(FIXTURES_DIR, filename)
     with open(filepath) as f:
         # NOTE: Making the file parseable (handle 24:00 time format)
         contents = f.read().replace("24:00", "00:00")
         ns = orgparse.loads(contents)
-        if ns is not None:
-            return list(ns[1:])
-        return []
+        if ns is None:
+            return []  # type: ignore[unreachable]
+        return list(ns[1:])
 
 
-def test_integration_simple_file():
+def test_integration_simple_file() -> None:
     """Test with the simple.org fixture."""
     nodes = load_org_file("simple.org")
 
@@ -34,7 +35,7 @@ def test_integration_simple_file():
     assert result.done_tasks == 1
 
 
-def test_integration_single_task():
+def test_integration_single_task() -> None:
     """Test with single_task.org fixture."""
     nodes = load_org_file("single_task.org")
 
@@ -58,7 +59,7 @@ def test_integration_single_task():
     )  # Some words from body
 
 
-def test_integration_multiple_tags():
+def test_integration_multiple_tags() -> None:
     """Test with multiple_tags.org fixture."""
     nodes = load_org_file("multiple_tags.org")
 
@@ -91,7 +92,7 @@ def test_integration_multiple_tags():
     assert "refactoring" in result.tag_frequencies
 
 
-def test_integration_edge_cases():
+def test_integration_edge_cases() -> None:
     """Test with edge_cases.org fixture."""
     nodes = load_org_file("edge_cases.org")
 
@@ -113,7 +114,7 @@ def test_integration_edge_cases():
     assert "special" in result_heading.tag_frequencies or "chars" in result_heading.tag_frequencies
 
 
-def test_integration_24_00_time_handling():
+def test_integration_24_00_time_handling() -> None:
     """Test that 24:00 time format is handled correctly."""
     nodes = load_org_file("edge_cases.org")
 
@@ -125,7 +126,7 @@ def test_integration_24_00_time_handling():
     assert result.done_tasks > 0
 
 
-def test_integration_empty_file():
+def test_integration_empty_file() -> None:
     """Test with empty.org fixture (TODO tasks)."""
     nodes = load_org_file("empty.org")
 
@@ -135,7 +136,7 @@ def test_integration_empty_file():
     assert result.done_tasks == 0  # TODO, not DONE
 
 
-def test_integration_repeated_tasks():
+def test_integration_repeated_tasks() -> None:
     """Test with repeated_tasks.org fixture."""
     nodes = load_org_file("repeated_tasks.org")
 
@@ -152,7 +153,7 @@ def test_integration_repeated_tasks():
         assert result.tag_frequencies["agile"].total > 0  # Check Frequency.total field
 
 
-def test_integration_archive_small():
+def test_integration_archive_small() -> None:
     """Test with the actual ARCHIVE_small example file."""
     # Load the real archive file
     archive_path = os.path.join(os.path.dirname(__file__), "..", "examples", "ARCHIVE_small")
@@ -184,7 +185,7 @@ def test_integration_archive_small():
     assert len(result_body.tag_frequencies) > 0
 
 
-def test_integration_clean_filters_stopwords():
+def test_integration_clean_filters_stopwords() -> None:
     """Test that clean() properly filters stop words from real data."""
     nodes = load_org_file("multiple_tags.org")
 
@@ -208,7 +209,7 @@ def test_integration_clean_filters_stopwords():
         assert stop_word not in cleaned_words
 
 
-def test_integration_frequency_sorting():
+def test_integration_frequency_sorting() -> None:
     """Test that results can be sorted by frequency."""
     nodes = load_org_file("multiple_tags.org")
 
@@ -225,7 +226,7 @@ def test_integration_frequency_sorting():
         assert sorted_tags[i][1].total >= sorted_tags[i + 1][1].total
 
 
-def test_integration_word_uniqueness():
+def test_integration_word_uniqueness() -> None:
     """Test that words in headings/body are deduplicated per task."""
     nodes = load_org_file("single_task.org")
 
@@ -238,7 +239,7 @@ def test_integration_word_uniqueness():
     assert isinstance(result_body.tag_frequencies, dict)
 
 
-def test_integration_no_tags_task():
+def test_integration_no_tags_task() -> None:
     """Test task without any tags."""
     nodes = load_org_file("simple.org")
 
@@ -250,7 +251,7 @@ def test_integration_no_tags_task():
     )
 
 
-def test_integration_all_fixtures_parseable():
+def test_integration_all_fixtures_parseable() -> None:
     """Test that all fixture files can be parsed without errors."""
     fixtures = [
         "simple.org",

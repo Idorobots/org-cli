@@ -1,18 +1,20 @@
 """Tests for relations computation in the analyze() function."""
 
+from typing import Any
+
 from orgstats.core import analyze
 from tests.conftest import node_from_org
 
 
-def test_analyze_empty_nodes_has_empty_relations():
+def test_analyze_empty_nodes_has_empty_relations() -> None:
     """Test analyze with empty nodes returns empty relations."""
-    nodes = []
+    nodes: list[Any] = []
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.tag_relations == {}
 
 
-def test_analyze_single_tag_no_relations():
+def test_analyze_single_tag_no_relations() -> None:
     """Test task with single tag creates no Relations objects."""
     nodes = node_from_org("* DONE Task :Python:\n")
 
@@ -21,7 +23,7 @@ def test_analyze_single_tag_no_relations():
     assert result.tag_relations == {}
 
 
-def test_analyze_two_tags_bidirectional_relation():
+def test_analyze_two_tags_bidirectional_relation() -> None:
     """Test task with two tags creates bidirectional relation."""
     nodes = node_from_org("* DONE Task :Python:Testing:\n")
 
@@ -34,7 +36,7 @@ def test_analyze_two_tags_bidirectional_relation():
     assert result.tag_relations["testing"].relations["python"] == 1
 
 
-def test_analyze_three_tags_all_relations():
+def test_analyze_three_tags_all_relations() -> None:
     """Test task with three tags creates all bidirectional relations."""
     nodes = node_from_org("* DONE Task :TagA:TagB:TagC:\n")
 
@@ -56,7 +58,7 @@ def test_analyze_three_tags_all_relations():
     assert len(result.tag_relations["tagc"].relations) == 2
 
 
-def test_analyze_no_self_relations():
+def test_analyze_no_self_relations() -> None:
     """Test that tags do not create relations with themselves."""
     nodes = node_from_org("* DONE Task :Python:Testing:\n")
 
@@ -66,7 +68,7 @@ def test_analyze_no_self_relations():
     assert "testing" not in result.tag_relations["testing"].relations
 
 
-def test_analyze_relations_normalized():
+def test_analyze_relations_normalized() -> None:
     """Test that tag normalization applies to relations."""
     nodes = node_from_org("* DONE Task :Test:SysAdmin:\n")
 
@@ -82,7 +84,7 @@ def test_analyze_relations_normalized():
     assert result.tag_relations["devops"].relations["testing"] == 1
 
 
-def test_analyze_relations_accumulate():
+def test_analyze_relations_accumulate() -> None:
     """Test that relations accumulate across multiple nodes."""
     nodes = node_from_org("""
 * DONE Task :Python:Testing:
@@ -95,7 +97,7 @@ def test_analyze_relations_accumulate():
     assert result.tag_relations["testing"].relations["python"] == 2
 
 
-def test_analyze_relations_with_repeated_tasks():
+def test_analyze_relations_with_repeated_tasks() -> None:
     """Test that repeated tasks increment relations by count."""
     nodes = node_from_org("""
 * TODO Task :Daily:Meeting:
@@ -112,7 +114,7 @@ def test_analyze_relations_with_repeated_tasks():
     assert result.tag_relations["meeting"].relations["daily"] == 2
 
 
-def test_analyze_heading_relations():
+def test_analyze_heading_relations() -> None:
     """Test that heading word relations are computed for heading category."""
     nodes = node_from_org("* DONE Implement feature\n")
 
@@ -124,7 +126,7 @@ def test_analyze_heading_relations():
     assert result.tag_relations["feature"].relations["implement"] == 1
 
 
-def test_analyze_body_relations():
+def test_analyze_body_relations() -> None:
     """Test that body word relations are computed for body category."""
     nodes = node_from_org("* DONE Task\nPython code implementation\n")
 
@@ -142,7 +144,7 @@ def test_analyze_body_relations():
     assert result.tag_relations["implementation"].relations["code"] == 1
 
 
-def test_analyze_relations_independent():
+def test_analyze_relations_independent() -> None:
     """Test that tag, heading, and body relations are computed independently."""
     nodes = node_from_org("* DONE Python tests :Python:Testing:\nPython code\n")
 
@@ -154,14 +156,15 @@ def test_analyze_relations_independent():
     result_heading = analyze(nodes, {}, category="heading", max_relations=3)
     # Heading relations: Python-tests
     assert result_heading.tag_relations["python"].relations.get("tests") == 1
-    assert "testing" not in result_heading.tag_relations.get("python", {}).relations
+    assert "python" in result_heading.tag_relations
+    assert "testing" not in result_heading.tag_relations["python"].relations
 
     result_body = analyze(nodes, {}, category="body", max_relations=3)
     # Body relations: Python-code
     assert result_body.tag_relations["python"].relations.get("code") == 1
 
 
-def test_analyze_relations_with_different_counts():
+def test_analyze_relations_with_different_counts() -> None:
     """Test that different nodes with different counts increment correctly."""
     nodes = node_from_org("""
 * DONE Task :TagA:TagB:
@@ -186,7 +189,7 @@ def test_analyze_relations_with_different_counts():
     assert result.tag_relations["tagb"].relations["taga"] == 4
 
 
-def test_analyze_relations_mixed_tags():
+def test_analyze_relations_mixed_tags() -> None:
     """Test relations with tasks that share some but not all tags."""
     nodes = node_from_org("""
 * DONE Task :Python:Testing:
@@ -209,7 +212,7 @@ def test_analyze_relations_mixed_tags():
     assert result.tag_relations["debugging"].relations["testing"] == 1
 
 
-def test_analyze_relations_empty_tags():
+def test_analyze_relations_empty_tags() -> None:
     """Test that tasks with no tags create no relations."""
     nodes = node_from_org("* DONE Task\nContent\n")
 
@@ -218,7 +221,7 @@ def test_analyze_relations_empty_tags():
     assert result.tag_relations == {}
 
 
-def test_analyze_four_tags_six_relations():
+def test_analyze_four_tags_six_relations() -> None:
     """Test task with four tags creates six bidirectional relations."""
     nodes = node_from_org("* DONE Task :A:B:C:D:\n")
 
@@ -240,7 +243,7 @@ def test_analyze_four_tags_six_relations():
     assert result.tag_relations["c"].relations["d"] == 1
 
 
-def test_analyze_relations_result_structure():
+def test_analyze_relations_result_structure() -> None:
     """Test that analyze returns Relations objects with correct structure."""
     from orgstats.core import Relations
 

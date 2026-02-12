@@ -3,20 +3,20 @@
 from orgstats.core import Frequency, compute_frequencies
 
 
-def test_compute_frequencies_empty_items():
+def test_compute_frequencies_empty_items() -> None:
     """Test with empty set creates no entries."""
-    items = set()
-    frequencies = {}
+    items: set[str] = set()
+    frequencies: dict[str, Frequency] = {}
 
     compute_frequencies(items, frequencies, 1)
 
     assert frequencies == {}
 
 
-def test_compute_frequencies_single_item():
+def test_compute_frequencies_single_item() -> None:
     """Test single item creates Frequency with correct counts."""
     items = {"python"}
-    frequencies = {}
+    frequencies: dict[str, Frequency] = {}
 
     compute_frequencies(items, frequencies, 1)
 
@@ -24,10 +24,10 @@ def test_compute_frequencies_single_item():
     assert frequencies["python"].total == 1
 
 
-def test_compute_frequencies_multiple_items():
+def test_compute_frequencies_multiple_items() -> None:
     """Test multiple items all get incremented."""
     items = {"python", "testing", "debugging"}
-    frequencies = {}
+    frequencies: dict[str, Frequency] = {}
 
     compute_frequencies(items, frequencies, 1)
 
@@ -40,31 +40,31 @@ def test_compute_frequencies_multiple_items():
     assert frequencies["debugging"].total == 1
 
 
-def test_compute_frequencies_count_one():
+def test_compute_frequencies_count_one() -> None:
     """Test with count of 1."""
     items = {"python"}
-    frequencies = {}
+    frequencies: dict[str, Frequency] = {}
 
     compute_frequencies(items, frequencies, 1)
 
     assert frequencies["python"].total == 1
 
 
-def test_compute_frequencies_count_multiple():
+def test_compute_frequencies_count_multiple() -> None:
     """Test with count > 1 for repeated tasks."""
     items = {"python"}
-    frequencies = {}
+    frequencies: dict[str, Frequency] = {}
 
     compute_frequencies(items, frequencies, 5)
 
     assert frequencies["python"].total == 5
 
 
-def test_compute_frequencies_accumulates():
+def test_compute_frequencies_accumulates() -> None:
     """Test multiple calls accumulate correctly."""
     items1 = {"python"}
     items2 = {"python", "testing"}
-    frequencies = {}
+    frequencies: dict[str, Frequency] = {}
 
     compute_frequencies(items1, frequencies, 1)
     compute_frequencies(items2, frequencies, 2)
@@ -73,7 +73,7 @@ def test_compute_frequencies_accumulates():
     assert frequencies["testing"].total == 2
 
 
-def test_compute_frequencies_existing_entry():
+def test_compute_frequencies_existing_entry() -> None:
     """Test updating existing Frequency object."""
     items = {"python"}
     frequencies = {"python": Frequency(total=5)}
@@ -83,21 +83,20 @@ def test_compute_frequencies_existing_entry():
     assert frequencies["python"].total == 8
 
 
-def test_compute_frequencies_mutates_dict():
+def test_compute_frequencies_mutates_dict() -> None:
     """Test that function modifies dict in-place."""
     items = {"python"}
-    frequencies = {}
+    frequencies: dict[str, Frequency] = {}
 
-    result = compute_frequencies(items, frequencies, 1)
+    compute_frequencies(items, frequencies, 1)
 
-    assert result is None
     assert "python" in frequencies
 
 
-def test_compute_frequencies_with_normalized_tags():
+def test_compute_frequencies_with_normalized_tags() -> None:
     """Test with normalized tag sets."""
     items = {"python", "testing", "devops"}
-    frequencies = {}
+    frequencies: dict[str, Frequency] = {}
 
     compute_frequencies(items, frequencies, 2)
 

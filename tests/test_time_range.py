@@ -5,7 +5,7 @@ from datetime import date, datetime
 from orgstats.core import TimeRange
 
 
-def test_time_range_initialization():
+def test_time_range_initialization() -> None:
     """Test TimeRange initializes with None values."""
     time_range = TimeRange()
 
@@ -13,7 +13,7 @@ def test_time_range_initialization():
     assert time_range.latest is None
 
 
-def test_time_range_initialization_with_values():
+def test_time_range_initialization_with_values() -> None:
     """Test TimeRange with provided values."""
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 20, 14, 43)
@@ -23,7 +23,7 @@ def test_time_range_initialization_with_values():
     assert time_range.latest == dt2
 
 
-def test_time_range_update_first_timestamp():
+def test_time_range_update_first_timestamp() -> None:
     """Test updating empty TimeRange with first timestamp."""
     time_range = TimeRange()
     dt = datetime(2023, 10, 19, 10, 0)
@@ -34,7 +34,7 @@ def test_time_range_update_first_timestamp():
     assert time_range.latest == dt
 
 
-def test_time_range_update_earlier_timestamp():
+def test_time_range_update_earlier_timestamp() -> None:
     """Test updating TimeRange with earlier timestamp."""
     dt1 = datetime(2023, 10, 19, 10, 0)
     dt2 = datetime(2023, 10, 18, 9, 15)
@@ -46,7 +46,7 @@ def test_time_range_update_earlier_timestamp():
     assert time_range.latest == dt1
 
 
-def test_time_range_update_later_timestamp():
+def test_time_range_update_later_timestamp() -> None:
     """Test updating TimeRange with later timestamp."""
     dt1 = datetime(2023, 10, 19, 10, 0)
     dt2 = datetime(2023, 10, 20, 14, 43)
@@ -58,7 +58,7 @@ def test_time_range_update_later_timestamp():
     assert time_range.latest == dt2
 
 
-def test_time_range_update_middle_timestamp():
+def test_time_range_update_middle_timestamp() -> None:
     """Test timestamp between earliest and latest doesn't change range."""
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 19, 10, 0)
@@ -71,7 +71,7 @@ def test_time_range_update_middle_timestamp():
     assert time_range.latest == dt3
 
 
-def test_time_range_update_same_timestamp():
+def test_time_range_update_same_timestamp() -> None:
     """Test updating with same timestamp multiple times."""
     dt = datetime(2023, 10, 19, 10, 0)
     time_range = TimeRange()
@@ -84,7 +84,7 @@ def test_time_range_update_same_timestamp():
     assert time_range.latest == dt
 
 
-def test_time_range_repr():
+def test_time_range_repr() -> None:
     """Test string representation."""
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 20, 14, 43)
@@ -96,14 +96,14 @@ def test_time_range_repr():
     assert "latest" in repr_str
 
 
-def test_time_range_is_dataclass():
+def test_time_range_is_dataclass() -> None:
     """Test that TimeRange is a dataclass."""
     from dataclasses import is_dataclass
 
     assert is_dataclass(TimeRange)
 
 
-def test_time_range_equality():
+def test_time_range_equality() -> None:
     """Test equality comparison."""
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 20, 14, 43)
@@ -116,7 +116,7 @@ def test_time_range_equality():
     assert time_range1 != time_range3
 
 
-def test_time_range_multiple_updates():
+def test_time_range_multiple_updates() -> None:
     """Test multiple updates with various timestamps."""
     time_range = TimeRange()
 
@@ -134,14 +134,14 @@ def test_time_range_multiple_updates():
     assert time_range.latest == dt4
 
 
-def test_time_range_timeline_initialized_empty():
+def test_time_range_timeline_initialized_empty() -> None:
     """Test TimeRange timeline initializes as empty dict."""
     time_range = TimeRange()
 
     assert time_range.timeline == {}
 
 
-def test_time_range_timeline_single_occurrence():
+def test_time_range_timeline_single_occurrence() -> None:
     """Test single timestamp creates one timeline entry with count=1."""
     time_range = TimeRange()
     dt = datetime(2023, 10, 19, 10, 0)
@@ -152,7 +152,7 @@ def test_time_range_timeline_single_occurrence():
     assert time_range.timeline[date(2023, 10, 19)] == 1
 
 
-def test_time_range_timeline_same_day_different_times():
+def test_time_range_timeline_same_day_different_times() -> None:
     """Test two timestamps on same day increment the same counter."""
     time_range = TimeRange()
     dt1 = datetime(2023, 10, 19, 10, 0)
@@ -165,7 +165,7 @@ def test_time_range_timeline_same_day_different_times():
     assert time_range.timeline[date(2023, 10, 19)] == 2
 
 
-def test_time_range_timeline_multiple_days():
+def test_time_range_timeline_multiple_days() -> None:
     """Test timestamps on different days create separate timeline entries."""
     time_range = TimeRange()
     dt1 = datetime(2023, 10, 18, 9, 15)
@@ -182,7 +182,7 @@ def test_time_range_timeline_multiple_days():
     assert time_range.timeline[date(2023, 10, 20)] == 1
 
 
-def test_time_range_timeline_repeated_same_day():
+def test_time_range_timeline_repeated_same_day() -> None:
     """Test multiple updates with same timestamp increments counter."""
     time_range = TimeRange()
     dt = datetime(2023, 10, 19, 10, 0)
@@ -195,7 +195,7 @@ def test_time_range_timeline_repeated_same_day():
     assert time_range.timeline[date(2023, 10, 19)] == 3
 
 
-def test_time_range_timeline_mixed_days():
+def test_time_range_timeline_mixed_days() -> None:
     """Test mix of same-day and different-day occurrences."""
     time_range = TimeRange()
     dt1 = datetime(2023, 10, 18, 9, 15)
@@ -216,7 +216,7 @@ def test_time_range_timeline_mixed_days():
     assert time_range.timeline[date(2023, 10, 20)] == 2
 
 
-def test_time_range_timeline_not_in_repr():
+def test_time_range_timeline_not_in_repr() -> None:
     """Test timeline is not included in string representation."""
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 20, 14, 43)
@@ -231,7 +231,7 @@ def test_time_range_timeline_not_in_repr():
     assert "timeline" not in repr_str
 
 
-def test_time_range_repr_includes_top_day():
+def test_time_range_repr_includes_top_day() -> None:
     """Test that repr includes top_day field."""
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 19, 10, 0)
@@ -245,7 +245,7 @@ def test_time_range_repr_includes_top_day():
     assert "latest=" in repr_str
 
 
-def test_time_range_top_day_single_occurrence():
+def test_time_range_top_day_single_occurrence() -> None:
     """Test top_day with single occurrence."""
     time_range = TimeRange()
     dt = datetime(2023, 10, 19, 10, 0)
@@ -255,7 +255,7 @@ def test_time_range_top_day_single_occurrence():
     assert "top_day='2023-10-19'" in repr_str
 
 
-def test_time_range_top_day_multiple_equal_counts():
+def test_time_range_top_day_multiple_equal_counts() -> None:
     """Test top_day selects earliest date when multiple days have same count."""
     time_range = TimeRange()
     dt1 = datetime(2023, 10, 20, 9, 15)
@@ -270,7 +270,7 @@ def test_time_range_top_day_multiple_equal_counts():
     assert "top_day='2023-10-18'" in repr_str
 
 
-def test_time_range_top_day_highest_count():
+def test_time_range_top_day_highest_count() -> None:
     """Test top_day selects day with highest count."""
     time_range = TimeRange()
     dt1 = datetime(2023, 10, 18, 9, 15)
@@ -287,7 +287,7 @@ def test_time_range_top_day_highest_count():
     assert "top_day='2023-10-19'" in repr_str
 
 
-def test_time_range_top_day_empty_timeline():
+def test_time_range_top_day_empty_timeline() -> None:
     """Test top_day is None when timeline is empty."""
     time_range = TimeRange()
 

@@ -1,10 +1,12 @@
 """Tests for the filter_nodes() function."""
 
+from typing import Any
+
 from orgstats.cli import filter_nodes
 from tests.conftest import node_from_org
 
 
-def test_filter_nodes_all_returns_all():
+def test_filter_nodes_all_returns_all() -> None:
     """Test that 'all' filter returns all nodes."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n")
@@ -19,7 +21,7 @@ def test_filter_nodes_all_returns_all():
     assert result == nodes
 
 
-def test_filter_nodes_simple_filters_correctly():
+def test_filter_nodes_simple_filters_correctly() -> None:
     """Test that 'simple' filter returns nodes with gamify_exp < 10."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n")
@@ -36,7 +38,7 @@ def test_filter_nodes_simple_filters_correctly():
     assert result[1] == nodes[1]
 
 
-def test_filter_nodes_regular_filters_correctly():
+def test_filter_nodes_regular_filters_correctly() -> None:
     """Test that 'regular' filter returns nodes with 10 <= gamify_exp < 20."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n")
@@ -55,7 +57,7 @@ def test_filter_nodes_regular_filters_correctly():
     assert result[2] == nodes[3]
 
 
-def test_filter_nodes_hard_filters_correctly():
+def test_filter_nodes_hard_filters_correctly() -> None:
     """Test that 'hard' filter returns nodes with gamify_exp >= 20."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n")
@@ -74,7 +76,7 @@ def test_filter_nodes_hard_filters_correctly():
     assert result[2] == nodes[5]
 
 
-def test_filter_nodes_boundary_values():
+def test_filter_nodes_boundary_values() -> None:
     """Test boundary values for difficulty classification."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 9\n:END:\n")
@@ -98,7 +100,7 @@ def test_filter_nodes_boundary_values():
     assert hard_result[0] == nodes[3]
 
 
-def test_filter_nodes_missing_gamify_exp_treated_as_regular():
+def test_filter_nodes_missing_gamify_exp_treated_as_regular() -> None:
     """Test that nodes without gamify_exp are treated as regular."""
     nodes = (
         node_from_org("* DONE Task\n")
@@ -120,7 +122,7 @@ def test_filter_nodes_missing_gamify_exp_treated_as_regular():
     assert len(hard_result) == 0
 
 
-def test_filter_nodes_invalid_gamify_exp_treated_as_regular():
+def test_filter_nodes_invalid_gamify_exp_treated_as_regular() -> None:
     """Test that nodes with invalid gamify_exp are treated as regular."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: invalid\n:END:\n")
@@ -137,9 +139,9 @@ def test_filter_nodes_invalid_gamify_exp_treated_as_regular():
     assert len(hard_result) == 0
 
 
-def test_filter_nodes_empty_list():
+def test_filter_nodes_empty_list() -> None:
     """Test filtering an empty list returns empty list."""
-    nodes = []
+    nodes: list[Any] = []
 
     assert filter_nodes(nodes, "all") == []
     assert filter_nodes(nodes, "simple") == []
@@ -147,7 +149,7 @@ def test_filter_nodes_empty_list():
     assert filter_nodes(nodes, "hard") == []
 
 
-def test_filter_nodes_tuple_format():
+def test_filter_nodes_tuple_format() -> None:
     """Test that (X Y) format is parsed correctly."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: (5 10)\n:END:\n")
@@ -169,7 +171,7 @@ def test_filter_nodes_tuple_format():
     assert hard_result[0] == nodes[2]
 
 
-def test_filter_nodes_mixed_list():
+def test_filter_nodes_mixed_list() -> None:
     """Test filtering a mixed list with various gamify_exp values."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n")
@@ -190,7 +192,7 @@ def test_filter_nodes_mixed_list():
     assert len(hard_result) == 1
 
 
-def test_filter_nodes_preserves_order():
+def test_filter_nodes_preserves_order() -> None:
     """Test that filtering preserves the original order of nodes."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n")
@@ -208,7 +210,7 @@ def test_filter_nodes_preserves_order():
     assert result[3] == nodes[3]
 
 
-def test_filter_nodes_all_simple():
+def test_filter_nodes_all_simple() -> None:
     """Test filtering when all nodes are simple."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 1\n:END:\n")
@@ -225,7 +227,7 @@ def test_filter_nodes_all_simple():
     assert len(hard_result) == 0
 
 
-def test_filter_nodes_all_regular():
+def test_filter_nodes_all_regular() -> None:
     """Test filtering when all nodes are regular."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 10\n:END:\n")
@@ -242,7 +244,7 @@ def test_filter_nodes_all_regular():
     assert len(hard_result) == 0
 
 
-def test_filter_nodes_all_hard():
+def test_filter_nodes_all_hard() -> None:
     """Test filtering when all nodes are hard."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 20\n:END:\n")

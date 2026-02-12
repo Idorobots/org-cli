@@ -288,7 +288,7 @@ Comment: The AI proposed to rename origial `--group-threshold` parameter to some
 I enabled type checking the tests files. Please add type signatures to the test functions and ensure that the type checking passes fine for all the test files.
 You can run the checks by calling `poetry run task check`.
 
-Comment: This one I expected to be a lengthy one - there were 428 type errors to begin with. Fortunately, I ran out of the weekly quote before the AI got to waste all the quota.
+Comment: This one I expected to be a lengthy one - there were 428 type errors to begin with. Fortunately, I ran out of the weekly quote before the AI got to waste all the quota. After the weekly quota reset, I executed another plan and proceeded to implementation. It took a long time and 30% of the quota, but it added types with regexes :grimacing:. It also added a lot of slop by typing stuff as `Any` that had to be manually fixed.
 
 ## ❌ Devcontainers setup
 A docker container for running the agentin.

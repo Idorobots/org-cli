@@ -3,7 +3,7 @@
 from orgstats.core import Relations
 
 
-def test_relations_initialization():
+def test_relations_initialization() -> None:
     """Test that Relations can be initialized with all fields."""
     relations = Relations(name="python", relations={"testing": 5, "debugging": 3})
 
@@ -11,7 +11,7 @@ def test_relations_initialization():
     assert relations.relations == {"testing": 5, "debugging": 3}
 
 
-def test_relations_empty_initialization():
+def test_relations_empty_initialization() -> None:
     """Test Relations with empty relations dictionary."""
     relations = Relations(name="tag", relations={})
 
@@ -19,7 +19,7 @@ def test_relations_empty_initialization():
     assert relations.relations == {}
 
 
-def test_relations_attributes():
+def test_relations_attributes() -> None:
     """Test that Relations has all expected attributes."""
     relations = Relations(name="test", relations={})
 
@@ -27,14 +27,14 @@ def test_relations_attributes():
     assert relations.relations == {}
 
 
-def test_relations_is_dataclass():
+def test_relations_is_dataclass() -> None:
     """Test that Relations is a dataclass."""
     from dataclasses import is_dataclass
 
     assert is_dataclass(Relations)
 
 
-def test_relations_repr():
+def test_relations_repr() -> None:
     """Test the string representation of Relations."""
     relations = Relations(name="python", relations={"testing": 5})
 
@@ -44,7 +44,7 @@ def test_relations_repr():
     assert "relations=" in repr_str
 
 
-def test_relations_equality():
+def test_relations_equality() -> None:
     """Test equality comparison of Relations objects."""
     relations1 = Relations(name="python", relations={"testing": 5})
     relations2 = Relations(name="python", relations={"testing": 5})
@@ -56,7 +56,7 @@ def test_relations_equality():
     assert relations1 != relations4
 
 
-def test_relations_mutable_fields():
+def test_relations_mutable_fields() -> None:
     """Test that Relations fields can be modified."""
     relations = Relations(name="test", relations={})
 
@@ -68,7 +68,7 @@ def test_relations_mutable_fields():
     assert relations.relations["new"] == 10
 
 
-def test_relations_dict_operations():
+def test_relations_dict_operations() -> None:
     """Test that dictionary operations work on relations field."""
     relations = Relations(name="python", relations={"testing": 5, "debugging": 3, "refactoring": 2})
 
@@ -80,7 +80,7 @@ def test_relations_dict_operations():
     assert list(relations.relations.values()) == [5, 3, 2]
 
 
-def test_relations_increment():
+def test_relations_increment() -> None:
     """Test incrementing relation counts."""
     relations = Relations(name="python", relations={"testing": 5})
 
@@ -91,7 +91,7 @@ def test_relations_increment():
     assert relations.relations["debugging"] == 3
 
 
-def test_relations_with_single_relation():
+def test_relations_with_single_relation() -> None:
     """Test Relations with a single relation."""
     relations = Relations(name="tagA", relations={"tagB": 10})
 

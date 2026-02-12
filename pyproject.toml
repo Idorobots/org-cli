@@ -29,7 +29,7 @@ lint = "ruff check src/ tests/"
 lint-fix = "ruff check --fix src/ tests/"
 format-check = "ruff format --check src/ tests/"
 format = "ruff format src/ tests/"
-type = "mypy src/orgstats"
+type = "mypy src/orgstats tests"
 check = "task format-check && task lint && task type && task test"
 
 [tool.ruff]

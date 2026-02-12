@@ -10,7 +10,7 @@ PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
-def test_cli_runs_successfully():
+def test_cli_runs_successfully() -> None:
     """Test that the CLI runs without errors."""
     fixture_path = os.path.join(FIXTURES_DIR, "single_task.org")
 
@@ -27,7 +27,7 @@ def test_cli_runs_successfully():
     assert "Done tasks:" in result.stdout
 
 
-def test_cli_with_multiple_files():
+def test_cli_with_multiple_files() -> None:
     """Test CLI with multiple input files."""
     fixture1 = os.path.join(FIXTURES_DIR, "simple.org")
     fixture2 = os.path.join(FIXTURES_DIR, "single_task.org")
@@ -45,7 +45,7 @@ def test_cli_with_multiple_files():
     assert result.stdout.count("Processing") == 2
 
 
-def test_cli_outputs_statistics():
+def test_cli_outputs_statistics() -> None:
     """Test that CLI outputs expected statistics."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
@@ -62,7 +62,7 @@ def test_cli_outputs_statistics():
     assert "Top tags:" in result.stdout
 
 
-def test_cli_with_archive_small():
+def test_cli_with_archive_small() -> None:
     """Test CLI with the real ARCHIVE_small file."""
     archive_path = os.path.join(PROJECT_ROOT, "examples", "ARCHIVE_small")
 
@@ -80,7 +80,7 @@ def test_cli_with_archive_small():
     assert "Done tasks:" in result.stdout
 
 
-def test_cli_via_cli_module():
+def test_cli_via_cli_module() -> None:
     """Test running via cli.py directly."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
@@ -95,7 +95,7 @@ def test_cli_via_cli_module():
     assert "Processing" in result.stdout
 
 
-def test_cli_handles_24_00_time():
+def test_cli_handles_24_00_time() -> None:
     """Test that CLI handles 24:00 time format correctly."""
     fixture_path = os.path.join(FIXTURES_DIR, "edge_cases.org")
 
@@ -111,7 +111,7 @@ def test_cli_handles_24_00_time():
     assert "Processing" in result.stdout
 
 
-def test_cli_no_arguments():
+def test_cli_no_arguments() -> None:
     """Test CLI behavior with no arguments."""
     result = subprocess.run(
         [sys.executable, "-m", "orgstats"], cwd=PROJECT_ROOT, capture_output=True, text=True
@@ -121,7 +121,7 @@ def test_cli_no_arguments():
     assert result.returncode == 2
 
 
-def test_cli_tag_filtering():
+def test_cli_tag_filtering() -> None:
     """Test that CLI output shows filtered tags."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
@@ -139,7 +139,7 @@ def test_cli_tag_filtering():
     assert "Frequency(" not in result.stdout
 
 
-def test_cli_filter_simple_sorting():
+def test_cli_filter_simple_sorting() -> None:
     """Test that --filter simple filters simple tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
@@ -157,7 +157,7 @@ def test_cli_filter_simple_sorting():
     assert "Frequency(" not in result.stdout
 
 
-def test_cli_filter_hard_sorting():
+def test_cli_filter_hard_sorting() -> None:
     """Test that --filter hard filters hard tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
@@ -173,7 +173,7 @@ def test_cli_filter_hard_sorting():
     assert "hardtag" in result.stdout
 
 
-def test_cli_filter_output_format():
+def test_cli_filter_output_format() -> None:
     """Test that output format is integer tuples, not Frequency objects."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
@@ -194,7 +194,7 @@ def test_cli_filter_output_format():
     assert "hard=" not in result.stdout
 
 
-def test_cli_filter_combined_options():
+def test_cli_filter_combined_options() -> None:
     """Test --filter with other CLI options."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
     exclude_list_path = os.path.join(FIXTURES_DIR, "exclude_list_tags.txt")
@@ -221,7 +221,7 @@ def test_cli_filter_combined_options():
     assert "Processing" in result.stdout
 
 
-def test_cli_outputs_time_ranges():
+def test_cli_outputs_time_ranges() -> None:
     """Test that CLI outputs time range sections."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
@@ -237,7 +237,7 @@ def test_cli_outputs_time_ranges():
     assert "earliest=" in result.stdout or "count=" in result.stdout
 
 
-def test_cli_time_ranges_format():
+def test_cli_time_ranges_format() -> None:
     """Test that time range output contains expected format."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
@@ -253,7 +253,7 @@ def test_cli_time_ranges_format():
     assert "top_day=" in result.stdout or "count=" in result.stdout
 
 
-def test_cli_default_max_results_is_10():
+def test_cli_default_max_results_is_10() -> None:
     """Test that default max_results is 10."""
     result = subprocess.run(
         [sys.executable, "-m", "orgstats", "--help"],

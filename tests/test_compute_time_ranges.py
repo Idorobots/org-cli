@@ -5,10 +5,10 @@ from datetime import date, datetime
 from orgstats.core import TimeRange, compute_time_ranges
 
 
-def test_compute_time_ranges_empty_items():
+def test_compute_time_ranges_empty_items() -> None:
     """Test with empty items set."""
-    items = set()
-    time_ranges = {}
+    items: set[str] = set()
+    time_ranges: dict[str, TimeRange] = {}
     timestamps = [datetime(2023, 10, 20, 14, 43)]
 
     compute_time_ranges(items, time_ranges, timestamps)
@@ -16,21 +16,21 @@ def test_compute_time_ranges_empty_items():
     assert time_ranges == {}
 
 
-def test_compute_time_ranges_empty_timestamps():
+def test_compute_time_ranges_empty_timestamps() -> None:
     """Test with empty timestamps list."""
     items = {"python"}
-    time_ranges = {}
-    timestamps = []
+    time_ranges: dict[str, TimeRange] = {}
+    timestamps: list[datetime] = []
 
     compute_time_ranges(items, time_ranges, timestamps)
 
     assert time_ranges == {}
 
 
-def test_compute_time_ranges_single_item_single_timestamp():
+def test_compute_time_ranges_single_item_single_timestamp() -> None:
     """Test single item with single timestamp."""
     items = {"python"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt = datetime(2023, 10, 20, 14, 43)
     timestamps = [dt]
 
@@ -41,10 +41,10 @@ def test_compute_time_ranges_single_item_single_timestamp():
     assert time_ranges["python"].latest == dt
 
 
-def test_compute_time_ranges_single_item_multiple_timestamps():
+def test_compute_time_ranges_single_item_multiple_timestamps() -> None:
     """Test single item with multiple timestamps."""
     items = {"python"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 19, 10, 0)
     dt3 = datetime(2023, 10, 20, 14, 43)
@@ -57,10 +57,10 @@ def test_compute_time_ranges_single_item_multiple_timestamps():
     assert time_ranges["python"].latest == dt3
 
 
-def test_compute_time_ranges_multiple_items():
+def test_compute_time_ranges_multiple_items() -> None:
     """Test multiple items with same timestamps."""
     items = {"python", "testing", "debugging"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 20, 14, 43)
     timestamps = [dt1, dt2]
@@ -76,11 +76,11 @@ def test_compute_time_ranges_multiple_items():
     assert time_ranges["debugging"].latest == dt2
 
 
-def test_compute_time_ranges_accumulates():
+def test_compute_time_ranges_accumulates() -> None:
     """Test multiple calls accumulate correctly."""
     items1 = {"python"}
     items2 = {"python", "testing"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 20, 14, 43)
 
@@ -93,7 +93,7 @@ def test_compute_time_ranges_accumulates():
     assert time_ranges["testing"].latest == dt2
 
 
-def test_compute_time_ranges_updates_existing():
+def test_compute_time_ranges_updates_existing() -> None:
     """Test updates existing TimeRange."""
     items = {"python"}
     dt1 = datetime(2023, 10, 19, 10, 0)
@@ -107,22 +107,21 @@ def test_compute_time_ranges_updates_existing():
     assert time_ranges["python"].latest == dt3
 
 
-def test_compute_time_ranges_mutates_dict():
+def test_compute_time_ranges_mutates_dict() -> None:
     """Test function modifies dict in-place."""
     items = {"python"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     timestamps = [datetime(2023, 10, 20, 14, 43)]
 
-    result = compute_time_ranges(items, time_ranges, timestamps)
+    compute_time_ranges(items, time_ranges, timestamps)
 
-    assert result is None
     assert "python" in time_ranges
 
 
-def test_compute_time_ranges_chronological_order():
+def test_compute_time_ranges_chronological_order() -> None:
     """Test timestamps in chronological order."""
     items = {"python"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 19, 10, 0)
     dt3 = datetime(2023, 10, 20, 14, 43)
@@ -134,10 +133,10 @@ def test_compute_time_ranges_chronological_order():
     assert time_ranges["python"].latest == dt3
 
 
-def test_compute_time_ranges_reverse_order():
+def test_compute_time_ranges_reverse_order() -> None:
     """Test timestamps in reverse chronological order."""
     items = {"python"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 19, 10, 0)
     dt3 = datetime(2023, 10, 20, 14, 43)
@@ -149,10 +148,10 @@ def test_compute_time_ranges_reverse_order():
     assert time_ranges["python"].latest == dt3
 
 
-def test_compute_time_ranges_mixed_order():
+def test_compute_time_ranges_mixed_order() -> None:
     """Test timestamps in mixed order."""
     items = {"python"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 19, 10, 0)
     dt3 = datetime(2023, 10, 20, 14, 43)
@@ -164,10 +163,10 @@ def test_compute_time_ranges_mixed_order():
     assert time_ranges["python"].latest == dt3
 
 
-def test_compute_time_ranges_single_timestamp_list():
+def test_compute_time_ranges_single_timestamp_list() -> None:
     """Test with single timestamp in list."""
     items = {"python", "testing"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt = datetime(2023, 10, 20, 14, 43)
     timestamps = [dt]
 
@@ -179,10 +178,10 @@ def test_compute_time_ranges_single_timestamp_list():
     assert time_ranges["testing"].latest == dt
 
 
-def test_compute_time_ranges_normalized_tags():
+def test_compute_time_ranges_normalized_tags() -> None:
     """Test with normalized tag names."""
     items = {"python", "testing", "devops"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt = datetime(2023, 10, 20, 14, 43)
     timestamps = [dt]
 
@@ -193,10 +192,10 @@ def test_compute_time_ranges_normalized_tags():
     assert "devops" in time_ranges
 
 
-def test_compute_time_ranges_timeline_single_timestamp():
+def test_compute_time_ranges_timeline_single_timestamp() -> None:
     """Test single timestamp creates timeline entry."""
     items = {"python"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt = datetime(2023, 10, 20, 14, 43)
     timestamps = [dt]
 
@@ -207,10 +206,10 @@ def test_compute_time_ranges_timeline_single_timestamp():
     assert timeline[date(2023, 10, 20)] == 1
 
 
-def test_compute_time_ranges_timeline_multiple_timestamps():
+def test_compute_time_ranges_timeline_multiple_timestamps() -> None:
     """Test multiple timestamps on different days create multiple timeline entries."""
     items = {"python"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 19, 10, 0)
     dt3 = datetime(2023, 10, 20, 14, 43)
@@ -225,10 +224,10 @@ def test_compute_time_ranges_timeline_multiple_timestamps():
     assert timeline[date(2023, 10, 20)] == 1
 
 
-def test_compute_time_ranges_timeline_same_day_timestamps():
+def test_compute_time_ranges_timeline_same_day_timestamps() -> None:
     """Test multiple timestamps on same day increment counter."""
     items = {"python"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt1 = datetime(2023, 10, 20, 9, 15)
     dt2 = datetime(2023, 10, 20, 14, 43)
     timestamps = [dt1, dt2]
@@ -240,11 +239,11 @@ def test_compute_time_ranges_timeline_same_day_timestamps():
     assert timeline[date(2023, 10, 20)] == 2
 
 
-def test_compute_time_ranges_timeline_accumulates():
+def test_compute_time_ranges_timeline_accumulates() -> None:
     """Test multiple calls accumulate timeline correctly."""
     items1 = {"python"}
     items2 = {"python"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 18, 14, 30)
     dt3 = datetime(2023, 10, 19, 10, 0)
@@ -258,10 +257,10 @@ def test_compute_time_ranges_timeline_accumulates():
     assert timeline[date(2023, 10, 19)] == 1
 
 
-def test_compute_time_ranges_timeline_multiple_items():
+def test_compute_time_ranges_timeline_multiple_items() -> None:
     """Test multiple items all get timeline entries."""
     items = {"python", "testing"}
-    time_ranges = {}
+    time_ranges: dict[str, TimeRange] = {}
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 19, 10, 0)
     timestamps = [dt1, dt2]

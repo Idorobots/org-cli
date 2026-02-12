@@ -3,7 +3,7 @@
 from orgstats.core import AnalysisResult, Frequency
 
 
-def test_analysis_result_initialization():
+def test_analysis_result_initialization() -> None:
     """Test that AnalysisResult can be initialized with all fields."""
     from orgstats.core import Relations
 
@@ -24,7 +24,7 @@ def test_analysis_result_initialization():
     assert result.tag_groups == []
 
 
-def test_analysis_result_empty_initialization():
+def test_analysis_result_empty_initialization() -> None:
     """Test AnalysisResult with empty data."""
     result = AnalysisResult(
         total_tasks=0,
@@ -43,7 +43,7 @@ def test_analysis_result_empty_initialization():
     assert result.tag_groups == []
 
 
-def test_analysis_result_attributes():
+def test_analysis_result_attributes() -> None:
     """Test that AnalysisResult has all expected attributes."""
     result = AnalysisResult(
         total_tasks=1,
@@ -62,14 +62,14 @@ def test_analysis_result_attributes():
     assert result.tag_groups == []
 
 
-def test_analysis_result_is_dataclass():
+def test_analysis_result_is_dataclass() -> None:
     """Test that AnalysisResult is a dataclass."""
     from dataclasses import is_dataclass
 
     assert is_dataclass(AnalysisResult)
 
 
-def test_analysis_result_repr():
+def test_analysis_result_repr() -> None:
     """Test the string representation of AnalysisResult."""
     result = AnalysisResult(
         total_tasks=2,
@@ -86,7 +86,7 @@ def test_analysis_result_repr():
     assert "done_tasks=1" in repr_str
 
 
-def test_analysis_result_equality():
+def test_analysis_result_equality() -> None:
     """Test equality comparison of AnalysisResult objects."""
     result1 = AnalysisResult(
         total_tasks=5,
@@ -119,7 +119,7 @@ def test_analysis_result_equality():
     assert result1 != result3
 
 
-def test_analysis_result_mutable_fields():
+def test_analysis_result_mutable_fields() -> None:
     """Test that AnalysisResult fields can be modified."""
     from orgstats.core import Group, Relations, TimeRange
 
@@ -147,7 +147,7 @@ def test_analysis_result_mutable_fields():
     assert len(result.tag_groups) == 1
 
 
-def test_analysis_result_dict_operations():
+def test_analysis_result_dict_operations() -> None:
     """Test that dictionary operations work on frequency fields."""
     result = AnalysisResult(
         total_tasks=3,

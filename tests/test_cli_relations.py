@@ -10,7 +10,7 @@ PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
-def test_cli_accepts_max_relations_parameter():
+def test_cli_accepts_max_relations_parameter() -> None:
     """Test that --max-relations parameter is accepted."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
@@ -25,7 +25,7 @@ def test_cli_accepts_max_relations_parameter():
     assert "Processing" in result.stdout
 
 
-def test_cli_max_relations_default_is_3():
+def test_cli_max_relations_default_is_3() -> None:
     """Test that default max_relations is 3."""
     result = subprocess.run(
         [sys.executable, "-m", "orgstats", "--help"],
@@ -39,7 +39,7 @@ def test_cli_max_relations_default_is_3():
     assert "--max-relations" in result.stdout
 
 
-def test_cli_max_relations_displays_relations():
+def test_cli_max_relations_displays_relations() -> None:
     """Test that relations are displayed with proper format."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
@@ -62,7 +62,7 @@ def test_cli_max_relations_displays_relations():
         assert "(" in line and ")" in line
 
 
-def test_cli_max_relations_limits_display():
+def test_cli_max_relations_limits_display() -> None:
     """Test that only max_relations items are shown per tag."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
@@ -98,7 +98,7 @@ def test_cli_max_relations_limits_display():
     assert max_relations_for_any_tag <= 2
 
 
-def test_cli_max_relations_zero_rejected():
+def test_cli_max_relations_zero_rejected() -> None:
     """Test that --max-relations 0 is rejected."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
@@ -114,7 +114,7 @@ def test_cli_max_relations_zero_rejected():
     assert "max-relations" in result.stderr
 
 
-def test_cli_max_relations_negative_rejected():
+def test_cli_max_relations_negative_rejected() -> None:
     """Test that negative values are rejected."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
@@ -129,7 +129,7 @@ def test_cli_max_relations_negative_rejected():
     assert "Error" in result.stderr
 
 
-def test_cli_max_relations_sorted_by_frequency():
+def test_cli_max_relations_sorted_by_frequency() -> None:
     """Test that relations are sorted by frequency (descending)."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
@@ -165,7 +165,7 @@ def test_cli_max_relations_sorted_by_frequency():
                     assert relations[k] >= relations[k + 1]
 
 
-def test_cli_relations_omitted_when_none():
+def test_cli_relations_omitted_when_none() -> None:
     """Test that no relations are shown when item has none."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
@@ -191,7 +191,7 @@ def test_cli_relations_omitted_when_none():
             break
 
 
-def test_cli_max_relations_with_other_options():
+def test_cli_max_relations_with_other_options() -> None:
     """Test --max-relations combined with --filter, -n, etc."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
@@ -218,7 +218,7 @@ def test_cli_max_relations_with_other_options():
     assert "count=" in result.stdout
 
 
-def test_cli_max_relations_value_1():
+def test_cli_max_relations_value_1() -> None:
     """Test that --max-relations 1 shows only one relation per tag."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
@@ -246,7 +246,7 @@ def test_cli_max_relations_value_1():
                 assert relations_count <= 1
 
 
-def test_cli_relations_with_show_heading():
+def test_cli_relations_with_show_heading() -> None:
     """Test that relations work with --show heading."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
@@ -270,7 +270,7 @@ def test_cli_relations_with_show_heading():
     assert "Top heading words:" in result.stdout
 
 
-def test_cli_relations_with_show_body():
+def test_cli_relations_with_show_body() -> None:
     """Test that relations work with --show body."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
@@ -285,7 +285,7 @@ def test_cli_relations_with_show_body():
     assert "Top body words:" in result.stdout
 
 
-def test_cli_relations_filtered_by_exclude():
+def test_cli_relations_filtered_by_exclude() -> None:
     """Test that relations exclude words from the default exclude list."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_filter_test.org")
 
@@ -311,7 +311,7 @@ def test_cli_relations_filtered_by_exclude():
             break
 
 
-def test_cli_relations_filtered_with_custom_exclude_file():
+def test_cli_relations_filtered_with_custom_exclude_file() -> None:
     """Test that relations are filtered when using custom exclude file."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_filter_test.org")
     exclude_file = os.path.join(FIXTURES_DIR, "custom_exclude_tags.txt")
@@ -365,7 +365,7 @@ def test_cli_relations_filtered_with_custom_exclude_file():
             Path(exclude_file).unlink()
 
 
-def test_cli_relations_max_applied_after_filtering():
+def test_cli_relations_max_applied_after_filtering() -> None:
     """Test that max_relations limit is applied after filtering excluded words."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_filter_test.org")
     exclude_file = os.path.join(FIXTURES_DIR, "custom_exclude_for_limit.txt")

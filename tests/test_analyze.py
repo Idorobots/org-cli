@@ -1,12 +1,14 @@
 """Tests for the analyze() function."""
 
+from typing import Any
+
 from orgstats.core import analyze
 from tests.conftest import node_from_org
 
 
-def test_analyze_empty_nodes():
+def test_analyze_empty_nodes() -> None:
     """Test analyze with empty nodes list."""
-    nodes = []
+    nodes: list[Any] = []
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 0
@@ -16,7 +18,7 @@ def test_analyze_empty_nodes():
     assert result.tag_time_ranges == {}
 
 
-def test_analyze_single_done_task():
+def test_analyze_single_done_task() -> None:
     """Test analyze with a single DONE task."""
     nodes = node_from_org("* DONE Write tests :Testing:\nUnit tests\n")
 
@@ -28,7 +30,7 @@ def test_analyze_single_done_task():
     assert result.tag_frequencies["testing"] == 1
 
 
-def test_analyze_single_todo_task():
+def test_analyze_single_todo_task() -> None:
     """Test analyze with a single TODO task."""
     nodes = node_from_org("* TODO Implement feature :Feature:\n")
 
@@ -38,7 +40,7 @@ def test_analyze_single_todo_task():
     assert result.done_tasks == 0
 
 
-def test_analyze_multiple_tasks():
+def test_analyze_multiple_tasks() -> None:
     """Test analyze with multiple tasks."""
     nodes = node_from_org("""
 * DONE Task 1 :Tag1:
@@ -52,7 +54,7 @@ def test_analyze_multiple_tasks():
     assert result.done_tasks == 2
 
 
-def test_analyze_tag_frequencies():
+def test_analyze_tag_frequencies() -> None:
     """Test that tag frequencies are counted correctly."""
     nodes = node_from_org("""
 * DONE Task :Python:
@@ -66,7 +68,7 @@ def test_analyze_tag_frequencies():
     assert result.tag_frequencies["testing"] == 1
 
 
-def test_analyze_heading_word_frequencies():
+def test_analyze_heading_word_frequencies() -> None:
     """Test that heading words are counted correctly when category is 'heading'."""
     nodes = node_from_org("""
 * DONE Implement feature
@@ -83,7 +85,7 @@ def test_analyze_heading_word_frequencies():
     assert result.tag_frequencies["documentation"] == 1
 
 
-def test_analyze_body_word_frequencies():
+def test_analyze_body_word_frequencies() -> None:
     """Test that body words are counted correctly when category is 'body'."""
     nodes = node_from_org("""
 * DONE Task
@@ -100,7 +102,7 @@ Python tests
     assert result.tag_frequencies["tests"] == 1
 
 
-def test_analyze_repeated_tasks():
+def test_analyze_repeated_tasks() -> None:
     """Test analyze with repeated tasks."""
     nodes = node_from_org("""
 * TODO Task :Recurring:
@@ -121,7 +123,7 @@ def test_analyze_repeated_tasks():
     assert result.tag_frequencies["recurring"] == 2
 
 
-def test_analyze_repeated_tasks_count_in_tags():
+def test_analyze_repeated_tasks_count_in_tags() -> None:
     """Test that repeated task count affects tag frequencies."""
     nodes = node_from_org("""
 * TODO Meeting :Daily:
@@ -138,7 +140,7 @@ def test_analyze_repeated_tasks_count_in_tags():
     assert result_heading.tag_frequencies["meeting"] == 2
 
 
-def test_analyze_done_task_no_repeats():
+def test_analyze_done_task_no_repeats() -> None:
     """Test DONE task with no repeated tasks."""
     nodes = node_from_org("* DONE Task :Simple:\n")
 
@@ -149,7 +151,7 @@ def test_analyze_done_task_no_repeats():
     assert result.tag_frequencies["simple"] == 1
 
 
-def test_analyze_normalizes_tags():
+def test_analyze_normalizes_tags() -> None:
     """Test that analyze normalizes tags (via normalize function)."""
     nodes = node_from_org("* DONE Task :Test:SysAdmin:\n")
 
@@ -163,7 +165,7 @@ def test_analyze_normalizes_tags():
     assert "devops" in result.tag_frequencies
 
 
-def test_analyze_multiple_tags_per_task():
+def test_analyze_multiple_tags_per_task() -> None:
     """Test task with multiple tags."""
     nodes = node_from_org("* DONE Task :Python:Testing:Debugging:\n")
 
@@ -175,7 +177,7 @@ def test_analyze_multiple_tags_per_task():
     assert "debugging" in result.tag_frequencies
 
 
-def test_analyze_empty_tags():
+def test_analyze_empty_tags() -> None:
     """Test task with no tags."""
     nodes = node_from_org("* DONE No tags\n")
 
@@ -184,7 +186,7 @@ def test_analyze_empty_tags():
     assert result.tag_frequencies == {}
 
 
-def test_analyze_empty_heading():
+def test_analyze_empty_heading() -> None:
     """Test task with empty heading."""
     nodes = node_from_org("* DONE\nContent\n")
 
@@ -193,7 +195,7 @@ def test_analyze_empty_heading():
     assert result.tag_frequencies == {}
 
 
-def test_analyze_empty_body():
+def test_analyze_empty_body() -> None:
     """Test task with empty body."""
     nodes = node_from_org("* DONE Title\n")
 
@@ -205,11 +207,11 @@ def test_analyze_empty_body():
         assert result.tag_frequencies[""].total >= 0
 
 
-def test_analyze_returns_tuple():
+def test_analyze_returns_tuple() -> None:
     """Test that analyze returns an AnalysisResult object."""
     from orgstats.core import AnalysisResult
 
-    nodes = []
+    nodes: list[Any] = []
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert isinstance(result, AnalysisResult)
@@ -220,7 +222,7 @@ def test_analyze_returns_tuple():
     assert result.tag_time_ranges == {}
 
 
-def test_analyze_accumulates_across_nodes():
+def test_analyze_accumulates_across_nodes() -> None:
     """Test that frequencies accumulate across multiple nodes."""
     nodes = node_from_org("""
 * DONE Task one :Python:
@@ -241,7 +243,7 @@ implementation
     assert result_body.tag_frequencies["implementation"] == 2
 
 
-def test_analyze_max_count_logic():
+def test_analyze_max_count_logic() -> None:
     """Test the max(final, repeats) logic for count."""
     # Case 1: final > repeats (DONE task with TODO repeat)
     # Case 2: repeats > final (TODO task with DONE repeats)
@@ -266,7 +268,7 @@ def test_analyze_max_count_logic():
     assert result.tag_frequencies["b"] == 2
 
 
-def test_analyze_with_custom_mapping():
+def test_analyze_with_custom_mapping() -> None:
     """Test analyze with custom mapping parameter."""
     custom_map = {"foo": "bar", "baz": "qux"}
     nodes = node_from_org("* DONE Task :foo:baz:unmapped:\n")
@@ -280,9 +282,9 @@ def test_analyze_with_custom_mapping():
     assert "baz" not in result.tag_frequencies
 
 
-def test_analyze_with_empty_mapping():
+def test_analyze_with_empty_mapping() -> None:
     """Test analyze with empty mapping (no transformations)."""
-    empty_map = {}
+    empty_map: dict[str, str] = {}
     nodes = node_from_org("* DONE Task :test:sysadmin:\n")
 
     result = analyze(nodes, empty_map, category="tags", max_relations=3)
@@ -293,7 +295,7 @@ def test_analyze_with_empty_mapping():
     assert "devops" not in result.tag_frequencies
 
 
-def test_analyze_default_mapping_parameter():
+def test_analyze_default_mapping_parameter() -> None:
     """Test that default mapping parameter uses MAP."""
     nodes = node_from_org("* DONE Task :test:sysadmin:\n")
 
@@ -305,7 +307,7 @@ def test_analyze_default_mapping_parameter():
     assert "devops" in result.tag_frequencies
 
 
-def test_analyze_mapping_affects_all_categories():
+def test_analyze_mapping_affects_all_categories() -> None:
     """Test that custom mapping affects tags, heading, and body."""
     custom_map = {"foo": "bar"}
     nodes = node_from_org("* DONE foo word :foo:\nfoo content\n")

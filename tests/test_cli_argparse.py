@@ -10,7 +10,7 @@ PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
-def test_argparse_help():
+def test_argparse_help() -> None:
     """Test --help output."""
     result = subprocess.run(
         [sys.executable, "-m", "orgstats", "--help"],
@@ -27,7 +27,7 @@ def test_argparse_help():
     assert "--filter" in result.stdout
 
 
-def test_argparse_max_results_long():
+def test_argparse_max_results_long() -> None:
     """Test --max-results flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
@@ -43,7 +43,7 @@ def test_argparse_max_results_long():
     assert "Total tasks:" in result.stdout
 
 
-def test_argparse_max_results_short():
+def test_argparse_max_results_short() -> None:
     """Test -n short flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
@@ -58,7 +58,7 @@ def test_argparse_max_results_short():
     assert "Processing" in result.stdout
 
 
-def test_argparse_exclude():
+def test_argparse_exclude() -> None:
     """Test --exclude with custom file."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     exclude_list_path = os.path.join(FIXTURES_DIR, "exclude_list_tags.txt")
@@ -75,7 +75,7 @@ def test_argparse_exclude():
     assert "Total tasks:" in result.stdout
 
 
-def test_argparse_all_options():
+def test_argparse_all_options() -> None:
     """Test using all options together."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     exclude_path = os.path.join(FIXTURES_DIR, "exclude_list_tags.txt")
@@ -100,7 +100,7 @@ def test_argparse_all_options():
     assert "Processing" in result.stdout
 
 
-def test_argparse_invalid_max_results():
+def test_argparse_invalid_max_results() -> None:
     """Test invalid max-results value."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
@@ -116,7 +116,7 @@ def test_argparse_invalid_max_results():
     assert "invalid int value" in result.stderr or "error" in result.stderr.lower()
 
 
-def test_argparse_missing_exclude_list_file():
+def test_argparse_missing_exclude_list_file() -> None:
     """Test non-existent exclude_list file."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
     nonexistent_file = os.path.join(FIXTURES_DIR, "does_not_exist.txt")
@@ -132,7 +132,7 @@ def test_argparse_missing_exclude_list_file():
     assert "not found" in result.stderr
 
 
-def test_argparse_empty_exclude_list_file():
+def test_argparse_empty_exclude_list_file() -> None:
     """Test empty exclude_list file."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     empty_file = os.path.join(FIXTURES_DIR, "exclude_list_empty.txt")
@@ -149,7 +149,7 @@ def test_argparse_empty_exclude_list_file():
     assert "Processing" in result.stdout
 
 
-def test_argparse_backward_compatibility():
+def test_argparse_backward_compatibility() -> None:
     """Test that old-style invocation still works."""
     fixture1 = os.path.join(FIXTURES_DIR, "simple.org")
     fixture2 = os.path.join(FIXTURES_DIR, "single_task.org")
@@ -168,7 +168,7 @@ def test_argparse_backward_compatibility():
     assert "Total tasks:" in result.stdout
 
 
-def test_argparse_no_files_provided():
+def test_argparse_no_files_provided() -> None:
     """Test behavior when no files are provided."""
     result = subprocess.run(
         [sys.executable, "-m", "orgstats"],
@@ -182,7 +182,7 @@ def test_argparse_no_files_provided():
     assert "the following arguments are required:" in result.stderr
 
 
-def test_argparse_options_before_files():
+def test_argparse_options_before_files() -> None:
     """Test that options can come before filenames."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
@@ -197,7 +197,7 @@ def test_argparse_options_before_files():
     assert "Processing" in result.stdout
 
 
-def test_argparse_options_after_files():
+def test_argparse_options_after_files() -> None:
     """Test that options can come after filenames."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
@@ -212,7 +212,7 @@ def test_argparse_options_after_files():
     assert "Processing" in result.stdout
 
 
-def test_load_exclude_list_function():
+def test_load_exclude_list_function() -> None:
     """Test load_exclude_list helper function directly."""
     from orgstats.cli import load_exclude_list
 
@@ -233,7 +233,7 @@ def test_load_exclude_list_function():
     assert result == set()
 
 
-def test_argparse_filter_default():
+def test_argparse_filter_default() -> None:
     """Test default --filter behavior (should be all)."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
@@ -250,7 +250,7 @@ def test_argparse_filter_default():
     assert "Frequency(" not in result.stdout
 
 
-def test_argparse_filter_simple():
+def test_argparse_filter_simple() -> None:
     """Test --filter simple flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
@@ -266,7 +266,7 @@ def test_argparse_filter_simple():
     assert "Frequency(" not in result.stdout
 
 
-def test_argparse_filter_regular():
+def test_argparse_filter_regular() -> None:
     """Test --filter regular flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
@@ -281,7 +281,7 @@ def test_argparse_filter_regular():
     assert "Processing" in result.stdout
 
 
-def test_argparse_filter_hard():
+def test_argparse_filter_hard() -> None:
     """Test --filter hard flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
@@ -296,7 +296,7 @@ def test_argparse_filter_hard():
     assert "Processing" in result.stdout
 
 
-def test_argparse_filter_all():
+def test_argparse_filter_all() -> None:
     """Test explicit --filter all flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
@@ -311,7 +311,7 @@ def test_argparse_filter_all():
     assert "Processing" in result.stdout
 
 
-def test_argparse_filter_invalid():
+def test_argparse_filter_invalid() -> None:
     """Test invalid --filter value."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
@@ -326,7 +326,7 @@ def test_argparse_filter_invalid():
     assert "invalid choice" in result.stderr
 
 
-def test_argparse_filter_with_max_results():
+def test_argparse_filter_with_max_results() -> None:
     """Test combining --filter with -n flag."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
@@ -341,7 +341,7 @@ def test_argparse_filter_with_max_results():
     assert "Processing" in result.stdout
 
 
-def test_argparse_filter_in_help():
+def test_argparse_filter_in_help() -> None:
     """Test that --filter appears in help output."""
     result = subprocess.run(
         [sys.executable, "-m", "orgstats", "--help"],

@@ -8,7 +8,7 @@ from io import StringIO
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
-def test_main_function_directly():
+def test_main_function_directly() -> None:
     """Test the main() function directly for coverage."""
     from orgstats.cli import main
 
@@ -41,7 +41,7 @@ def test_main_function_directly():
         sys.stdout = original_stdout
 
 
-def test_main_with_multiple_files_direct():
+def test_main_with_multiple_files_direct() -> None:
     """Test main() with multiple files."""
     from orgstats.cli import main
 
@@ -67,7 +67,7 @@ def test_main_with_multiple_files_direct():
         sys.stdout = original_stdout
 
 
-def test_main_with_filter_parameter():
+def test_main_with_filter_parameter() -> None:
     """Test main function with --filter parameter."""
     from orgstats.cli import main
 
