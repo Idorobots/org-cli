@@ -2,204 +2,125 @@
 
 from datetime import date, datetime
 
-from orgstats.core import TimeRange, compute_time_ranges
+from orgstats.core import compute_time_ranges
+from tests.conftest import node_from_org
 
 
-def test_compute_time_ranges_empty_items() -> None:
-    """Test with empty items set."""
-    items: set[str] = set()
-    time_ranges: dict[str, TimeRange] = {}
-    timestamps = [datetime(2023, 10, 20, 14, 43)]
+def test_compute_time_ranges_empty_nodes() -> None:
+    """Test with empty nodes list."""
+    nodes = node_from_org("")
 
-    compute_time_ranges(items, time_ranges, timestamps)
-
-    assert time_ranges == {}
-
-
-def test_compute_time_ranges_empty_timestamps() -> None:
-    """Test with empty timestamps list."""
-    items = {"python"}
-    time_ranges: dict[str, TimeRange] = {}
-    timestamps: list[datetime] = []
-
-    compute_time_ranges(items, time_ranges, timestamps)
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     assert time_ranges == {}
 
 
-def test_compute_time_ranges_single_item_single_timestamp() -> None:
-    """Test single item with single timestamp."""
-    items = {"python"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt = datetime(2023, 10, 20, 14, 43)
-    timestamps = [dt]
+def test_compute_time_ranges_node_without_timestamps() -> None:
+    """Test with node that has no timestamps."""
+    nodes = node_from_org("* DONE Task :Python:\n")
 
-    compute_time_ranges(items, time_ranges, timestamps)
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
+
+    assert time_ranges == {}
+
+
+def test_compute_time_ranges_single_tag_single_timestamp() -> None:
+    """Test single tag with single timestamp."""
+    nodes = node_from_org("""
+* DONE Task :Python:
+CLOSED: [2023-10-20 Fri 14:43]
+""")
+
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     assert "python" in time_ranges
+    dt = datetime(2023, 10, 20, 14, 43)
     assert time_ranges["python"].earliest == dt
     assert time_ranges["python"].latest == dt
 
 
-def test_compute_time_ranges_single_item_multiple_timestamps() -> None:
-    """Test single item with multiple timestamps."""
-    items = {"python"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt1 = datetime(2023, 10, 18, 9, 15)
-    dt2 = datetime(2023, 10, 19, 10, 0)
-    dt3 = datetime(2023, 10, 20, 14, 43)
-    timestamps = [dt1, dt2, dt3]
+def test_compute_time_ranges_single_tag_multiple_timestamps() -> None:
+    """Test single tag with multiple timestamps via repeated tasks."""
+    nodes = node_from_org("""
+* TODO Task :Python:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2023-10-20 Fri 14:43]
+- State "DONE"       from "TODO"       [2023-10-19 Thu 10:00]
+- State "DONE"       from "TODO"       [2023-10-18 Wed 09:15]
+:END:
+""")
 
-    compute_time_ranges(items, time_ranges, timestamps)
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     assert "python" in time_ranges
+    dt1 = datetime(2023, 10, 18, 9, 15)
+    dt3 = datetime(2023, 10, 20, 14, 43)
     assert time_ranges["python"].earliest == dt1
     assert time_ranges["python"].latest == dt3
 
 
-def test_compute_time_ranges_multiple_items() -> None:
-    """Test multiple items with same timestamps."""
-    items = {"python", "testing", "debugging"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt1 = datetime(2023, 10, 18, 9, 15)
-    dt2 = datetime(2023, 10, 20, 14, 43)
-    timestamps = [dt1, dt2]
+def test_compute_time_ranges_multiple_tags() -> None:
+    """Test multiple tags with same timestamps."""
+    nodes = node_from_org("""
+* DONE Task :Python:Testing:Debugging:
+CLOSED: [2023-10-20 Fri 14:43]
+""")
 
-    compute_time_ranges(items, time_ranges, timestamps)
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     assert len(time_ranges) == 3
-    assert time_ranges["python"].earliest == dt1
-    assert time_ranges["python"].latest == dt2
-    assert time_ranges["testing"].earliest == dt1
-    assert time_ranges["testing"].latest == dt2
-    assert time_ranges["debugging"].earliest == dt1
-    assert time_ranges["debugging"].latest == dt2
+    dt = datetime(2023, 10, 20, 14, 43)
+    assert time_ranges["python"].earliest == dt
+    assert time_ranges["python"].latest == dt
+    assert time_ranges["testing"].earliest == dt
+    assert time_ranges["testing"].latest == dt
+    assert time_ranges["debugging"].earliest == dt
+    assert time_ranges["debugging"].latest == dt
 
 
 def test_compute_time_ranges_accumulates() -> None:
-    """Test multiple calls accumulate correctly."""
-    items1 = {"python"}
-    items2 = {"python", "testing"}
-    time_ranges: dict[str, TimeRange] = {}
+    """Test multiple nodes accumulate correctly."""
+    nodes = node_from_org("""
+* DONE Task :Python:
+CLOSED: [2023-10-18 Wed 09:15]
+
+* DONE Task :Python:Testing:
+CLOSED: [2023-10-20 Fri 14:43]
+""")
+
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
+
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 20, 14, 43)
-
-    compute_time_ranges(items1, time_ranges, [dt1])
-    compute_time_ranges(items2, time_ranges, [dt2])
-
     assert time_ranges["python"].earliest == dt1
     assert time_ranges["python"].latest == dt2
     assert time_ranges["testing"].earliest == dt2
     assert time_ranges["testing"].latest == dt2
 
 
-def test_compute_time_ranges_updates_existing() -> None:
-    """Test updates existing TimeRange."""
-    items = {"python"}
-    dt1 = datetime(2023, 10, 19, 10, 0)
-    dt2 = datetime(2023, 10, 18, 9, 15)
-    dt3 = datetime(2023, 10, 20, 14, 43)
-    time_ranges = {"python": TimeRange(earliest=dt1, latest=dt1)}
+def test_compute_time_ranges_with_mapping() -> None:
+    """Test that mapping is applied."""
+    nodes = node_from_org("""
+* DONE Task :Test:SysAdmin:
+CLOSED: [2023-10-20 Fri 14:43]
+""")
 
-    compute_time_ranges(items, time_ranges, [dt2, dt3])
+    time_ranges = compute_time_ranges(nodes, {"test": "testing", "sysadmin": "devops"}, "tags")
 
-    assert time_ranges["python"].earliest == dt2
-    assert time_ranges["python"].latest == dt3
-
-
-def test_compute_time_ranges_mutates_dict() -> None:
-    """Test function modifies dict in-place."""
-    items = {"python"}
-    time_ranges: dict[str, TimeRange] = {}
-    timestamps = [datetime(2023, 10, 20, 14, 43)]
-
-    compute_time_ranges(items, time_ranges, timestamps)
-
-    assert "python" in time_ranges
-
-
-def test_compute_time_ranges_chronological_order() -> None:
-    """Test timestamps in chronological order."""
-    items = {"python"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt1 = datetime(2023, 10, 18, 9, 15)
-    dt2 = datetime(2023, 10, 19, 10, 0)
-    dt3 = datetime(2023, 10, 20, 14, 43)
-    timestamps = [dt1, dt2, dt3]
-
-    compute_time_ranges(items, time_ranges, timestamps)
-
-    assert time_ranges["python"].earliest == dt1
-    assert time_ranges["python"].latest == dt3
-
-
-def test_compute_time_ranges_reverse_order() -> None:
-    """Test timestamps in reverse chronological order."""
-    items = {"python"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt1 = datetime(2023, 10, 18, 9, 15)
-    dt2 = datetime(2023, 10, 19, 10, 0)
-    dt3 = datetime(2023, 10, 20, 14, 43)
-    timestamps = [dt3, dt2, dt1]
-
-    compute_time_ranges(items, time_ranges, timestamps)
-
-    assert time_ranges["python"].earliest == dt1
-    assert time_ranges["python"].latest == dt3
-
-
-def test_compute_time_ranges_mixed_order() -> None:
-    """Test timestamps in mixed order."""
-    items = {"python"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt1 = datetime(2023, 10, 18, 9, 15)
-    dt2 = datetime(2023, 10, 19, 10, 0)
-    dt3 = datetime(2023, 10, 20, 14, 43)
-    timestamps = [dt2, dt3, dt1]
-
-    compute_time_ranges(items, time_ranges, timestamps)
-
-    assert time_ranges["python"].earliest == dt1
-    assert time_ranges["python"].latest == dt3
-
-
-def test_compute_time_ranges_single_timestamp_list() -> None:
-    """Test with single timestamp in list."""
-    items = {"python", "testing"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt = datetime(2023, 10, 20, 14, 43)
-    timestamps = [dt]
-
-    compute_time_ranges(items, time_ranges, timestamps)
-
-    assert time_ranges["python"].earliest == dt
-    assert time_ranges["python"].latest == dt
-    assert time_ranges["testing"].earliest == dt
-    assert time_ranges["testing"].latest == dt
-
-
-def test_compute_time_ranges_normalized_tags() -> None:
-    """Test with normalized tag names."""
-    items = {"python", "testing", "devops"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt = datetime(2023, 10, 20, 14, 43)
-    timestamps = [dt]
-
-    compute_time_ranges(items, time_ranges, timestamps)
-
-    assert "python" in time_ranges
     assert "testing" in time_ranges
     assert "devops" in time_ranges
+    assert "test" not in time_ranges
+    assert "sysadmin" not in time_ranges
 
 
 def test_compute_time_ranges_timeline_single_timestamp() -> None:
     """Test single timestamp creates timeline entry."""
-    items = {"python"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt = datetime(2023, 10, 20, 14, 43)
-    timestamps = [dt]
+    nodes = node_from_org("""
+* DONE Task :Python:
+CLOSED: [2023-10-20 Fri 14:43]
+""")
 
-    compute_time_ranges(items, time_ranges, timestamps)
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     timeline = time_ranges["python"].timeline
     assert len(timeline) == 1
@@ -208,14 +129,16 @@ def test_compute_time_ranges_timeline_single_timestamp() -> None:
 
 def test_compute_time_ranges_timeline_multiple_timestamps() -> None:
     """Test multiple timestamps on different days create multiple timeline entries."""
-    items = {"python"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt1 = datetime(2023, 10, 18, 9, 15)
-    dt2 = datetime(2023, 10, 19, 10, 0)
-    dt3 = datetime(2023, 10, 20, 14, 43)
-    timestamps = [dt1, dt2, dt3]
+    nodes = node_from_org("""
+* TODO Task :Python:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2023-10-20 Fri 14:43]
+- State "DONE"       from "TODO"       [2023-10-19 Thu 10:00]
+- State "DONE"       from "TODO"       [2023-10-18 Wed 09:15]
+:END:
+""")
 
-    compute_time_ranges(items, time_ranges, timestamps)
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     timeline = time_ranges["python"].timeline
     assert len(timeline) == 3
@@ -226,13 +149,15 @@ def test_compute_time_ranges_timeline_multiple_timestamps() -> None:
 
 def test_compute_time_ranges_timeline_same_day_timestamps() -> None:
     """Test multiple timestamps on same day increment counter."""
-    items = {"python"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt1 = datetime(2023, 10, 20, 9, 15)
-    dt2 = datetime(2023, 10, 20, 14, 43)
-    timestamps = [dt1, dt2]
+    nodes = node_from_org("""
+* TODO Task :Python:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2023-10-20 Fri 14:43]
+- State "DONE"       from "TODO"       [2023-10-20 Fri 09:15]
+:END:
+""")
 
-    compute_time_ranges(items, time_ranges, timestamps)
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     timeline = time_ranges["python"].timeline
     assert len(timeline) == 1
@@ -240,16 +165,19 @@ def test_compute_time_ranges_timeline_same_day_timestamps() -> None:
 
 
 def test_compute_time_ranges_timeline_accumulates() -> None:
-    """Test multiple calls accumulate timeline correctly."""
-    items1 = {"python"}
-    items2 = {"python"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt1 = datetime(2023, 10, 18, 9, 15)
-    dt2 = datetime(2023, 10, 18, 14, 30)
-    dt3 = datetime(2023, 10, 19, 10, 0)
+    """Test multiple nodes accumulate timeline correctly."""
+    nodes = node_from_org("""
+* DONE Task :Python:
+CLOSED: [2023-10-18 Wed 09:15]
 
-    compute_time_ranges(items1, time_ranges, [dt1])
-    compute_time_ranges(items2, time_ranges, [dt2, dt3])
+* DONE Task :Python:
+CLOSED: [2023-10-18 Wed 14:30]
+
+* DONE Task :Python:
+CLOSED: [2023-10-19 Thu 10:00]
+""")
+
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     timeline = time_ranges["python"].timeline
     assert len(timeline) == 2
@@ -257,15 +185,17 @@ def test_compute_time_ranges_timeline_accumulates() -> None:
     assert timeline[date(2023, 10, 19)] == 1
 
 
-def test_compute_time_ranges_timeline_multiple_items() -> None:
-    """Test multiple items all get timeline entries."""
-    items = {"python", "testing"}
-    time_ranges: dict[str, TimeRange] = {}
-    dt1 = datetime(2023, 10, 18, 9, 15)
-    dt2 = datetime(2023, 10, 19, 10, 0)
-    timestamps = [dt1, dt2]
+def test_compute_time_ranges_timeline_multiple_tags() -> None:
+    """Test multiple tags all get timeline entries."""
+    nodes = node_from_org("""
+* TODO Task :Python:Testing:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2023-10-19 Thu 10:00]
+- State "DONE"       from "TODO"       [2023-10-18 Wed 09:15]
+:END:
+""")
 
-    compute_time_ranges(items, time_ranges, timestamps)
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     python_timeline = time_ranges["python"].timeline
     testing_timeline = time_ranges["testing"].timeline
@@ -277,3 +207,30 @@ def test_compute_time_ranges_timeline_multiple_items() -> None:
     assert len(testing_timeline) == 2
     assert testing_timeline[date(2023, 10, 18)] == 1
     assert testing_timeline[date(2023, 10, 19)] == 1
+
+
+def test_compute_time_ranges_heading_category() -> None:
+    """Test time ranges for heading words."""
+    nodes = node_from_org("""
+* DONE Implement feature
+CLOSED: [2023-10-20 Fri 14:43]
+""")
+
+    time_ranges = compute_time_ranges(nodes, {}, "heading")
+
+    assert "implement" in time_ranges
+    assert "feature" in time_ranges
+
+
+def test_compute_time_ranges_body_category() -> None:
+    """Test time ranges for body words."""
+    nodes = node_from_org("""
+* DONE Task
+CLOSED: [2023-10-20 Fri 14:43]
+Python code
+""")
+
+    time_ranges = compute_time_ranges(nodes, {}, "body")
+
+    assert "python" in time_ranges
+    assert "code" in time_ranges

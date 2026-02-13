@@ -88,8 +88,9 @@ def test_integration_multiple_tags() -> None:
     # SysAdmin -> sysadmin -> devops
     assert "devops" in result.tag_frequencies
 
-    # Maintenance -> maintenance -> refactoring
-    assert "refactoring" in result.tag_frequencies
+    # Maintenance tag is on TODO task, so it should not appear in frequencies
+    assert "refactoring" not in result.tag_frequencies
+    assert "maintenance" not in result.tag_frequencies
 
 
 def test_integration_edge_cases() -> None:

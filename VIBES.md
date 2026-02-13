@@ -447,10 +447,30 @@ Update the AGENTS.md file to ensure that it explicitly prohibits disabling linte
 
 **Comment:** AI did refactor the code fine, but introduced a lot of mutation, which needs to be addressed separately.
 
-## Mutation slop
+## ✅ Mutation slop
 Refactor the functions in `core.py` module not to use mutation as much. The `compute_*` functions can use mutation internally to update a value that is defined there and later returned, but they shouldn't mutate any values passed into the function.
 Update the `analyze()` function not to define the intermediate results and instead call the `compute_*` functions to produce the values directly. It should only pass the relevant data to those functions.
-It is OK to iterate through the list of nodes multiple times - we might want to configure `analyze()` to compute partial results in the future.
+
+Ideally, each field of the `AnalysisResults` class would be a separate call to a separate function:
+
+```python
+    tag_frequencies = compute_frquencies(nodes, ...)
+    tag_relations = compute_relations(nodes, ...)
+    tag_groups = compute_groups(tag_relations, ...)
+    tag_time_ranges = compute_time_ranges(nodes, ...)
+    task_states = compute_task_state_histogram(nodes, ...)
+    task_days = compute_day_of_week_histogram(nodes, ...)
+    global_timerange = compute_global_timerange(nodes, ...)
+    total, max_repeat_count  = compute_task_stats(nodes, ...)
+    max_single_day = compute_max_single_day(global_timerange)
+    avg_tasks_per_day = compute_avg_tasks_per_day(global_timerange, total)
+```
+
+Ideally, intermediate results would be re-used as much as possible. It is OK to iterate through the list of nodes multiple times - we might want to configure `analyze()` to compute partial results in the future.
+
+Please refactor the tests as well to match the redefined functions. If there are opportunities to simplify the tests, please go for it.
+
+**Comment:** Expected this to take a long time and not have a great outcome. It did run out of quota, but was able to continue afterwards.
 
 ## Another fix for task states
 

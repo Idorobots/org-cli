@@ -1,35 +1,33 @@
 """Tests for the compute_frequencies() function."""
 
-from orgstats.core import Frequency, compute_frequencies
+from orgstats.core import compute_frequencies
+from tests.conftest import node_from_org
 
 
-def test_compute_frequencies_empty_items() -> None:
-    """Test with empty set creates no entries."""
-    items: set[str] = set()
-    frequencies: dict[str, Frequency] = {}
+def test_compute_frequencies_empty_nodes() -> None:
+    """Test with empty nodes list creates no entries."""
+    nodes = node_from_org("")
 
-    compute_frequencies(items, frequencies, 1)
+    frequencies = compute_frequencies(nodes, {}, "tags")
 
     assert frequencies == {}
 
 
-def test_compute_frequencies_single_item() -> None:
-    """Test single item creates Frequency with correct counts."""
-    items = {"python"}
-    frequencies: dict[str, Frequency] = {}
+def test_compute_frequencies_single_tag() -> None:
+    """Test single tag creates Frequency with correct count."""
+    nodes = node_from_org("* DONE Task :Python:\n")
 
-    compute_frequencies(items, frequencies, 1)
+    frequencies = compute_frequencies(nodes, {}, "tags")
 
     assert "python" in frequencies
     assert frequencies["python"].total == 1
 
 
-def test_compute_frequencies_multiple_items() -> None:
-    """Test multiple items all get incremented."""
-    items = {"python", "testing", "debugging"}
-    frequencies: dict[str, Frequency] = {}
+def test_compute_frequencies_multiple_tags() -> None:
+    """Test multiple tags all get counted."""
+    nodes = node_from_org("* DONE Task :Python:Testing:Debugging:\n")
 
-    compute_frequencies(items, frequencies, 1)
+    frequencies = compute_frequencies(nodes, {}, "tags")
 
     assert len(frequencies) == 3
     assert "python" in frequencies
@@ -40,67 +38,81 @@ def test_compute_frequencies_multiple_items() -> None:
     assert frequencies["debugging"].total == 1
 
 
-def test_compute_frequencies_count_one() -> None:
-    """Test with count of 1."""
-    items = {"python"}
-    frequencies: dict[str, Frequency] = {}
+def test_compute_frequencies_todo_task() -> None:
+    """Test TODO task has count of 0."""
+    nodes = node_from_org("* TODO Task :Python:\n")
 
-    compute_frequencies(items, frequencies, 1)
+    frequencies = compute_frequencies(nodes, {}, "tags")
 
-    assert frequencies["python"].total == 1
+    assert frequencies == {}
 
 
-def test_compute_frequencies_count_multiple() -> None:
-    """Test with count > 1 for repeated tasks."""
-    items = {"python"}
-    frequencies: dict[str, Frequency] = {}
+def test_compute_frequencies_repeated_tasks() -> None:
+    """Test repeated tasks count correctly."""
+    nodes = node_from_org("""
+* TODO Task :Python:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2023-10-20 Fri 09:15]
+- State "DONE"       from "TODO"       [2023-10-19 Thu 09:10]
+- State "DONE"       from "TODO"       [2023-10-18 Wed 09:05]
+:END:
+""")
 
-    compute_frequencies(items, frequencies, 5)
+    frequencies = compute_frequencies(nodes, {}, "tags")
 
-    assert frequencies["python"].total == 5
+    assert frequencies["python"].total == 3
 
 
 def test_compute_frequencies_accumulates() -> None:
-    """Test multiple calls accumulate correctly."""
-    items1 = {"python"}
-    items2 = {"python", "testing"}
-    frequencies: dict[str, Frequency] = {}
+    """Test multiple nodes accumulate correctly."""
+    nodes = node_from_org("""
+* DONE Task :Python:
+* DONE Task :Python:Testing:
+""")
 
-    compute_frequencies(items1, frequencies, 1)
-    compute_frequencies(items2, frequencies, 2)
+    frequencies = compute_frequencies(nodes, {}, "tags")
 
-    assert frequencies["python"].total == 3
-    assert frequencies["testing"].total == 2
-
-
-def test_compute_frequencies_existing_entry() -> None:
-    """Test updating existing Frequency object."""
-    items = {"python"}
-    frequencies = {"python": Frequency(total=5)}
-
-    compute_frequencies(items, frequencies, 3)
-
-    assert frequencies["python"].total == 8
-
-
-def test_compute_frequencies_mutates_dict() -> None:
-    """Test that function modifies dict in-place."""
-    items = {"python"}
-    frequencies: dict[str, Frequency] = {}
-
-    compute_frequencies(items, frequencies, 1)
-
-    assert "python" in frequencies
-
-
-def test_compute_frequencies_with_normalized_tags() -> None:
-    """Test with normalized tag sets."""
-    items = {"python", "testing", "devops"}
-    frequencies: dict[str, Frequency] = {}
-
-    compute_frequencies(items, frequencies, 2)
-
-    assert len(frequencies) == 3
     assert frequencies["python"].total == 2
-    assert frequencies["testing"].total == 2
-    assert frequencies["devops"].total == 2
+    assert frequencies["testing"].total == 1
+
+
+def test_compute_frequencies_with_mapping() -> None:
+    """Test that mapping is applied."""
+    nodes = node_from_org("* DONE Task :Test:SysAdmin:\n")
+
+    frequencies = compute_frequencies(nodes, {"test": "testing", "sysadmin": "devops"}, "tags")
+
+    assert "testing" in frequencies
+    assert "devops" in frequencies
+    assert "test" not in frequencies
+    assert "sysadmin" not in frequencies
+
+
+def test_compute_frequencies_heading_category() -> None:
+    """Test frequency computation for heading words."""
+    nodes = node_from_org("""
+* DONE Implement feature
+* DONE Implement tests
+""")
+
+    frequencies = compute_frequencies(nodes, {}, "heading")
+
+    assert frequencies["implement"].total == 2
+    assert frequencies["feature"].total == 1
+    assert frequencies["tests"].total == 1
+
+
+def test_compute_frequencies_body_category() -> None:
+    """Test frequency computation for body words."""
+    nodes = node_from_org("""
+* DONE Task
+Python code
+* DONE Task
+Python tests
+""")
+
+    frequencies = compute_frequencies(nodes, {}, "body")
+
+    assert frequencies["python"].total == 2
+    assert frequencies["code"].total == 1
+    assert frequencies["tests"].total == 1
