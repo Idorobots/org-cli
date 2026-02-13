@@ -349,8 +349,8 @@ def extract_timestamp(node: orgparse.node.OrgNode) -> list[datetime]:
         timestamps.append(node.deadline.start)
         return timestamps
 
-    if hasattr(node, "datelist") and node.datelist:
-        datelist_timestamps = [d.start for d in node.datelist if hasattr(d, "start") and d.start]
+    if node.datelist:
+        datelist_timestamps = [d.start for d in node.datelist if d.start]
         if datelist_timestamps:
             timestamps.extend(datelist_timestamps)
             return timestamps
