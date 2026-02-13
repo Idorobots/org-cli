@@ -421,15 +421,33 @@ Only consider tasks that are in the `DONE` state. This should be analogous to th
 
 Extend the CLI output to include the earliest & latest timestamps somewhere near the total tasks count.
 
-Comment: The AI did well.
+**Comment:** The AI did well.
 
-## General stats - other
+## ✅ General stats - other
 I'd like to add a few more stats to the analysis results:
 
-- total number of tasks in the system (inclusive of their repeats - this is already computed),
-- average tasks done per day (computed as the total number of tasks completed divided by the number of days between the earliest and latest task occurances globally),
+- average tasks completed per day (computed as the total number of tasks completed divided by the number of days between the earliest and latest task occurances globally),
+- highest number of tasks completed on a single day (including the date),
+- highest number of repeats of an individual task,
 
-Please display these values on the CLI output.
+Some of these values can be derived from the global timeline, but for the highest number of repeats you will need to extend the `analyze()` function.
+
+Please display these values on the CLI output right after the `Top tasks` line.
+
+**Comment:** AI did alright. It did introduce some slop.
+
+## Linter annotations slop
+I see you disabled some linter rules. Please don't do that.
+
+- `analyze()` `PLR0912` - please refactor the function to extract the histogram computations into a separate function. Remove the linter exclusion rule.
+- `main()` `PLR0912` - please refactor the function to extract the input file processing and parsing into a separate function. Remove the linter exclusion rule.
+- `main()` `PLR0915` - please extract the display handling into a separate function that accepts the analysis results & configuration flags.
+
+Update the AGENTS.md file to ensure that it explicitly prohibits disabling linter rules.
+
+## Another fix for task states
+
+## Treat all --done-keys equally
 
 ## More task filters
 - gamify_exp above

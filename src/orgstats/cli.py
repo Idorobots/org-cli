@@ -527,6 +527,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     print(total_tasks_str)
 
+    if result.timerange.earliest and result.timerange.latest:
+        print(f"  Average per day: {result.avg_tasks_per_day:.2f}")
+        print(f"  Max single day: {result.max_single_day_count}")
+        print(f"  Max repeats: {result.max_repeat_count}")
+
     print("\nTask states:")
     sorted_states = sorted(
         result.task_states.values.items(), key=lambda item: item[1], reverse=True

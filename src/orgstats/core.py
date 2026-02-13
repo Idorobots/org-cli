@@ -160,6 +160,9 @@ class AnalysisResult:
         task_states: Histogram of task states (TODO, DONE, DELEGATED, CANCELLED, SUSPENDED, other)
         task_days: Histogram of DONE task completions by day of week
         timerange: Global time range for all completed (DONE) tasks
+        avg_tasks_per_day: Average tasks completed per day (total DONE / days spanned)
+        max_single_day_count: Highest number of tasks completed on a single day
+        max_repeat_count: Highest number of DONE repeats for any individual task
         tag_frequencies: Dictionary mapping items to their frequency counts
         tag_relations: Dictionary mapping items to their Relations objects
         tag_time_ranges: Dictionary mapping items to their TimeRange objects
@@ -173,6 +176,9 @@ class AnalysisResult:
     task_states: Histogram
     task_days: Histogram
     timerange: TimeRange
+    avg_tasks_per_day: float
+    max_single_day_count: int
+    max_repeat_count: int
     tag_frequencies: dict[str, Frequency]
     tag_relations: dict[str, Relations]
     tag_time_ranges: dict[str, TimeRange]
@@ -447,7 +453,7 @@ def compute_groups(relations: dict[str, Relations], max_relations: int) -> list[
     return [Group(tags=sorted(scc)) for scc in sccs]
 
 
-def analyze(
+def analyze(  # noqa: PLR0912
     nodes: list[orgparse.node.OrgNode], mapping: dict[str, str], category: str, max_relations: int
 ) -> AnalysisResult:
     """Analyze org-mode nodes and extract task statistics.
@@ -468,6 +474,7 @@ def analyze(
     task_states = Histogram(values={"none": 0})
     task_days = Histogram(values={})
     global_timerange = TimeRange()
+    max_repeat_count = 0
 
     for node in nodes:
         total = total + max(1, len(node.repeated_tasks))
@@ -485,6 +492,8 @@ def analyze(
         final = (node.todo == "DONE" and 1) or 0
         repeats = len([n for n in node.repeated_tasks if n.after == "DONE"])
         count = max(final, repeats)
+
+        max_repeat_count = max(max_repeat_count, count)
 
         if category == "tags":
             items = normalize(node.tags, mapping)
@@ -513,11 +522,25 @@ def analyze(
 
     tag_groups = compute_groups(relations, max_relations)
 
+    avg_tasks_per_day = 0.0
+    if global_timerange.earliest and global_timerange.latest:
+        days_spanned = (global_timerange.latest.date() - global_timerange.earliest.date()).days + 1
+        done_count = task_states.values.get("DONE", 0)
+        if days_spanned > 0:
+            avg_tasks_per_day = done_count / days_spanned
+
+    max_single_day_count = 0
+    if global_timerange.timeline:
+        max_single_day_count = max(global_timerange.timeline.values())
+
     return AnalysisResult(
         total_tasks=total,
         task_states=task_states,
         task_days=task_days,
         timerange=global_timerange,
+        avg_tasks_per_day=avg_tasks_per_day,
+        max_single_day_count=max_single_day_count,
+        max_repeat_count=max_repeat_count,
         tag_frequencies=frequencies,
         tag_relations=relations,
         tag_time_ranges=time_ranges,

@@ -12,6 +12,9 @@ def test_analysis_result_initialization() -> None:
         task_states=Histogram(values={"DONE": 5, "TODO": 5}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
         tag_frequencies={"python": Frequency(3)},
         tag_relations={"python": Relations(name="python", relations={})},
         tag_time_ranges={},
@@ -23,6 +26,9 @@ def test_analysis_result_initialization() -> None:
     assert result.task_states.values["TODO"] == 5
     assert result.task_days.values == {}
     assert result.timerange.earliest is None
+    assert result.avg_tasks_per_day == 0.0
+    assert result.max_single_day_count == 0
+    assert result.max_repeat_count == 0
     assert result.tag_frequencies == {"python": Frequency(3)}
     assert "python" in result.tag_relations
     assert result.tag_time_ranges == {}
@@ -36,6 +42,9 @@ def test_analysis_result_empty_initialization() -> None:
         task_states=Histogram(values={"DONE": 0, "TODO": 0}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
         tag_frequencies={},
         tag_relations={},
         tag_time_ranges={},
@@ -47,6 +56,9 @@ def test_analysis_result_empty_initialization() -> None:
     assert result.task_states.values["TODO"] == 0
     assert result.task_days.values == {}
     assert result.timerange.earliest is None
+    assert result.avg_tasks_per_day == 0.0
+    assert result.max_single_day_count == 0
+    assert result.max_repeat_count == 0
     assert result.tag_frequencies == {}
     assert result.tag_relations == {}
     assert result.tag_time_ranges == {}
@@ -60,6 +72,9 @@ def test_analysis_result_attributes() -> None:
         task_states=Histogram(values={"DONE": 1, "TODO": 0}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
         tag_frequencies={},
         tag_relations={},
         tag_time_ranges={},
@@ -70,6 +85,9 @@ def test_analysis_result_attributes() -> None:
     assert result.task_states.values["DONE"] == 1
     assert result.task_days.values == {}
     assert result.timerange.earliest is None
+    assert result.avg_tasks_per_day == 0.0
+    assert result.max_single_day_count == 0
+    assert result.max_repeat_count == 0
     assert result.tag_frequencies == {}
     assert result.tag_relations == {}
     assert result.tag_time_ranges == {}
@@ -90,6 +108,9 @@ def test_analysis_result_repr() -> None:
         task_states=Histogram(values={"DONE": 1, "TODO": 1}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
         tag_frequencies={"test": Frequency(1)},
         tag_relations={},
         tag_time_ranges={},
@@ -109,6 +130,9 @@ def test_analysis_result_equality() -> None:
         task_states=Histogram(values={"DONE": 3, "TODO": 2}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
         tag_frequencies={"python": Frequency(2)},
         tag_relations={},
         tag_time_ranges={},
@@ -120,6 +144,9 @@ def test_analysis_result_equality() -> None:
         task_states=Histogram(values={"DONE": 3, "TODO": 2}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
         tag_frequencies={"python": Frequency(2)},
         tag_relations={},
         tag_time_ranges={},
@@ -131,6 +158,9 @@ def test_analysis_result_equality() -> None:
         task_states=Histogram(values={"DONE": 5, "TODO": 5}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
         tag_frequencies={},
         tag_relations={},
         tag_time_ranges={},
@@ -152,6 +182,9 @@ def test_analysis_result_mutable_fields() -> None:
         task_states=Histogram(values={"DONE": 0, "TODO": 0}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
         tag_frequencies={},
         tag_relations={},
         tag_time_ranges={},
@@ -163,6 +196,9 @@ def test_analysis_result_mutable_fields() -> None:
     result.task_states.values["TODO"] = 5
     result.task_days.values["Monday"] = 3
     result.timerange.update(datetime(2024, 1, 1))
+    result.avg_tasks_per_day = 1.5
+    result.max_single_day_count = 5
+    result.max_repeat_count = 3
     result.tag_frequencies["new"] = Frequency(1)
     result.tag_relations["test"] = Relations(name="test", relations={})
     result.tag_time_ranges["python"] = TimeRange()
@@ -173,6 +209,9 @@ def test_analysis_result_mutable_fields() -> None:
     assert result.task_states.values["TODO"] == 5
     assert result.task_days.values["Monday"] == 3
     assert result.timerange.earliest is not None
+    assert result.avg_tasks_per_day == 1.5
+    assert result.max_single_day_count == 5
+    assert result.max_repeat_count == 3
     assert "new" in result.tag_frequencies
     assert "test" in result.tag_relations
     assert "python" in result.tag_time_ranges
@@ -186,6 +225,9 @@ def test_analysis_result_dict_operations() -> None:
         task_states=Histogram(values={"DONE": 2, "TODO": 1}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
         tag_frequencies={"python": Frequency(3), "testing": Frequency(2)},
         tag_relations={},
         tag_time_ranges={},
