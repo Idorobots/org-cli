@@ -109,14 +109,14 @@ def test_mixed_repeated_tasks_only_done_counted() -> None:
 
 
 def test_done_task_without_timestamp() -> None:
-    """Test DONE task with no timestamp doesn't crash, just not counted."""
+    """Test DONE task with no timestamp is counted as 'unknown'."""
     nodes = node_from_org("""
 * DONE Task
 """)
 
     result = analyze(nodes, {}, category="tags", max_relations=3)
 
-    assert result.task_days.values == {}
+    assert result.task_days.values.get("unknown", 0) == 1
 
 
 def test_all_days_different_weekdays() -> None:
@@ -322,3 +322,128 @@ def test_done_task_with_multiple_datelist_timestamps() -> None:
 
     assert result.task_days.values["Monday"] == 1
     assert result.task_days.values["Tuesday"] == 1
+
+
+def test_done_task_without_any_timestamp_unknown() -> None:
+    """Test DONE task with no timestamp increments 'unknown'."""
+    nodes = node_from_org("""
+* DONE Task
+""")
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.task_days.values.get("unknown", 0) == 1
+    assert result.task_days.values.get("Monday", 0) == 0
+
+
+def test_multiple_done_tasks_without_timestamp() -> None:
+    """Test multiple DONE tasks without timestamps accumulate 'unknown'."""
+    nodes = node_from_org("""
+* DONE Task 1
+
+* DONE Task 2
+
+* DONE Task 3
+""")
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.task_days.values["unknown"] == 3
+
+
+def test_done_with_and_without_timestamps_mixed() -> None:
+    """Test mix of tasks with and without timestamps."""
+    nodes = node_from_org("""
+* DONE Task with timestamp
+CLOSED: [2023-10-23 Mon 10:00]
+
+* DONE Task without timestamp
+
+* DONE Another with timestamp
+CLOSED: [2023-10-24 Tue 14:00]
+
+* DONE Another without timestamp
+""")
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.task_days.values["Monday"] == 1
+    assert result.task_days.values["Tuesday"] == 1
+    assert result.task_days.values["unknown"] == 2
+
+
+def test_unknown_not_shown_for_tasks_with_timestamps() -> None:
+    """Test 'unknown' is not present when all tasks have timestamps."""
+    nodes = node_from_org("""
+* DONE Task 1
+CLOSED: [2023-10-23 Mon 10:00]
+
+* DONE Task 2
+CLOSED: [2023-10-24 Tue 14:00]
+""")
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.task_days.values.get("unknown", 0) == 0
+    assert "unknown" not in result.task_days.values
+
+
+def test_unknown_matches_missing_done_count() -> None:
+    """Test DONE count equals sum of days plus unknown."""
+    nodes = node_from_org("""
+* DONE Task 1
+CLOSED: [2023-10-23 Mon 10:00]
+
+* DONE Task 2
+
+* DONE Task 3
+CLOSED: [2023-10-24 Tue 14:00]
+
+* DONE Task 4
+
+* TODO Not counted
+SCHEDULED: <2023-10-25 Wed>
+""")
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    done_count = result.task_states.values.get("DONE", 0)
+    day_sum = sum(
+        result.task_days.values.get(day, 0)
+        for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    )
+    unknown_count = result.task_days.values.get("unknown", 0)
+
+    assert done_count == day_sum + unknown_count
+    assert done_count == 4
+    assert day_sum == 2
+    assert unknown_count == 2
+
+
+def test_todo_task_without_timestamp_not_counted() -> None:
+    """Test TODO tasks without timestamps are not counted in unknown."""
+    nodes = node_from_org("""
+* TODO Task 1
+
+* TODO Task 2
+""")
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.task_days.values.get("unknown", 0) == 0
+    assert result.task_days.values == {}
+
+
+def test_cancelled_task_without_timestamp_not_counted() -> None:
+    """Test CANCELLED tasks without timestamps are not counted in unknown."""
+    content = """#+TODO: TODO | DONE CANCELLED
+
+* CANCELLED Task
+"""
+    ns = orgparse.loads(content)
+    nodes = list(ns[1:]) if ns else []
+
+    result = analyze(nodes, {}, category="tags", max_relations=3)
+
+    assert result.task_days.values.get("unknown", 0) == 0
+    assert result.task_days.values == {}

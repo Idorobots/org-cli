@@ -527,6 +527,10 @@ def main() -> None:
         count = result.task_days.values.get(day, 0)
         print(f"  {day}: {count}")
 
+    unknown_count = result.task_days.values.get("unknown", 0)
+    if unknown_count > 0:
+        print(f"  unknown: {unknown_count}")
+
     # Select appropriate category name
     category_names = {"tags": "tags", "heading": "heading words", "body": "body words"}
     category_name = category_names[args.show]

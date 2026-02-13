@@ -372,7 +372,32 @@ I see that might be the case in my Archive:
 
 Can you check if orgparse returs any timestamps for this ticket and, if so, adjust the timestamp extraction algorithm to take that into account?
 
-Comment: I found an example of a bad timestamp in the archive, so the AI could just focus on fixing, not debugging. This was run in the same session as the previous task, to make sure the context is rich and the AI did well. The code still returns inconsistent results.
+Comment: I found an example of a bad timestamp in the archive, so the AI could just focus on fixing, not debugging. This was run in the same session as the previous task, to make sure the context is rich and the AI did well. The code still returns inconsistent results. It also introduced a bit of slop.
+
+## ✅*️ Final timestamp fallback
+Hey, I found another task that doesn't have a date in the body. It does have an `ARCHIVE_TIME` property, but that's not always given (some tasks do not end up in the Archive) and also this isn't a timestamp indicating the time the ticket was done. Here's an example of such a task:
+
+```
+* DONE Add .gitignore.                                     :COMP:maintenance:
+  :PROPERTIES:
+  :ARCHIVE_TIME: 2012-01-24 wto 19:50
+  :ARCHIVE_FILE: ~/org/TODO
+  :ARCHIVE_OLPATH: PROJECTS/Robust
+  :ARCHIVE_CATEGORY: TODO
+  :ARCHIVE_TODO: DONE
+  :END:
+```
+
+Can you please update the `analyze()` function to increment `unknown` in the day-of-week histogram if any such tasks are found? That is, when the `extract_timestamp()` function returns nothing, that should be the incremented value. Assume a single repetition of that task (we don't have any means of determining how many repetitions there were).
+
+Comment: This was also ran in the same session. It did good, but now the count is higher than the DONE state count, which indicates a problem elsewhere.
+
+## Histogram refactor
+Please refactor the usages of the `Histogram` class by adding a method `Histogram.update()` that updates a specified value by a given amount. We'd like to avoid useages like the following:
+
+```
+task_days.values["unknown"] = task_days.values.get("unknown", 0) + 1
+```
 
 ## General stats - time range
 I'd like to compute a global time range of all tasks completed that are in the archive.

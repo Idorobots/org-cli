@@ -491,9 +491,12 @@ def analyze(
         done_repeats = [rt for rt in node.repeated_tasks if rt.after == "DONE"]
 
         if is_done_task or done_repeats:
-            for timestamp in timestamps:
-                day_name = weekday_to_string(timestamp.weekday())
-                task_days.values[day_name] = task_days.values.get(day_name, 0) + 1
+            if timestamps:
+                for timestamp in timestamps:
+                    day_name = weekday_to_string(timestamp.weekday())
+                    task_days.values[day_name] = task_days.values.get(day_name, 0) + 1
+            else:
+                task_days.values["unknown"] = task_days.values.get("unknown", 0) + 1
 
     tag_groups = compute_groups(relations, max_relations)
 
