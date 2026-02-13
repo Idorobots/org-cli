@@ -10,35 +10,41 @@ Whenever clarifying questions were asked I provided answers (not included). Each
 The Quota on the Pro plan was quick to run out due to a myriad of individual tool calls when making edits and repeated, duplicate command runs (e.g `pytest` followed by `pytest --cov`), a set of helpers was introduced manually to try to contain the AI's thirst for spinning in circles.
 
 # Features built with AI
+Here's what the emojis mean:
+- ✅ - AI implemented the feature without a hickup,
+- ✅*️ - the feature was implemented, but there were caveats, requiring minor manual changes,
+- ❌ - AI failed, the quota (or my patience) ran out and I made manual a lot of changes.
+
+See the **Comment:** for, well, comments.
 
 ## ✅ Linter & formatter on pre-commit hook
 Add a linter, code formatter and type-checker with sane configurations (default, unless the current code does not pass either of the steps). Make sure that the AGENTS.md is updated with the instructions on running these tools. Add a pre-commit hook to the repository Git config that ensures the linter, formatter & type-checker runs each time the code is commited.
 
-Comment: AI did pretty good, it introduced the `Any` type but it was easy to fix.
+**Comment:** AI did pretty good, it introduced the `Any` type but it was easy to fix.
 
 ## ✅ CLI params
 Add `argparse` to the CLI module. The value for the `max_results` parameter should be configurable with a default of 100. The values for `TAGS`, `HEADING` and `BODY` should be read from a file if the parameter is provided, or default to their current values if parameters are not provided.
 Make sure to run the test suite and fix the issues that might have arised. It is OK to add extra tests for the new functionality.
 
-Comment: AI did pretty well, asked some clarifying questions and then proceeded with the implementation correctly.
+**Comment:** AI did pretty well, asked some clarifying questions and then proceeded with the implementation correctly.
 
 ## ✅*️ Frequency abstraction
 Abstract frequencies returned by `analyze()` into a separate class. The class should contain a single field called `total`. `analyze()` should produce dictionaries mapping tags into these frequencies objects instead of the current `dict[str, int]`.
 This change should be fairly small and localized to the @src/core.py module.
 Make sure to run the test suite and fix the issues that might have arised. It is OK to add extra tests for the new functionality.
 
-Comment: This simple change took a long time, probably longer than doing it manually. In the end it works, but it wasted a lot of the quota.
+**Comment:** This simple change took a long time, probably longer than doing it manually. In the end it works, but it wasted a lot of the quota.
 
 ## ✅*️ One entry point
 Please combine the @src/main.py and @src/cli.py entry points into just @src/cli.py. No backwards compatibility is necessary, but make sure that all tests keep working. Update the @README.md file to reflect the new usage.
 
-Comment: This trival rename/consolidation took a long time and about 10% of the quota since each instance of the `main.py` invocation in tests was done as a separate tool call. I should really read these tests and ask the AI to clean them up first.
+**Comment:** This trival rename/consolidation took a long time and about 10% of the quota since each instance of the `main.py` invocation in tests was done as a separate tool call. I should really read these tests and ask the AI to clean them up first.
 
 ## ✅*️ Stats result
 Abstract the values returned by `analyze()` into a separate stats dataclass that represents the whole result: including `total` tasks, `done` tasks, tag frequencies, heading word frequencies and body word frequencies.
 Make sure to run the test suite and fix the issues that might have arised. It is OK to add extra tests for the new functionality.
 
-Comment: Another trivial change that took a long time for the AI to implement and a sizable chunk of the quota.
+**Comment:** Another trivial change that took a long time for the AI to implement and a sizable chunk of the quota.
 
 ## ✅ Extra frequencies
 Add extra fields to the `Frequency` class: `simple`, `regular`, `hard`. All of these should be integers defaulting to 0.
@@ -54,7 +60,7 @@ Adjust the `Frequency.__repr__()` function to properly show all frequency values
 
 Make sure to run the test suite and fix the issues that might have arised. It is OK to add extra tests for the new functionality.
 
-Comment: Surprisingly enough, this one went very well and resulted in a working change quickly at about 15% quota usage. An especially curious aspect was that the AI tested how to access `OrgNode` properties by running a Python REPL and checking it out by itself.
+**Comment:** Surprisingly enough, this one went very well and resulted in a working change quickly at about 15% quota usage. An especially curious aspect was that the AI tested how to access `OrgNode` properties by running a Python REPL and checking it out by itself.
 
 ## ❌ CLI switch for the top tag criteria
 Add a CLI parameter called `--tasks`. The values accepted by that parameter are `simple`, `regular`, `hard` and `total`. The default is `total`. The parameter should be used for the sorting of the results of the analysis - when the user requests `--tasks hard` the results should be ordered by the `hard` frequency and `max_items` of them should be displayed.
@@ -63,17 +69,17 @@ The display should only involve the selected frequency -in the example, only the
 Make sure to adjust the README with the updated usage.
 Make sure to run the test suite and fix the issues that might have been introduced.
 
-Comment: The AI got fixated on the potential breaking changes and needed multiple confirmations that it is indeed OK. It computed a very large plan of action and estimated abotu 85 minutes (!) for its execution. The plan alone took 15% of the quota, but the execution was actually swift, taking about 5 minutes and extra 30% of quota (!) ending prematurely before it got to run the linter & test suite to confirm that the change actually didn't break anything. I did that manually and it was all good.
+**Comment:** The AI got fixated on the potential breaking changes and needed multiple confirmations that it is indeed OK. It computed a very large plan of action and estimated abotu 85 minutes (!) for its execution. The plan alone took 15% of the quota, but the execution was actually swift, taking about 5 minutes and extra 30% of quota (!) ending prematurely before it got to run the linter & test suite to confirm that the change actually didn't break anything. I did that manually and it was all good.
 
 ## ✅ Proper build setup
 While the quota ran out I added Poetry as a build system for this project, but currently the code itself doesn't conform to the prefered CLI application layout of a Python project. Please add a `orgstats` as a package-level directory in `src/` and move the code logic to that package. Please adjust the build configuration in @pyproject.toml to build a CLI (there is a commented out stub that you can expand). Please adjust the AGENTS.md file to reflect the new project layout. Please make sure the application works as expected by running all the validation checks via `poetry run task check`, fix any issues that might have been introduced.
 
-Comment: The AI did well making all the changes correctly. It made a lot fewer command calls to validate that each step works, as expected, but still halucinated the need to verify runnig the application three different styles "for backwards compatibility".
+**Comment:** The AI did well making all the changes correctly. It made a lot fewer command calls to validate that each step works, as expected, but still halucinated the need to verify runnig the application three different styles "for backwards compatibility".
 
 ## ❌ Default help message
 When no files are provided to the CLI command the usage message should be printed instead of the empty results.
 
-Comment: After planning the change I figured it would take the AI longer than applying the change manually, so I aborted the plan execution.
+**Comment:** After planning the change I figured it would take the AI longer than applying the change manually, so I aborted the plan execution.
 
 ## ✅ Pair-wise relations
 I'd like to expand the analysis done in `analyze()` to inculde computation of pair-wise relations between tags/words.
@@ -95,13 +101,13 @@ When repeated tasks are concerned, increment the relations for each repeated tas
 The results for tags, heading and body should be computed separately and returned with the `AnalysisResult`. The `gamify_exp` is not to be taken into account.
 The CLI output should not be affected yet.
 
-Comment: The AI implemented the functionality pretty well, it did miss some refactoring opportunities and disabled Linter rules complaining about code complexity.
+**Comment:** The AI implemented the functionality pretty well, it did miss some refactoring opportunities and disabled Linter rules complaining about code complexity.
 
 ## ✅ Refactor analyze()
 The `analyze()` function is fairly large and there are some opportunities for refactoring. Please move the normalized tag lists above the for loops computing the frequencties and abstract the frequency computation into a separate function called `compute_frequencies()`. The function should take the set of items to consider, a dictionary mapping items into their frequencies and a count of repetitions. Difficulty should also be passed to the function. Please remove the linter exclusion from `analyze()` and ensure that it conforms to the linter rules.
 Please refactor the relevant tests to test the new function separately.
 
-Comment: The AI has done a good job, doing exactly what I asked for without any extra bits.
+**Comment:** The AI has done a good job, doing exactly what I asked for without any extra bits.
 
 ## ✅ Skill time ranges
 I'd like to compute the time ranges for all tags/words.
@@ -112,7 +118,7 @@ If closed timestamp is not available, assume the scheduled time as the time of o
 For each such occurance, the tags time range should be updated so that the `earliest` timestamp represent the earliest date encountered in the data, while the `latest` timestamp represents the latest date encountered in the data.
 Do not modify the CLI output just yet.
 
-Comment: The AI explored the structure of `orgparse.OrgNode` and repeated tasks ignoring the details presented on the prompt. It did a good job nontheless.
+**Comment:** The AI explored the structure of `orgparse.OrgNode` and repeated tasks ignoring the details presented on the prompt. It did a good job nontheless.
 
 ## ✅ Skill timeline
 Expand the `TimeRange` class with another field called `timeline`. This timeline will be used to chart a tag's occurrence over time.
@@ -121,7 +127,7 @@ Make sure that the timeline's granularity is a day, so two tasks occurring on th
 Make sure that repeated tasks are taken into account - each repeat should be reflected on the timeline.
 Do not modify the CLI output just yet.
 
-Comment: The AI implemented the change, while I was cleaning some slop resulting in broken test cases. The AI decided it wasn't responsible for these, so it left them as is. When asked to address the failures afterwards, it reinstituted the slop.
+**Comment:** The AI implemented the change, while I was cleaning some slop resulting in broken test cases. The AI decided it wasn't responsible for these, so it left them as is. When asked to address the failures afterwards, it reinstituted the slop.
 
 ## ✅ Times in command output
 Display the earliest, latest & most "intense" day for the top `max_results` entries for tags, heading and body.
@@ -130,7 +136,7 @@ The time range results should follow the "Top tags" etc sections in the output a
 This will cause a lot of output to be generated, so modify the default `max_results` parameter value to 10 instead of 100.
 Please add some rudimentary tests for this new CLI output, but don't bother with very complex test cases.
 
-Comment: The AI took the "don't bother" part very seriously and didn't write any tests for the CLI output of the time ranges. It did add some tests for the representation of `TimeRange` though.
+**Comment:** The AI took the "don't bother" part very seriously and didn't write any tests for the CLI output of the time ranges. It did add some tests for the representation of `TimeRange` though.
 
 ## ✅ CLI switch to select tags, heading and body
 Add a CLI parameter called `--show` that takes either `tags`, `heading` or `body` with a default of `tags`.
@@ -141,7 +147,7 @@ In either case, both the top frequencies and time ranges should be shown.
 The output should be adjusted to list each tag on a separate line with frequency, earliest and latest dates and the top day plus the count on that day.
 Please don't adjust the `__repr__` functions and instead compute these values as part of the `cli.py` module for display purposes only.
 
-Comment: The AI did good. No comments here.
+**Comment:** The AI did good. No comments here.
 
 ## ✅*️ Relations in command output
 Add a new CLI parameter called `--max_relations` that takes an integer and defaults to 3.
@@ -161,13 +167,13 @@ algorithms: count=1208, earliest=2013-01-07, latest=2024-12-11, top_day=2014-08-
 
 Add some rudimentary tests for this functionality (not very complex, just sanity check if the output looks a-ok).
 
-Comment: The AI did a good job, but was flabbergasted by the format chosen for the relation display. It did notice, that we're not filtering the relations the same way as we do for frequency computation and proposed it should do that. It also had the linter complain about too many parameters to a function, so it "refactored" it by wrapping some of the params into a tuple.
+**Comment:** The AI did a good job, but was flabbergasted by the format chosen for the relation display. It did notice, that we're not filtering the relations the same way as we do for frequency computation and proposed it should do that. It also had the linter complain about too many parameters to a function, so it "refactored" it by wrapping some of the params into a tuple.
 
 ## ✅*️ Relations filtering
 Tag names in relations should be filtered the same way as for freequencies computations, make sure that the exclude lists are applied to the relations "cleaning" the list before displaying the values.
 The `max_relations` limit should be applied after the list of relations is filtered.
 
-Comment: AI is back to its old ways of running tests manually despite an explicit instruction not to do that. It is also experiencing LSP errors which it "learned" to ignore, probably taking precious quota.
+**Comment:** AI is back to its old ways of running tests manually despite an explicit instruction not to do that. It is also experiencing LSP errors which it "learned" to ignore, probably taking precious quota.
 
 ## ✅*️ Configurable normalization mapping
 Currently the `MAP` used by `normalize` to normalize the word names is hard-coded. Please make that value configurable and overridable via a CLI parameter called `--mapping`.
@@ -175,7 +181,7 @@ The mapping parameter should take a JSON file mapping words to other words (effe
 
 Please make sure to test this functionality and the new CLI parameter.
 
-Comment: AI got a bit fixated at error handling etc, but did the job alright. It did introduce default params not to have to modify all the test cases. I sloperated that myself not changing the net slop amount it seems.
+**Comment:** AI got a bit fixated at error handling etc, but did the job alright. It did introduce default params not to have to modify all the test cases. I sloperated that myself not changing the net slop amount it seems.
 
 ## ✅ Refactor hardcoded lists
 Move the `MAP` value and the `TAGS`, `HEADING` and `BODY` exclusion lists to the cli.py module as they are no longer tightly-coupled to the core module.
@@ -199,17 +205,17 @@ The parameter will take on more values in the future, but don't worry about that
 The node list passed to `analyze()` must be filtered before being passed into the function according to the value of the `--tasks` parameter. That can be done as part of the `main()` function. Please simplify the test cases for the `analyze()` function with the assumption that the node filtering will be performed beforehand.
 Make sure to test the functionality of the node list filtering.
 
-Comment: This one was a long one, but the AI aced it. At least as far as I can tell.
+**Comment:** This one was a long one, but the AI aced it. At least as far as I can tell.
 
 ## ❌ Rename --tasks
 Rename the `--tasks` CLI parameter to `--filter` and the values that in can take to `simple`, `regular`, `hard` and `all`. The values should determine the behaviour the same as before, only the name of the `total` value is changed to `all`. The default value for this parameter should now be `all`.
 
-Comment: Somehow the AI made this into a very long and time consuming task. Exhausting the remaining 20% of quota. It was possible to continue with the plan the next day by asking the AI to carry on after the interruption.
+**Comment:** Somehow the AI made this into a very long and time consuming task. Exhausting the remaining 20% of quota. It was possible to continue with the plan the next day by asking the AI to carry on after the interruption.
 
 ## ❌ Update the README
 Update the README file to account for the recent development.
 
-Comment: Another one that was easier to do manually than let the AI fixate on putting code coverage in the description.
+**Comment:** Another one that was easier to do manually than let the AI fixate on putting code coverage in the description.
 
 ## ✅*️ Only consider the relevant data
 Only compute the statistics in tags or heading or body, depending on the value of the `--show` CLI parameter.
@@ -224,31 +230,31 @@ The `analyze()` function should be updated to take a flag that determines which 
 Regardless of what datum is used, the results for frequencies should end up in the `tag_frequencies` field, et cetera.
 Don't worry about backwards compatibility.
 
-Comment: The AI fixated on backwards compatibility and performance gains/penalty (it considered the fact that now one third of the computation is done, but also that the user needs to compute stuff three times). In needed a lot of convincing that this is, in fact, OK.
+**Comment:** The AI fixated on backwards compatibility and performance gains/penalty (it considered the fact that now one third of the computation is done, but also that the user needs to compute stuff three times). In needed a lot of convincing that this is, in fact, OK.
 
 ## ✅*️ Combine exclusion lists
 Combine the CLI parameters called `--exclude-*` into one parameter that accepts a single list of words. That list should be used for the tags & relations filtering. The default value should be a list containing the values from `TAGS` combined with the values from `HEADING` and `BODY` (in the case of `BODY` use the values up to and including the `""` value).
 Adjust the tests accordingly.
 
-Comment: AI, again, fixated on backwards compatibility despite AGENTS.md explicitly stating it's not required. It did refactor the code fine though, but didn't remove the old, no longer used constants because that would break a lot of tests. This seems to be a common pattern - it values its time like a real boy would.
+**Comment:** AI, again, fixated on backwards compatibility despite AGENTS.md explicitly stating it's not required. It did refactor the code fine though, but didn't remove the old, no longer used constants because that would break a lot of tests. This seems to be a common pattern - it values its time like a real boy would.
 
 ## ✅*️ Default args slop
 Please remove the default argument values from the `analyze()` function and adjust the tests to pass the value manually.
 Using default argument vaulues is forbidden in this project.
 
-Comment: It computed a sound plan of operation, but then ran out of quota to actually execute it. It was possible to resume the execution of the plan after the quota reset.
+**Comment:** It computed a sound plan of operation, but then ran out of quota to actually execute it. It was possible to resume the execution of the plan after the quota reset.
 
 ## ✅*️ Hasattr slop
 Please remove the usage of `hasattr(node, atrt)` from the function `extract_timestamp()` and adjust the tests to work correctly without using `hasattr()`.
 Using `hasattr()` in the logic to make writing tests easier is bad style and you should feel bad about it.
 
-Comment: This went well, it did remove all the occurances of `hasattr` and fixed the tests pretty accurately. It did create extra slop by introducing `MockedEmptyTimestamp` in each file that uses mocks, which isn't ideal.
+**Comment:** This went well, it did remove all the occurances of `hasattr` and fixed the tests pretty accurately. It did create extra slop by introducing `MockedEmptyTimestamp` in each file that uses mocks, which isn't ideal.
 
 ## ✅*️ Mock slop
 Please remove the node mocks from the test code. Use `orgparse.node.OrgNode` and `orgparse.date.OrgDateRepeatedTask` instead of the mocks. If it makes sense for a specific test, you can create fixtures for most of the tests and load those fixtures to test againts real-life node values..
 The goal is not to use any mocking in the tests.
 
-Comment: The AI did a bunch of investigating, figuring out how to use `orgparse` nodes and then formulated a rather lengthy plan. It took a while to implement, but was otherwise uneventful. It took 40% of the quota (!).
+**Comment:** The AI did a bunch of investigating, figuring out how to use `orgparse` nodes and then formulated a rather lengthy plan. It took a while to implement, but was otherwise uneventful. It took 40% of the quota (!).
 
 ## ✅ SCC
 Given the relations between tags, compute the strongly connected components of the graph.
@@ -275,25 +281,25 @@ Tag groups:
   ...
 ```
 
-Comment: The AI computed a sound plan, but then ran out of quota before it could finish implementing it. The bulk of the quota was spent on the tool calls for all the single-line edits. After the quota reset, it finished the implementation properly.
+**Comment:** The AI computed a sound plan, but then ran out of quota before it could finish implementing it. The bulk of the quota was spent on the tool calls for all the single-line edits. After the quota reset, it finished the implementation properly.
 
 ## ✅ Additional relation filter
 The SCC works great, but the output produced is kinda wonky - it still produces quite a few groups.
 Please add an additional CLI parameter called `--min-group-size` that takes an integer and defaults to 3.
 This parameter should be used to filter out groups smaller than the threshold during display.
 
-Comment: The AI proposed to rename origial `--group-threshold` parameter to something better, like `--min-group-size`. Can't argue with that. This was easier to do manually though.
+**Comment:** The AI proposed to rename origial `--group-threshold` parameter to something better, like `--min-group-size`. Can't argue with that. This was easier to do manually though.
 
 ## ❌ Typed tests
 I enabled type checking the tests files. Please add type signatures to the test functions and ensure that the type checking passes fine for all the test files.
 You can run the checks by calling `poetry run task check`.
 
-Comment: This one I expected to be a lengthy one - there were 428 type errors to begin with. Fortunately, I ran out of the weekly quote before the AI got to waste all the quota. After the weekly quota reset, I executed another plan and proceeded to implementation. It took a long time and 30% of the quota, but it added types with regexes :grimacing:. It also added a lot of slop by typing stuff as `Any` that had to be manually fixed.
+**Comment:** This one I expected to be a lengthy one - there were 428 type errors to begin with. Fortunately, I ran out of the weekly quote before the AI got to waste all the quota. After the weekly quota reset, I executed another plan and proceeded to implementation. It took a long time and 30% of the quota, but it added types with regexes :grimacing:. It also added a lot of slop by typing stuff as `Any` that had to be manually fixed.
 
 ## ❌ Devcontainers setup
 A docker container for running the agentin.
 
-Comment: Since the quote ran out, I implemented this myself.
+**Comment:** Since the quote ran out, I implemented this myself.
 
 ## ✅*️ General stats - todo histogram
 I'd like to add more stats to the analysis.
@@ -312,7 +318,7 @@ Please remove the `done_tasks` field from the `AnalysisResult` class and use the
 
 Display the values for different todo states in the CLI output. You can create a new section for this and replace the `done tasks` one with it.
 
-Comment: The AI did a nice job. It, correctly, noticed that `orgparse` only handles `DONE` and `TODO` states and worked around it (in tests). The code appeared to work correctly despite the fact that nothing was done to make `orgparse` recognize different states. When confronted about how this was acomplished, the AI noted that it wasn't and figured out that the code working was purely incidental (the logbook repeat state being preferred to the actual todo state of the node).
+**Comment:** The AI did a nice job. It, correctly, noticed that `orgparse` only handles `DONE` and `TODO` states and worked around it (in tests). The code appeared to work correctly despite the fact that nothing was done to make `orgparse` recognize different states. When confronted about how this was acomplished, the AI noted that it wasn't and figured out that the code working was purely incidental (the logbook repeat state being preferred to the actual todo state of the node).
 
 ## ✅*️ Configurable todo, completed and cancelled states.
 Please add two CLI switches called `--todo-keys` and `--done-keys` with the following semantics:
@@ -337,7 +343,7 @@ Please update the semantics of the `other` histogram value to be `none` instead 
 
 Please update the CLI output to show all detected states, including the `none` state.
 
-Comment: They AI was extatic about the backwards compatibility breaking possibilities and needed convincing that it's fine. It then implemented the feature pretty well, revealing exactly how broken the previous implementation was. It also made the task state counts inconsistent - counting states twice if a task wask repeated. I asked the AI to fix that issue within the same session, just to find out that the quota run out again.
+**Comment:** They AI was extatic about the backwards compatibility breaking possibilities and needed convincing that it's fine. It then implemented the feature pretty well, revealing exactly how broken the previous implementation was. It also made the task state counts inconsistent - counting states twice if a task wask repeated. I asked the AI to fix that issue within the same session, just to find out that the quota run out again.
 
 ## ✅*️ General stats - day histogram
 I'd like to add another histogram to the analysis - this time a distribution of tasks completed on different days of the week.
@@ -351,7 +357,7 @@ For the day of week histogram:
 
 Display the values for week days in the CLI output. You can add that after the todo state breakdown.
 
-Comment: The AI did a good job and implemented a feature that produces a result. The result however doesn't match the counts on the state histogram.
+**Comment:** The AI did a good job and implemented a feature that produces a result. The result however doesn't match the counts on the state histogram.
 
 ## ✅*️ Fix timestamps
 Hey, when I ran the CLI on my archive it produces a histogram that sums up to a different value than the count for `DONE` tasks on the state histogram. I think the state histogram is correct, so it must be the day histogram that is off. Is it possible that some tasks do not have a timestamp at all? I.e. they are in a DONE state, but don't have any repeats or either of closed, scheduled or deadline dates?
@@ -372,7 +378,7 @@ I see that might be the case in my Archive:
 
 Can you check if orgparse returs any timestamps for this ticket and, if so, adjust the timestamp extraction algorithm to take that into account?
 
-Comment: I found an example of a bad timestamp in the archive, so the AI could just focus on fixing, not debugging. This was run in the same session as the previous task, to make sure the context is rich and the AI did well. The code still returns inconsistent results. It also introduced a bit of slop.
+**Comment:** I found an example of a bad timestamp in the archive, so the AI could just focus on fixing, not debugging. This was run in the same session as the previous task, to make sure the context is rich and the AI did well. The code still returns inconsistent results. It also introduced a bit of slop.
 
 ## ✅*️ Final timestamp fallback
 Hey, I found another task that doesn't have a date in the body. It does have an `ARCHIVE_TIME` property, but that's not always given (some tasks do not end up in the Archive) and also this isn't a timestamp indicating the time the ticket was done. Here's an example of such a task:
@@ -390,7 +396,7 @@ Hey, I found another task that doesn't have a date in the body. It does have an 
 
 Can you please update the `analyze()` function to increment `unknown` in the day-of-week histogram if any such tasks are found? That is, when the `extract_timestamp()` function returns nothing, that should be the incremented value. Assume a single repetition of that task (we don't have any means of determining how many repetitions there were).
 
-Comment: This was also ran in the same session. It did good, but now the count is higher than the DONE state count, which indicates a problem elsewhere.
+**Comment:** This was also ran in the same session. It did good, but now the count is higher than the DONE state count, which indicates a problem elsewhere.
 
 ## Histogram refactor
 Please refactor the usages of the `Histogram` class by adding a method `Histogram.update()` that updates a specified value by a given amount. We'd like to avoid useages like the following:
@@ -398,6 +404,8 @@ Please refactor the usages of the `Histogram` class by adding a method `Histogra
 ```
 task_days.values["unknown"] = task_days.values.get("unknown", 0) + 1
 ```
+
+**Comment:** 
 
 ## General stats - time range
 I'd like to compute a global time range of all tasks completed that are in the archive.

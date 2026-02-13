@@ -58,6 +58,15 @@ class Histogram:
         """Return string representation of Histogram."""
         return f"Histogram(values={self.values})"
 
+    def update(self, key: str, amount: int) -> None:
+        """Update the count for a given key by the specified amount.
+
+        Args:
+            key: The category to update
+            amount: The amount to add
+        """
+        self.values[key] = self.values.get(key, 0) + amount
+
 
 @dataclass
 class Relations:
@@ -464,11 +473,11 @@ def analyze(
             # If there are repeated tasks, only count them (main node state is redundant)
             for repeated_task in node.repeated_tasks:
                 repeat_state = repeated_task.after if repeated_task.after else "none"
-                task_states.values[repeat_state] = task_states.values.get(repeat_state, 0) + 1
+                task_states.update(repeat_state, 1)
         else:
             # If no repeated tasks, count the main node state
             node_state = node.todo if node.todo else "none"
-            task_states.values[node_state] = task_states.values.get(node_state, 0) + 1
+            task_states.update(node_state, 1)
 
         final = (node.todo == "DONE" and 1) or 0
         repeats = len([n for n in node.repeated_tasks if n.after == "DONE"])
@@ -494,9 +503,9 @@ def analyze(
             if timestamps:
                 for timestamp in timestamps:
                     day_name = weekday_to_string(timestamp.weekday())
-                    task_days.values[day_name] = task_days.values.get(day_name, 0) + 1
+                    task_days.update(day_name, 1)
             else:
-                task_days.values["unknown"] = task_days.values.get("unknown", 0) + 1
+                task_days.update("unknown", 1)
 
     tag_groups = compute_groups(relations, max_relations)
 

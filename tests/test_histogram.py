@@ -36,7 +36,7 @@ def test_histogram_values_mutable() -> None:
     """Test that histogram values can be modified."""
     hist = Histogram(values={"TODO": 5})
 
-    hist.values["TODO"] += 1
+    hist.update("TODO", 1)
     hist.values["DONE"] = 10
 
     assert hist.values["TODO"] == 6
@@ -49,3 +49,40 @@ def test_histogram_get_with_default() -> None:
 
     assert hist.values.get("TODO", 0) == 5
     assert hist.values.get("DONE", 0) == 0
+
+
+def test_histogram_update_existing_key() -> None:
+    """Test update method with existing key."""
+    hist = Histogram(values={"TODO": 5})
+
+    hist.update("TODO", 3)
+
+    assert hist.values["TODO"] == 8
+
+
+def test_histogram_update_new_key() -> None:
+    """Test update method with new key."""
+    hist = Histogram(values={"TODO": 5})
+
+    hist.update("DONE", 10)
+
+    assert hist.values["DONE"] == 10
+    assert hist.values["TODO"] == 5
+
+
+def test_histogram_update_negative_amount() -> None:
+    """Test update method with negative amount."""
+    hist = Histogram(values={"TODO": 10})
+
+    hist.update("TODO", -3)
+
+    assert hist.values["TODO"] == 7
+
+
+def test_histogram_update_zero_amount() -> None:
+    """Test update method with zero amount."""
+    hist = Histogram(values={"TODO": 5})
+
+    hist.update("TODO", 0)
+
+    assert hist.values["TODO"] == 5
