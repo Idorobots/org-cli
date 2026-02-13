@@ -462,7 +462,7 @@ def validate_and_parse_keys(keys_str: str, option_name: str) -> list[str]:
     return keys
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0912, PLR0915
     """Main CLI entry point."""
     args = parse_arguments()
 
@@ -512,7 +512,20 @@ def main() -> None:
         return -item[1].total
 
     # Display results
-    print("\nTotal tasks: ", result.total_tasks)
+    total_tasks_str = f"\nTotal tasks: count={result.total_tasks}"
+
+    if result.timerange.earliest and result.timerange.latest:
+        earliest_str = result.timerange.earliest.date().isoformat()
+        latest_str = result.timerange.latest.date().isoformat()
+        total_tasks_str += f", earliest={earliest_str}, latest={latest_str}"
+
+        if result.timerange.timeline:
+            max_count = max(result.timerange.timeline.values())
+            top_day = min(d for d, count in result.timerange.timeline.items() if count == max_count)
+            top_day_str = top_day.isoformat()
+            total_tasks_str += f", top_day={top_day_str} ({max_count})"
+
+    print(total_tasks_str)
 
     print("\nTask states:")
     sorted_states = sorted(

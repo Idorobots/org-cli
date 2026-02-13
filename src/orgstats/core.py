@@ -159,6 +159,7 @@ class AnalysisResult:
         total_tasks: Total number of tasks analyzed
         task_states: Histogram of task states (TODO, DONE, DELEGATED, CANCELLED, SUSPENDED, other)
         task_days: Histogram of DONE task completions by day of week
+        timerange: Global time range for all completed (DONE) tasks
         tag_frequencies: Dictionary mapping items to their frequency counts
         tag_relations: Dictionary mapping items to their Relations objects
         tag_time_ranges: Dictionary mapping items to their TimeRange objects
@@ -171,6 +172,7 @@ class AnalysisResult:
     total_tasks: int
     task_states: Histogram
     task_days: Histogram
+    timerange: TimeRange
     tag_frequencies: dict[str, Frequency]
     tag_relations: dict[str, Relations]
     tag_time_ranges: dict[str, TimeRange]
@@ -465,6 +467,7 @@ def analyze(
     time_ranges: dict[str, TimeRange] = {}
     task_states = Histogram(values={"none": 0})
     task_days = Histogram(values={})
+    global_timerange = TimeRange()
 
     for node in nodes:
         total = total + max(1, len(node.repeated_tasks))
@@ -502,6 +505,7 @@ def analyze(
         if is_done_task or done_repeats:
             if timestamps:
                 for timestamp in timestamps:
+                    global_timerange.update(timestamp)
                     day_name = weekday_to_string(timestamp.weekday())
                     task_days.update(day_name, 1)
             else:
@@ -513,6 +517,7 @@ def analyze(
         total_tasks=total,
         task_states=task_states,
         task_days=task_days,
+        timerange=global_timerange,
         tag_frequencies=frequencies,
         tag_relations=relations,
         tag_time_ranges=time_ranges,

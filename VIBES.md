@@ -398,16 +398,16 @@ Can you please update the `analyze()` function to increment `unknown` in the day
 
 **Comment:** This was also ran in the same session. It did good, but now the count is higher than the DONE state count, which indicates a problem elsewhere.
 
-## Histogram refactor
+## ✅ Histogram refactor
 Please refactor the usages of the `Histogram` class by adding a method `Histogram.update()` that updates a specified value by a given amount. We'd like to avoid useages like the following:
 
 ```
 task_days.values["unknown"] = task_days.values.get("unknown", 0) + 1
 ```
 
-**Comment:** 
+**Comment:** AI did good.
 
-## General stats - time range
+## ✅ General stats - time range
 I'd like to compute a global time range of all tasks completed that are in the archive.
 
 Extend the `AnalysisResult` class with a new field called `timerange: TimeRange` which will hold the time line for all the completed tasks.
@@ -420,6 +420,8 @@ Extend the `analyze()` function to compute the over-all timerange of the tasks:
 Only consider tasks that are in the `DONE` state. This should be analogous to the per-tag timeranges computed before, but should apply regradless of the datum used to all tasks.
 
 Extend the CLI output to include the earliest & latest timestamps somewhere near the total tasks count.
+
+Comment: The AI did well.
 
 ## General stats - other
 I'd like to add a few more stats to the analysis results:
