@@ -489,7 +489,7 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         metavar="TIMESTAMP",
         help=(
-            "Filter tasks with timestamps after date (non-inclusive). "
+            "Filter tasks with timestamps after date (inclusive). "
             "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
             "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
         ),
@@ -500,7 +500,7 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         metavar="TIMESTAMP",
         help=(
-            "Filter tasks with timestamps before date (non-inclusive). "
+            "Filter tasks with timestamps before date (inclusive). "
             "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
             "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
         ),
