@@ -276,3 +276,36 @@ def test_integration_all_fixtures_parseable() -> None:
         assert isinstance(result.tag_frequencies, dict)
         assert isinstance(result.tag_relations, dict)
         assert isinstance(result.tag_time_ranges, dict)
+
+
+def test_integration_filtered_repeats_in_analysis() -> None:
+    """Test that filtered repeated tasks produce correct analysis results."""
+    from datetime import date
+
+    from orgstats.core import filter_date_from, filter_date_until
+
+    org_text = """* DONE Task :tag1:tag2:
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+- State "DONE" from "TODO" [2025-03-20 Thu 14:00]
+:END:
+"""
+    nodes = list(orgparse.loads(org_text)[1:])
+
+    unfiltered_result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+
+    filtered_nodes = filter_date_from(nodes, date(2025, 2, 1), ["DONE"])
+    filtered_nodes = filter_date_until(filtered_nodes, date(2025, 3, 1), ["DONE"])
+    filtered_result = analyze(
+        filtered_nodes, {}, category="tags", max_relations=3, done_keys=["DONE"]
+    )
+
+    assert unfiltered_result.total_tasks == 3
+    assert unfiltered_result.task_states.values["DONE"] == 3
+
+    assert filtered_result.total_tasks == 1
+    assert filtered_result.task_states.values["DONE"] == 1
+
+    assert filtered_result.tag_frequencies["tag1"].total == 1
+    assert filtered_result.tag_frequencies["tag2"].total == 1

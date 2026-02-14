@@ -455,3 +455,341 @@ def test_filters_preserve_order() -> None:
     assert result[0] == nodes[0]
     assert result[1] == nodes[1]
     assert result[2] == nodes[2]
+
+
+def test_filter_date_from_repeats_all_match() -> None:
+    """Test filter_date_from with repeated tasks where all match."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-02-10 Mon 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_date_from(nodes, date(2025, 2, 1), ["DONE"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 2
+
+
+def test_filter_date_from_repeats_some_match() -> None:
+    """Test filter_date_from with repeated tasks where some match."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_date_from(nodes, date(2025, 2, 1), ["DONE"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 1
+    assert result[0].repeated_tasks[0].start.date() == date(2025, 2, 15)
+
+
+def test_filter_date_from_repeats_none_match() -> None:
+    """Test filter_date_from with repeated tasks where none match."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-01-15 Wed 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_date_from(nodes, date(2025, 2, 1), ["DONE"])
+
+    assert len(result) == 0
+
+
+def test_filter_date_from_repeats_boundary() -> None:
+    """Test filter_date_from with repeated tasks at boundary (inclusive)."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-31 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-01 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_date_from(nodes, date(2025, 2, 1), ["DONE"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 1
+    assert result[0].repeated_tasks[0].start.date() == date(2025, 2, 1)
+
+
+def test_filter_date_from_repeats_mixed_states() -> None:
+    """Test filter_date_from filters only DONE repeats by date."""
+    org_text = """* TODO Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-02-10 Mon 09:00]
+- State "TODO" from "DONE" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
+
+    result = filter_date_from(nodes, date(2025, 2, 1), ["DONE"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 1
+    assert result[0].repeated_tasks[0].after == "DONE"
+
+
+def test_filter_date_until_repeats_all_match() -> None:
+    """Test filter_date_until with repeated tasks where all match."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-01-15 Wed 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_date_until(nodes, date(2025, 2, 1), ["DONE"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 2
+
+
+def test_filter_date_until_repeats_some_match() -> None:
+    """Test filter_date_until with repeated tasks where some match."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_date_until(nodes, date(2025, 2, 1), ["DONE"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 1
+    assert result[0].repeated_tasks[0].start.date() == date(2025, 1, 10)
+
+
+def test_filter_date_until_repeats_none_match() -> None:
+    """Test filter_date_until with repeated tasks where none match."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-02-10 Mon 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_date_until(nodes, date(2025, 2, 1), ["DONE"])
+
+    assert len(result) == 0
+
+
+def test_filter_date_until_repeats_boundary() -> None:
+    """Test filter_date_until with repeated tasks at boundary (inclusive)."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-02-01 Sat 09:00]
+- State "DONE" from "TODO" [2025-02-02 Sun 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_date_until(nodes, date(2025, 2, 1), ["DONE"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 1
+    assert result[0].repeated_tasks[0].start.date() == date(2025, 2, 1)
+
+
+def test_filter_completed_repeats_all_match() -> None:
+    """Test filter_completed with repeated tasks where all are DONE."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_completed(nodes, ["DONE"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 2
+
+
+def test_filter_completed_repeats_some_match() -> None:
+    """Test filter_completed with repeated tasks where some are DONE."""
+    org_text = """* TODO Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "TODO" from "DONE" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
+
+    result = filter_completed(nodes, ["DONE"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 1
+    assert result[0].repeated_tasks[0].after == "DONE"
+
+
+def test_filter_completed_repeats_none_match() -> None:
+    """Test filter_completed with repeated tasks where none are DONE."""
+    org_text = """* TODO Task
+:LOGBOOK:
+- State "TODO" from "DONE" [2025-01-10 Fri 09:00]
+- State "TODO" from "DONE" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
+
+    result = filter_completed(nodes, ["DONE"])
+
+    assert len(result) == 0
+
+
+def test_filter_completed_without_repeats_matches() -> None:
+    """Test filter_completed with non-repeating task that is DONE."""
+    nodes = node_from_org("* DONE Task\n")
+
+    result = filter_completed(nodes, ["DONE"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 0
+
+
+def test_filter_completed_without_repeats_no_match() -> None:
+    """Test filter_completed with non-repeating task that is TODO."""
+    nodes = node_from_org("* TODO Task\n")
+
+    result = filter_completed(nodes, ["DONE"])
+
+    assert len(result) == 0
+
+
+def test_filter_not_completed_repeats_all_match() -> None:
+    """Test filter_not_completed with repeated tasks where all are TODO."""
+    org_text = """* TODO Task
+:LOGBOOK:
+- State "TODO" from "DONE" [2025-01-10 Fri 09:00]
+- State "TODO" from "DONE" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
+
+    result = filter_not_completed(nodes, ["TODO"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 2
+
+
+def test_filter_not_completed_repeats_some_match() -> None:
+    """Test filter_not_completed with repeated tasks where some are TODO."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "TODO" from "DONE" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
+
+    result = filter_not_completed(nodes, ["TODO"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 1
+    assert result[0].repeated_tasks[0].after == "TODO"
+
+
+def test_filter_not_completed_repeats_none_match() -> None:
+    """Test filter_not_completed with repeated tasks where none are TODO."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_not_completed(nodes, ["TODO"])
+
+    assert len(result) == 0
+
+
+def test_filter_not_completed_without_repeats_matches() -> None:
+    """Test filter_not_completed with non-repeating task that is TODO."""
+    nodes = node_from_org("* TODO Task\n")
+
+    result = filter_not_completed(nodes, ["TODO"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 0
+
+
+def test_filter_not_completed_without_repeats_no_match() -> None:
+    """Test filter_not_completed with non-repeating task that is DONE."""
+    nodes = node_from_org("* DONE Task\n")
+
+    result = filter_not_completed(nodes, ["TODO"])
+
+    assert len(result) == 0
+
+
+def test_filter_date_range_repeats_combined() -> None:
+    """Test combining date_from and date_until filters on repeated tasks."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+- State "DONE" from "TODO" [2025-03-20 Thu 14:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_date_from(nodes, date(2025, 2, 1), ["DONE"])
+    result = filter_date_until(result, date(2025, 3, 1), ["DONE"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 1
+    assert result[0].repeated_tasks[0].start.date() == date(2025, 2, 15)
+
+
+def test_filters_do_not_mutate_original_nodes() -> None:
+    """Test that filtering with repeats does not mutate original nodes."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+    original_repeat_count = len(nodes[0].repeated_tasks)
+
+    result = filter_date_from(nodes, date(2025, 2, 1), ["DONE"])
+
+    assert len(nodes[0].repeated_tasks) == original_repeat_count
+    assert len(result[0].repeated_tasks) == 1
+
+
+def test_filter_completed_multiple_done_keys_with_repeats() -> None:
+    """Test filter_completed with multiple done keys and repeated tasks."""
+    org_text = """* DELEGATED Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DELEGATED" from "TODO" [2025-02-15 Sat 11:00]
+- State "CANCELLED" from "TODO" [2025-03-20 Thu 14:00]
+:END:
+"""
+    nodes = node_from_org(
+        org_text, todo_keys=["TODO"], done_keys=["DONE", "DELEGATED", "CANCELLED"]
+    )
+
+    result = filter_completed(nodes, ["DONE", "DELEGATED"])
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 2
+    assert result[0].repeated_tasks[0].after in ["DONE", "DELEGATED"]
+    assert result[0].repeated_tasks[1].after in ["DONE", "DELEGATED"]

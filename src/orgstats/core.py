@@ -1,5 +1,6 @@
 """Core logic for orgstats - Org-mode archive file analysis."""
 
+import copy
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -750,6 +751,37 @@ def get_repeat_count(node: orgparse.node.OrgNode) -> int:
     return max(1, len(node.repeated_tasks))
 
 
+def _filter_node_repeats(
+    node: orgparse.node.OrgNode, predicate: object
+) -> orgparse.node.OrgNode | None:
+    """Filter repeated tasks in a node based on a predicate function.
+
+    Args:
+        node: Org-mode node to filter
+        predicate: Function that takes a repeated task and returns True if it should be kept
+
+    Returns:
+        - Original node if all repeats match (or no repeats)
+        - Deep copy with filtered repeated_tasks if some match
+        - None if no repeats match (and node doesn't have valid non-repeat data)
+    """
+    if not node.repeated_tasks:
+        return node
+
+    predicate_func = predicate if callable(predicate) else lambda _: False
+    matching_repeats = [rt for rt in node.repeated_tasks if predicate_func(rt)]
+
+    if len(matching_repeats) == len(node.repeated_tasks):
+        return node
+
+    if len(matching_repeats) == 0:
+        return None
+
+    node_copy = copy.deepcopy(node)
+    node_copy._repeated_tasks = matching_repeats
+    return node_copy
+
+
 def filter_gamify_exp_above(
     nodes: list[orgparse.node.OrgNode], threshold: int
 ) -> list[orgparse.node.OrgNode]:
@@ -823,29 +855,41 @@ def filter_date_from(
 ) -> list[orgparse.node.OrgNode]:
     """Filter nodes with any timestamp after date_threshold (inclusive).
 
-    Uses extract_timestamp() logic. Nodes without timestamps are excluded.
+    For nodes with repeated tasks, filters the repeated_tasks list to only include
+    tasks with timestamps >= date_threshold. For nodes without repeated tasks,
+    checks the node's timestamp.
 
-    FIXME: When a node has multiple timestamps from repeated tasks, we include
-    the entire node if ANY timestamp passes the filter. This may include task
-    occurrences from outside the filtered date range.
+    Uses extract_timestamp() logic. Nodes without timestamps are excluded.
 
     Args:
         nodes: List of org-mode nodes to filter
-        date_threshold: Date threshold (exclusive)
+        date_threshold: Date threshold (inclusive)
         done_keys: List of completion state keywords
 
     Returns:
-        Filtered list of nodes
+        Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
     """
-    return [
-        node
-        for node in nodes
-        if (timestamps := extract_timestamp(node, done_keys))
-        and any(
+    result = []
+
+    for node in nodes:
+        if node.repeated_tasks:
+            done_repeats = [rt for rt in node.repeated_tasks if rt.after in done_keys]
+            if done_repeats:
+                filtered_node = _filter_node_repeats(
+                    node, lambda rt: rt.start.date() >= date_threshold and rt.after in done_keys
+                )
+                if filtered_node is not None:
+                    result.append(filtered_node)
+            continue
+
+        timestamps = extract_timestamp(node, done_keys)
+        if timestamps and any(
             (timestamp.date() if isinstance(timestamp, datetime) else timestamp) >= date_threshold
             for timestamp in timestamps
-        )
-    ]
+        ):
+            result.append(node)
+
+    return result
 
 
 def filter_date_until(
@@ -853,29 +897,41 @@ def filter_date_until(
 ) -> list[orgparse.node.OrgNode]:
     """Filter nodes with any timestamp before date_threshold (inclusive).
 
-    Uses extract_timestamp() logic. Nodes without timestamps are excluded.
+    For nodes with repeated tasks, filters the repeated_tasks list to only include
+    tasks with timestamps <= date_threshold. For nodes without repeated tasks,
+    checks the node's timestamp.
 
-    FIXME: When a node has multiple timestamps from repeated tasks, we include
-    the entire node if ANY timestamp passes the filter. This may include task
-    occurrences from outside the filtered date range.
+    Uses extract_timestamp() logic. Nodes without timestamps are excluded.
 
     Args:
         nodes: List of org-mode nodes to filter
-        date_threshold: Date threshold (exclusive)
+        date_threshold: Date threshold (inclusive)
         done_keys: List of completion state keywords
 
     Returns:
-        Filtered list of nodes
+        Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
     """
-    return [
-        node
-        for node in nodes
-        if (timestamps := extract_timestamp(node, done_keys))
-        and any(
+    result = []
+
+    for node in nodes:
+        if node.repeated_tasks:
+            done_repeats = [rt for rt in node.repeated_tasks if rt.after in done_keys]
+            if done_repeats:
+                filtered_node = _filter_node_repeats(
+                    node, lambda rt: rt.start.date() <= date_threshold and rt.after in done_keys
+                )
+                if filtered_node is not None:
+                    result.append(filtered_node)
+            continue
+
+        timestamps = extract_timestamp(node, done_keys)
+        if timestamps and any(
             (timestamp.date() if isinstance(timestamp, datetime) else timestamp) <= date_threshold
             for timestamp in timestamps
-        )
-    ]
+        ):
+            result.append(node)
+
+    return result
 
 
 def filter_property(
@@ -923,19 +979,28 @@ def filter_completed(
 ) -> list[orgparse.node.OrgNode]:
     """Filter nodes with todo state in done_keys.
 
-    Matches node.todo against done_keys list.
-
-    FIXME: For nodes with repeated tasks, this only checks the final state (node.todo).
-    It should check if ANY repeated task occurrence has a state in done_keys.
+    For nodes with repeated tasks, filters the repeated_tasks list to only include
+    tasks with after state in done_keys. For nodes without repeated tasks,
+    checks node.todo.
 
     Args:
         nodes: List of org-mode nodes to filter
         done_keys: List of completion state keywords
 
     Returns:
-        Filtered list of nodes
+        Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
     """
-    return [node for node in nodes if node.todo in done_keys]
+    result = []
+
+    for node in nodes:
+        if node.repeated_tasks:
+            filtered_node = _filter_node_repeats(node, lambda rt: rt.after in done_keys)
+            if filtered_node is not None:
+                result.append(filtered_node)
+        elif node.todo in done_keys:
+            result.append(node)
+
+    return result
 
 
 def filter_not_completed(
@@ -943,16 +1008,25 @@ def filter_not_completed(
 ) -> list[orgparse.node.OrgNode]:
     """Filter nodes with todo state in todo_keys.
 
-    Matches node.todo against todo_keys list.
-
-    FIXME: For nodes with repeated tasks, this only checks the final state (node.todo).
-    It should check if ANY repeated task occurrence has a state in todo_keys.
+    For nodes with repeated tasks, filters the repeated_tasks list to only include
+    tasks with after state in todo_keys. For nodes without repeated tasks,
+    checks node.todo.
 
     Args:
         nodes: List of org-mode nodes to filter
         todo_keys: List of TODO state keywords
 
     Returns:
-        Filtered list of nodes
+        Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
     """
-    return [node for node in nodes if node.todo in todo_keys]
+    result = []
+
+    for node in nodes:
+        if node.repeated_tasks:
+            filtered_node = _filter_node_repeats(node, lambda rt: rt.after in todo_keys)
+            if filtered_node is not None:
+                result.append(filtered_node)
+        elif node.todo in todo_keys:
+            result.append(node)
+
+    return result

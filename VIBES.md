@@ -534,11 +534,22 @@ Make the `--filter-date-from` and `--filter-date-until` inclusive, makes more se
 
 **Comment:** This was simpler to do manually.
 
-## Another fix for task states counts
-Now the counts for day of week histogram are higher than the total count of done tasks. Likely, now it's the done task count that's wrong.
+## ✅*️ Filters applied consistently to repeats
+Currently filters are applied to the org task list before analysis, but some of them (date, completed/not completed) let in all the repeats if any of them matches the filter, resulting in some data outside of the requested range making its way into the analysis.
 
-## Filters applied consistently to repeats
-Currently filters are applied in advance, but some of them (date, completed/not completed) let in all the repeats if any of them matches the filter, resulting in some data outside of the requested range making its way into the analysis. This can be addressed by stripping the non-matching repeats from the tasks, or by "hydrating" the tasks in advance not to have any repeats and instead duplicating the original node instance.
+This can be addressed by stripping the non-matching repeats from the tasks, or by "hydrating" the tasks in advance not to have any repeats and instead duplicating the original node instance. I think the former is better, but I'd like your opinion on that.
+
+If you deem filtering the repeats as viable, please extend the `filter_date_from`, `filter_date_until`, `filter_completed` and `filter_not_completed` functions in the core module to also filter out the repeated tasks of a node. That is, after the filter is applied:
+- if none of the reapeated tasks match, the whole node is filtered out,
+- if some of the repeated tasks match, the node is replaced with a copy, that has the `repeated_tasks` property filtered to just the matching repeats,
+- if all of the repeated tasks match, the node is left untouched.
+
+Once done, you can remove the FIXME comments. Please make sure to test this thoroughly.
+
+**Comment:** It was implemented, but the date filters were pretty sloppy and needed manual intervention.
+
+## Improve cli.py test coverage
+The test coverage fell well under 90%, please improve that by introducing more tests for the @src/orgstats/cli.py file.
 
 ## ASCII plots
 Use an ascii plotting library to plot tag activity over time. Each plot should be a bar chart with at most 50 buckets. Each bucket will represent 1/50 of the total time range within which te tag was active. If the tag was active for more than 50 days, group the activity into buckets, sum the occurances and plot the sums. If the tag was active for fewer than 50 days, plot only as many buckets as makes sense. Make sure to take into account all days, even those with no tag activity on that day. These should have a value of 0. You can first expand the timeline with the missing days of no activity, then determine the buckets and compute sums of activity per bucket and then plot the results.
