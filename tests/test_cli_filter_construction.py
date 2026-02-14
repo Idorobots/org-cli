@@ -579,7 +579,7 @@ def test_display_results_with_tag_groups() -> None:
     try:
         sys.stdout = StringIO()
 
-        display_results(result, args, set(), None, None)
+        display_results(result, args, set(), (None, None), (["DONE"], ["TODO"]))
 
         output = sys.stdout.getvalue()
 
@@ -630,7 +630,7 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
     try:
         sys.stdout = StringIO()
 
-        display_results(result, args, set(), None, None)
+        display_results(result, args, set(), (None, None), (["DONE"], ["TODO"]))
 
         output = sys.stdout.getvalue()
 
@@ -682,7 +682,7 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
     try:
         sys.stdout = StringIO()
 
-        display_results(result, args, {"test"}, None, None)
+        display_results(result, args, {"test"}, (None, None), (["DONE"], ["TODO"]))
 
         output = sys.stdout.getvalue()
 
@@ -728,7 +728,7 @@ def test_display_results_no_tag_groups() -> None:
     try:
         sys.stdout = StringIO()
 
-        display_results(result, args, set(), None, None)
+        display_results(result, args, set(), (None, None), (["DONE"], ["TODO"]))
 
         output = sys.stdout.getvalue()
 

@@ -28,6 +28,7 @@ from orgstats.core import (
     filter_repeats_below,
     filter_tag,
     gamify_exp,
+    render_histogram,
     render_timeline_chart,
 )
 
@@ -957,8 +958,8 @@ def display_results(
     result: AnalysisResult,
     args: argparse.Namespace,
     exclude_set: set[str],
-    date_from: datetime | None,
-    date_until: datetime | None,
+    date_range: tuple[datetime | None, datetime | None],
+    task_keys: tuple[list[str], list[str]],
 ) -> None:
     """Display analysis results in formatted output.
 
@@ -966,9 +967,11 @@ def display_results(
         result: Analysis results to display
         args: Command-line arguments containing display configuration
         exclude_set: Set of items to exclude from display
-        date_from: Optional start date for chart display range
-        date_until: Optional end date for chart display range
+        date_range: Tuple of (date_from, date_until) for chart display range
+        task_keys: Tuple of (done_keys, todo_keys) state keywords
     """
+    date_from, date_until = date_range
+    done_keys, todo_keys = task_keys
     if result.timerange.earliest and result.timerange.latest and result.timerange.timeline:
         earliest_date = date_from.date() if date_from else result.timerange.earliest.date()
         latest_date = date_until.date() if date_until else result.timerange.latest.date()
@@ -991,21 +994,28 @@ def display_results(
         print(f"Max repeats of a single task: {result.max_repeat_count}")
 
     print("\nTask states:")
-    sorted_states = sorted(
-        result.task_states.values.items(), key=lambda item: item[1], reverse=True
+    remaining_states = sorted(
+        set(result.task_states.values.keys()) - set(done_keys) - set(todo_keys)
     )
-    for state, count in sorted_states:
-        print(f"  {state}: {count}")
+    state_order = done_keys + todo_keys + remaining_states
+    histogram_lines = render_histogram(result.task_states, args.buckets, state_order)
+    for line in histogram_lines:
+        print(f"  {line}")
 
     print("\nTask completion by day of week:")
-    day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    for day in day_order:
-        count = result.task_days.values.get(day, 0)
-        print(f"  {day}: {count}")
-
-    unknown_count = result.task_days.values.get("unknown", 0)
-    if unknown_count > 0:
-        print(f"  unknown: {unknown_count}")
+    day_order = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+        "unknown",
+    ]
+    histogram_lines = render_histogram(result.task_days, args.buckets, day_order)
+    for line in histogram_lines:
+        print(f"  {line}")
 
     category_name = CATEGORY_NAMES[args.show]
 
@@ -1077,7 +1087,7 @@ def main() -> None:
     if args.filter_date_until is not None:
         date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
 
-    display_results(result, args, exclude_set, date_from, date_until)
+    display_results(result, args, exclude_set, (date_from, date_until), (done_keys, todo_keys))
 
 
 if __name__ == "__main__":

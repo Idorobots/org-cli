@@ -198,7 +198,7 @@ def test_main_displays_none_state() -> None:
         output = sys.stdout.getvalue()
 
         assert "Processing" in output
-        assert "none:" in output
+        assert "none     ┊" in output
 
     finally:
         sys.argv = original_argv

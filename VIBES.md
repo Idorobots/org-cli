@@ -747,9 +747,55 @@ Please add a `NOTE` comment to the usages of `_FilteredOrgNode` indicating that 
 
 **Comment:** This was pretty easy, but the AI went overboard with the NOTE comments, so I reworded and removed the overzelous ones.
 
-## Histogram ASCII plots
-- pie-chart of the states
-- pie chart of the week days
+## ✅*️ Histogram ASCII plots
+I'd like to add the display for histograms now. These will be handled in a similar fashion to the activity plots, except the format will be different.
+
+The chart will be sideways, displaying values left to right. Bar lengths should be relative to the sum of all the values in the histogram, not the highest single value in the histogram.
+The names of the categories should be on the left, left-justified with a line at the tenth column. If a name of the category would overflow, please shorten it and add a dot at the end (`very long name` becomes `very long.┊`). To the right of the line the bars should be displayed, use the "█" for each segment. The 100% value should span `--blocks`, but the bar lenghts should be computed to be relative to the sum of all histogram values:
+```
+Task completion by day of week:
+  Monday   ┊████████████ 3526
+  Tuesday  ┊██████████ 3273
+  Wednesday┊█████████ 3129
+  Thursday ┊████████ 2936
+  Friday   ┊██████ 2694
+  Saturday ┊███████████ 3452
+  Sunday   ┊███████████████ 4165
+  unknown  ┊█ 54
+```
+Here's more examples:
+
+```
+Empty histogram:
+  Some     ┊ 0
+  Value    ┊ 0
+  unknown  ┊ 0
+
+One value at 100% histogram:
+  Some     ┊ 0
+  Value    ┊████████████████████████████████████████ 100
+
+All values equal:
+  Some     ┊████████████████████ 50
+  Value    ┊████████████████████ 50
+```
+
+Please update the CLI output to show the task-state and day-of-week histograms as described above.
+
+**Comment:** The AI asked for clarification on the ordering of items on the histogram, but then promptly ignored it and did its own thing.
+
+## Code reorg
+Move the filters to filters.py
+Move the analysis to analyze.py
+Move the plot display generation to plot.py
+Move the histogram display generation to histogram.py
+
+## Remove normalization from the tags, just normalize words in the heading & body
+
+## Output colors
+
+## Task "category" histogram
+- based on gamify_exp, eventually will evolve to classify each task by some criteria (fix/debug/test heading content, etc).
 
 ## Per-tag stats
 - Total tasks

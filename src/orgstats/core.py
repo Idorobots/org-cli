@@ -1147,6 +1147,34 @@ def _map_value_to_bar(value: int, max_value: int) -> str:
     return "▁"
 
 
+def render_histogram(
+    histogram: Histogram, total_blocks: int, category_order: list[str] | None
+) -> list[str]:
+    """Render histogram as visual bar chart.
+
+    Args:
+        histogram: Histogram object to render
+        total_blocks: Number of blocks for 100% width (e.g., args.buckets)
+        category_order: Optional list specifying display order of categories
+
+    Returns:
+        List of formatted strings, one per category
+    """
+    total_sum = sum(histogram.values.values())
+    categories = category_order if category_order is not None else sorted(histogram.values.keys())
+
+    lines = []
+    for category in categories:
+        value = histogram.values.get(category, 0)
+        display_name = category[:8] + "." if len(category) > 9 else category
+        bar_length = int((value / total_sum) * total_blocks) if total_sum > 0 else 0
+        bars = "█" * bar_length
+        line = f"{display_name:9s}┊{bars} {value}"
+        lines.append(line)
+
+    return lines
+
+
 def render_timeline_chart(
     timeline: dict[date, int], earliest: date, latest: date, num_buckets: int
 ) -> tuple[str, str, str]:

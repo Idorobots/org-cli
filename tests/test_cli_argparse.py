@@ -536,7 +536,7 @@ def test_argparse_todo_keys_multiple() -> None:
 
     assert result.returncode == 0
     assert "Processing" in result.stdout
-    assert "TODO:" in result.stdout or "WAITING:" in result.stdout
+    assert "TODO     ┊" in result.stdout or "WAITING  ┊" in result.stdout
 
 
 def test_argparse_done_keys_single() -> None:
