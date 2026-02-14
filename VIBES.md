@@ -678,7 +678,7 @@ The value should be taken from the timeline, the same way as the current display
 
 **Comment:** This was easy enough.
 
-## Plot improvements - Total tasks
+## ✅ Plot improvements - Total tasks
 Let's change the total tasks section to look like this:
 
 ```
@@ -692,6 +692,8 @@ Max repeats of a single task: 2
 ```
 
 The chart should come above the "Total tasks" line. All "general" stats should be at the same indent level. The logic for these values should stay the same, only the update should be updated.
+
+**Comment:** This was also pretty easy.
 
 ## Plot improvements - per-tag sections
 Let's change the per-tag display of the `Top tags:` section so that each tag section looks like this:

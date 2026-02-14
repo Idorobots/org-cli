@@ -12,7 +12,7 @@ def test_cli_with_buckets_parameter() -> None:
         text=True,
     )
     assert result.returncode == 0
-    assert "Activity:" in result.stdout
+    assert "┊" in result.stdout
 
 
 def test_cli_buckets_default_value() -> None:
@@ -23,7 +23,7 @@ def test_cli_buckets_default_value() -> None:
         text=True,
     )
     assert result.returncode == 0
-    assert "Activity:" in result.stdout
+    assert "┊" in result.stdout
 
 
 def test_cli_buckets_validation_minimum() -> None:
@@ -45,26 +45,22 @@ def test_cli_buckets_validation_exact_minimum() -> None:
         text=True,
     )
     assert result.returncode == 0
-    assert "Activity:" in result.stdout
+    assert "┊" in result.stdout
 
 
 def test_cli_output_shows_global_chart() -> None:
-    """Test that global Activity section is present."""
+    """Test that global chart is present."""
     result = subprocess.run(
         [sys.executable, "-m", "orgstats", "examples/ARCHIVE_small"],
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0
-    assert "Activity:" in result.stdout
     assert "┊" in result.stdout
     lines = result.stdout.split("\n")
-    activity_found = False
     chart_found = False
     for line in lines:
-        if "Activity:" in line:
-            activity_found = True
-        if activity_found and line.startswith("┊") and "┊" in line[1:]:
+        if line.startswith("┊") and "┊" in line[1:]:
             chart_found = True
             break
     assert chart_found
@@ -113,7 +109,7 @@ def test_cli_buckets_different_values() -> None:
             text=True,
         )
         assert result.returncode == 0
-        assert "Activity:" in result.stdout
+        assert "┊" in result.stdout
 
 
 def test_cli_help_shows_buckets() -> None:

@@ -968,38 +968,24 @@ def display_results(
         args: Command-line arguments containing display configuration
         exclude_set: Set of items to exclude from display
     """
-    total_tasks_str = f"\nTotal tasks: count={result.total_tasks}"
+    if result.timerange.earliest and result.timerange.latest and result.timerange.timeline:
+        date_line, chart_line, underline = render_timeline_chart(
+            result.timerange.timeline,
+            result.timerange.earliest.date(),
+            result.timerange.latest.date(),
+            args.buckets,
+        )
+        print()
+        print(date_line)
+        print(chart_line)
+        print(underline)
+
+    print(f"Total tasks: {result.total_tasks}")
 
     if result.timerange.earliest and result.timerange.latest:
-        earliest_str = result.timerange.earliest.date().isoformat()
-        latest_str = result.timerange.latest.date().isoformat()
-        total_tasks_str += f", earliest={earliest_str}, latest={latest_str}"
-
-        if result.timerange.timeline:
-            max_count = max(result.timerange.timeline.values())
-            top_day = min(d for d, count in result.timerange.timeline.items() if count == max_count)
-            top_day_str = top_day.isoformat()
-            total_tasks_str += f", top_day={top_day_str} ({max_count})"
-
-    print(total_tasks_str)
-
-    if result.timerange.earliest and result.timerange.latest:
-        print(f"  Average tasks completed per day: {result.avg_tasks_per_day:.2f}")
-        print(f"  Max tasks completed on a single day: {result.max_single_day_count}")
-        print(f"  Max repeats of a single task: {result.max_repeat_count}")
-
-        if result.timerange.timeline:
-            date_line, chart_line, underline = render_timeline_chart(
-                result.timerange.timeline,
-                result.timerange.earliest.date(),
-                result.timerange.latest.date(),
-                args.buckets,
-            )
-            print("\nActivity:")
-            print()
-            print(date_line)
-            print(chart_line)
-            print(underline)
+        print(f"Average tasks completed per day: {result.avg_tasks_per_day:.2f}")
+        print(f"Max tasks completed on a single day: {result.max_single_day_count}")
+        print(f"Max repeats of a single task: {result.max_repeat_count}")
 
     print("\nTask states:")
     sorted_states = sorted(
