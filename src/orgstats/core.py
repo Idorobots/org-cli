@@ -764,14 +764,7 @@ def filter_gamify_exp_above(
     Returns:
         Filtered list of nodes
     """
-    filtered = []
-    for node in nodes:
-        exp = gamify_exp(node)
-        if exp is None:
-            exp = 10
-        if exp > threshold:
-            filtered.append(node)
-    return filtered
+    return [node for node in nodes if (gamify_exp(node) or 10) > threshold]
 
 
 def filter_gamify_exp_below(
@@ -788,14 +781,7 @@ def filter_gamify_exp_below(
     Returns:
         Filtered list of nodes
     """
-    filtered = []
-    for node in nodes:
-        exp = gamify_exp(node)
-        if exp is None:
-            exp = 10
-        if exp < threshold:
-            filtered.append(node)
-    return filtered
+    return [node for node in nodes if (gamify_exp(node) or 10) < threshold]
 
 
 def filter_repeats_above(
@@ -812,12 +798,7 @@ def filter_repeats_above(
     Returns:
         Filtered list of nodes
     """
-    filtered = []
-    for node in nodes:
-        count = get_repeat_count(node)
-        if count > threshold:
-            filtered.append(node)
-    return filtered
+    return [node for node in nodes if get_repeat_count(node) > threshold]
 
 
 def filter_repeats_below(
@@ -834,12 +815,7 @@ def filter_repeats_below(
     Returns:
         Filtered list of nodes
     """
-    filtered = []
-    for node in nodes:
-        count = get_repeat_count(node)
-        if count < threshold:
-            filtered.append(node)
-    return filtered
+    return [node for node in nodes if get_repeat_count(node) < threshold]
 
 
 def filter_date_from(
@@ -861,19 +837,15 @@ def filter_date_from(
     Returns:
         Filtered list of nodes
     """
-    filtered = []
-    for node in nodes:
-        timestamps = extract_timestamp(node, done_keys)
-        if not timestamps:
-            continue
-
-        for timestamp in timestamps:
-            timestamp_date = timestamp.date() if isinstance(timestamp, datetime) else timestamp
-            if timestamp_date > date_threshold:
-                filtered.append(node)
-                break
-
-    return filtered
+    return [
+        node
+        for node in nodes
+        if (timestamps := extract_timestamp(node, done_keys))
+        and any(
+            (timestamp.date() if isinstance(timestamp, datetime) else timestamp) > date_threshold
+            for timestamp in timestamps
+        )
+    ]
 
 
 def filter_date_until(
@@ -895,19 +867,15 @@ def filter_date_until(
     Returns:
         Filtered list of nodes
     """
-    filtered = []
-    for node in nodes:
-        timestamps = extract_timestamp(node, done_keys)
-        if not timestamps:
-            continue
-
-        for timestamp in timestamps:
-            timestamp_date = timestamp.date() if isinstance(timestamp, datetime) else timestamp
-            if timestamp_date < date_threshold:
-                filtered.append(node)
-                break
-
-    return filtered
+    return [
+        node
+        for node in nodes
+        if (timestamps := extract_timestamp(node, done_keys))
+        and any(
+            (timestamp.date() if isinstance(timestamp, datetime) else timestamp) < date_threshold
+            for timestamp in timestamps
+        )
+    ]
 
 
 def filter_property(
@@ -926,12 +894,12 @@ def filter_property(
     Returns:
         Filtered list of nodes
     """
-    filtered = []
-    for node in nodes:
-        prop_value = node.properties.get(property_name, None)
-        if prop_value is not None and str(prop_value) == property_value:
-            filtered.append(node)
-    return filtered
+    return [
+        node
+        for node in nodes
+        if (prop_value := node.properties.get(property_name, None)) is not None
+        and str(prop_value) == property_value
+    ]
 
 
 def filter_tag(nodes: list[orgparse.node.OrgNode], tag_name: str) -> list[orgparse.node.OrgNode]:
@@ -947,11 +915,7 @@ def filter_tag(nodes: list[orgparse.node.OrgNode], tag_name: str) -> list[orgpar
     Returns:
         Filtered list of nodes
     """
-    filtered = []
-    for node in nodes:
-        if tag_name in node.tags:
-            filtered.append(node)
-    return filtered
+    return [node for node in nodes if tag_name in node.tags]
 
 
 def filter_completed(
@@ -961,6 +925,9 @@ def filter_completed(
 
     Matches node.todo against done_keys list.
 
+    FIXME: For nodes with repeated tasks, this only checks the final state (node.todo).
+    It should check if ANY repeated task occurrence has a state in done_keys.
+
     Args:
         nodes: List of org-mode nodes to filter
         done_keys: List of completion state keywords
@@ -968,11 +935,7 @@ def filter_completed(
     Returns:
         Filtered list of nodes
     """
-    filtered = []
-    for node in nodes:
-        if node.todo in done_keys:
-            filtered.append(node)
-    return filtered
+    return [node for node in nodes if node.todo in done_keys]
 
 
 def filter_not_completed(
@@ -982,6 +945,9 @@ def filter_not_completed(
 
     Matches node.todo against todo_keys list.
 
+    FIXME: For nodes with repeated tasks, this only checks the final state (node.todo).
+    It should check if ANY repeated task occurrence has a state in todo_keys.
+
     Args:
         nodes: List of org-mode nodes to filter
         todo_keys: List of TODO state keywords
@@ -989,8 +955,4 @@ def filter_not_completed(
     Returns:
         Filtered list of nodes
     """
-    filtered = []
-    for node in nodes:
-        if node.todo in todo_keys:
-            filtered.append(node)
-    return filtered
+    return [node for node in nodes if node.todo in todo_keys]

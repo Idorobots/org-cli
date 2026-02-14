@@ -514,7 +514,7 @@ If the `gamify_exp` property is missing in a task, assume its value is 10 for th
 
 **Comment:** The AI wrote a lot of boilerplate to implement the feature and introduced some slop. It also didn't quite implement the features as I had in mind - my foult as the spec didn't explicitly say that.
 
-## Filter spec slop
+## ❌ Filter spec slop
 Can you please refactor the `FilterSpec` class to not use the `Any` type for the argument. I'd rather it had the lambda function applying the filter in there - a field called `filter` that is a function taking a list of Org Nodes and returning the filter list of OrgNodes.
 
 Please modify `create_filter_specs_from_args()` function to add lambdas to the `FilterSpec` objects it creates (effectively combining that function with `convert_spec_to_function()`). Modify `build_filter_chain()` function to take that into account .
@@ -526,6 +526,8 @@ The goal is to avoid having the `Any` typed field in `FilterSpec` and instead us
 You can re-use the `filter_*` functions, but please refactor them to use list comprehensions instead of `for` loops with `list.append()`.
 
 The `filter_completed` and `filter_not_completed` should also be updated to take repeated tasks into account - it's OK that not all the occurances match the filter. We will address that at some point.
+
+**Comment:** The AI made the changes, but introduced alternative slop in the process. Required a manual intervention.
 
 ## Inclusive dates
 Make the `--filter-date-from` and `--filter-date-until` inclusive, makes more sense this way.

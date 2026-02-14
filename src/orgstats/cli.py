@@ -7,7 +7,6 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
 
 import orgparse
 
@@ -649,8 +648,7 @@ def parse_property_filter(property_str: str) -> tuple[str, str]:
 class FilterSpec:
     """Specification for a single filter operation."""
 
-    filter_type: str
-    value: Any
+    filter: Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]
     position: float
 
 
@@ -698,14 +696,14 @@ def handle_preset_filter(preset: str, position: int) -> list[FilterSpec]:
         List of FilterSpec objects for the preset
     """
     if preset == "simple":
-        return [FilterSpec("gamify_exp_below", 10, position)]
+        return [FilterSpec(lambda nodes: filter_gamify_exp_below(nodes, 10), position)]
     if preset == "regular":
         return [
-            FilterSpec("gamify_exp_above", 9, position),
-            FilterSpec("gamify_exp_below", 20, position + 0.1),
+            FilterSpec(lambda nodes: filter_gamify_exp_above(nodes, 9), position),
+            FilterSpec(lambda nodes: filter_gamify_exp_below(nodes, 20), position + 0.1),
         ]
     if preset == "hard":
-        return [FilterSpec("gamify_exp_above", 19, position)]
+        return [FilterSpec(lambda nodes: filter_gamify_exp_above(nodes, 19), position)]
     return []
 
 
@@ -722,17 +720,21 @@ def handle_simple_filter(
     Returns:
         List of FilterSpec objects (0 or 1 item)
     """
-    filter_map = {
-        "--filter-gamify-exp-above": ("gamify_exp_above", args.filter_gamify_exp_above),
-        "--filter-gamify-exp-below": ("gamify_exp_below", args.filter_gamify_exp_below),
-        "--filter-repeats-above": ("repeats_above", args.filter_repeats_above),
-        "--filter-repeats-below": ("repeats_below", args.filter_repeats_below),
-    }
+    if arg_name == "--filter-gamify-exp-above" and args.filter_gamify_exp_above is not None:
+        threshold = args.filter_gamify_exp_above
+        return [FilterSpec(lambda nodes: filter_gamify_exp_above(nodes, threshold), position)]
 
-    if arg_name in filter_map:
-        filter_type, value = filter_map[arg_name]
-        if value is not None:
-            return [FilterSpec(filter_type, value, position)]
+    if arg_name == "--filter-gamify-exp-below" and args.filter_gamify_exp_below is not None:
+        threshold = args.filter_gamify_exp_below
+        return [FilterSpec(lambda nodes: filter_gamify_exp_below(nodes, threshold), position)]
+
+    if arg_name == "--filter-repeats-above" and args.filter_repeats_above is not None:
+        threshold = args.filter_repeats_above
+        return [FilterSpec(lambda nodes: filter_repeats_above(nodes, threshold), position)]
+
+    if arg_name == "--filter-repeats-below" and args.filter_repeats_below is not None:
+        threshold = args.filter_repeats_below
+        return [FilterSpec(lambda nodes: filter_repeats_below(nodes, threshold), position)]
 
     return []
 
@@ -753,11 +755,13 @@ def handle_date_filter(
     """
     if arg_name == "--filter-date-from" and args.filter_date_from:
         date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
-        return [FilterSpec("date_from", (date_from, done_keys), position)]
+        keys = done_keys
+        return [FilterSpec(lambda nodes: filter_date_from(nodes, date_from, keys), position)]
 
     if arg_name == "--filter-date-until" and args.filter_date_until:
         date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
-        return [FilterSpec("date_until", (date_until, done_keys), position)]
+        keys = done_keys
+        return [FilterSpec(lambda nodes: filter_date_until(nodes, date_until, keys), position)]
 
     return []
 
@@ -782,10 +786,12 @@ def handle_completion_filter(
         List of FilterSpec objects (0 or 1 item)
     """
     if arg_name == "--filter-completed" and args.filter_completed:
-        return [FilterSpec("completed", done_keys, position)]
+        keys = done_keys
+        return [FilterSpec(lambda nodes: filter_completed(nodes, keys), position)]
 
     if arg_name == "--filter-not-completed" and args.filter_not_completed:
-        return [FilterSpec("not_completed", todo_keys, position)]
+        keys = todo_keys
+        return [FilterSpec(lambda nodes: filter_not_completed(nodes, keys), position)]
 
     return []
 
@@ -831,12 +837,27 @@ def create_filter_specs_from_args(
                 prop_name, prop_value = parse_property_filter(
                     args.filter_properties[property_index]
                 )
-                filter_specs.append(FilterSpec("property", (prop_name, prop_value), position))
+
+                def make_property_filter(
+                    name: str, value: str
+                ) -> Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]:
+                    return lambda nodes: filter_property(nodes, name, value)
+
+                filter_specs.append(
+                    FilterSpec(make_property_filter(prop_name, prop_value), position)
+                )
                 property_index += 1
 
         elif arg_name == "--filter-tag":
             if args.filter_tags and tag_index < len(args.filter_tags):
-                filter_specs.append(FilterSpec("tag", args.filter_tags[tag_index], position))
+                tag_name = args.filter_tags[tag_index]
+
+                def make_tag_filter(
+                    tag: str,
+                ) -> Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]:
+                    return lambda nodes: filter_tag(nodes, tag)
+
+                filter_specs.append(FilterSpec(make_tag_filter(tag_name), position))
                 tag_index += 1
 
         elif arg_name in ("--filter-completed", "--filter-not-completed"):
@@ -846,74 +867,6 @@ def create_filter_specs_from_args(
 
     filter_specs.sort(key=lambda x: x.position)
     return filter_specs
-
-
-def convert_spec_to_function(
-    spec: FilterSpec,
-) -> Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]:
-    """Convert a FilterSpec to an actual filter function.
-
-    Args:
-        spec: FilterSpec object
-
-    Returns:
-        Filter function that takes and returns list of nodes
-    """
-    simple_filters: dict[
-        str, Callable[[Any], Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]]
-    ] = {
-        "gamify_exp_above": lambda t: lambda nodes: filter_gamify_exp_above(nodes, t),
-        "gamify_exp_below": lambda t: lambda nodes: filter_gamify_exp_below(nodes, t),
-        "repeats_above": lambda t: lambda nodes: filter_repeats_above(nodes, t),
-        "repeats_below": lambda t: lambda nodes: filter_repeats_below(nodes, t),
-        "tag": lambda t: lambda nodes: filter_tag(nodes, t),
-        "completed": lambda k: lambda nodes: filter_completed(nodes, k),
-        "not_completed": lambda k: lambda nodes: filter_not_completed(nodes, k),
-    }
-
-    if spec.filter_type in simple_filters:
-        return simple_filters[spec.filter_type](spec.value)
-
-    if spec.filter_type == "date_from":
-        date_val, keys = spec.value
-
-        def date_from_filter(
-            nodes: list[orgparse.node.OrgNode],
-            d: date = date_val,
-            k: list[str] = keys,
-        ) -> list[orgparse.node.OrgNode]:
-            return filter_date_from(nodes, d, k)
-
-        return date_from_filter
-
-    if spec.filter_type == "date_until":
-        date_val, keys = spec.value
-
-        def date_until_filter(
-            nodes: list[orgparse.node.OrgNode],
-            d: date = date_val,
-            k: list[str] = keys,
-        ) -> list[orgparse.node.OrgNode]:
-            return filter_date_until(nodes, d, k)
-
-        return date_until_filter
-
-    if spec.filter_type == "property":
-        prop_name, prop_value = spec.value
-
-        def property_filter(
-            nodes: list[orgparse.node.OrgNode],
-            n: str = prop_name,
-            v: str = prop_value,
-        ) -> list[orgparse.node.OrgNode]:
-            return filter_property(nodes, n, v)
-
-        return property_filter
-
-    def identity_filter(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
-        return nodes
-
-    return identity_filter
 
 
 def build_filter_chain(
@@ -935,7 +888,7 @@ def build_filter_chain(
     """
     filter_order = parse_filter_order_from_argv(argv)
     filter_specs = create_filter_specs_from_args(args, filter_order, done_keys, todo_keys)
-    return [convert_spec_to_function(spec) for spec in filter_specs]
+    return [spec.filter for spec in filter_specs]
 
 
 def display_results(
