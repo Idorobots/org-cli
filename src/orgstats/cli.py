@@ -5,6 +5,9 @@ import argparse
 import json
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import date, datetime
+from typing import Any
 
 import orgparse
 
@@ -15,6 +18,16 @@ from orgstats.core import (
     TimeRange,
     analyze,
     clean,
+    filter_completed,
+    filter_date_from,
+    filter_date_until,
+    filter_gamify_exp_above,
+    filter_gamify_exp_below,
+    filter_not_completed,
+    filter_property,
+    filter_repeats_above,
+    filter_repeats_below,
+    filter_tag,
     gamify_exp,
 )
 
@@ -444,6 +457,76 @@ def parse_arguments() -> argparse.Namespace:
         help="Comma-separated list of completed task states (default: DONE)",
     )
 
+    parser.add_argument(
+        "--filter-gamify-exp-above",
+        type=int,
+        metavar="N",
+        help="Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)",
+    )
+
+    parser.add_argument(
+        "--filter-gamify-exp-below",
+        type=int,
+        metavar="N",
+        help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
+    )
+
+    parser.add_argument(
+        "--filter-repeats-above",
+        type=int,
+        metavar="N",
+        help="Filter tasks where repeat count > N (non-inclusive)",
+    )
+
+    parser.add_argument(
+        "--filter-repeats-below",
+        type=int,
+        metavar="N",
+        help="Filter tasks where repeat count < N (non-inclusive)",
+    )
+
+    parser.add_argument(
+        "--filter-date-from",
+        type=str,
+        metavar="YYYY-MM-DD",
+        help="Filter tasks with timestamps after date (non-inclusive)",
+    )
+
+    parser.add_argument(
+        "--filter-date-until",
+        type=str,
+        metavar="YYYY-MM-DD",
+        help="Filter tasks with timestamps before date (non-inclusive)",
+    )
+
+    parser.add_argument(
+        "--filter-property",
+        action="append",
+        dest="filter_properties",
+        metavar="KEY=VALUE",
+        help="Filter tasks with exact property match (case-sensitive, can specify multiple)",
+    )
+
+    parser.add_argument(
+        "--filter-tag",
+        action="append",
+        dest="filter_tags",
+        metavar="TAG",
+        help="Filter tasks with exact tag match (case-sensitive, can specify multiple)",
+    )
+
+    parser.add_argument(
+        "--filter-completed",
+        action="store_true",
+        help="Filter tasks with todo state in done keys",
+    )
+
+    parser.add_argument(
+        "--filter-not-completed",
+        action="store_true",
+        help="Filter tasks with todo state in todo keys",
+    )
+
     return parser.parse_args()
 
 
@@ -512,6 +595,347 @@ def load_org_files(
             sys.exit(1)
 
     return nodes
+
+
+def parse_date_argument(date_str: str, arg_name: str) -> date:
+    """Parse and validate date argument in YYYY-MM-DD format.
+
+    Args:
+        date_str: Date string to parse
+        arg_name: Argument name for error messages
+
+    Returns:
+        Parsed date object
+
+    Raises:
+        SystemExit: If date format is invalid
+    """
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        print(
+            f"Error: {arg_name} must be in YYYY-MM-DD format, got '{date_str}'",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def parse_property_filter(property_str: str) -> tuple[str, str]:
+    """Parse property filter argument in KEY=VALUE format.
+
+    Splits on first '=' to support values containing '='.
+
+    Args:
+        property_str: Property filter string
+
+    Returns:
+        Tuple of (property_name, property_value)
+
+    Raises:
+        SystemExit: If format is invalid (no '=' found)
+    """
+    if "=" not in property_str:
+        print(
+            f"Error: --filter-property must be in KEY=VALUE format, got '{property_str}'",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    parts = property_str.split("=", 1)
+    return (parts[0], parts[1])
+
+
+@dataclass
+class FilterSpec:
+    """Specification for a single filter operation."""
+
+    filter_type: str
+    value: Any
+    position: float
+
+
+def parse_filter_order_from_argv(argv: list[str]) -> list[tuple[str, int]]:
+    """Parse command-line order of filter arguments.
+
+    Returns list of (arg_name, position) tuples in command-line order.
+
+    Args:
+        argv: sys.argv (command-line arguments)
+
+    Returns:
+        List of tuples: (filter_arg_name, position_in_argv)
+    """
+    filter_args = [
+        "--filter",
+        "--filter-gamify-exp-above",
+        "--filter-gamify-exp-below",
+        "--filter-repeats-above",
+        "--filter-repeats-below",
+        "--filter-date-from",
+        "--filter-date-until",
+        "--filter-property",
+        "--filter-tag",
+        "--filter-completed",
+        "--filter-not-completed",
+    ]
+
+    filter_positions = []
+    for i, arg in enumerate(argv):
+        if arg in filter_args:
+            filter_positions.append((arg, i))
+
+    return sorted(filter_positions, key=lambda x: x[1])
+
+
+def handle_preset_filter(preset: str, position: int) -> list[FilterSpec]:
+    """Handle --filter preset expansion.
+
+    Args:
+        preset: Preset name (simple, regular, hard, all)
+        position: Position in command line
+
+    Returns:
+        List of FilterSpec objects for the preset
+    """
+    if preset == "simple":
+        return [FilterSpec("gamify_exp_below", 10, position)]
+    if preset == "regular":
+        return [
+            FilterSpec("gamify_exp_above", 9, position),
+            FilterSpec("gamify_exp_below", 20, position + 0.1),
+        ]
+    if preset == "hard":
+        return [FilterSpec("gamify_exp_above", 19, position)]
+    return []
+
+
+def handle_simple_filter(
+    arg_name: str, args: argparse.Namespace, position: int
+) -> list[FilterSpec]:
+    """Handle simple filter arguments (gamify_exp, repeats).
+
+    Args:
+        arg_name: Argument name
+        args: Parsed arguments
+        position: Position in command line
+
+    Returns:
+        List of FilterSpec objects (0 or 1 item)
+    """
+    filter_map = {
+        "--filter-gamify-exp-above": ("gamify_exp_above", args.filter_gamify_exp_above),
+        "--filter-gamify-exp-below": ("gamify_exp_below", args.filter_gamify_exp_below),
+        "--filter-repeats-above": ("repeats_above", args.filter_repeats_above),
+        "--filter-repeats-below": ("repeats_below", args.filter_repeats_below),
+    }
+
+    if arg_name in filter_map:
+        filter_type, value = filter_map[arg_name]
+        if value is not None:
+            return [FilterSpec(filter_type, value, position)]
+
+    return []
+
+
+def handle_date_filter(
+    arg_name: str, args: argparse.Namespace, position: int, done_keys: list[str]
+) -> list[FilterSpec]:
+    """Handle date filter arguments.
+
+    Args:
+        arg_name: Argument name
+        args: Parsed arguments
+        position: Position in command line
+        done_keys: List of completion state keywords
+
+    Returns:
+        List of FilterSpec objects (0 or 1 item)
+    """
+    if arg_name == "--filter-date-from" and args.filter_date_from:
+        date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
+        return [FilterSpec("date_from", (date_from, done_keys), position)]
+
+    if arg_name == "--filter-date-until" and args.filter_date_until:
+        date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
+        return [FilterSpec("date_until", (date_until, done_keys), position)]
+
+    return []
+
+
+def handle_completion_filter(
+    arg_name: str,
+    args: argparse.Namespace,
+    position: int,
+    done_keys: list[str],
+    todo_keys: list[str],
+) -> list[FilterSpec]:
+    """Handle completion status filter arguments.
+
+    Args:
+        arg_name: Argument name
+        args: Parsed arguments
+        position: Position in command line
+        done_keys: List of completion state keywords
+        todo_keys: List of TODO state keywords
+
+    Returns:
+        List of FilterSpec objects (0 or 1 item)
+    """
+    if arg_name == "--filter-completed" and args.filter_completed:
+        return [FilterSpec("completed", done_keys, position)]
+
+    if arg_name == "--filter-not-completed" and args.filter_not_completed:
+        return [FilterSpec("not_completed", todo_keys, position)]
+
+    return []
+
+
+def create_filter_specs_from_args(
+    args: argparse.Namespace,
+    filter_order: list[tuple[str, int]],
+    done_keys: list[str],
+    todo_keys: list[str],
+) -> list[FilterSpec]:
+    """Create filter specifications from parsed arguments.
+
+    Args:
+        args: Parsed command-line arguments
+        filter_order: List of (arg_name, position) tuples
+        done_keys: List of completion state keywords
+        todo_keys: List of TODO state keywords
+
+    Returns:
+        List of FilterSpec objects in command-line order
+    """
+    filter_specs: list[FilterSpec] = []
+    property_index = 0
+    tag_index = 0
+
+    for arg_name, position in filter_order:
+        if arg_name == "--filter":
+            filter_specs.extend(handle_preset_filter(args.filter, position))
+
+        elif arg_name in (
+            "--filter-gamify-exp-above",
+            "--filter-gamify-exp-below",
+            "--filter-repeats-above",
+            "--filter-repeats-below",
+        ):
+            filter_specs.extend(handle_simple_filter(arg_name, args, position))
+
+        elif arg_name in ("--filter-date-from", "--filter-date-until"):
+            filter_specs.extend(handle_date_filter(arg_name, args, position, done_keys))
+
+        elif arg_name == "--filter-property":
+            if args.filter_properties and property_index < len(args.filter_properties):
+                prop_name, prop_value = parse_property_filter(
+                    args.filter_properties[property_index]
+                )
+                filter_specs.append(FilterSpec("property", (prop_name, prop_value), position))
+                property_index += 1
+
+        elif arg_name == "--filter-tag":
+            if args.filter_tags and tag_index < len(args.filter_tags):
+                filter_specs.append(FilterSpec("tag", args.filter_tags[tag_index], position))
+                tag_index += 1
+
+        elif arg_name in ("--filter-completed", "--filter-not-completed"):
+            filter_specs.extend(
+                handle_completion_filter(arg_name, args, position, done_keys, todo_keys)
+            )
+
+    filter_specs.sort(key=lambda x: x.position)
+    return filter_specs
+
+
+def convert_spec_to_function(
+    spec: FilterSpec,
+) -> Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]:
+    """Convert a FilterSpec to an actual filter function.
+
+    Args:
+        spec: FilterSpec object
+
+    Returns:
+        Filter function that takes and returns list of nodes
+    """
+    simple_filters: dict[
+        str, Callable[[Any], Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]]
+    ] = {
+        "gamify_exp_above": lambda t: lambda nodes: filter_gamify_exp_above(nodes, t),
+        "gamify_exp_below": lambda t: lambda nodes: filter_gamify_exp_below(nodes, t),
+        "repeats_above": lambda t: lambda nodes: filter_repeats_above(nodes, t),
+        "repeats_below": lambda t: lambda nodes: filter_repeats_below(nodes, t),
+        "tag": lambda t: lambda nodes: filter_tag(nodes, t),
+        "completed": lambda k: lambda nodes: filter_completed(nodes, k),
+        "not_completed": lambda k: lambda nodes: filter_not_completed(nodes, k),
+    }
+
+    if spec.filter_type in simple_filters:
+        return simple_filters[spec.filter_type](spec.value)
+
+    if spec.filter_type == "date_from":
+        date_val, keys = spec.value
+
+        def date_from_filter(
+            nodes: list[orgparse.node.OrgNode],
+            d: date = date_val,
+            k: list[str] = keys,
+        ) -> list[orgparse.node.OrgNode]:
+            return filter_date_from(nodes, d, k)
+
+        return date_from_filter
+
+    if spec.filter_type == "date_until":
+        date_val, keys = spec.value
+
+        def date_until_filter(
+            nodes: list[orgparse.node.OrgNode],
+            d: date = date_val,
+            k: list[str] = keys,
+        ) -> list[orgparse.node.OrgNode]:
+            return filter_date_until(nodes, d, k)
+
+        return date_until_filter
+
+    if spec.filter_type == "property":
+        prop_name, prop_value = spec.value
+
+        def property_filter(
+            nodes: list[orgparse.node.OrgNode],
+            n: str = prop_name,
+            v: str = prop_value,
+        ) -> list[orgparse.node.OrgNode]:
+            return filter_property(nodes, n, v)
+
+        return property_filter
+
+    def identity_filter(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
+        return nodes
+
+    return identity_filter
+
+
+def build_filter_chain(
+    args: argparse.Namespace, argv: list[str], done_keys: list[str], todo_keys: list[str]
+) -> list[Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]]:
+    """Build ordered list of filter functions from CLI arguments.
+
+    Processes filters in command-line order. Expands --filter presets inline
+    at their position.
+
+    Args:
+        args: Parsed command-line arguments
+        argv: Raw sys.argv to determine ordering
+        done_keys: List of completion state keywords
+        todo_keys: List of TODO state keywords
+
+    Returns:
+        List of filter functions to apply sequentially
+    """
+    filter_order = parse_filter_order_from_argv(argv)
+    filter_specs = create_filter_specs_from_args(args, filter_order, done_keys, todo_keys)
+    return [convert_spec_to_function(spec) for spec in filter_specs]
 
 
 def display_results(
@@ -608,7 +1032,17 @@ def main() -> None:
     exclude_set = load_exclude_list(args.exclude) or DEFAULT_EXCLUDE
 
     nodes = load_org_files(args.files, todo_keys, done_keys)
-    filtered_nodes = filter_nodes(nodes, args.filter)
+
+    filter_functions = build_filter_chain(args, sys.argv, done_keys, todo_keys)
+
+    filtered_nodes = nodes
+    for filter_fn in filter_functions:
+        filtered_nodes = filter_fn(filtered_nodes)
+
+    if not filtered_nodes:
+        print("No results")
+        return
+
     result = analyze(filtered_nodes, mapping, args.show, args.max_relations, done_keys)
 
     display_results(result, args, exclude_set)

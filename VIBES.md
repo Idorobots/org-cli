@@ -472,7 +472,7 @@ Please refactor the tests as well to match the redefined functions. If there are
 
 **Comment:** Expected this to take a long time and not have a great outcome. It did run out of quota, but was able to continue afterwards. It wanted to extract some helper functions, but then proceded not to use them.
 
-## Treat all --done-keys equally
+## ✅*️ Treat all --done-keys equally
 As you noticed previously, we are only treating `DONE` task type as locically completed. I'd like that to be changed so that all the types in `--done-keys` are treated as if the tasks were completed. To achieve that you will need to refactor the code in the core module to pass in the list of done keys and handle task todo state filtering to take those extra keys into account.
 
 Specifically, we want the following behaviours:
@@ -488,10 +488,53 @@ An exception to this is the state histogram - there we still want individual tas
 
 **Comment:** The AI was inclined to add a default argument to avoid having to clean up the code. It implemented the change fine, but didn't add any tests, so I asked it to do that afterwards.
 
-## More task filters
-- gamify_exp above
-- gamify_exp under
-- Add CLI parameters for from & until, with defaults and filter the tasks to only consider the tasks within the given time range.
+## ✅*️ More task filters
+I'd like to expand the filtering capabilities in `orgstats`. We will define additional CLI switches for the new filters.
+
+There should be a way to specify multiple filters, so filter category should be a separate switch, for instance:
+- `--filter-gamify-exp-above 10` - all tasks where `gamify_exp` value is above the threshold (noninclusive),
+- `--filter-gamify-exp-below 20` - all tasks where `gamify_exp` value is below the threshold (noninclusive),
+- `--filter-repeats-above 5` - all tasks where the number of repeats is above the threshold (noninclusive),
+- `--filter-repeats-below 5` - all tasks whene the number of repeats is below the threshold (noninclusive),
+- `--filter-date-from 2025-01-01` - all tasks where the timestamp comes after the specified date (noninclusive),
+- `--filter-date-until 2026-01-01` - all tasks where the timestamp comes before the specified date (noninclusive),
+- `--filter-property x=foo` - all tasks that have a property with a given value,
+- `--filter-tag tagname` - all tasks that have a tag with a given name,
+- `--filter-completed` - all tasks that have a todo state that match the values in `--done-keys`,
+- `--filter-not-completed` - all tasks that have a todo state that match the values in `--todo-keys`.
+
+The filters should be applied one by one to the list of Org Nodes before the analysis takes place. The filters should be applied in the order they appear on the command line. It is OK if the list is filtered down to zero nodes. Please detect that and adjust the CLI output to say "no results".
+
+The old `--filter` property should be left in as a set of presets that map to the new filters:
+- `--filter simple` should be mapped to `--filter-gamify-exp-below 10`,
+- `--filter regular` should be mapped to `--filter-gamify-exp-above 9 --filter-gamify-exp-below 20`,
+- `--filter hard` should be mapped to `--filter-gamify-exp-above 19`.
+
+If the `gamify_exp` property is missing in a task, assume its value is 10 for the purposes of the `gamify_exp`-related filters (to retain the current logic). For the `--filter-property` filter, it should be treated as non-existed.
+
+**Comment:** The AI wrote a lot of boilerplate to implement the feature and introduced some slop. It also didn't quite implement the features as I had in mind - my foult as the spec didn't explicitly say that.
+
+## Filter spec slop
+Can you please refactor the `FilterSpec` class to not use the `Any` type for the argument. I'd rather it had the lambda function applying the filter in there - a field called `filter` that is a function taking a list of Org Nodes and returning the filter list of OrgNodes.
+
+Please modify `create_filter_specs_from_args()` function to add lambdas to the `FilterSpec` objects it creates (effectively combining that function with `convert_spec_to_function()`). Modify `build_filter_chain()` function to take that into account .
+
+In `main()` you can then produce the list of `FilterSpec`s and run this code for each: `filtered_nodes = spec.filter(filtered_nodes)`.
+
+The goal is to avoid having the `Any` typed field in `FilterSpec` and instead use the filter arguments directly in the context of the lambda.
+
+You can re-use the `filter_*` functions, but please refactor them to use list comprehensions instead of `for` loops with `list.append()`.
+
+The `filter_completed` and `filter_not_completed` should also be updated to take repeated tasks into account - it's OK that not all the occurances match the filter. We will address that at some point.
+
+## Inclusive dates
+Make the `--filter-date-from` and `--filter-date-until` inclusive, makes more sense this way.
+
+## Another fix for task states counts
+Now the counts for day of week histogram are higher than the total count of done tasks. Likely, now it's the done task count that's wrong.
+
+## Filters applied consistently to repeats
+Currently filters are applied in advance, but some of them (date, completed/not completed) let in all the repeats if any of them matches the filter, resulting in some data outside of the requested range making its way into the analysis. This can be addressed by stripping the non-matching repeats from the tasks, or by "hydrating" the tasks in advance not to have any repeats and instead duplicating the original node instance.
 
 ## ASCII plots
 Use an ascii plotting library to plot tag activity over time. Each plot should be a bar chart with at most 50 buckets. Each bucket will represent 1/50 of the total time range within which te tag was active. If the tag was active for more than 50 days, group the activity into buckets, sum the occurances and plot the sums. If the tag was active for fewer than 50 days, plot only as many buckets as makes sense. Make sure to take into account all days, even those with no tag activity on that day. These should have a value of 0. You can first expand the timeline with the missing days of no activity, then determine the buckets and compute sums of activity per bucket and then plot the results.

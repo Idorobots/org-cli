@@ -734,3 +734,263 @@ def clean(disallowed: set[str], tags: dict[str, Frequency]) -> dict[str, Frequen
         Dictionary with disallowed tags removed
     """
     return {t: tags[t] for t in tags if t not in disallowed}
+
+
+def get_repeat_count(node: orgparse.node.OrgNode) -> int:
+    """Get total repeat count for a node.
+
+    Returns max(1, len(node.repeated_tasks))
+
+    Args:
+        node: Org-mode node
+
+    Returns:
+        Repeat count (minimum 1)
+    """
+    return max(1, len(node.repeated_tasks))
+
+
+def filter_gamify_exp_above(
+    nodes: list[orgparse.node.OrgNode], threshold: int
+) -> list[orgparse.node.OrgNode]:
+    """Filter nodes where gamify_exp > threshold (non-inclusive).
+
+    Missing gamify_exp defaults to 10.
+
+    Args:
+        nodes: List of org-mode nodes to filter
+        threshold: Threshold value
+
+    Returns:
+        Filtered list of nodes
+    """
+    filtered = []
+    for node in nodes:
+        exp = gamify_exp(node)
+        if exp is None:
+            exp = 10
+        if exp > threshold:
+            filtered.append(node)
+    return filtered
+
+
+def filter_gamify_exp_below(
+    nodes: list[orgparse.node.OrgNode], threshold: int
+) -> list[orgparse.node.OrgNode]:
+    """Filter nodes where gamify_exp < threshold (non-inclusive).
+
+    Missing gamify_exp defaults to 10.
+
+    Args:
+        nodes: List of org-mode nodes to filter
+        threshold: Threshold value
+
+    Returns:
+        Filtered list of nodes
+    """
+    filtered = []
+    for node in nodes:
+        exp = gamify_exp(node)
+        if exp is None:
+            exp = 10
+        if exp < threshold:
+            filtered.append(node)
+    return filtered
+
+
+def filter_repeats_above(
+    nodes: list[orgparse.node.OrgNode], threshold: int
+) -> list[orgparse.node.OrgNode]:
+    """Filter nodes where repeat count > threshold (non-inclusive).
+
+    Repeat count = max(1, len(node.repeated_tasks))
+
+    Args:
+        nodes: List of org-mode nodes to filter
+        threshold: Threshold value
+
+    Returns:
+        Filtered list of nodes
+    """
+    filtered = []
+    for node in nodes:
+        count = get_repeat_count(node)
+        if count > threshold:
+            filtered.append(node)
+    return filtered
+
+
+def filter_repeats_below(
+    nodes: list[orgparse.node.OrgNode], threshold: int
+) -> list[orgparse.node.OrgNode]:
+    """Filter nodes where repeat count < threshold (non-inclusive).
+
+    Repeat count = max(1, len(node.repeated_tasks))
+
+    Args:
+        nodes: List of org-mode nodes to filter
+        threshold: Threshold value
+
+    Returns:
+        Filtered list of nodes
+    """
+    filtered = []
+    for node in nodes:
+        count = get_repeat_count(node)
+        if count < threshold:
+            filtered.append(node)
+    return filtered
+
+
+def filter_date_from(
+    nodes: list[orgparse.node.OrgNode], date_threshold: date, done_keys: list[str]
+) -> list[orgparse.node.OrgNode]:
+    """Filter nodes with any timestamp after date_threshold (non-inclusive).
+
+    Uses extract_timestamp() logic. Nodes without timestamps are excluded.
+
+    FIXME: When a node has multiple timestamps from repeated tasks, we include
+    the entire node if ANY timestamp passes the filter. This may include task
+    occurrences from outside the filtered date range.
+
+    Args:
+        nodes: List of org-mode nodes to filter
+        date_threshold: Date threshold (exclusive)
+        done_keys: List of completion state keywords
+
+    Returns:
+        Filtered list of nodes
+    """
+    filtered = []
+    for node in nodes:
+        timestamps = extract_timestamp(node, done_keys)
+        if not timestamps:
+            continue
+
+        for timestamp in timestamps:
+            timestamp_date = timestamp.date() if isinstance(timestamp, datetime) else timestamp
+            if timestamp_date > date_threshold:
+                filtered.append(node)
+                break
+
+    return filtered
+
+
+def filter_date_until(
+    nodes: list[orgparse.node.OrgNode], date_threshold: date, done_keys: list[str]
+) -> list[orgparse.node.OrgNode]:
+    """Filter nodes with any timestamp before date_threshold (non-inclusive).
+
+    Uses extract_timestamp() logic. Nodes without timestamps are excluded.
+
+    FIXME: When a node has multiple timestamps from repeated tasks, we include
+    the entire node if ANY timestamp passes the filter. This may include task
+    occurrences from outside the filtered date range.
+
+    Args:
+        nodes: List of org-mode nodes to filter
+        date_threshold: Date threshold (exclusive)
+        done_keys: List of completion state keywords
+
+    Returns:
+        Filtered list of nodes
+    """
+    filtered = []
+    for node in nodes:
+        timestamps = extract_timestamp(node, done_keys)
+        if not timestamps:
+            continue
+
+        for timestamp in timestamps:
+            timestamp_date = timestamp.date() if isinstance(timestamp, datetime) else timestamp
+            if timestamp_date < date_threshold:
+                filtered.append(node)
+                break
+
+    return filtered
+
+
+def filter_property(
+    nodes: list[orgparse.node.OrgNode], property_name: str, property_value: str
+) -> list[orgparse.node.OrgNode]:
+    """Filter nodes with exact property match (case-sensitive).
+
+    Nodes without the property are excluded.
+    For gamify_exp property, nodes without it are NOT treated as having value 10.
+
+    Args:
+        nodes: List of org-mode nodes to filter
+        property_name: Property name to match
+        property_value: Property value to match
+
+    Returns:
+        Filtered list of nodes
+    """
+    filtered = []
+    for node in nodes:
+        prop_value = node.properties.get(property_name, None)
+        if prop_value is not None and str(prop_value) == property_value:
+            filtered.append(node)
+    return filtered
+
+
+def filter_tag(nodes: list[orgparse.node.OrgNode], tag_name: str) -> list[orgparse.node.OrgNode]:
+    """Filter nodes with exact tag match (case-sensitive).
+
+    Matches against individual tags in node.tags list.
+    Nodes without the tag are excluded.
+
+    Args:
+        nodes: List of org-mode nodes to filter
+        tag_name: Tag name to match
+
+    Returns:
+        Filtered list of nodes
+    """
+    filtered = []
+    for node in nodes:
+        if tag_name in node.tags:
+            filtered.append(node)
+    return filtered
+
+
+def filter_completed(
+    nodes: list[orgparse.node.OrgNode], done_keys: list[str]
+) -> list[orgparse.node.OrgNode]:
+    """Filter nodes with todo state in done_keys.
+
+    Matches node.todo against done_keys list.
+
+    Args:
+        nodes: List of org-mode nodes to filter
+        done_keys: List of completion state keywords
+
+    Returns:
+        Filtered list of nodes
+    """
+    filtered = []
+    for node in nodes:
+        if node.todo in done_keys:
+            filtered.append(node)
+    return filtered
+
+
+def filter_not_completed(
+    nodes: list[orgparse.node.OrgNode], todo_keys: list[str]
+) -> list[orgparse.node.OrgNode]:
+    """Filter nodes with todo state in todo_keys.
+
+    Matches node.todo against todo_keys list.
+
+    Args:
+        nodes: List of org-mode nodes to filter
+        todo_keys: List of TODO state keywords
+
+    Returns:
+        Filtered list of nodes
+    """
+    filtered = []
+    for node in nodes:
+        if node.todo in todo_keys:
+            filtered.append(node)
+    return filtered
