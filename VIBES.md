@@ -563,8 +563,10 @@ The last two formats have a space in them, but assume the argument is passed by 
 
 **Comment:** This was done correctly.
 
-## Improve cli.py test coverage
+## ✅ Improve cli.py test coverage
 The test coverage fell well under 90%, please improve that by introducing more tests for the @src/orgstats/cli.py file.
+
+**Comment:** This was done correctly, but inflated the test runtime significantly. There were some hickups with a subagent call (missing permissions in opencode.json likely).
 
 ## ASCII plots
 Use an ascii plotting library to plot tag activity over time. Each plot should be a bar chart with at most 50 buckets. Each bucket will represent 1/50 of the total time range within which te tag was active. If the tag was active for more than 50 days, group the activity into buckets, sum the occurances and plot the sums. If the tag was active for fewer than 50 days, plot only as many buckets as makes sense. Make sure to take into account all days, even those with no tag activity on that day. These should have a value of 0. You can first expand the timeline with the missing days of no activity, then determine the buckets and compute sums of activity per bucket and then plot the results.
