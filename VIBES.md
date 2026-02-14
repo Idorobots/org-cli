@@ -739,9 +739,13 @@ Update the `_filter_node_repeats()` function to return a `FilteredOrgNode` insta
 
 Please don't adjust any tests yet, let's first check if it helps with the performance.
 
-**Comment:** AI implemented the extra class and adjusted the code.
+**Comment:** AI implemented the extra class and adjusted the code. I did do some manual cleanup, but that was unneccesary.
 
-## Perf optimiztion tests
+## ✅ Perf optimiztion tests
+Please add some tests for the newly implemented performance optimization. Focuse on the functionality, not the performance.
+Please add a `NOTE` comment to the usages of `_FilteredOrgNode` indicating that this is a performance optimization.
+
+**Comment:** This was pretty easy, but the AI went overboard with the NOTE comments, so I reworded and removed the overzelous ones.
 
 ## Histogram ASCII plots
 - pie-chart of the states

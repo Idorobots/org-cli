@@ -820,6 +820,7 @@ def _filter_node_repeats(
     if len(matching_repeats) == 0:
         return None
 
+    # NOTE: Performance optimization to avoid deep copying and mutating the original node
     return _FilteredOrgNode(node, matching_repeats)
 
 
