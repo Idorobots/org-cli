@@ -4,6 +4,7 @@
     "small_model": "anthropic/claude-haiku-4-5",
     "default_agent": "plan",
     "permission": {
+	"*": "allow",
 	"bash": {
 	    "*": "allow",
 	    "rm *": "deny"
