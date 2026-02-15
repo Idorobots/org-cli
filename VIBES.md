@@ -856,10 +856,10 @@ It should be similar to the per-tag display, except the plot is followed by the 
 
 **Comment:** The AI got a bit flabbergasted at forward-reference errors when adding a TimeRange to the Group which is defined before TimeRange. It "solved" the issue by importing annotations from the future (:shrug:) instead of by reordering the classes. :shrug:
 
-## Update AGENTS.md and README.md
+## ✅ GitHub workflow for PR-based development
+Please add a GitHub actions workflow file that will run the check command on each PR & merge.
 
-## Task "category" histogram
-- based on gamify_exp, eventually will evolve to classify each task by some criteria (fix/debug/test heading content, etc).
+**Comment:** No comments here.
 
 ## Code reorg
 Move the filters to filters.py
@@ -868,7 +868,7 @@ Move the plot display generation to plot.py
 Move the histogram display generation to histogram.py
 Remove the main.py module
 
-## GitHub workflow for PR-based development
+## Update AGENTS.md and README.md
 
 ## Output colors
 
