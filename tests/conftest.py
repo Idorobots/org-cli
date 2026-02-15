@@ -2,7 +2,7 @@
 
 import orgparse
 
-from orgstats.core import Frequency
+from orgstats.analyze import Frequency
 
 
 def freq_dict_from_ints(d: dict[str, int]) -> dict[str, Frequency]:

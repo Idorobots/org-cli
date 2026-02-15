@@ -1,6 +1,6 @@
 """Tests for the normalize() function."""
 
-from orgstats.core import normalize
+from orgstats.analyze import normalize
 
 
 def test_normalize_basic() -> None:

@@ -4,7 +4,7 @@ from datetime import datetime
 
 import orgparse
 
-from orgstats.core import analyze
+from orgstats.analyze import analyze
 
 
 def test_global_timerange_empty_when_no_done_tasks() -> None:

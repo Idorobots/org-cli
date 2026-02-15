@@ -1,7 +1,7 @@
 """Tests for the clean() function."""
 
+from orgstats.analyze import Frequency, clean
 from orgstats.cli import DEFAULT_EXCLUDE
-from orgstats.core import Frequency, clean
 
 
 def freq_dict_from_ints(d: dict[str, int]) -> dict[str, Frequency]:

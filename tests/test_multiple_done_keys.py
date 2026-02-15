@@ -2,15 +2,15 @@
 
 from datetime import datetime
 
-from orgstats.core import (
+from orgstats.analyze import (
     compute_day_of_week_histogram,
     compute_frequencies,
     compute_global_timerange,
     compute_relations,
     compute_task_stats,
     compute_time_ranges,
-    extract_timestamp,
 )
+from orgstats.timestamp import extract_timestamp
 from tests.conftest import node_from_org
 
 

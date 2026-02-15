@@ -1,6 +1,6 @@
 """Tests for the compute_day_of_week_histogram() function."""
 
-from orgstats.core import compute_day_of_week_histogram
+from orgstats.analyze import compute_day_of_week_histogram
 from tests.conftest import node_from_org
 
 

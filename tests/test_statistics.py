@@ -2,7 +2,7 @@
 
 import orgparse
 
-from orgstats.core import analyze
+from orgstats.analyze import analyze
 
 
 def test_avg_tasks_per_day_single_day() -> None:

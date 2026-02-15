@@ -2,7 +2,7 @@
 
 import orgparse
 
-from orgstats.core import analyze
+from orgstats.analyze import analyze
 from tests.conftest import node_from_org
 
 
@@ -249,7 +249,7 @@ def test_analyze_four_tags_six_relations() -> None:
 
 def test_analyze_relations_result_structure() -> None:
     """Test that analyze returns Relations objects with correct structure."""
-    from orgstats.core import Relations
+    from orgstats.analyze import Relations
 
     nodes = node_from_org("* DONE Task :Python:Testing:\n")
 

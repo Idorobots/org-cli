@@ -4,7 +4,8 @@ from datetime import datetime
 
 import orgparse
 
-from orgstats.core import Histogram, analyze, weekday_to_string
+from orgstats.analyze import analyze, weekday_to_string
+from orgstats.histogram import Histogram
 from tests.conftest import node_from_org
 
 

@@ -1,6 +1,6 @@
 """Tests for the Frequency class."""
 
-from orgstats.core import Frequency
+from orgstats.analyze import Frequency
 
 
 def test_frequency_default_initialization() -> None:

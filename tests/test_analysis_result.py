@@ -1,11 +1,12 @@
 """Tests for the AnalysisResult dataclass."""
 
-from orgstats.core import AnalysisResult, Frequency, Histogram, TimeRange
+from orgstats.analyze import AnalysisResult, Frequency, TimeRange
+from orgstats.histogram import Histogram
 
 
 def test_analysis_result_initialization() -> None:
     """Test that AnalysisResult can be initialized with all fields."""
-    from orgstats.core import Relations
+    from orgstats.analyze import Relations
 
     result = AnalysisResult(
         total_tasks=10,
@@ -175,7 +176,7 @@ def test_analysis_result_mutable_fields() -> None:
     """Test that AnalysisResult fields can be modified."""
     from datetime import datetime
 
-    from orgstats.core import Group, Relations
+    from orgstats.analyze import Group, Relations
 
     result = AnalysisResult(
         total_tasks=0,

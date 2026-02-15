@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from orgstats.core import TimeRange, compute_avg_tasks_per_day, compute_max_single_day
+from orgstats.analyze import TimeRange, compute_avg_tasks_per_day, compute_max_single_day
 
 
 def test_compute_max_single_day_empty_timerange() -> None:

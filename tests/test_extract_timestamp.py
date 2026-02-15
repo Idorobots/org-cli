@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from orgstats.core import extract_timestamp
+from orgstats.timestamp import extract_timestamp
 from tests.conftest import node_from_org
 
 

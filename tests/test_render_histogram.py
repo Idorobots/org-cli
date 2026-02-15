@@ -1,6 +1,6 @@
 """Tests for the render_histogram() function."""
 
-from orgstats.core import Histogram, render_histogram
+from orgstats.histogram import Histogram, render_histogram
 
 
 def test_render_histogram_empty() -> None:

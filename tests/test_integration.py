@@ -4,8 +4,8 @@ import os
 
 import orgparse
 
+from orgstats.analyze import analyze, clean
 from orgstats.cli import DEFAULT_EXCLUDE
-from orgstats.core import analyze, clean
 
 
 # Path to fixtures directory
@@ -283,7 +283,7 @@ def test_integration_filtered_repeats_in_analysis() -> None:
     """Test that filtered repeated tasks produce correct analysis results."""
     from datetime import datetime
 
-    from orgstats.core import filter_date_from, filter_date_until
+    from orgstats.filters import filter_date_from, filter_date_until
 
     org_text = """* DONE Task :tag1:tag2:
 :LOGBOOK:

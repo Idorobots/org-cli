@@ -10,7 +10,7 @@ from datetime import datetime
 
 import orgparse
 
-from orgstats.core import (
+from orgstats.analyze import (
     AnalysisResult,
     Frequency,
     Group,
@@ -18,6 +18,8 @@ from orgstats.core import (
     TimeRange,
     analyze,
     clean,
+)
+from orgstats.filters import (
     filter_completed,
     filter_date_from,
     filter_date_until,
@@ -29,9 +31,9 @@ from orgstats.core import (
     filter_repeats_below,
     filter_tag,
     gamify_exp,
-    render_histogram,
-    render_timeline_chart,
 )
+from orgstats.histogram import render_histogram
+from orgstats.plot import render_timeline_chart
 
 
 MAP: dict[str, str] = {}

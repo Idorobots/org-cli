@@ -4,7 +4,7 @@ from datetime import date
 
 import orgparse
 
-from orgstats.core import analyze
+from orgstats.analyze import analyze
 from tests.conftest import node_from_org
 
 
@@ -215,7 +215,7 @@ CLOSED: [2023-10-20 Fri 14:43]
 
 def test_analyze_result_has_time_range_fields() -> None:
     """Test AnalysisResult includes time range fields."""
-    from orgstats.core import AnalysisResult
+    from orgstats.analyze import AnalysisResult
 
     nodes: list[orgparse.node.OrgNode] = []
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])

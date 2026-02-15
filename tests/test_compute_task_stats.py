@@ -1,6 +1,6 @@
 """Tests for the compute_task_stats() function."""
 
-from orgstats.core import compute_task_stats
+from orgstats.analyze import compute_task_stats
 from tests.conftest import node_from_org
 
 

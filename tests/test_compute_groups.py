@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from orgstats.core import Relations, TimeRange, compute_groups
+from orgstats.analyze import Relations, TimeRange, compute_groups
 
 
 def test_compute_groups_empty_relations() -> None:

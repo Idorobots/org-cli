@@ -1,12 +1,8 @@
 """orgstats - Analyze Emacs Org-mode archive files for task statistics."""
 
+from orgstats.analyze import AnalysisResult, Frequency, Relations, TimeRange, analyze
 from orgstats.cli import main
-from orgstats.core import (
-    AnalysisResult,
-    Frequency,
-    Relations,
-    TimeRange,
-    analyze,
+from orgstats.filters import (
     filter_completed,
     filter_date_from,
     filter_date_until,

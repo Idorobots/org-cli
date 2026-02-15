@@ -1,6 +1,6 @@
 """Tests for the Histogram class."""
 
-from orgstats.core import Histogram
+from orgstats.histogram import Histogram
 
 
 def test_histogram_initialization_empty() -> None:

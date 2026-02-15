@@ -389,8 +389,8 @@ def test_get_top_day_info_none() -> None:
 
 def test_get_top_day_info_empty_timeline() -> None:
     """Test get_top_day_info returns None when timeline is empty."""
+    from orgstats.analyze import TimeRange
     from orgstats.cli import get_top_day_info
-    from orgstats.core import TimeRange
 
     time_range = TimeRange(earliest=None, latest=None, timeline={})
     result = get_top_day_info(time_range)
@@ -402,8 +402,8 @@ def test_get_top_day_info_with_data() -> None:
     """Test get_top_day_info returns correct top day."""
     from datetime import date, datetime
 
+    from orgstats.analyze import TimeRange
     from orgstats.cli import get_top_day_info
-    from orgstats.core import TimeRange
 
     timeline = {
         date(2025, 1, 1): 5,
@@ -425,8 +425,8 @@ def test_get_top_day_info_tie_uses_earliest() -> None:
     """Test get_top_day_info returns earliest date when there's a tie."""
     from datetime import date, datetime
 
+    from orgstats.analyze import TimeRange
     from orgstats.cli import get_top_day_info
-    from orgstats.core import TimeRange
 
     timeline = {
         date(2025, 1, 3): 10,
@@ -446,8 +446,8 @@ def test_get_top_day_info_tie_uses_earliest() -> None:
 
 def test_display_category() -> None:
     """Test display_category outputs formatted results."""
+    from orgstats.analyze import Frequency, Relations, TimeRange
     from orgstats.cli import display_category
-    from orgstats.core import Frequency, Relations, TimeRange
 
     frequencies = {"python": Frequency(total=10), "java": Frequency(total=8)}
     time_ranges: dict[str, TimeRange] = {}
@@ -481,8 +481,8 @@ def test_display_category_with_time_ranges() -> None:
     """Test display_category includes time range information."""
     from datetime import datetime
 
+    from orgstats.analyze import Frequency, Relations, TimeRange
     from orgstats.cli import display_category
-    from orgstats.core import Frequency, Relations, TimeRange
 
     frequencies = {"python": Frequency(total=10)}
     time_ranges = {
@@ -514,8 +514,8 @@ def test_display_category_with_time_ranges() -> None:
 
 def test_display_category_with_relations() -> None:
     """Test display_category includes relations."""
+    from orgstats.analyze import Frequency, Relations, TimeRange
     from orgstats.cli import display_category
-    from orgstats.core import Frequency, Relations, TimeRange
 
     frequencies = {"python": Frequency(total=10)}
     time_ranges: dict[str, TimeRange] = {}
@@ -546,14 +546,14 @@ def test_display_results_with_tag_groups() -> None:
     """Test display_results shows tag groups."""
     from io import StringIO
 
-    from orgstats.cli import display_results
-    from orgstats.core import (
+    from orgstats.analyze import (
         AnalysisResult,
         Frequency,
         Group,
-        Histogram,
         TimeRange,
     )
+    from orgstats.cli import display_results
+    from orgstats.histogram import Histogram
 
     tag_groups = [Group(tags=["python", "programming", "coding"], time_range=TimeRange())]
 
@@ -594,14 +594,14 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
     """Test display_results filters tag groups by min_group_size."""
     from io import StringIO
 
-    from orgstats.cli import display_results
-    from orgstats.core import (
+    from orgstats.analyze import (
         AnalysisResult,
         Frequency,
         Group,
-        Histogram,
         TimeRange,
     )
+    from orgstats.cli import display_results
+    from orgstats.histogram import Histogram
 
     tag_groups = [
         Group(tags=["python", "programming"], time_range=TimeRange()),
@@ -646,14 +646,14 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
     """Test display_results filters excluded tags from groups."""
     from io import StringIO
 
-    from orgstats.cli import display_results
-    from orgstats.core import (
+    from orgstats.analyze import (
         AnalysisResult,
         Frequency,
         Group,
-        Histogram,
         TimeRange,
     )
+    from orgstats.cli import display_results
+    from orgstats.histogram import Histogram
 
     tag_groups = [
         Group(tags=["python", "test", "programming"], time_range=TimeRange()),
@@ -698,13 +698,13 @@ def test_display_results_no_tag_groups() -> None:
     """Test display_results works when tag_groups is empty."""
     from io import StringIO
 
-    from orgstats.cli import display_results
-    from orgstats.core import (
+    from orgstats.analyze import (
         AnalysisResult,
         Frequency,
-        Histogram,
         TimeRange,
     )
+    from orgstats.cli import display_results
+    from orgstats.histogram import Histogram
 
     result = AnalysisResult(
         total_tasks=3,

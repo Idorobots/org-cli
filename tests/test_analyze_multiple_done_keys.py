@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from orgstats.core import analyze
+from orgstats.analyze import analyze
 from tests.conftest import node_from_org
 
 

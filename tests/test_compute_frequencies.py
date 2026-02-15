@@ -1,6 +1,6 @@
 """Tests for the compute_frequencies() function."""
 
-from orgstats.core import compute_frequencies
+from orgstats.analyze import compute_frequencies
 from tests.conftest import node_from_org
 
 
