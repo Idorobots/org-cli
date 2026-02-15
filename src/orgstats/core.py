@@ -1,11 +1,9 @@
 """Core logic for orgstats - Org-mode archive file analysis."""
 
-from __future__ import annotations
-
+import typing
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Any
 
 import orgparse
 
@@ -40,7 +38,7 @@ class _FilteredOrgNode(orgparse.node.OrgNode):
         """
         return self._filtered_repeats
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> typing.Any:  # noqa: ANN401
         """Delegate attribute access to the original node.
 
         Args:
@@ -120,19 +118,6 @@ class Relations:
 
 
 @dataclass
-class Group:
-    """Represents a group of related tags (strongly connected component).
-
-    Attributes:
-        tags: List of tag names in this group, sorted alphabetically
-        time_range: Combined time range for all tags in the group
-    """
-
-    tags: list[str]
-    time_range: TimeRange
-
-
-@dataclass
 class TimeRange:
     """Represents time range for a tag/word occurrence.
 
@@ -185,6 +170,19 @@ class TimeRange:
             self.earliest = timestamp
         if self.latest is None or timestamp > self.latest:
             self.latest = timestamp
+
+
+@dataclass
+class Group:
+    """Represents a group of related tags (strongly connected component).
+
+    Attributes:
+        tags: List of tag names in this group, sorted alphabetically
+        time_range: Combined time range for all tags in the group
+    """
+
+    tags: list[str]
+    time_range: TimeRange
 
 
 @dataclass

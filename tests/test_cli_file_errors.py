@@ -3,7 +3,7 @@
 import os
 import subprocess
 import sys
-from typing import Any
+from pathlib import Path
 
 import pytest
 
@@ -30,7 +30,7 @@ def test_load_exclude_list_none() -> None:
     assert result == set()
 
 
-def test_load_exclude_list_valid(tmp_path: Any) -> None:
+def test_load_exclude_list_valid(tmp_path: Path) -> None:
     """Test loading valid exclude list."""
     from orgstats.cli import load_exclude_list
 
@@ -41,7 +41,7 @@ def test_load_exclude_list_valid(tmp_path: Any) -> None:
     assert result == {"word1", "word2", "WORD3"}
 
 
-def test_load_exclude_list_with_empty_lines(tmp_path: Any) -> None:
+def test_load_exclude_list_with_empty_lines(tmp_path: Path) -> None:
     """Test loading exclude list with empty lines."""
     from orgstats.cli import load_exclude_list
 
@@ -52,7 +52,7 @@ def test_load_exclude_list_with_empty_lines(tmp_path: Any) -> None:
     assert result == {"word1", "word2", "word3"}
 
 
-def test_load_exclude_list_with_whitespace(tmp_path: Any) -> None:
+def test_load_exclude_list_with_whitespace(tmp_path: Path) -> None:
     """Test loading exclude list with whitespace."""
     from orgstats.cli import load_exclude_list
 
@@ -81,7 +81,7 @@ def test_load_mapping_none() -> None:
     assert result == {}
 
 
-def test_load_mapping_valid(tmp_path: Any) -> None:
+def test_load_mapping_valid(tmp_path: Path) -> None:
     """Test loading valid mapping file."""
     from orgstats.cli import load_mapping
 
@@ -92,7 +92,7 @@ def test_load_mapping_valid(tmp_path: Any) -> None:
     assert result == {"test": "testing", "webdev": "frontend"}
 
 
-def test_load_mapping_empty_dict(tmp_path: Any) -> None:
+def test_load_mapping_empty_dict(tmp_path: Path) -> None:
     """Test loading empty mapping dict."""
     from orgstats.cli import load_mapping
 
@@ -103,7 +103,7 @@ def test_load_mapping_empty_dict(tmp_path: Any) -> None:
     assert result == {}
 
 
-def test_load_mapping_invalid_json(tmp_path: Any) -> None:
+def test_load_mapping_invalid_json(tmp_path: Path) -> None:
     """Test that invalid JSON causes sys.exit()."""
     from orgstats.cli import load_mapping
 
@@ -116,7 +116,7 @@ def test_load_mapping_invalid_json(tmp_path: Any) -> None:
     assert exc_info.value.code == 1
 
 
-def test_load_mapping_non_dict_json_array(tmp_path: Any) -> None:
+def test_load_mapping_non_dict_json_array(tmp_path: Path) -> None:
     """Test that JSON array causes sys.exit()."""
     from orgstats.cli import load_mapping
 
@@ -129,7 +129,7 @@ def test_load_mapping_non_dict_json_array(tmp_path: Any) -> None:
     assert exc_info.value.code == 1
 
 
-def test_load_mapping_non_dict_json_string(tmp_path: Any) -> None:
+def test_load_mapping_non_dict_json_string(tmp_path: Path) -> None:
     """Test that JSON string causes sys.exit()."""
     from orgstats.cli import load_mapping
 
@@ -142,7 +142,7 @@ def test_load_mapping_non_dict_json_string(tmp_path: Any) -> None:
     assert exc_info.value.code == 1
 
 
-def test_load_mapping_non_dict_json_number(tmp_path: Any) -> None:
+def test_load_mapping_non_dict_json_number(tmp_path: Path) -> None:
     """Test that JSON number causes sys.exit()."""
     from orgstats.cli import load_mapping
 
@@ -155,7 +155,7 @@ def test_load_mapping_non_dict_json_number(tmp_path: Any) -> None:
     assert exc_info.value.code == 1
 
 
-def test_load_mapping_non_string_keys(tmp_path: Any) -> None:
+def test_load_mapping_non_string_keys(tmp_path: Path) -> None:
     """Test that mapping with valid string keys works (JSON converts int keys to strings)."""
     from orgstats.cli import load_mapping
 
@@ -167,7 +167,7 @@ def test_load_mapping_non_string_keys(tmp_path: Any) -> None:
     assert result == {"123": "testing"}
 
 
-def test_load_mapping_non_string_values(tmp_path: Any) -> None:
+def test_load_mapping_non_string_values(tmp_path: Path) -> None:
     """Test that mapping with non-string values causes sys.exit()."""
     from orgstats.cli import load_mapping
 
@@ -180,7 +180,7 @@ def test_load_mapping_non_string_values(tmp_path: Any) -> None:
     assert exc_info.value.code == 1
 
 
-def test_load_mapping_mixed_non_string_types(tmp_path: Any) -> None:
+def test_load_mapping_mixed_non_string_types(tmp_path: Path) -> None:
     """Test that mapping with mixed non-string types causes sys.exit()."""
     from orgstats.cli import load_mapping
 
@@ -282,7 +282,7 @@ def test_main_mapping_file_not_found() -> None:
     assert "not found" in result.stderr
 
 
-def test_main_mapping_invalid_json(tmp_path: Any) -> None:
+def test_main_mapping_invalid_json(tmp_path: Path) -> None:
     """Test that --mapping with invalid JSON causes error."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
     mapping_file = tmp_path / "invalid.json"
@@ -299,7 +299,7 @@ def test_main_mapping_invalid_json(tmp_path: Any) -> None:
     assert "Error: Invalid JSON in" in result.stderr
 
 
-def test_main_mapping_non_dict(tmp_path: Any) -> None:
+def test_main_mapping_non_dict(tmp_path: Path) -> None:
     """Test that --mapping with non-dict JSON causes error."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
     mapping_file = tmp_path / "array.json"
@@ -317,7 +317,7 @@ def test_main_mapping_non_dict(tmp_path: Any) -> None:
     assert "must contain a JSON object" in result.stderr
 
 
-def test_main_mapping_non_string_values(tmp_path: Any) -> None:
+def test_main_mapping_non_string_values(tmp_path: Path) -> None:
     """Test that --mapping with non-string values causes error."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
     mapping_file = tmp_path / "nonstring.json"

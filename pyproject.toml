@@ -64,6 +64,7 @@ select = [
     "PTH",    # flake8-use-pathlib
     "PL",     # pylint
     "RUF",    # ruff-specific rules
+    "ANN",    # flake8-annotations
 ]
 
 # Never enforce these rules
