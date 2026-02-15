@@ -13,6 +13,7 @@ import orgparse
 from orgstats.core import (
     AnalysisResult,
     Frequency,
+    Group,
     Relations,
     TimeRange,
     analyze,
@@ -264,6 +265,60 @@ def display_category(
                 print("    Top relations:")
                 for related_name, count in sorted_relations:
                     print(f"      {related_name} ({count})")
+
+
+def display_groups(
+    groups: list[Group],
+    exclude_set: set[str],
+    config: tuple[int, int, datetime | None, datetime | None],
+) -> None:
+    """Display tag groups with timelines.
+
+    Args:
+        groups: List of Group objects
+        exclude_set: Set of tags to exclude
+        config: Tuple of (min_group_size, num_buckets, date_from, date_until)
+    """
+    min_group_size, num_buckets, date_from, date_until = config
+    if not groups:
+        return
+
+    filtered_groups = []
+    for group in groups:
+        filtered_tags = [tag for tag in group.tags if tag not in exclude_set]
+        if len(filtered_tags) >= min_group_size:
+            filtered_groups.append((filtered_tags, group.time_range))
+
+    filtered_groups.sort(key=lambda x: len(x[0]), reverse=True)
+
+    if filtered_groups:
+        print("\nTag groups:")
+        for idx, (group_tags, time_range) in enumerate(filtered_groups):
+            if idx > 0:
+                print()
+
+            if date_from and date_until:
+                earliest_date = date_from.date()
+                latest_date = date_until.date()
+            elif time_range.earliest and time_range.latest:
+                earliest_date = time_range.earliest.date()
+                latest_date = time_range.latest.date()
+            else:
+                earliest_date = None
+                latest_date = None
+
+            if earliest_date and latest_date:
+                date_line, chart_line, underline = render_timeline_chart(
+                    time_range.timeline,
+                    earliest_date,
+                    latest_date,
+                    num_buckets,
+                )
+                print(f"  {date_line}")
+                print(f"  {chart_line}")
+                print(f"  {underline}")
+
+            print(f"  {', '.join(group_tags)}")
 
 
 def filter_nodes(nodes: list[orgparse.node.OrgNode], task_type: str) -> list[orgparse.node.OrgNode]:
@@ -937,18 +992,11 @@ def display_results(
         order_by_total,
     )
 
-    if result.tag_groups:
-        filtered_groups = []
-        for group in result.tag_groups:
-            filtered_tags = [tag for tag in group.tags if tag not in exclude_set]
-            if len(filtered_tags) >= args.min_group_size:
-                filtered_groups.append(filtered_tags)
-
-        if filtered_groups:
-            print("\nTag groups:")
-            for group_tags in filtered_groups:
-                print(f"  {', '.join(group_tags)}")
-                print()
+    display_groups(
+        result.tag_groups,
+        exclude_set,
+        (args.min_group_size, args.buckets, date_from, date_until),
+    )
 
 
 def main() -> None:

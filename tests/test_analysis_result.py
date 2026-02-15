@@ -202,7 +202,7 @@ def test_analysis_result_mutable_fields() -> None:
     result.tag_frequencies["new"] = Frequency(1)
     result.tag_relations["test"] = Relations(name="test", relations={})
     result.tag_time_ranges["python"] = TimeRange()
-    result.tag_groups.append(Group(tags=["python", "testing"]))
+    result.tag_groups.append(Group(tags=["python", "testing"], time_range=TimeRange()))
 
     assert result.total_tasks == 10
     assert result.task_states.values["DONE"] == 5

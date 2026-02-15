@@ -802,7 +802,64 @@ I updated the default values for the exclude lists & the mapping list, and made 
 
 **Comment:** Just 4 tests were not passing after the manual change, so this was quicker to do manually.
 
-## Split tag display on case
+## ❌ Split tag display on case
+For the final display whenever a tag value is displayed, please split the word by letter case, but only if the resulting sub-words would be longer than 1 character. Here are some examples:
+
+```
+"Compilers" -> "Compilers"
+"PLDesign" -> "PL" "Design"
+"ProgrammingLanguageDesign" -> "Programming" "Language" "Design"
+"ComputerArchitectures" -> "Computer" "Architectures"
+"3DModeling" -> "3D" "Modeling"
+"C++" -> "C++"
+"C" -> "C"
+"OTP" -> "OTP"
+"HTML" -> "HTML"
+"OpenSCAD" -> "Open" "SCAD"
+```
+
+**Comment:** Decided not to do it, since it already looks fine with the CamelCase tags.
+
+## ✅*️ Group timelines
+Please extend the `Group` class to add a `time_range: TimeRange` field. This field will represent the shared timeline of a group of tags.
+
+Please update the `analyze()` function to use the `tag_time_ranges` intermediate result to compute the shared time-range of the tags in each group of `tag_groups`. You should pass that intermediate `tag_time_ranges` value to the `compute_groups()` function.
+
+Add a new function `_combine_time_ranges()` that will take the tag time ranges and a list of tags and return a single `TimeRange` object that combines the time ranges of the tags from the list. To combine the time ranges:
+- combine the `earliest` property to mean the earliest of all the time ranges of each tag from the list,
+- combine the `latest` property to mean the latest of all the time ranges of each tag from the list,
+- combine the `timeline` property to merge the dates & frequencies; make sure that if multiple tags from the group have occuranceson the same date, they should be summed in the resulting timeline.
+
+Update the `compute_groups()` function to compute the shared timeline of each group.
+
+Please update the CLI output to include the plot of the group timeline. I'd like the CLI output for the `Top groups:` to look like this:
+
+```
+Tag groups:
+  <group section>
+
+  <group section>
+
+  ...
+```
+
+That is, each group section is indented and separated by a blank line, with individual group sections looking like this:
+
+```
+  2011-10-30                                2026-02-14
+  ┊          ▁▅▃▆█▂▃▂▂ ▁▁▁▁ ▁▂ ▁ ▁▁▁ ▁▁▁▁▁▁▁▁▁ ▁▁▁▁▁▁┊ 3 (2019-06-10)
+  ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+  Cowboy, Debugging, Erlang, OTP, Scala, Testing
+```
+
+It should be similar to the per-tag display, except the plot is followed by the group's tags.
+
+**Comment:** The AI got a bit flabbergasted at forward-reference errors when adding a TimeRange to the Group which is defined before TimeRange. It "solved" the issue by importing annotations from the future (:shrug:) instead of by reordering the classes. :shrug:
+
+## Update AGENTS.md and README.md
+
+## Task "category" histogram
+- based on gamify_exp, eventually will evolve to classify each task by some criteria (fix/debug/test heading content, etc).
 
 ## Code reorg
 Move the filters to filters.py
@@ -811,14 +868,9 @@ Move the plot display generation to plot.py
 Move the histogram display generation to histogram.py
 Remove the main.py module
 
-## Update AGENTS.md and README.md
-
 ## GitHub workflow for PR-based development
 
 ## Output colors
-
-## Task "category" histogram
-- based on gamify_exp, eventually will evolve to classify each task by some criteria (fix/debug/test heading content, etc).
 
 ## Per-tag stats
 - Total tasks

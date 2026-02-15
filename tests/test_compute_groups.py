@@ -1,12 +1,14 @@
 """Tests for the compute_groups() function."""
 
-from orgstats.core import Relations, compute_groups
+from datetime import date, datetime
+
+from orgstats.core import Relations, TimeRange, compute_groups
 
 
 def test_compute_groups_empty_relations() -> None:
     """Test compute_groups with empty relations dictionary."""
     relations: dict[str, Relations] = {}
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     assert groups == []
 
@@ -16,7 +18,7 @@ def test_compute_groups_single_tag() -> None:
     relations = {
         "python": Relations(name="python", relations={}),
     }
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     assert len(groups) == 1
     assert groups[0].tags == ["python"]
@@ -28,7 +30,7 @@ def test_compute_groups_two_separate_tags() -> None:
         "python": Relations(name="python", relations={}),
         "java": Relations(name="java", relations={}),
     }
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     assert len(groups) == 2
     tag_sets = [set(group.tags) for group in groups]
@@ -42,7 +44,7 @@ def test_compute_groups_bidirectional_pair() -> None:
         "python": Relations(name="python", relations={"testing": 5}),
         "testing": Relations(name="testing", relations={"python": 5}),
     }
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     assert len(groups) == 1
     assert set(groups[0].tags) == {"python", "testing"}
@@ -56,7 +58,7 @@ def test_compute_groups_alphabetical_sorting() -> None:
         "apple": Relations(name="apple", relations={"zebra": 5, "banana": 2}),
         "banana": Relations(name="banana", relations={"zebra": 3, "apple": 2}),
     }
-    groups = compute_groups(relations, max_relations=5)
+    groups = compute_groups(relations, max_relations=5, tag_time_ranges={})
 
     assert len(groups) == 1
     assert groups[0].tags == ["apple", "banana", "zebra"]
@@ -72,7 +74,7 @@ def test_compute_groups_respects_max_relations() -> None:
         "d": Relations(name="d", relations={"python": 4}),
         "e": Relations(name="e", relations={"python": 2}),
     }
-    groups = compute_groups(relations, max_relations=2)
+    groups = compute_groups(relations, max_relations=2, tag_time_ranges={})
 
     group_with_python = next(g for g in groups if "python" in g.tags)
     assert set(group_with_python.tags) == {"a", "b", "python"}
@@ -86,7 +88,7 @@ def test_compute_groups_multiple_components() -> None:
         "java": Relations(name="java", relations={"debugging": 3}),
         "debugging": Relations(name="debugging", relations={"java": 3}),
     }
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     assert len(groups) == 2
     tag_sets = [set(group.tags) for group in groups]
@@ -101,7 +103,7 @@ def test_compute_groups_chain_within_limit() -> None:
         "b": Relations(name="b", relations={"c": 5}),
         "c": Relations(name="c", relations={}),
     }
-    groups = compute_groups(relations, max_relations=1)
+    groups = compute_groups(relations, max_relations=1, tag_time_ranges={})
 
     assert len(groups) == 3
     tag_sets = [set(group.tags) for group in groups]
@@ -117,7 +119,7 @@ def test_compute_groups_complex_cycle() -> None:
         "b": Relations(name="b", relations={"c": 10}),
         "c": Relations(name="c", relations={"a": 10}),
     }
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     assert len(groups) == 1
     assert set(groups[0].tags) == {"a", "b", "c"}
@@ -133,7 +135,7 @@ def test_compute_groups_multiple_cycles() -> None:
         "y": Relations(name="y", relations={"z": 5}),
         "z": Relations(name="z", relations={"x": 5}),
     }
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     assert len(groups) == 2
     tag_sets = [set(group.tags) for group in groups]
@@ -147,7 +149,7 @@ def test_compute_groups_asymmetric_relations() -> None:
         "a": Relations(name="a", relations={"b": 10}),
         "b": Relations(name="b", relations={}),
     }
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     assert len(groups) == 2
     tag_sets = [set(group.tags) for group in groups]
@@ -162,7 +164,7 @@ def test_compute_groups_partial_cycle() -> None:
         "b": Relations(name="b", relations={"c": 10}),
         "c": Relations(name="c", relations={"a": 10}),
     }
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     assert len(groups) == 1
     assert set(groups[0].tags) == {"a", "b", "c"}
@@ -178,7 +180,7 @@ def test_compute_groups_mixed_components() -> None:
         "cycle2": Relations(name="cycle2", relations={"cycle3": 10}),
         "cycle3": Relations(name="cycle3", relations={"cycle1": 10}),
     }
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     assert len(groups) == 3
     tag_sets = [set(group.tags) for group in groups]
@@ -197,7 +199,7 @@ def test_compute_groups_real_world_scenario() -> None:
         "java": Relations(name="java", relations={"maven": 7}),
         "maven": Relations(name="maven", relations={"java": 7}),
     }
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     tag_sets = [set(group.tags) for group in groups]
     assert {"python", "testing"} <= tag_sets[0] or {"python", "testing"} <= tag_sets[1]
@@ -212,7 +214,7 @@ def test_compute_groups_single_direction_chain() -> None:
         "c": Relations(name="c", relations={"d": 10}),
         "d": Relations(name="d", relations={}),
     }
-    groups = compute_groups(relations, max_relations=3)
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
 
     assert len(groups) == 4
     tag_sets = [set(group.tags) for group in groups]
@@ -220,3 +222,120 @@ def test_compute_groups_single_direction_chain() -> None:
     assert {"b"} in tag_sets
     assert {"c"} in tag_sets
     assert {"d"} in tag_sets
+
+
+def test_compute_groups_with_time_ranges() -> None:
+    """Test that groups receive combined time ranges."""
+    relations = {
+        "python": Relations(name="python", relations={"testing": 5}),
+        "testing": Relations(name="testing", relations={"python": 5}),
+    }
+    tag_time_ranges = {
+        "python": TimeRange(
+            earliest=datetime(2023, 1, 1),
+            latest=datetime(2023, 1, 5),
+            timeline={date(2023, 1, 1): 3, date(2023, 1, 5): 2},
+        ),
+        "testing": TimeRange(
+            earliest=datetime(2023, 1, 3),
+            latest=datetime(2023, 1, 7),
+            timeline={date(2023, 1, 3): 4, date(2023, 1, 7): 1},
+        ),
+    }
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges=tag_time_ranges)
+
+    assert len(groups) == 1
+    assert groups[0].time_range.earliest == datetime(2023, 1, 1)
+    assert groups[0].time_range.latest == datetime(2023, 1, 7)
+    assert groups[0].time_range.timeline == {
+        date(2023, 1, 1): 3,
+        date(2023, 1, 3): 4,
+        date(2023, 1, 5): 2,
+        date(2023, 1, 7): 1,
+    }
+
+
+def test_compute_groups_time_range_combines_overlapping_dates() -> None:
+    """Test that group time range merges and sums overlapping dates."""
+    relations = {
+        "python": Relations(name="python", relations={"testing": 5}),
+        "testing": Relations(name="testing", relations={"python": 5}),
+    }
+    tag_time_ranges = {
+        "python": TimeRange(
+            earliest=datetime(2023, 1, 1),
+            latest=datetime(2023, 1, 5),
+            timeline={date(2023, 1, 1): 3, date(2023, 1, 3): 2, date(2023, 1, 5): 1},
+        ),
+        "testing": TimeRange(
+            earliest=datetime(2023, 1, 3),
+            latest=datetime(2023, 1, 7),
+            timeline={date(2023, 1, 3): 4, date(2023, 1, 5): 2, date(2023, 1, 7): 1},
+        ),
+    }
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges=tag_time_ranges)
+
+    assert len(groups) == 1
+    assert groups[0].time_range.timeline == {
+        date(2023, 1, 1): 3,
+        date(2023, 1, 3): 6,
+        date(2023, 1, 5): 3,
+        date(2023, 1, 7): 1,
+    }
+
+
+def test_compute_groups_time_range_empty_when_no_data() -> None:
+    """Test that groups with no time range data get empty TimeRange."""
+    relations = {
+        "python": Relations(name="python", relations={"testing": 5}),
+        "testing": Relations(name="testing", relations={"python": 5}),
+    }
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges={})
+
+    assert len(groups) == 1
+    assert groups[0].time_range.earliest is None
+    assert groups[0].time_range.latest is None
+    assert groups[0].time_range.timeline == {}
+
+
+def test_compute_groups_multiple_groups_separate_time_ranges() -> None:
+    """Test that multiple groups have independent time ranges."""
+    relations = {
+        "python": Relations(name="python", relations={"testing": 5}),
+        "testing": Relations(name="testing", relations={"python": 5}),
+        "java": Relations(name="java", relations={"maven": 3}),
+        "maven": Relations(name="maven", relations={"java": 3}),
+    }
+    tag_time_ranges = {
+        "python": TimeRange(
+            earliest=datetime(2023, 1, 1),
+            latest=datetime(2023, 1, 5),
+            timeline={date(2023, 1, 1): 3},
+        ),
+        "testing": TimeRange(
+            earliest=datetime(2023, 1, 3),
+            latest=datetime(2023, 1, 7),
+            timeline={date(2023, 1, 3): 4},
+        ),
+        "java": TimeRange(
+            earliest=datetime(2023, 6, 1),
+            latest=datetime(2023, 6, 10),
+            timeline={date(2023, 6, 1): 5},
+        ),
+        "maven": TimeRange(
+            earliest=datetime(2023, 6, 5),
+            latest=datetime(2023, 6, 15),
+            timeline={date(2023, 6, 5): 2},
+        ),
+    }
+    groups = compute_groups(relations, max_relations=3, tag_time_ranges=tag_time_ranges)
+
+    assert len(groups) == 2
+
+    python_group = next(g for g in groups if "python" in g.tags)
+    assert python_group.time_range.earliest == datetime(2023, 1, 1)
+    assert python_group.time_range.latest == datetime(2023, 1, 7)
+
+    java_group = next(g for g in groups if "java" in g.tags)
+    assert java_group.time_range.earliest == datetime(2023, 6, 1)
+    assert java_group.time_range.latest == datetime(2023, 6, 15)

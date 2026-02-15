@@ -555,7 +555,7 @@ def test_display_results_with_tag_groups() -> None:
         TimeRange,
     )
 
-    tag_groups = [Group(tags=["python", "programming", "coding"])]
+    tag_groups = [Group(tags=["python", "programming", "coding"], time_range=TimeRange())]
 
     result = AnalysisResult(
         total_tasks=3,
@@ -604,8 +604,8 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
     )
 
     tag_groups = [
-        Group(tags=["python", "programming"]),
-        Group(tags=["java", "programming", "coding"]),
+        Group(tags=["python", "programming"], time_range=TimeRange()),
+        Group(tags=["java", "programming", "coding"], time_range=TimeRange()),
     ]
 
     result = AnalysisResult(
@@ -656,8 +656,8 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
     )
 
     tag_groups = [
-        Group(tags=["python", "test", "programming"]),
-        Group(tags=["java", "test"]),
+        Group(tags=["python", "test", "programming"], time_range=TimeRange()),
+        Group(tags=["java", "test"], time_range=TimeRange()),
     ]
 
     result = AnalysisResult(

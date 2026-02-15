@@ -1,5 +1,7 @@
 """Core logic for orgstats - Org-mode archive file analysis."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -123,9 +125,11 @@ class Group:
 
     Attributes:
         tags: List of tag names in this group, sorted alphabetically
+        time_range: Combined time range for all tags in the group
     """
 
     tags: list[str]
+    time_range: TimeRange
 
 
 @dataclass
@@ -698,12 +702,49 @@ def compute_time_ranges(
     return time_ranges
 
 
-def compute_groups(relations: dict[str, Relations], max_relations: int) -> list[Group]:
+def _combine_time_ranges(tag_time_ranges: dict[str, TimeRange], tags: list[str]) -> TimeRange:
+    """Combine time ranges from multiple tags into a single TimeRange.
+
+    Args:
+        tag_time_ranges: Dictionary mapping tags to their TimeRange objects
+        tags: List of tag names to combine
+
+    Returns:
+        Combined TimeRange with merged earliest/latest/timeline data
+    """
+    combined = TimeRange()
+
+    for tag in tags:
+        if tag not in tag_time_ranges:
+            continue
+
+        time_range = tag_time_ranges[tag]
+
+        if time_range.earliest is not None and (
+            combined.earliest is None or time_range.earliest < combined.earliest
+        ):
+            combined.earliest = time_range.earliest
+
+        if time_range.latest is not None and (
+            combined.latest is None or time_range.latest > combined.latest
+        ):
+            combined.latest = time_range.latest
+
+        for date_key, count in time_range.timeline.items():
+            combined.timeline[date_key] = combined.timeline.get(date_key, 0) + count
+
+    return combined
+
+
+def compute_groups(
+    relations: dict[str, Relations], max_relations: int, tag_time_ranges: dict[str, TimeRange]
+) -> list[Group]:
     """Compute strongly connected components from tag relations using Tarjan's algorithm.
 
     Args:
         relations: Dictionary mapping tags to their Relations objects
         max_relations: Maximum number of relations to consider per tag
+        tag_time_ranges: Dictionary mapping tags to their TimeRange objects
 
     Returns:
         List of Group objects representing strongly connected components
@@ -752,7 +793,10 @@ def compute_groups(relations: dict[str, Relations], max_relations: int) -> list[
         if node not in index:
             strongconnect(node)
 
-    return [Group(tags=sorted(scc)) for scc in sccs]
+    return [
+        Group(tags=sorted(scc), time_range=_combine_time_ranges(tag_time_ranges, scc))
+        for scc in sccs
+    ]
 
 
 def analyze(
@@ -776,8 +820,8 @@ def analyze(
     """
     tag_frequencies = compute_frequencies(nodes, mapping, category, done_keys)
     tag_relations = compute_relations(nodes, mapping, category, done_keys)
-    tag_groups = compute_groups(tag_relations, max_relations)
     tag_time_ranges = compute_time_ranges(nodes, mapping, category, done_keys)
+    tag_groups = compute_groups(tag_relations, max_relations, tag_time_ranges)
     task_states = compute_task_state_histogram(nodes)
     task_days = compute_day_of_week_histogram(nodes, done_keys)
     global_timerange = compute_global_timerange(nodes, done_keys)
