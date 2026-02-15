@@ -9,5 +9,6 @@
     "ComputerNetworks": "Networking",
     "Maintenance": "Refactoring",
     "SOA": "ServiceOrientedArchitecture",
-    "Dia": "UML"
+    "Dia": "UML",
+    "Electronics": "EmbeddedDevelopment"
 }

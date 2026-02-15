@@ -919,16 +919,7 @@ def display_results(
         print(f"  {line}")
 
     print("\nTask completion by day of week:")
-    day_order = [
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-        "Sunday",
-        "unknown",
-    ]
+    day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     histogram_lines = render_histogram(result.task_days, args.buckets, day_order)
     for line in histogram_lines:
         print(f"  {line}")
