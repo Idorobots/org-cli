@@ -1,17 +1,13 @@
 {
-  "test": "testing",
-  "sysadmin": "devops",
-  "pldesign": "compilers",
-  "webdev": "frontend",
-  "unix": "linux",
-  "gtd": "agile",
-  "foof": "spartan",
-  "typing": "documenting",
-  "notestaking": "documenting",
-  "computernetworks": "networking",
-  "maintenance": "refactoring",
-  "softwareengineering": "softwarearchitecture",
-  "soa": "softwarearchitecture",
-  "uml": "softwarearchitecture",
-  "dia": "softwarearchitecture"
+    "SysAdmin": "DevOps",
+    "PLDesign": "ProgrammingLanguageDesign",
+    "WebDev": "FrontendDevelopment",
+    "Unix": "Linux",
+    "GTD": "GettingThingsDone",
+    "FOOF": "Spartan",
+    "NotesTaking": "Documenting",
+    "ComputerNetworks": "Networking",
+    "Maintenance": "Refactoring",
+    "SOA": "ServiceOrientedArchitecture",
+    "Dia": "UML"
 }

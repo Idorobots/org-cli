@@ -797,15 +797,23 @@ Please update the tests to make sure that `CamelCase` tags are mapped and otherw
 
 **Comment:** The AI cut corners again - left the old mapping values in so that fewer tests would break. Required some manual changes & extra proomptin'.
 
-## Default lists update
+## ❌ Default lists update
+I updated the default values for the exclude lists & the mapping list, and made sure that those exclusion items are case-sensitive. Please update the tests to pass using the new defaults. Ideally, the tests would be made independent of the implicit default values.
+
+**Comment:** Just 4 tests were not passing after the manual change, so this was quicker to do manually.
+
+## Split tag display on case
 
 ## Code reorg
 Move the filters to filters.py
 Move the analysis to analyze.py
 Move the plot display generation to plot.py
 Move the histogram display generation to histogram.py
+Remove the main.py module
 
-## Remove normalization from the tags, just normalize words in the heading & body
+## Update AGENTS.md and README.md
+
+## GitHub workflow for PR-based development
 
 ## Output colors
 

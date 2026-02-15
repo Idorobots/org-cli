@@ -1,18 +1,19 @@
 """Tests for the mapped() function."""
 
-from orgstats.cli import MAP
 from orgstats.core import mapped
 
 
 def test_mapped_found_in_mapping() -> None:
     """Test that mapped returns the canonical form when tag is in mapping."""
-    result = mapped(MAP, "Test")
+    mapping = {"Test": "Testing"}
+    result = mapped(mapping, "Test")
     assert result == "Testing"
 
 
 def test_mapped_not_found_returns_original() -> None:
     """Test that mapped returns the original tag when not in mapping."""
-    result = mapped(MAP, "nonexistent")
+    mapping = {"Test": "Testing"}
+    result = mapped(mapping, "nonexistent")
     assert result == "nonexistent"
 
 
@@ -34,31 +35,17 @@ def test_mapped_all_map_entries() -> None:
         "SOA": "SoftwareArchitecture",
         "UML": "SoftwareArchitecture",
         "Dia": "SoftwareArchitecture",
-        "test": "testing",
-        "sysadmin": "devops",
-        "pldesign": "compilers",
-        "webdev": "frontend",
-        "unix": "linux",
-        "gtd": "agile",
-        "foof": "spartan",
-        "typing": "documenting",
-        "notestaking": "documenting",
-        "computernetworks": "networking",
-        "maintenance": "refactoring",
-        "softwareengineering": "softwarearchitecture",
-        "soa": "softwarearchitecture",
-        "uml": "softwarearchitecture",
-        "dia": "softwarearchitecture",
     }
 
     for key, value in expected_mappings.items():
-        result = mapped(MAP, key)
+        result = mapped(expected_mappings, key)
         assert result == value, f"Expected mapped(MAP, '{key}') to return '{value}', got '{result}'"
 
 
 def test_mapped_empty_string() -> None:
     """Test mapped with empty string."""
-    result = mapped(MAP, "")
+    mapping = {"Test": "Testing"}
+    result = mapped(mapping, "")
     assert result == ""
 
 
@@ -80,10 +67,11 @@ def test_mapped_empty_mapping() -> None:
 
 def test_mapped_case_sensitive() -> None:
     """Test that mapped is case-sensitive."""
+    mapping = {"test": "testing", "Test": "Testing"}
     # MAP has both CamelCase and lowercase keys
-    result_camel = mapped(MAP, "Test")
-    result_upper = mapped(MAP, "TEST")
-    result_lower = mapped(MAP, "test")
+    result_camel = mapped(mapping, "Test")
+    result_upper = mapped(mapping, "TEST")
+    result_lower = mapped(mapping, "test")
 
     assert result_camel == "Testing"  # Found in map
     assert result_upper == "TEST"  # Not found, returns original
@@ -92,11 +80,13 @@ def test_mapped_case_sensitive() -> None:
 
 def test_mapped_whitespace() -> None:
     """Test mapped with whitespace in tag."""
-    result = mapped(MAP, " Test ")
+    mapping = {"Test": "Testing"}
+    result = mapped(mapping, " Test ")
     assert result == " Test "  # Not found with whitespace, returns original
 
 
 def test_mapped_preserves_type() -> None:
     """Test that mapped returns a string."""
-    result = mapped(MAP, "Test")
+    mapping = {"Test": "Testing"}
+    result = mapped(mapping, "Test")
     assert isinstance(result, str)

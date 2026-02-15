@@ -38,7 +38,7 @@ def test_load_exclude_list_valid(tmp_path: Any) -> None:
     exclude_file.write_text("word1\nword2\nWORD3\n")
 
     result = load_exclude_list(str(exclude_file))
-    assert result == {"word1", "word2", "word3"}
+    assert result == {"word1", "word2", "WORD3"}
 
 
 def test_load_exclude_list_with_empty_lines(tmp_path: Any) -> None:

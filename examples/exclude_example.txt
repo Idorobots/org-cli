@@ -1,0 +1,15 @@
+COMP
+computer
+UNI
+OUT
+HOME
+exam
+note
+learn
+homework
+test
+blog
+plan
+lecture
+due
+meeting
