@@ -603,7 +603,7 @@ def validate_pattern(pattern: str, option_name: str, use_multiline: bool = False
 
 def load_org_files(
     filenames: list[str], todo_keys: list[str], done_keys: list[str]
-) -> list[orgparse.node.OrgNode]:
+) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
     """Load and parse org-mode files.
 
     Args:
@@ -618,6 +618,8 @@ def load_org_files(
         SystemExit: If file cannot be read
     """
     nodes: list[orgparse.node.OrgNode] = []
+    all_todo_keys: set[str] = set(todo_keys)
+    all_done_keys: set[str] = set(done_keys)
 
     for name in filenames:
         try:
@@ -631,6 +633,8 @@ def load_org_files(
 
                 ns = orgparse.loads(contents)
                 if ns is not None:
+                    all_todo_keys = all_todo_keys.union(set(ns.env.todo_keys))
+                    all_done_keys = all_done_keys.union(set(ns.env.done_keys))
                     nodes = nodes + list(ns[1:])
         except FileNotFoundError:
             print(f"Error: File '{name}' not found", file=sys.stderr)
@@ -639,7 +643,7 @@ def load_org_files(
             print(f"Error: Permission denied for '{name}'", file=sys.stderr)
             sys.exit(1)
 
-    return nodes
+    return nodes, list(all_todo_keys), list(all_done_keys)
 
 
 def parse_date_argument(date_str: str, arg_name: str) -> datetime:
@@ -1154,9 +1158,9 @@ def main() -> None:
     mapping = load_mapping(args.mapping) or MAP
     exclude_set = load_exclude_list(args.exclude) or DEFAULT_EXCLUDE
 
-    filters = build_filter_chain(args, sys.argv, done_keys, todo_keys)
+    nodes, todo_keys, done_keys = load_org_files(args.files, todo_keys, done_keys)
 
-    nodes = load_org_files(args.files, todo_keys, done_keys)
+    filters = build_filter_chain(args, sys.argv, done_keys, todo_keys)
 
     filtered_nodes = nodes
     for f in filters:

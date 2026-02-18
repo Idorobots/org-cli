@@ -208,10 +208,22 @@ def test_load_org_files_valid() -> None:
     from orgstats.cli import load_org_files
 
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
-    nodes = load_org_files([fixture_path], ["TODO"], ["DONE"])
+    nodes, _, _ = load_org_files([fixture_path], ["TODO"], ["DONE"])
 
     assert len(nodes) > 0
     assert all(hasattr(node, "heading") for node in nodes)
+
+
+def test_load_org_files_todo_keys() -> None:
+    """Test loading valid org files."""
+    from orgstats.cli import load_org_files
+
+    fixture_path = os.path.join(FIXTURES_DIR, "todo_keys.org")
+    nodes, todo_keys, done_keys = load_org_files([fixture_path], ["TODO"], ["DONE"])
+
+    assert len(nodes) > 0
+    assert set(todo_keys) == {"TODO", "STARTED"}
+    assert set(done_keys) == {"DONE", "CANCELLED"}
 
 
 def test_load_org_files_multiple() -> None:
@@ -221,7 +233,7 @@ def test_load_org_files_multiple() -> None:
     fixture1 = os.path.join(FIXTURES_DIR, "simple.org")
     fixture2 = os.path.join(FIXTURES_DIR, "single_task.org")
 
-    nodes = load_org_files([fixture1, fixture2], ["TODO"], ["DONE"])
+    nodes, _, _ = load_org_files([fixture1, fixture2], ["TODO"], ["DONE"])
 
     assert len(nodes) > 0
 
@@ -231,7 +243,7 @@ def test_load_org_files_with_24_00_time() -> None:
     from orgstats.cli import load_org_files
 
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
-    nodes = load_org_files([fixture_path], ["TODO"], ["DONE"])
+    nodes, _, _ = load_org_files([fixture_path], ["TODO"], ["DONE"])
 
     assert len(nodes) > 0
 

@@ -1,6 +1,6 @@
 #+TITLE: Good Vibes
-#+TODO: TODO(t) | DONE(d@/!) REWORKED(r@/!)
-#+TODO: | CANCELLED(c@/!)
+#+TODO: TODO(t) | DONE(d@/!)
+#+TODO: | CANCELLED(c@/!) REWORKED(r@/!)
 
 * Goals
 The goal of the project was to attempt to achieve the fabled 10x productivity boost by vibe-coding as much of the project, while only focusing attention on the parts that matter. Simply put, go as fast as possible, break things and run out of quota. That last part was certainly achieved.
@@ -350,7 +350,6 @@ Tag groups:
   ...
 #+end_example
 
-
 ** DONE Additional relation filter                                                    :CLI:Analysis:
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-02-12 Thu 21:05] \\
@@ -411,9 +410,7 @@ The default values for these parameters should be:
 The values of these keys should be "configured" in the content passed to `orgparse.loads()` as the accepted TODO states.
 The format of that configuration is:
 
-#+begin_example
-#+TODO: {TODO_KEYS} | {DONE_KEYS}
-#+end_example
+: #+TODO: {TODO_KEYS} | {DONE_KEYS}
 
 It should be prepended to the content.
 
@@ -958,7 +955,6 @@ For the final display whenever a tag value is displayed, please split the word b
 "OpenSCAD" -> "Open" "SCAD"
 #+end_example
 
-
 ** REWORKED Group timelines                                                               :Analysis:
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-02-15 Sun 21:24] \\
@@ -1040,7 +1036,6 @@ Let me use a different approach to remove the file:
    completed   execute  find /workspaces/orgstats/src/orgstats/core.py.bak -type f -delete
 #+end_example
 
-
 ** REWORKED Even more filters                                                               :CLI:UX:
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-02-15 Sun 21:25] \\
@@ -1060,8 +1055,13 @@ The idea is to be able to look for specific words or phrases within the body/hea
 :END:
 I see you introduced a check that the regex parses correctly. Would you mind extracting that into a `validate_pattern()` function that is ran before the filters are build? Much like is don for `todo_keys` etc. It is OK, that the validation is purely validating the value, no need to pass the validated value to the filter (although it would be better style).
 
-** Update todo-keys & done-keys based on file contents
-OrgRootNode has an environment that stores the `todo_keys` and `done_keys` properties. Use that to update the relevant settings after loading all the files.
+** CANCELLED Update todo-keys & done-keys based on file contents
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-02-18 Wed 23:02] \\
+  Since the weekly quota ran out, I implemented this myself.
+:END:
+The `OrgRootNode` has an environment that stores the `todo_keys` and `done_keys` properties present in the analysed file. Use that to update the keys used for analysis and filtering. To achieve that, return the list of root nodes from `load_org_files()`, extract and combine the todo and done keys, and combine the lists into the resulting sets.
+
 ** Output colors
 
 ** Per-tag stats

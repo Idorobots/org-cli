@@ -820,7 +820,7 @@ def test_filter_nodes_deprecated() -> None:
     from orgstats.cli import filter_nodes, load_org_files
 
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-    nodes = load_org_files([fixture_path], ["TODO"], ["DONE"])
+    nodes, _, _ = load_org_files([fixture_path], ["TODO"], ["DONE"])
 
     filtered = filter_nodes(nodes, "simple")
 
@@ -832,7 +832,7 @@ def test_filter_nodes_all() -> None:
     from orgstats.cli import filter_nodes, load_org_files
 
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-    nodes = load_org_files([fixture_path], ["TODO"], ["DONE"])
+    nodes, _, _ = load_org_files([fixture_path], ["TODO"], ["DONE"])
 
     filtered = filter_nodes(nodes, "all")
 
