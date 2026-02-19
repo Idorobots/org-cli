@@ -125,6 +125,13 @@ DEFAULT_EXCLUDE = TAGS.union(HEADING).union(
 CATEGORY_NAMES = {"tags": "tags", "heading": "heading words", "body": "body words"}
 
 
+@dataclass
+class Filter:
+    """Specification for a single filter operation."""
+
+    filter: Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]
+
+
 def load_exclude_list(filepath: str | None) -> set[str]:
     """Load exclude list from a file (one word per line).
 
@@ -601,23 +608,26 @@ def validate_pattern(pattern: str, option_name: str, use_multiline: bool = False
         sys.exit(1)
 
 
-def load_org_files(
-    filenames: list[str], todo_keys: list[str], done_keys: list[str]
+def load_nodes(
+    filenames: list[str], todo_keys: list[str], done_keys: list[str], filters: list[Filter]
 ) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
-    """Load and parse org-mode files.
+    """Load, parse, and filter org-mode files.
+
+    Processes each file separately: preprocess → parse → filter → extract keys → combine.
 
     Args:
         filenames: List of file paths to load
-        todo_keys: List of TODO state keywords
-        done_keys: List of DONE state keywords
+        todo_keys: List of TODO state keywords to prepend to files
+        done_keys: List of DONE state keywords to prepend to files
+        filters: List of filter specs to apply to nodes from each file
 
     Returns:
-        List of parsed org-mode nodes
+        Tuple of (filtered nodes, all todo keys, all done keys)
 
     Raises:
         SystemExit: If file cannot be read
     """
-    nodes: list[orgparse.node.OrgNode] = []
+    all_nodes: list[orgparse.node.OrgNode] = []
     all_todo_keys: set[str] = set(todo_keys)
     all_done_keys: set[str] = set(done_keys)
 
@@ -635,7 +645,13 @@ def load_org_files(
                 if ns is not None:
                     all_todo_keys = all_todo_keys.union(set(ns.env.todo_keys))
                     all_done_keys = all_done_keys.union(set(ns.env.done_keys))
-                    nodes = nodes + list(ns[1:])
+
+                    file_nodes = list(ns[1:])
+
+                    for filter_spec in filters:
+                        file_nodes = filter_spec.filter(file_nodes)
+
+                    all_nodes = all_nodes + file_nodes
         except FileNotFoundError:
             print(f"Error: File '{name}' not found", file=sys.stderr)
             sys.exit(1)
@@ -643,7 +659,7 @@ def load_org_files(
             print(f"Error: Permission denied for '{name}'", file=sys.stderr)
             sys.exit(1)
 
-    return nodes, list(all_todo_keys), list(all_done_keys)
+    return all_nodes, list(all_todo_keys), list(all_done_keys)
 
 
 def parse_date_argument(date_str: str, arg_name: str) -> datetime:
@@ -729,13 +745,6 @@ def parse_property_filter(property_str: str) -> tuple[str, str]:
 
     parts = property_str.split("=", 1)
     return (parts[0], parts[1])
-
-
-@dataclass
-class Filter:
-    """Specification for a single filter operation."""
-
-    filter: Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]
 
 
 def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
@@ -839,30 +848,21 @@ def handle_date_filter(arg_name: str, args: argparse.Namespace) -> list[Filter]:
     return []
 
 
-def handle_completion_filter(
-    arg_name: str,
-    args: argparse.Namespace,
-    done_keys: list[str],
-    todo_keys: list[str],
-) -> list[Filter]:
+def handle_completion_filter(arg_name: str, args: argparse.Namespace) -> list[Filter]:
     """Handle completion status filter arguments.
 
     Args:
         arg_name: Argument name
         args: Parsed arguments
-        done_keys: List of completion state keywords
-        todo_keys: List of TODO state keywords
 
     Returns:
         List of Filter objects (0 or 1 item)
     """
     if arg_name == "--filter-completed" and args.filter_completed:
-        keys = done_keys
-        return [Filter(lambda nodes: filter_completed(nodes, keys))]
+        return [Filter(filter_completed)]
 
     if arg_name == "--filter-not-completed" and args.filter_not_completed:
-        keys = todo_keys
-        return [Filter(lambda nodes: filter_not_completed(nodes, keys))]
+        return [Filter(filter_not_completed)]
 
     return []
 
@@ -973,18 +973,13 @@ def handle_indexed_filter(
 
 
 def create_filter_specs_from_args(
-    args: argparse.Namespace,
-    filter_order: list[str],
-    done_keys: list[str],
-    todo_keys: list[str],
+    args: argparse.Namespace, filter_order: list[str]
 ) -> list[Filter]:
     """Create filter specifications from parsed arguments.
 
     Args:
         args: Parsed command-line arguments
         filter_order: List of arg_name tuples
-        done_keys: List of completion state keywords
-        todo_keys: List of TODO state keywords
 
     Returns:
         List of Filter objects in command-line order
@@ -1007,14 +1002,12 @@ def create_filter_specs_from_args(
         elif arg_name in ("--filter-property", "--filter-tag", "--filter-heading", "--filter-body"):
             filter_specs.extend(handle_indexed_filter(arg_name, args, index_trackers))
         elif arg_name in ("--filter-completed", "--filter-not-completed"):
-            filter_specs.extend(handle_completion_filter(arg_name, args, done_keys, todo_keys))
+            filter_specs.extend(handle_completion_filter(arg_name, args))
 
     return filter_specs
 
 
-def build_filter_chain(
-    args: argparse.Namespace, argv: list[str], done_keys: list[str], todo_keys: list[str]
-) -> list[Filter]:
+def build_filter_chain(args: argparse.Namespace, argv: list[str]) -> list[Filter]:
     """Build ordered list of filter functions from CLI arguments.
 
     Processes filters in command-line order. Expands --filter presets inline
@@ -1023,14 +1016,12 @@ def build_filter_chain(
     Args:
         args: Parsed command-line arguments
         argv: Raw sys.argv to determine ordering
-        done_keys: List of completion state keywords
-        todo_keys: List of TODO state keywords
 
     Returns:
         List of filter specs to apply sequentially
     """
     filter_order = parse_filter_order_from_argv(argv)
-    return create_filter_specs_from_args(args, filter_order, done_keys, todo_keys)
+    return create_filter_specs_from_args(args, filter_order)
 
 
 def display_results(
@@ -1158,19 +1149,15 @@ def main() -> None:
     mapping = load_mapping(args.mapping) or MAP
     exclude_set = load_exclude_list(args.exclude) or DEFAULT_EXCLUDE
 
-    nodes, todo_keys, done_keys = load_org_files(args.files, todo_keys, done_keys)
+    filters = build_filter_chain(args, sys.argv)
 
-    filters = build_filter_chain(args, sys.argv, done_keys, todo_keys)
+    nodes, todo_keys, done_keys = load_nodes(args.files, todo_keys, done_keys, filters)
 
-    filtered_nodes = nodes
-    for f in filters:
-        filtered_nodes = f.filter(filtered_nodes)
-
-    if not filtered_nodes:
+    if not nodes:
         print("No results")
         return
 
-    result = analyze(filtered_nodes, mapping, args.show, args.max_relations, done_keys)
+    result = analyze(nodes, mapping, args.show, args.max_relations, done_keys)
 
     date_from = None
     date_until = None

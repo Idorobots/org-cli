@@ -435,7 +435,7 @@ def test_filter_completed_basic() -> None:
         + node_from_org("* DONE Another\n")
     )
 
-    result = filter_completed(nodes, ["DONE"])
+    result = filter_completed(nodes)
 
     assert len(result) == 2
     assert result[0] == nodes[0]
@@ -448,7 +448,7 @@ def test_filter_completed_multiple_done_keys() -> None:
         "* DONE Task\n", todo_keys=["TODO"], done_keys=["DONE", "DELEGATED"]
     ) + node_from_org("* DELEGATED Task\n", todo_keys=["TODO"], done_keys=["DONE", "DELEGATED"])
 
-    result = filter_completed(nodes, ["DONE", "DELEGATED"])
+    result = filter_completed(nodes)
 
     assert len(result) == 2
 
@@ -457,7 +457,7 @@ def test_filter_completed_no_match() -> None:
     """Test filter_completed with no matching nodes."""
     nodes = node_from_org("* TODO Task\n")
 
-    result = filter_completed(nodes, ["DONE"])
+    result = filter_completed(nodes)
 
     assert len(result) == 0
 
@@ -470,7 +470,7 @@ def test_filter_not_completed_basic() -> None:
         + node_from_org("* TODO Another\n")
     )
 
-    result = filter_not_completed(nodes, ["TODO"])
+    result = filter_not_completed(nodes)
 
     assert len(result) == 2
     assert result[0] == nodes[1]
@@ -483,7 +483,7 @@ def test_filter_not_completed_multiple_todo_keys() -> None:
         "* TODO Task\n", todo_keys=["TODO", "WAITING"], done_keys=["DONE"]
     ) + node_from_org("* WAITING Task\n", todo_keys=["TODO", "WAITING"], done_keys=["DONE"])
 
-    result = filter_not_completed(nodes, ["TODO", "WAITING"])
+    result = filter_not_completed(nodes)
 
     assert len(result) == 2
 
@@ -492,7 +492,7 @@ def test_filter_not_completed_no_match() -> None:
     """Test filter_not_completed with no matching nodes."""
     nodes = node_from_org("* DONE Task\n")
 
-    result = filter_not_completed(nodes, ["TODO"])
+    result = filter_not_completed(nodes)
 
     assert len(result) == 0
 
@@ -669,7 +669,7 @@ def test_filter_completed_repeats_all_match() -> None:
 """
     nodes = node_from_org(org_text)
 
-    result = filter_completed(nodes, ["DONE"])
+    result = filter_completed(nodes)
 
     assert len(result) == 1
     assert len(result[0].repeated_tasks) == 2
@@ -685,7 +685,7 @@ def test_filter_completed_repeats_some_match() -> None:
 """
     nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
 
-    result = filter_completed(nodes, ["DONE"])
+    result = filter_completed(nodes)
 
     assert len(result) == 1
     assert len(result[0].repeated_tasks) == 1
@@ -702,7 +702,7 @@ def test_filter_completed_repeats_none_match() -> None:
 """
     nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
 
-    result = filter_completed(nodes, ["DONE"])
+    result = filter_completed(nodes)
 
     assert len(result) == 0
 
@@ -711,7 +711,7 @@ def test_filter_completed_without_repeats_matches() -> None:
     """Test filter_completed with non-repeating task that is DONE."""
     nodes = node_from_org("* DONE Task\n")
 
-    result = filter_completed(nodes, ["DONE"])
+    result = filter_completed(nodes)
 
     assert len(result) == 1
     assert len(result[0].repeated_tasks) == 0
@@ -721,7 +721,7 @@ def test_filter_completed_without_repeats_no_match() -> None:
     """Test filter_completed with non-repeating task that is TODO."""
     nodes = node_from_org("* TODO Task\n")
 
-    result = filter_completed(nodes, ["DONE"])
+    result = filter_completed(nodes)
 
     assert len(result) == 0
 
@@ -736,7 +736,7 @@ def test_filter_not_completed_repeats_all_match() -> None:
 """
     nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
 
-    result = filter_not_completed(nodes, ["TODO"])
+    result = filter_not_completed(nodes)
 
     assert len(result) == 1
     assert len(result[0].repeated_tasks) == 2
@@ -752,7 +752,7 @@ def test_filter_not_completed_repeats_some_match() -> None:
 """
     nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
 
-    result = filter_not_completed(nodes, ["TODO"])
+    result = filter_not_completed(nodes)
 
     assert len(result) == 1
     assert len(result[0].repeated_tasks) == 1
@@ -769,7 +769,7 @@ def test_filter_not_completed_repeats_none_match() -> None:
 """
     nodes = node_from_org(org_text)
 
-    result = filter_not_completed(nodes, ["TODO"])
+    result = filter_not_completed(nodes)
 
     assert len(result) == 0
 
@@ -778,7 +778,7 @@ def test_filter_not_completed_without_repeats_matches() -> None:
     """Test filter_not_completed with non-repeating task that is TODO."""
     nodes = node_from_org("* TODO Task\n")
 
-    result = filter_not_completed(nodes, ["TODO"])
+    result = filter_not_completed(nodes)
 
     assert len(result) == 1
     assert len(result[0].repeated_tasks) == 0
@@ -788,7 +788,7 @@ def test_filter_not_completed_without_repeats_no_match() -> None:
     """Test filter_not_completed with non-repeating task that is DONE."""
     nodes = node_from_org("* DONE Task\n")
 
-    result = filter_not_completed(nodes, ["TODO"])
+    result = filter_not_completed(nodes)
 
     assert len(result) == 0
 
@@ -838,11 +838,9 @@ def test_filter_completed_multiple_done_keys_with_repeats() -> None:
 - State "CANCELLED" from "TODO" [2025-03-20 Thu 14:00]
 :END:
 """
-    nodes = node_from_org(
-        org_text, todo_keys=["TODO"], done_keys=["DONE", "DELEGATED", "CANCELLED"]
-    )
+    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE", "DELEGATED"])
 
-    result = filter_completed(nodes, ["DONE", "DELEGATED"])
+    result = filter_completed(nodes)
 
     assert len(result) == 1
     assert len(result[0].repeated_tasks) == 2

@@ -167,7 +167,7 @@ def test_combining_completion_and_exp_filters() -> None:
     )
 
     result = nodes
-    result = filter_completed(result, ["DONE"])
+    result = filter_completed(result)
     result = filter_gamify_exp_above(result, 10)
 
     assert len(result) == 1
@@ -267,7 +267,7 @@ CLOSED: [2025-01-15 Wed 10:00]
     nodes = node_from_org(org_text) + node_from_org(org_text_exclude)
 
     result = nodes
-    result = filter_completed(result, ["DONE"])
+    result = filter_completed(result)
     result = filter_tag(result, "tag1")
     result = filter_tag(result, "tag2")
     result = filter_gamify_exp_above(result, 10)
@@ -293,4 +293,4 @@ def test_all_filters_with_empty_input() -> None:
     assert filter_date_until(empty_nodes, datetime(2025, 12, 31)) == []
     assert filter_property(empty_nodes, "prop", "value") == []
     assert filter_tag(empty_nodes, "tag") == []
-    assert filter_completed(empty_nodes, ["DONE"]) == []
+    assert filter_completed(empty_nodes) == []

@@ -178,7 +178,7 @@ def test_handle_completion_filter_completed() -> None:
 
     args = argparse.Namespace(filter_completed=True, filter_not_completed=False)
 
-    filters = handle_completion_filter("--filter-completed", args, ["DONE"], ["TODO"])
+    filters = handle_completion_filter("--filter-completed", args)
 
     assert len(filters) == 1
     assert filters[0].filter is not None
@@ -190,7 +190,7 @@ def test_handle_completion_filter_not_completed() -> None:
 
     args = argparse.Namespace(filter_completed=False, filter_not_completed=True)
 
-    filters = handle_completion_filter("--filter-not-completed", args, ["DONE"], ["TODO"])
+    filters = handle_completion_filter("--filter-not-completed", args)
 
     assert len(filters) == 1
     assert filters[0].filter is not None
@@ -202,7 +202,7 @@ def test_handle_completion_filter_no_match() -> None:
 
     args = argparse.Namespace(filter_completed=False, filter_not_completed=False)
 
-    filters = handle_completion_filter("--filter-completed", args, ["DONE"], ["TODO"])
+    filters = handle_completion_filter("--filter-completed", args)
 
     assert len(filters) == 0
 
@@ -246,7 +246,7 @@ def test_create_filter_specs_simple_preset() -> None:
     )
 
     filter_order = ["--filter"]
-    filters = create_filter_specs_from_args(args, filter_order, ["DONE"], ["TODO"])
+    filters = create_filter_specs_from_args(args, filter_order)
 
     assert len(filters) == 1
 
@@ -270,7 +270,7 @@ def test_create_filter_specs_regular_preset() -> None:
     )
 
     filter_order = ["--filter"]
-    filters = create_filter_specs_from_args(args, filter_order, ["DONE"], ["TODO"])
+    filters = create_filter_specs_from_args(args, filter_order)
 
     assert len(filters) == 2
 
@@ -301,7 +301,7 @@ def test_create_filter_specs_multiple_filters() -> None:
         "--filter-tag",
         "--filter-completed",
     ]
-    filters = create_filter_specs_from_args(args, filter_order, ["DONE"], ["TODO"])
+    filters = create_filter_specs_from_args(args, filter_order)
 
     assert len(filters) >= 4
 
@@ -325,7 +325,7 @@ def test_create_filter_specs_property_order() -> None:
     )
 
     filter_order = ["--filter-property", "--filter-property"]
-    filters = create_filter_specs_from_args(args, filter_order, ["DONE"], ["TODO"])
+    filters = create_filter_specs_from_args(args, filter_order)
 
     assert len(filters) == 2
 
@@ -349,7 +349,7 @@ def test_create_filter_specs_tag_order() -> None:
     )
 
     filter_order = ["--filter-tag", "--filter-tag"]
-    filters = create_filter_specs_from_args(args, filter_order, ["DONE"], ["TODO"])
+    filters = create_filter_specs_from_args(args, filter_order)
 
     assert len(filters) == 2
 
@@ -373,7 +373,7 @@ def test_build_filter_chain() -> None:
     )
 
     argv = ["orgstats", "--filter", "simple", "file.org"]
-    filters = build_filter_chain(args, argv, ["DONE"], ["TODO"])
+    filters = build_filter_chain(args, argv)
 
     assert len(filters) == 1
 
@@ -817,10 +817,10 @@ def test_main_with_tag_groups_high_min_size() -> None:
 
 def test_filter_nodes_deprecated() -> None:
     """Test deprecated filter_nodes function still works."""
-    from orgstats.cli import filter_nodes, load_org_files
+    from orgstats.cli import filter_nodes, load_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-    nodes, _, _ = load_org_files([fixture_path], ["TODO"], ["DONE"])
+    nodes, _, _ = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
 
     filtered = filter_nodes(nodes, "simple")
 
@@ -829,10 +829,10 @@ def test_filter_nodes_deprecated() -> None:
 
 def test_filter_nodes_all() -> None:
     """Test filter_nodes with 'all' returns all nodes."""
-    from orgstats.cli import filter_nodes, load_org_files
+    from orgstats.cli import filter_nodes, load_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-    nodes, _, _ = load_org_files([fixture_path], ["TODO"], ["DONE"])
+    nodes, _, _ = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
 
     filtered = filter_nodes(nodes, "all")
 

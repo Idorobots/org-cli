@@ -1062,7 +1062,11 @@ I see you introduced a check that the regex parses correctly. Would you mind ext
 :END:
 The ~OrgRootNode~ has an environment that stores the ~todo_keys~ and ~done_keys~ properties present in the analysed file. Use that to update the keys used for analysis and filtering. To achieve that, return the list of root nodes from ~load_org_files()~, extract and combine the todo and done keys, and combine the lists into the resulting sets.
 
-** TODO Per-file processing                                                                :Cleanup:
+** REWORKED Per-file processing                                                            :Cleanup:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-19 Thu 22:28] \\
+  The AI took a while to implement this seemingly simple feature. It also introduced duplicate lambda slop that needs to be addressed separately.
+:END:
 When loading Org files, process each file separately:
 - preprocess the file,
 - filter all the nodes in the file,
@@ -1073,7 +1077,7 @@ To do this, you will have to refactor the ~load_org_files()~ function to also ta
 
 It is also necessary to refactor the ~handle_completion_filter()~, ~create_filter_specs_from_args()~ and ~build_filter_chain()~ functions not to pass the todo and done keys around. Instead, it is possible to determine those sets on a per-node basis, using the ~OrgNode.env.todo_keys~ and ~OrgNode.env.done_keys~. The ~build_filter_chain()~ function should not take the todo/done key sets as parameters. Update the ~filter_completed()~ and ~filter_not_completed()~ functions to use the node-provided tests of keys itstead of the current passed-in set.
 
-The result of loading nodes should be a filtered list of `orgparse.node.OrgNode` and the updated sets of todo & done keys.
+The result of loading nodes should be a filtered list of ~orgparse.node.OrgNode~ and the updated sets of todo & done keys.
 The remaining analysis and display should remain as-is.
 
 ** TODO Top relevant tasks display                                                             :CLI:

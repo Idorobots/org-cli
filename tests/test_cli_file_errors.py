@@ -193,57 +193,57 @@ def test_load_mapping_mixed_non_string_types(tmp_path: Path) -> None:
     assert exc_info.value.code == 1
 
 
-def test_load_org_files_not_found() -> None:
+def test_load_nodes_not_found() -> None:
     """Test that loading non-existent org file causes sys.exit()."""
-    from orgstats.cli import load_org_files
+    from orgstats.cli import load_nodes
 
     with pytest.raises(SystemExit) as exc_info:
-        load_org_files(["/nonexistent/file.org"], ["TODO"], ["DONE"])
+        load_nodes(["/nonexistent/file.org"], ["TODO"], ["DONE"], [])
 
     assert exc_info.value.code == 1
 
 
-def test_load_org_files_valid() -> None:
+def test_load_nodes_valid() -> None:
     """Test loading valid org files."""
-    from orgstats.cli import load_org_files
+    from orgstats.cli import load_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
-    nodes, _, _ = load_org_files([fixture_path], ["TODO"], ["DONE"])
+    nodes, _, _ = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
 
     assert len(nodes) > 0
     assert all(hasattr(node, "heading") for node in nodes)
 
 
-def test_load_org_files_todo_keys() -> None:
+def test_load_nodes_todo_keys() -> None:
     """Test loading valid org files."""
-    from orgstats.cli import load_org_files
+    from orgstats.cli import load_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "todo_keys.org")
-    nodes, todo_keys, done_keys = load_org_files([fixture_path], ["TODO"], ["DONE"])
+    nodes, todo_keys, done_keys = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
 
     assert len(nodes) > 0
     assert set(todo_keys) == {"TODO", "STARTED"}
     assert set(done_keys) == {"DONE", "CANCELLED"}
 
 
-def test_load_org_files_multiple() -> None:
+def test_load_nodes_multiple() -> None:
     """Test loading multiple org files."""
-    from orgstats.cli import load_org_files
+    from orgstats.cli import load_nodes
 
     fixture1 = os.path.join(FIXTURES_DIR, "simple.org")
     fixture2 = os.path.join(FIXTURES_DIR, "single_task.org")
 
-    nodes, _, _ = load_org_files([fixture1, fixture2], ["TODO"], ["DONE"])
+    nodes, _, _ = load_nodes([fixture1, fixture2], ["TODO"], ["DONE"], [])
 
     assert len(nodes) > 0
 
 
-def test_load_org_files_with_24_00_time() -> None:
+def test_load_nodes_with_24_00_time() -> None:
     """Test that 24:00 time format is normalized."""
-    from orgstats.cli import load_org_files
+    from orgstats.cli import load_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
-    nodes, _, _ = load_org_files([fixture_path], ["TODO"], ["DONE"])
+    nodes, _, _ = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
 
     assert len(nodes) > 0
 

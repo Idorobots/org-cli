@@ -323,18 +323,33 @@ def filter_tag(nodes: list[orgparse.node.OrgNode], tag_pattern: str) -> list[org
     return [node for node in nodes if any(pattern.search(tag) for tag in node.tags)]
 
 
-def filter_completed(
-    nodes: list[orgparse.node.OrgNode], done_keys: list[str]
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes with todo state in done_keys.
+def _make_completion_predicate(
+    keys: list[str],
+) -> Callable[[orgparse.date.OrgDateRepeatedTask], bool]:
+    """Create a predicate function for checking completed status.
+
+    Args:
+        keys: List of state keywords
+
+    Returns:
+        Predicate function
+    """
+
+    def predicate(rt: orgparse.date.OrgDateRepeatedTask) -> bool:
+        return rt.after in keys
+
+    return predicate
+
+
+def filter_completed(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
+    """Filter nodes with todo state in node.env.done_keys.
 
     For nodes with repeated tasks, filters the repeated_tasks list to only include
-    tasks with after state in done_keys. For nodes without repeated tasks,
-    checks node.todo.
+    tasks with after state in the node's environment done_keys. For nodes without
+    repeated tasks, checks node.todo against node.env.done_keys.
 
     Args:
         nodes: List of org-mode nodes to filter
-        done_keys: List of completion state keywords
 
     Returns:
         Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
@@ -342,8 +357,9 @@ def filter_completed(
     result = []
 
     for node in nodes:
+        done_keys = node.env.done_keys
         if node.repeated_tasks:
-            filtered_node = _filter_node_repeats(node, lambda rt: rt.after in done_keys)
+            filtered_node = _filter_node_repeats(node, _make_completion_predicate(done_keys))
             if filtered_node is not None:
                 result.append(filtered_node)
         elif node.todo in done_keys:
@@ -352,18 +368,15 @@ def filter_completed(
     return result
 
 
-def filter_not_completed(
-    nodes: list[orgparse.node.OrgNode], todo_keys: list[str]
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes with todo state in todo_keys.
+def filter_not_completed(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
+    """Filter nodes with todo state in node.env.todo_keys.
 
     For nodes with repeated tasks, filters the repeated_tasks list to only include
-    tasks with after state in todo_keys. For nodes without repeated tasks,
-    checks node.todo.
+    tasks with after state in the node's environment todo_keys. For nodes without
+    repeated tasks, checks node.todo against node.env.todo_keys.
 
     Args:
         nodes: List of org-mode nodes to filter
-        todo_keys: List of TODO state keywords
 
     Returns:
         Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
@@ -371,8 +384,9 @@ def filter_not_completed(
     result = []
 
     for node in nodes:
+        todo_keys = node.env.todo_keys if hasattr(node, "env") else []
         if node.repeated_tasks:
-            filtered_node = _filter_node_repeats(node, lambda rt: rt.after in todo_keys)
+            filtered_node = _filter_node_repeats(node, _make_completion_predicate(todo_keys))
             if filtered_node is not None:
                 result.append(filtered_node)
         elif node.todo in todo_keys:
