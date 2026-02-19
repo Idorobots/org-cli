@@ -1062,33 +1062,180 @@ I see you introduced a check that the regex parses correctly. Would you mind ext
 :END:
 The ~OrgRootNode~ has an environment that stores the ~todo_keys~ and ~done_keys~ properties present in the analysed file. Use that to update the keys used for analysis and filtering. To achieve that, return the list of root nodes from ~load_org_files()~, extract and combine the todo and done keys, and combine the lists into the resulting sets.
 
-** Output colors
+** TODO Per-file processing                                                                :Cleanup:
+When loading Org files, process each file separately:
+- preprocess the file,
+- filter all the nodes in the file,
+- extract and update the accumulated todo & done keys,
+- combine resulting nodes at the end before analysis.
 
-** Per-tag stats
+To do this, you will have to refactor the ~load_org_files()~ function to also take the filter chain that it will apply to nodes from each file. This function should be renamed to ~load_nodes()~.
+
+It is also necessary to refactor the ~handle_completion_filter()~, ~create_filter_specs_from_args()~ and ~build_filter_chain()~ functions not to pass the todo and done keys around. Instead, it is possible to determine those sets on a per-node basis, using the ~OrgNode.env.todo_keys~ and ~OrgNode.env.done_keys~. The ~build_filter_chain()~ function should not take the todo/done key sets as parameters. Update the ~filter_completed()~ and ~filter_not_completed()~ functions to use the node-provided tests of keys itstead of the current passed-in set.
+
+The result of loading nodes should be a filtered list of `orgparse.node.OrgNode` and the updated sets of todo & done keys.
+The remaining analysis and display should remain as-is.
+
+** TODO Top relevant tasks display                                                             :CLI:
+Extend the CLI display to show ~--max-results~ of related tasks (filtered ~OrgNode~'s used for the computation of the analysis).
+
+The results should be oredered by their most recent repeat timestamp (for tasks that are repeated) or the other timestamps if not completed yet. Most recent tasks should come first. The results should be truncated to at most ~--max-results~ entries. It is OK if there are fewer than ~--max-results~.
+
+To display the results add an additional section called `Top tasks:` to the CLI output that will list each task's state and heading along with its originating file. You can obtain the file from the nodes env property: ~OrgNode.env.filename~. The section should follow the histograms and preceed the `Top tags:` section.
+
+Here's an example of what it should look like:
+
+#+begin_example
+Top tasks:
+  path/to/file.org: TODO Do some stuff
+  path/to/other.org: DONE Do some other stuff
+#+end_example
+
+** TODO Separate limit switches for tags, groups & tasks                                    :CLI:UX:
+Add additional switches that limit the number of results in various sections of the CLI output.
+
+*** TODO Top tags limit
+Add a new CLI switch called ~--max-tags~ that defaults to 5. This switch will control how many tags in the `Top tags` section should be shown. The value should be >= 0, and if it's equal to 0, the section should be omitted.
+
+It is completely OK if there are fewer results than the limit. Do show the section title and "No results" in such a case (unless the user requested 0 results).
+
+*** TODO Top groups limit
+Add a new CLI switch called ~--max-groups~ that default to 5. This switch will control how many gorups are shown in the `Top groups:` section. The value should be >= 0, and if it's equal to 0, the section should be omitted.
+
+The ~--min-group-size~ switch should now default to 2 instead of 3 as it is no longer the de-facto limit.
+
+It is completely OK if there are fewer results than the limit. Do show the section title and "No results" in such a case (unless the user requested 0 results).
+
+*** TODO Top relations limit
+Change the semantics of the ~--max-relations~ switch, so that it default sto 5. The switch should accept values >= 0, and if it is not provided, omit those sections from tags display.
+
+It is completely OK if there are fewer results than the limit. Do show the section title and "No results" in such a case (unless the user requested 0 results).
+
+** TODO Task "category" histogram                                                     :Analysis:TUI:
+Add an additional histogram based on the ~gamify_exp~ property - each task should be classified as ~simple~, ~regular~ or ~hard~ and the corresponding histogram category incremented. Make sure to take the repeated tasks into account, but only the completed ones.
+
+Extend the CLI output to include the category histogram. Place it right after the 'states histogram' with a name of ~Task completion by category:~. The usual rules for histograms apply here as well.
+
+** TODO Per-tag stats                                                                 :Analysis:TUI:
+Extend the analysis to compute more per-tag statistics:
 - Total tasks
 - Average tasks completed per day
 - Max tasks completed on a sigle day + date
-- Max repeats of a single task + truncated heading
 - Top relations
 
-Not to be shown on analyze commands output?
-- State histogram
-- Day of week histogram
-- Category histogram
+To do that, please introduce a new class called ~Tag~ that will abstract all these values for each tag in the archive. The class should have fields for the tag's frequencies, relations and timerange, as well as the newly added average tasks completed per day, max tasks completed on a single day and total tasks.
 
-** Per-file processing
-Process each file separately, combine results at the end before displaying stuff, preserving the file origin for each task
+The ~AnalysisResult~ class should be updated to store just a dictionary of ~Tag~'s and the ~analyze()~ function should be updated to build that dictionary while computing the statistics. Extra care should be taken to ensure that the totals, averages and maxes are updated for each tag.
+It is OK to reuse the existing ~compute_*()~ functions and compute the ~dict[str, Tag]~ incrementally (first compute all frequencies, then all relations, then all timeranges, then remaining statistics).
 
-** Task "category" histogram
-- based on gamify_exp, eventually will evolve to classify each task by some criteria (fix/debug/test heading content, etc).
+The ~compute_groups()~ function should be updated to use the new ~Tag~'s dictionary for computation.
+
+Update the CLI output to include the extra information. The values should be displayed in a similar fashion to the general section:
+
+#+begin_example
+  2026-02-14                                2026-02-15
+  ┊█                        ▄                        ┊ 2 (2026-02-14)
+  ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+  Tests
+    Total tasks: 3
+    Average tasks completed per day: 0.67
+    Max tasks completed an a single day: 2
+    Top relations:
+      Optimization (1)
+      Build (1)
+#+end_example
+
+The computed values should follow the tag name and be indented an extra level.
+
+** TODO Per-group stats                                                               :Analysis:TUI:
+Extend the analysis to compute per-group statistics:
+- Total tasks
+- Average tasks completed per day
+- Max tasks completed on a sigle day + date
+
+You can use the intermediate result of ~dict[str, Tag]~ to extract the group's members and combine their results. Modify the ~compute_groups()~ function to acomplish that. The ~Group~ class will need to be updated with some extra fields for the total tasks, average completed tasks and max tasks completed on a single day.
+
+Update the CLI output to include the extra information. The values should be displayed in a similar fashion to the general and per-tag sections:
+
+#+begin_example
+  2026-02-14                                2026-02-15
+  ┊█                        ▄                        ┊ 2 (2026-02-14)
+  ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+  Erlang, Debugging, OTP
+    Total tasks: 3
+    Average tasks completed per day: 0.67
+    Max tasks completed an a single day: 2
+#+end_example
+
+The computed values should follow the group contents name and be indented an extra level.
+
+** TODO Output colors etc                                                                   :TUI:UX:
+Please add a boolean CLI switch called ~--color~ that defaults to ~true~. This switch should be used to enable/disable the coloring of the CLI output. When the switch is set to ~true~, the CLI output should be colored. If the switch is set to ~false~ then the output should not be colored (same as currently). The details of how the coloring should be done follows soon.
+
+Please rename the sections as follows:
+- ~Top tasks~ becomes ~TASKS~
+- ~Top tags~ becomes ~TAGS~
+- ~Top groups~ becomes ~GROUPS~
+
+Please add colors to the CLI output:
+
+1. General
+- All text should be white.
+- Section names should be made bright white.
+
+2. Global statistics section
+- Global statistics names (~Total tasks~, etc) should be white.
+- Global statistics values should be magenta.
+
+3. Frequency plots
+- Lines that delieate the chart should be dim white.
+- Value bars on the frequency plot should be green.
+- Top day value should also be magenta.
+- Dates should be white.
+
+4. Task state histogram
+- Histogram labels from the ~done-keys~ set should be bright green or bright red (`CANCELLED` if present should be red, other should be bright green).
+- Histogram labels from the ~todo-keys~ set should be dim white.
+- Other labels should be bright yellow.
+- Value bars should be bright blue.
+
+5. Day histogram
+- Lines that delineate the chart should be dim white.
+- Labels should be white (same as regular text).
+- Value bars should be bright blue.
+
+6. Category histogram
+- Lines that delineate the chart should be dim white.
+- Labels should be white (same as regular text).
+- Value bars should be bright blue.
+
+7. Tag statistics section
+- Tag statistics names (~Total tasks~, etc) should be white.
+- Tag statistics values should be magenta.
+
+8. Group statistics section
+- Tag statistics names (~Total tasks~, etc) should be white.
+- Tag statistics values should be magenta.
+
+9. Relevant tasks section
+- Filename should be green.
+- Task todo state should be either bright green, bright red or dim white. Same logic as for task state histogram categories.
+- Task heading should be white.
+
+You can use Python's ~colorama~ library to get colors in.
+
+Please make sure that the current tests pass by setting the color switch to false. Please add additional tests that specifically test for the colored output.
+
+** TODO Consistent timerange an all charts
+When date filters are not provided, adjust the display of all per-tag & per-group timeline plots to the global timerange. The order of preference for dates is: user-provided filters, global timerange, local timerange.
 
 ** Another attempt at a fix for task states counts
 Now the counts for day of week histogram are higher than the total count of done tasks. Likely, now it's the done task count that's wrong.
 
 ** Better heading & body parsing
 
-** Analyze command
-Wrap the current analysis logic into a dedicated ~analyze~ command. There will be more commands to come.
+** Stats command
+Wrap the current analysis logic into a dedicated ~stats~ command. There will be more commands to come.
 
 The CLI arguments should be divided into global & per-command options. Global arguments should be:
 - ~--mapping~,
@@ -1098,7 +1245,7 @@ The CLI arguments should be divided into global & per-command options. Global ar
 - ~--filter-*~,
 - ~FILE~
 
-The rest should be accepted by the ~analyze~ command.
+The rest should be accepted by the ~stats~ command.
 I want these global arguments to be usable after the command name, i.e. the accepted invocation should be:
 
 #+begin_src bash
@@ -1156,11 +1303,15 @@ List the tasks headings and the files where these can be found.
 - Modifying the body
 
 ** Workflow command
+*** workflow --init
 - Task links via properties
 - External attachments (for the execution plan)
 - Optional task-ids (use heading for primary ID and property optionally)
 
+*** workflow --next
 - Find tasks that are ready to be started (based on relative position in the file & inter-dependencies & state)
+
+*** workflow --mark
 - Claim tasks as actively worked on.
 - Run commands based on task type (property/tag)
 - Add extra tasks, modify state
@@ -1170,9 +1321,10 @@ List the tasks headings and the files where these can be found.
 We will be adding more output options, for instance JSON output, visualization output, etc.
 
 *** JSON output
+- Could be done with pandoc
 
 *** Markdown output
-
+- Could be done with pandoc
 ** JavaScript visualization
 
 *** D3 visualization - tag cloud
