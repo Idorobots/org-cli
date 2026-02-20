@@ -1062,7 +1062,11 @@ I see you introduced a check that the regex parses correctly. Would you mind ext
 :END:
 The ~OrgRootNode~ has an environment that stores the ~todo_keys~ and ~done_keys~ properties present in the analysed file. Use that to update the keys used for analysis and filtering. To achieve that, return the list of root nodes from ~load_org_files()~, extract and combine the todo and done keys, and combine the lists into the resulting sets.
 
-** TODO Per-file processing                                                                :Cleanup:
+** REWORKED Per-file processing                                                            :Cleanup:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-19 Thu 22:28] \\
+  The AI took a while to implement this seemingly simple feature. It also introduced duplicate lambda slop that needs to be addressed separately.
+:END:
 When loading Org files, process each file separately:
 - preprocess the file,
 - filter all the nodes in the file,
@@ -1073,15 +1077,19 @@ To do this, you will have to refactor the ~load_org_files()~ function to also ta
 
 It is also necessary to refactor the ~handle_completion_filter()~, ~create_filter_specs_from_args()~ and ~build_filter_chain()~ functions not to pass the todo and done keys around. Instead, it is possible to determine those sets on a per-node basis, using the ~OrgNode.env.todo_keys~ and ~OrgNode.env.done_keys~. The ~build_filter_chain()~ function should not take the todo/done key sets as parameters. Update the ~filter_completed()~ and ~filter_not_completed()~ functions to use the node-provided tests of keys itstead of the current passed-in set.
 
-The result of loading nodes should be a filtered list of `orgparse.node.OrgNode` and the updated sets of todo & done keys.
+The result of loading nodes should be a filtered list of ~orgparse.node.OrgNode~ and the updated sets of todo & done keys.
 The remaining analysis and display should remain as-is.
 
-** TODO Top relevant tasks display                                                             :CLI:
+** REWORKED Top relevant tasks display                                                         :CLI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-19 Thu 22:48] \\
+  AI got fixated at refactoring the display functions, it also convinced itself it should disable the linter, but then scolded itself that it even thought that filthy thought. I approve. It reinstituted some slop that I had to fix manually, minor though.
+:END:
 Extend the CLI display to show ~--max-results~ of related tasks (filtered ~OrgNode~'s used for the computation of the analysis).
 
 The results should be oredered by their most recent repeat timestamp (for tasks that are repeated) or the other timestamps if not completed yet. Most recent tasks should come first. The results should be truncated to at most ~--max-results~ entries. It is OK if there are fewer than ~--max-results~.
 
-To display the results add an additional section called `Top tasks:` to the CLI output that will list each task's state and heading along with its originating file. You can obtain the file from the nodes env property: ~OrgNode.env.filename~. The section should follow the histograms and preceed the `Top tags:` section.
+To display the results add an additional section called ~Top tasks:~ to the CLI output that will list each task's state and heading along with its originating file. You can obtain the file from the nodes env property: ~OrgNode.env.filename~. The section should follow the histograms and preceed the ~Top tags:~ section.
 
 Here's an example of what it should look like:
 
@@ -1091,32 +1099,63 @@ Top tasks:
   path/to/other.org: DONE Do some other stuff
 #+end_example
 
-** TODO Separate limit switches for tags, groups & tasks                                    :CLI:UX:
+** DONE Separate limit switches for tags, groups & tasks                                    :CLI:UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-20 Fri 11:32] \\
+  Over all, pretty good.
+:END:
 Add additional switches that limit the number of results in various sections of the CLI output.
 
-*** TODO Top tags limit
-Add a new CLI switch called ~--max-tags~ that defaults to 5. This switch will control how many tags in the `Top tags` section should be shown. The value should be >= 0, and if it's equal to 0, the section should be omitted.
+*** DONE Top tags limit
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-19 Thu 23:09] \\
+  Worked well, but the AI wasted a bunch of quota running smoke tests.
+:END:
+Add a new CLI switch called ~--max-tags~ that defaults to 5. This switch will control how many tags in the ~Top tags~ section should be shown. The value should be >= 0, and if it's equal to 0, the section should be omitted.
 
 It is completely OK if there are fewer results than the limit. Do show the section title and "No results" in such a case (unless the user requested 0 results).
 
-*** TODO Top groups limit
-Add a new CLI switch called ~--max-groups~ that default to 5. This switch will control how many gorups are shown in the `Top groups:` section. The value should be >= 0, and if it's equal to 0, the section should be omitted.
+*** DONE Top groups limit
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-20 Fri 09:59] \\
+  It was alright.
+:END:
+Add a new CLI switch called ~--max-groups~ that default to 5. This switch will control how many gorups are shown in the ~Top groups:~ section. The value should be >= 0, and if it's equal to 0, the section should be omitted.
 
 The ~--min-group-size~ switch should now default to 2 instead of 3 as it is no longer the de-facto limit.
 
 It is completely OK if there are fewer results than the limit. Do show the section title and "No results" in such a case (unless the user requested 0 results).
 
-*** TODO Top relations limit
-Change the semantics of the ~--max-relations~ switch, so that it default sto 5. The switch should accept values >= 0, and if it is not provided, omit those sections from tags display.
+*** REWORKED Top relations limit
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-20 Fri 11:31] \\
+  It implemented the feature, but made it inconsistent with the other related switches. That's on me as the spec stated to do that, but since it omitted that requirement the previous two times I went with it.
+:END:
+Change the semantics of the ~--max-relations~ switch, so that it defaults to 5. The switch should accept values >= 0, and if it is 0, omit those sections from tags display.
 
 It is completely OK if there are fewer results than the limit. Do show the section title and "No results" in such a case (unless the user requested 0 results).
 
-** TODO Task "category" histogram                                                     :Analysis:TUI:
+** DONE Consistent timerange on all charts                                                  :UX:TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-20 Fri 11:53] \\
+  The AI added a bit of boilerplatey code to handle the various time range limits but it works over all.
+:END:
+When date filters are not provided, adjust the display of all per-tag & per-group timeline plots to the global timerange. The order of preference for dates is: user-provided filters, global timerange, local timerange.
+
+** REWORKED Task "category" histogram                                                 :Analysis:TUI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-20 Fri 15:32] \\
+  The feature was implemented, but in a slopy fashion when the task category computation is concerned. Needed manual fixes.
+:END:
 Add an additional histogram based on the ~gamify_exp~ property - each task should be classified as ~simple~, ~regular~ or ~hard~ and the corresponding histogram category incremented. Make sure to take the repeated tasks into account, but only the completed ones.
 
 Extend the CLI output to include the category histogram. Place it right after the 'states histogram' with a name of ~Task completion by category:~. The usual rules for histograms apply here as well.
 
-** TODO Per-tag stats                                                                 :Analysis:TUI:
+** CANCELLED Per-tag stats                                                            :Analysis:TUI:
+:LOGBOOK:
+- State "CANCELLED"   from "TODO"       [2026-02-20 Fri 16:50] \\
+  The AI added a lot of slop, including weird code formatting and ignoring specific requirements. There were a lot of manual changes required. The code did work, but it forgot to adjust the test cases.
+:END:
 Extend the analysis to compute more per-tag statistics:
 - Total tasks
 - Average tasks completed per day
@@ -1147,7 +1186,18 @@ Update the CLI output to include the extra information. The values should be dis
 
 The computed values should follow the tag name and be indented an extra level.
 
-** TODO Per-group stats                                                               :Analysis:TUI:
+** REWORKED Tag slop                                                                      :Bug:Test:
+:LOGBOOK:
+- State "REWORKED"  from "TODO"       [2026-02-20 Fri 18:04] \\
+  Did this myself as it was pretty fubar.
+:END:
+Move Relations fields to Tag and fix the broken tests.
+
+** REWORKED Per-group stats                                                           :Analysis:TUI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-20 Fri 18:19] \\
+  The AI implemented the feature, but made the total task count just a sum of all the tag total counts in that group, resulting in inconsistencies when a single task has multiple tags that belong to this group. Needs to be adjusted at a later point.
+:END:
 Extend the analysis to compute per-group statistics:
 - Total tasks
 - Average tasks completed per day
@@ -1164,10 +1214,93 @@ Update the CLI output to include the extra information. The values should be dis
   Erlang, Debugging, OTP
     Total tasks: 3
     Average tasks completed per day: 0.67
-    Max tasks completed an a single day: 2
+    Max tasks completed on a single day: 2
 #+end_example
 
 The computed values should follow the group contents name and be indented an extra level.
+
+** CANCELLED Analysis inconsistencies fixes                                             :UX:Cleanup:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-02-20 Fri 19:15] \\
+  The AI got the functionality right, but then decided not to update the test cases fully and ended up with 52 broken tests that needed to be reworked.
+:END:
+The analysis yields inconsistent results:
+- Task counts for total tasks don't always match the task state histogram sum,
+- Day of week histogram counts should sum up to the same value as the completed tasks.
+
+I don't immediately see the issue there, so instead I'd like to change the logic a bit. All computations should be performed on all nodes left by filtering. There should be no need for extracting done/toodo states. If a node is on the list, it participates. If it has repeats, take all those repeats into account.
+
+Here's the breakdown of changes I want:
+
+- All total counts computations should take all filtered nodes into account.
+- Average & max computation should also take all filtered nodes into account.
+- Frequencies computations should also take all filtered nodes into account.
+- Time ranges computations should also take all filtered nodes into account.
+- Group counts should be computed bases on the node list, not as a sum of per-Tag frequencies.
+
+Do not select only the completed ones for any of the computations, refactor the code to not require the done or todo keys.
+
+To validate:
+
+- Make sure to check that task counts for global total tasks are equal to the sum of the task state histogram values.
+- Make sure to check that task counts for global total tasks are equal to the sum of the task category histogram values.
+- Make sure to check that task counts for global total tasks are equal to the sum of the day-of-week histogram values.
+
+Don't worry about backwards compatibility, completed task stats can be fetched explicitly with ~--filter-completed~.
+
+** REWORKED Broken test slop                                                          :Test:Cleanup:
+:LOGBOOK:
+- State "REWORKED"   from              [2026-02-20 Fri 20:07] \\
+  Needed manual work.
+:END:
+*** DONE Cleanup and removal
+:LOGBOOK:
+- State "DONE"       from              [2026-02-20 Fri 19:27] \\
+  This worked well and reduced the suite size from 919 cases to 873.
+:END:
+Please fix the remaining failing test cases. If their functionality no longer makes sense, please remove them. We'll handle the coverage in the next step.
+
+*** CANCELLED Test redundancy cleanup
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-02-20 Fri 19:47] \\
+  AI cleaned up a bit, but then opted out of fixing linting errors, saying it's super fine because it's just test code.
+:END:
+Please analyze the test suite and determine if there are any test cases that are the same, or very close to one another. Determine if these test cases can be combined without sacrificing test covarege and if so, please merge them.
+The goal is to reduce the number of individual testcases without sacrificing the coverage too much.
+Be aggressive, it's better to have fewer test cases over-all, at a slightly smaller coverage. We can improve the coverage as the next step.
+
+*** REWORKED Test typing slop cleanup
+:LOGBOOK:
+- State "REWORKED"       from              [2026-02-20 Fri 19:51] \\
+  Third time's the charm, I guess. Still itroduced Any slop.
+:END:
+Please fix the linter errors in tests. The test code is as important as the main functionality and has to have proper typings. Only run ~poetry run task check~ to validate that everything works, no other, weaker commands.
+
+*** CANCELLED Day of week histogram still inconsistent
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-02-20 Fri 19:39] \\
+  Did this myself. Turns out it was due to the missing "unknown" category display.
+:END:
+
+** REWORKED Display inconsistencies fixes                                                   :UX:Bug:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-20 Fri 20:24] \\
+  Neded some manual intervention.
+:END:
+There are some inconsistencies in data display. I'd like to fix those inconsistencies:
+
+- When a section is requested (corresponding max filter > 0) but there are no results. Show the section header and "No results" below. The "No results" string should be indented as usual.
+
+- When a section is not requested (max == 0) omit the section.
+
+- --filter-not-completed should also include tasks withuout a todo state (so, it's effectively a reverse of the --filter-complete, task state must be in todo keys or absent).
+
+** CANCELLED Group computation performance optimization                               :Optimization:
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-02-20 Fri 20:40] \\
+  Did this myself since the quota ran out.
+:END:
+Computing filtered node lists for each group is pretty slow. This needs to be improved, so that we iterate over the nodes once as that's a much larger set.
 
 ** TODO Output colors etc                                                                   :TUI:UX:
 Please add a boolean CLI switch called ~--color~ that defaults to ~true~. This switch should be used to enable/disable the coloring of the CLI output. When the switch is set to ~true~, the CLI output should be colored. If the switch is set to ~false~ then the output should not be colored (same as currently). The details of how the coloring should be done follows soon.
@@ -1225,9 +1358,6 @@ Please add colors to the CLI output:
 You can use Python's ~colorama~ library to get colors in.
 
 Please make sure that the current tests pass by setting the color switch to false. Please add additional tests that specifically test for the colored output.
-
-** TODO Consistent timerange an all charts
-When date filters are not provided, adjust the display of all per-tag & per-group timeline plots to the global timerange. The order of preference for dates is: user-provided filters, global timerange, local timerange.
 
 ** Another attempt at a fix for task states counts
 Now the counts for day of week histogram are higher than the total count of done tasks. Likely, now it's the done task count that's wrong.

@@ -89,7 +89,7 @@ def parse_gamify_exp(gamify_exp_value: str | None) -> int | None:
     return None
 
 
-def gamify_exp(node: orgparse.node.OrgNode) -> int | None:
+def get_gamify_exp(node: orgparse.node.OrgNode) -> int | None:
     """Extract gamify_exp value from an org-mode node.
 
     Args:
@@ -101,6 +101,27 @@ def gamify_exp(node: orgparse.node.OrgNode) -> int | None:
     gamify_exp_raw = node.properties.get("gamify_exp", None)
     gamify_exp_str = str(gamify_exp_raw) if gamify_exp_raw is not None else None
     return parse_gamify_exp(gamify_exp_str)
+
+
+def get_gamify_category(node: orgparse.node.OrgNode) -> str:
+    """Extract gamify_exp value from an org-mode node and decide what category it belongs to.
+
+    Args:
+        node: Org-mode node to extract gamify_exp from
+
+    Returns:
+        String representing the category
+    """
+
+    exp_value = get_gamify_exp(node)
+
+    if exp_value is None:
+        return "regular"
+    if exp_value < 10:
+        return "simple"
+    if exp_value < 20:
+        return "regular"
+    return "hard"
 
 
 def get_repeat_count(node: orgparse.node.OrgNode) -> int:
@@ -159,7 +180,7 @@ def filter_gamify_exp_above(
     Returns:
         Filtered list of nodes
     """
-    return [node for node in nodes if (gamify_exp(node) or 10) > threshold]
+    return [node for node in nodes if (get_gamify_exp(node) or 10) > threshold]
 
 
 def filter_gamify_exp_below(
@@ -176,7 +197,7 @@ def filter_gamify_exp_below(
     Returns:
         Filtered list of nodes
     """
-    return [node for node in nodes if (gamify_exp(node) or 10) < threshold]
+    return [node for node in nodes if (get_gamify_exp(node) or 10) < threshold]
 
 
 def filter_repeats_above(
@@ -323,18 +344,53 @@ def filter_tag(nodes: list[orgparse.node.OrgNode], tag_pattern: str) -> list[org
     return [node for node in nodes if any(pattern.search(tag) for tag in node.tags)]
 
 
-def filter_completed(
-    nodes: list[orgparse.node.OrgNode], done_keys: list[str]
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes with todo state in done_keys.
+def _make_completion_predicate(
+    keys: list[str],
+) -> Callable[[orgparse.date.OrgDateRepeatedTask], bool]:
+    """Create a predicate function for checking completed status.
+
+    Args:
+        keys: List of state keywords
+
+    Returns:
+        Predicate function
+    """
+
+    def predicate(rt: orgparse.date.OrgDateRepeatedTask) -> bool:
+        return rt.after in keys
+
+    return predicate
+
+
+def _make_not_completion_predicate(
+    keys: list[str],
+) -> Callable[[orgparse.date.OrgDateRepeatedTask], bool]:
+    """Create a predicate function for checking not-completed status.
+
+    Includes tasks with state in keys OR without a state.
+
+    Args:
+        keys: List of state keywords
+
+    Returns:
+        Predicate function
+    """
+
+    def predicate(rt: orgparse.date.OrgDateRepeatedTask) -> bool:
+        return rt.after in keys or not rt.after
+
+    return predicate
+
+
+def filter_completed(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
+    """Filter nodes with todo state in node.env.done_keys.
 
     For nodes with repeated tasks, filters the repeated_tasks list to only include
-    tasks with after state in done_keys. For nodes without repeated tasks,
-    checks node.todo.
+    tasks with after state in the node's environment done_keys. For nodes without
+    repeated tasks, checks node.todo against node.env.done_keys.
 
     Args:
         nodes: List of org-mode nodes to filter
-        done_keys: List of completion state keywords
 
     Returns:
         Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
@@ -342,8 +398,9 @@ def filter_completed(
     result = []
 
     for node in nodes:
+        done_keys = node.env.done_keys
         if node.repeated_tasks:
-            filtered_node = _filter_node_repeats(node, lambda rt: rt.after in done_keys)
+            filtered_node = _filter_node_repeats(node, _make_completion_predicate(done_keys))
             if filtered_node is not None:
                 result.append(filtered_node)
         elif node.todo in done_keys:
@@ -352,18 +409,16 @@ def filter_completed(
     return result
 
 
-def filter_not_completed(
-    nodes: list[orgparse.node.OrgNode], todo_keys: list[str]
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes with todo state in todo_keys.
+def filter_not_completed(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
+    """Filter nodes with todo state in node.env.todo_keys or without a todo state.
 
     For nodes with repeated tasks, filters the repeated_tasks list to only include
-    tasks with after state in todo_keys. For nodes without repeated tasks,
-    checks node.todo.
+    tasks with after state in the node's environment todo_keys or without a state.
+    For nodes without repeated tasks, checks node.todo against node.env.todo_keys
+    or includes nodes without a todo state.
 
     Args:
         nodes: List of org-mode nodes to filter
-        todo_keys: List of TODO state keywords
 
     Returns:
         Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
@@ -371,11 +426,12 @@ def filter_not_completed(
     result = []
 
     for node in nodes:
+        todo_keys = node.env.todo_keys if hasattr(node, "env") else []
         if node.repeated_tasks:
-            filtered_node = _filter_node_repeats(node, lambda rt: rt.after in todo_keys)
+            filtered_node = _filter_node_repeats(node, _make_not_completion_predicate(todo_keys))
             if filtered_node is not None:
                 result.append(filtered_node)
-        elif node.todo in todo_keys:
+        elif node.todo in todo_keys or not node.todo:
             result.append(node)
 
     return result

@@ -52,6 +52,14 @@ poetry run orgstats --help
 poetry run orgstats --max-results 50 examples/ARCHIVE_small
 poetry run orgstats -n 50 examples/ARCHIVE_small
 
+# Limit number of tags displayed in Top tags section
+poetry run orgstats --max-tags 3 examples/ARCHIVE_small
+poetry run orgstats --max-tags 0 examples/ARCHIVE_small  # Omit Top tags section entirely
+
+# Limit number of tag groups displayed
+poetry run orgstats --max-groups 3 examples/ARCHIVE_small
+poetry run orgstats --max-groups 0 examples/ARCHIVE_small  # Omit Tag groups section entirely
+
 # Filter by task difficulty
 poetry run orgstats --filter hard examples/ARCHIVE_small
 poetry run orgstats --filter simple -n 20 examples/ARCHIVE_small
@@ -93,8 +101,10 @@ poetry run orgstats file1.org file2.org file3.org
 **CLI Arguments:**
 - `files` - Org-mode archive files to analyze (positional arguments)
 - `--max-results N` / `-n N` - Maximum number of results to display (default: 10)
-- `--max-relations N` - Maximum number of relations to display per item (default: 3, must be >= 1)
-- `--min-group-size N` - Minimum group size to display (default: 3)
+- `--max-tags N` - Maximum number of tags to display in Top tags section (default: 5, use 0 to omit section)
+- `--max-relations N` - Maximum number of relations to display per item (default: 5, use 0 to omit sections)
+- `--max-groups N` - Maximum number of tag groups to display (default: 5, use 0 to omit section)
+- `--min-group-size N` - Minimum group size to display (default: 2)
 - `--buckets N` - Number of time buckets for timeline charts (default: 50, minimum: 20)
 - `--filter TYPE` / `-f TYPE` - Filter tasks by difficulty: simple, regular, hard, or all (default: all)
   - `simple` - Tasks with gamify_exp < 10

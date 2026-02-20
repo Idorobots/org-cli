@@ -1,6 +1,6 @@
 """Tests for gamify_exp parsing."""
 
-from orgstats.filters import gamify_exp, parse_gamify_exp
+from orgstats.filters import get_gamify_exp, parse_gamify_exp
 from tests.conftest import node_from_org
 
 
@@ -67,55 +67,67 @@ def test_parse_gamify_exp_with_extra_spaces() -> None:
 
 
 def test_gamify_exp_with_integer() -> None:
-    """Test gamify_exp() extracts integer values."""
+    """Test get_gamify_exp() extracts integer values."""
     node = node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 15\n:END:\n")[0]
-    assert gamify_exp(node) == 15
+    assert get_gamify_exp(node) == 15
 
 
 def test_gamify_exp_with_none() -> None:
-    """Test gamify_exp() returns None when property missing."""
+    """Test get_gamify_exp() returns None when property missing."""
     node = node_from_org("* DONE Task\n")[0]
-    assert gamify_exp(node) is None
+    assert get_gamify_exp(node) is None
 
 
 def test_gamify_exp_with_tuple() -> None:
-    """Test gamify_exp() extracts from tuple format."""
+    """Test get_gamify_exp() extracts from tuple format."""
     node = node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: (20 25)\n:END:\n")[0]
-    assert gamify_exp(node) == 20
+    assert get_gamify_exp(node) == 20
 
 
 def test_gamify_exp_with_invalid() -> None:
-    """Test gamify_exp() returns None for invalid values."""
+    """Test get_gamify_exp() returns None for invalid values."""
     node = node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: invalid\n:END:\n")[0]
-    assert gamify_exp(node) is None
+    assert get_gamify_exp(node) is None
 
 
 def test_gamify_exp_with_empty_string() -> None:
-    """Test gamify_exp() returns None for empty string."""
+    """Test get_gamify_exp() returns None for empty string."""
     node = node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: \n:END:\n")[0]
-    assert gamify_exp(node) is None
+    assert get_gamify_exp(node) is None
 
 
 def test_gamify_exp_with_various_values() -> None:
-    """Test gamify_exp() with various integer values."""
-    assert gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n")[0]) == 5
-    assert gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 10\n:END:\n")[0]) == 10
-    assert gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 20\n:END:\n")[0]) == 20
+    """Test get_gamify_exp() with various integer values."""
     assert (
-        gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 100\n:END:\n")[0]) == 100
+        get_gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n")[0]) == 5
+    )
+    assert (
+        get_gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 10\n:END:\n")[0])
+        == 10
+    )
+    assert (
+        get_gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 20\n:END:\n")[0])
+        == 20
+    )
+    assert (
+        get_gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 100\n:END:\n")[0])
+        == 100
     )
 
 
 def test_gamify_exp_with_tuple_formats() -> None:
-    """Test gamify_exp() with various tuple formats."""
+    """Test get_gamify_exp() with various tuple formats."""
     assert (
-        gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: (5 10)\n:END:\n")[0]) == 5
+        get_gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: (5 10)\n:END:\n")[0])
+        == 5
     )
     assert (
-        gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: (25 30)\n:END:\n")[0])
+        get_gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: (25 30)\n:END:\n")[0])
         == 25
     )
     assert (
-        gamify_exp(node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: ( 15 20 )\n:END:\n")[0])
+        get_gamify_exp(
+            node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: ( 15 20 )\n:END:\n")[0]
+        )
         == 15
     )

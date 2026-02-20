@@ -192,7 +192,7 @@ def test_parse_property_filter_empty_value() -> None:
 
 
 def test_main_max_relations_zero() -> None:
-    """Test that --max-relations 0 causes error."""
+    """Test that --max-relations 0 is now accepted."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
     result = subprocess.run(
@@ -202,8 +202,8 @@ def test_main_max_relations_zero() -> None:
         text=True,
     )
 
-    assert result.returncode == 1
-    assert "Error: --max-relations must be at least 1" in result.stderr
+    assert result.returncode == 0
+    assert "Top relations:" not in result.stdout
 
 
 def test_main_max_relations_negative() -> None:
@@ -218,7 +218,7 @@ def test_main_max_relations_negative() -> None:
     )
 
     assert result.returncode == 1
-    assert "Error: --max-relations must be at least 1" in result.stderr
+    assert "Error: --max-relations must be non-negative" in result.stderr
 
 
 def test_main_min_group_size_negative() -> None:
@@ -375,3 +375,33 @@ def test_main_filter_property_no_equals() -> None:
 
     assert result.returncode == 1
     assert "Error: --filter-property must be in KEY=VALUE format" in result.stderr
+
+
+def test_main_max_groups_negative() -> None:
+    """Test that --max-groups with negative value causes error."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--max-groups", "-1", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Error: --max-groups must be non-negative" in result.stderr
+
+
+def test_main_max_groups_negative_large() -> None:
+    """Test that --max-groups with large negative value causes error."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--max-groups", "-100", fixture_path],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Error: --max-groups must be non-negative" in result.stderr

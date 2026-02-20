@@ -25,8 +25,8 @@ def test_cli_accepts_max_relations_parameter() -> None:
     assert "Processing" in result.stdout
 
 
-def test_cli_max_relations_default_is_3() -> None:
-    """Test that default max_relations is 3."""
+def test_cli_max_relations_default_is_5() -> None:
+    """Test that default max_relations is 5."""
     result = subprocess.run(
         [sys.executable, "-m", "orgstats", "--help"],
         cwd=PROJECT_ROOT,
@@ -35,7 +35,7 @@ def test_cli_max_relations_default_is_3() -> None:
     )
 
     assert result.returncode == 0
-    assert "default: 3" in result.stdout
+    assert "default: 5" in result.stdout
     assert "--max-relations" in result.stdout
 
 
@@ -98,8 +98,8 @@ def test_cli_max_relations_limits_display() -> None:
     assert max_relations_for_any_tag <= 2
 
 
-def test_cli_max_relations_zero_rejected() -> None:
-    """Test that --max-relations 0 is rejected."""
+def test_cli_max_relations_zero_omits_sections() -> None:
+    """Test that --max-relations 0 omits all relation sections."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
     result = subprocess.run(
@@ -109,9 +109,8 @@ def test_cli_max_relations_zero_rejected() -> None:
         text=True,
     )
 
-    assert result.returncode == 1
-    assert "Error" in result.stderr
-    assert "max-relations" in result.stderr
+    assert result.returncode == 0
+    assert "Top relations:" not in result.stdout
 
 
 def test_cli_max_relations_negative_rejected() -> None:
@@ -411,3 +410,80 @@ def test_cli_relations_max_applied_after_filtering() -> None:
     finally:
         if Path(exclude_file).exists():
             Path(exclude_file).unlink()
+
+
+def test_cli_max_relations_shows_no_results() -> None:
+    """Test that relations is omitted when max_relations > 0 but all relations filtered."""
+    from io import StringIO
+
+    from orgstats.analyze import Tag, TimeRange
+    from orgstats.cli import display_category
+
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(),
+            relations={"django": 5, "flask": 3},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+    }
+    exclude_set = {"django", "flask"}
+
+    original_stdout = sys.stdout
+    try:
+        sys.stdout = StringIO()
+
+        display_category(
+            "test tags",
+            tags,
+            (10, 3, 50, None, None, TimeRange(), 5, exclude_set),
+            lambda item: -item[1].total_tasks,
+        )
+
+        output = sys.stdout.getvalue()
+
+        assert "Top test tags:" in output
+        assert "Top relations:" not in output
+
+    finally:
+        sys.stdout = original_stdout
+
+
+def test_cli_max_relations_zero_skips_relations() -> None:
+    """Test that max_relations=0 completely skips relation display."""
+    from io import StringIO
+
+    from orgstats.analyze import Tag, TimeRange
+    from orgstats.cli import display_category
+
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(),
+            relations={"django": 5},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+    }
+
+    original_stdout = sys.stdout
+    try:
+        sys.stdout = StringIO()
+
+        display_category(
+            "test tags",
+            tags,
+            (10, 0, 50, None, None, TimeRange(), 5, set()),
+            lambda item: -item[1].total_tasks,
+        )
+
+        output = sys.stdout.getvalue()
+
+        assert "Top relations:" not in output
+        assert "django" not in output
+
+    finally:
+        sys.stdout = original_stdout

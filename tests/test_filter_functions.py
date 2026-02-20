@@ -1,8 +1,10 @@
 """Unit tests for individual filter functions."""
 
+from collections.abc import Callable
 from datetime import date, datetime
 
-import orgparse
+import pytest
+from orgparse.node import OrgNode
 
 from orgstats.filters import (
     filter_body,
@@ -40,109 +42,93 @@ def test_get_repeat_count_with_repeats() -> None:
     assert get_repeat_count(nodes[0]) == 2
 
 
-def test_filter_gamify_exp_above_basic() -> None:
-    """Test filter_gamify_exp_above with basic values."""
+@pytest.mark.parametrize(
+    "filter_func,threshold,expected_count",
+    [
+        (filter_gamify_exp_above, 10, 2),
+        (filter_gamify_exp_above, 20, 1),
+        (filter_gamify_exp_below, 20, 2),
+        (filter_gamify_exp_below, 10, 1),
+    ],
+)
+def test_filter_gamify_exp_threshold(
+    filter_func: Callable[[list[OrgNode], int], list[OrgNode]], threshold: int, expected_count: int
+) -> None:
+    """Test gamify_exp filters with various thresholds."""
     nodes = (
         node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n")
         + node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 15\n:END:\n")
         + node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 25\n:END:\n")
     )
 
-    result = filter_gamify_exp_above(nodes, 10)
+    result = filter_func(nodes, threshold)
 
-    assert len(result) == 2
-    assert result[0] == nodes[1]
-    assert result[1] == nodes[2]
+    assert len(result) == expected_count
 
 
-def test_filter_gamify_exp_above_boundary() -> None:
-    """Test filter_gamify_exp_above with boundary value (non-inclusive)."""
-    nodes = node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 10\n:END:\n") + node_from_org(
-        "* DONE Task\n:PROPERTIES:\n:gamify_exp: 11\n:END:\n"
-    )
+@pytest.mark.parametrize(
+    "filter_func,threshold,boundary_value,should_match",
+    [
+        (filter_gamify_exp_above, 10, 10, False),
+        (filter_gamify_exp_above, 10, 11, True),
+        (filter_gamify_exp_below, 10, 10, False),
+        (filter_gamify_exp_below, 10, 9, True),
+    ],
+)
+def test_filter_gamify_exp_boundary(
+    filter_func: Callable[[list[OrgNode], int], list[OrgNode]],
+    threshold: int,
+    boundary_value: int,
+    should_match: bool,
+) -> None:
+    """Test gamify_exp filters are non-inclusive at boundaries."""
+    nodes = node_from_org(f"* DONE Task\n:PROPERTIES:\n:gamify_exp: {boundary_value}\n:END:\n")
 
-    result = filter_gamify_exp_above(nodes, 10)
+    result = filter_func(nodes, threshold)
+
+    assert len(result) == (1 if should_match else 0)
+
+
+@pytest.mark.parametrize(
+    "filter_func,threshold",
+    [
+        (filter_gamify_exp_above, 9),
+        (filter_gamify_exp_below, 11),
+    ],
+)
+def test_filter_gamify_exp_missing_defaults_to_10(
+    filter_func: Callable[[list[OrgNode], int], list[OrgNode]], threshold: int
+) -> None:
+    """Test gamify_exp filters with missing gamify_exp (defaults to 10)."""
+    nodes = node_from_org("* DONE Task\n")
+
+    result = filter_func(nodes, threshold)
 
     assert len(result) == 1
-    assert result[0] == nodes[1]
-
-
-def test_filter_gamify_exp_above_missing_defaults_to_10() -> None:
-    """Test filter_gamify_exp_above with missing gamify_exp (defaults to 10)."""
-    nodes = node_from_org("* DONE Task\n") + node_from_org(
-        "* DONE Task\n:PROPERTIES:\n:gamify_exp: 15\n:END:\n"
-    )
-
-    result = filter_gamify_exp_above(nodes, 9)
-
-    assert len(result) == 2
 
 
 def test_filter_gamify_exp_above_empty_list() -> None:
     """Test filter_gamify_exp_above with empty list."""
-    nodes: list[orgparse.node.OrgNode] = []
+    nodes: list[OrgNode] = []
 
     result = filter_gamify_exp_above(nodes, 10)
 
     assert result == []
 
 
-def test_filter_gamify_exp_below_basic() -> None:
-    """Test filter_gamify_exp_below with basic values."""
-    nodes = (
-        node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n")
-        + node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 15\n:END:\n")
-        + node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 25\n:END:\n")
-    )
-
-    result = filter_gamify_exp_below(nodes, 20)
-
-    assert len(result) == 2
-    assert result[0] == nodes[0]
-    assert result[1] == nodes[1]
-
-
-def test_filter_gamify_exp_below_boundary() -> None:
-    """Test filter_gamify_exp_below with boundary value (non-inclusive)."""
-    nodes = node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 9\n:END:\n") + node_from_org(
-        "* DONE Task\n:PROPERTIES:\n:gamify_exp: 10\n:END:\n"
-    )
-
-    result = filter_gamify_exp_below(nodes, 10)
-
-    assert len(result) == 1
-    assert result[0] == nodes[0]
-
-
-def test_filter_gamify_exp_below_missing_defaults_to_10() -> None:
-    """Test filter_gamify_exp_below with missing gamify_exp (defaults to 10)."""
-    nodes = node_from_org("* DONE Task\n") + node_from_org(
-        "* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n"
-    )
-
-    result = filter_gamify_exp_below(nodes, 11)
-
-    assert len(result) == 2
-
-
-def test_filter_repeats_above_basic() -> None:
-    """Test filter_repeats_above with basic values."""
-    org_text_2_repeats = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
-- State "DONE" from "TODO" [2025-01-12 Sun 11:00]
-:END:
-"""
-    nodes = node_from_org("* DONE Task\n") + node_from_org(org_text_2_repeats)
-
-    result = filter_repeats_above(nodes, 1)
-
-    assert len(result) == 1
-    assert result[0] == nodes[1]
-
-
-def test_filter_repeats_above_boundary() -> None:
-    """Test filter_repeats_above with boundary value (non-inclusive)."""
+@pytest.mark.parametrize(
+    "filter_func,threshold,should_match",
+    [
+        (filter_repeats_above, 1, True),
+        (filter_repeats_above, 2, False),
+        (filter_repeats_below, 3, True),
+        (filter_repeats_below, 1, False),
+    ],
+)
+def test_filter_repeats_boundary(
+    filter_func: Callable[[list[OrgNode], int], list[OrgNode]], threshold: int, should_match: bool
+) -> None:
+    """Test repeats filters are non-inclusive at boundaries."""
     org_text_2_repeats = """* DONE Task
 :LOGBOOK:
 - State "DONE" from "TODO" [2025-01-10 Fri 09:00]
@@ -151,9 +137,9 @@ def test_filter_repeats_above_boundary() -> None:
 """
     nodes = node_from_org(org_text_2_repeats)
 
-    result = filter_repeats_above(nodes, 2)
+    result = filter_func(nodes, threshold)
 
-    assert len(result) == 0
+    assert len(result) == (1 if should_match else 0)
 
 
 def test_filter_repeats_above_minimum_is_one() -> None:
@@ -165,60 +151,57 @@ def test_filter_repeats_above_minimum_is_one() -> None:
     assert len(result) == 1
 
 
-def test_filter_repeats_below_basic() -> None:
-    """Test filter_repeats_below with basic values."""
-    org_text_3_repeats = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
-- State "DONE" from "TODO" [2025-01-12 Sun 11:00]
-- State "DONE" from "TODO" [2025-01-14 Tue 15:00]
-:END:
-"""
-    nodes = node_from_org("* DONE Task\n") + node_from_org(org_text_3_repeats)
-
-    result = filter_repeats_below(nodes, 2)
-
-    assert len(result) == 1
-    assert result[0] == nodes[0]
-
-
-def test_filter_repeats_below_boundary() -> None:
-    """Test filter_repeats_below with boundary value (non-inclusive)."""
-    nodes = node_from_org("* DONE Task\n")
-
-    result = filter_repeats_below(nodes, 1)
-
-    assert len(result) == 0
-
-
-def test_filter_date_from_basic() -> None:
-    """Test filter_date_from with basic date filtering."""
+@pytest.mark.parametrize(
+    "filter_func,cutoff_date,expected_task",
+    [
+        (filter_date_from, datetime(2025, 1, 31), "feb"),
+        (filter_date_until, datetime(2025, 2, 1), "jan"),
+    ],
+)
+def test_filter_date_basic(
+    filter_func: Callable[[list[OrgNode], datetime], list[OrgNode]],
+    cutoff_date: datetime,
+    expected_task: str,
+) -> None:
+    """Test date filters with basic date filtering."""
     org_text_jan = "* DONE Task\nCLOSED: [2025-01-15 Wed 10:00]\n"
     org_text_feb = "* DONE Task\nCLOSED: [2025-02-15 Sat 10:00]\n"
 
     nodes = node_from_org(org_text_jan) + node_from_org(org_text_feb)
 
-    result = filter_date_from(nodes, datetime(2025, 1, 31))
+    result = filter_func(nodes, cutoff_date)
 
     assert len(result) == 1
-    assert result[0] == nodes[1]
+    assert result[0] == (nodes[1] if expected_task == "feb" else nodes[0])
 
 
-def test_filter_date_from_boundary() -> None:
-    """Test filter_date_from with boundary date (inclusive)."""
+@pytest.mark.parametrize(
+    "filter_func,cutoff_date",
+    [
+        (filter_date_from, datetime(2025, 1, 15)),
+        (filter_date_until, datetime(2025, 1, 15, 10, 0)),
+    ],
+)
+def test_filter_date_boundary_inclusive(
+    filter_func: Callable[[list[OrgNode], datetime], list[OrgNode]], cutoff_date: datetime
+) -> None:
+    """Test date filters are inclusive at boundaries."""
     org_text = "* DONE Task\nCLOSED: [2025-01-15 Wed 10:00]\n"
     nodes = node_from_org(org_text)
 
-    result = filter_date_from(nodes, datetime(2025, 1, 15))
+    result = filter_func(nodes, cutoff_date)
 
     assert len(result) == 1
 
 
-def test_filter_date_from_no_timestamp() -> None:
-    """Test filter_date_from excludes nodes without timestamps."""
+@pytest.mark.parametrize("filter_func", [filter_date_from, filter_date_until])
+def test_filter_date_no_timestamp(
+    filter_func: Callable[[list[OrgNode], datetime], list[OrgNode]],
+) -> None:
+    """Test date filters exclude nodes without timestamps."""
     nodes = node_from_org("* DONE Task\n")
 
-    result = filter_date_from(nodes, datetime(2025, 1, 1))
+    result = filter_func(nodes, datetime(2025, 1, 1))
 
     assert len(result) == 0
 
@@ -236,38 +219,6 @@ def test_filter_date_from_multiple_timestamps() -> None:
     result = filter_date_from(nodes, datetime(2025, 2, 1))
 
     assert len(result) == 1
-
-
-def test_filter_date_until_basic() -> None:
-    """Test filter_date_until with basic date filtering."""
-    org_text_jan = "* DONE Task\nCLOSED: [2025-01-15 Wed 10:00]\n"
-    org_text_feb = "* DONE Task\nCLOSED: [2025-02-15 Sat 10:00]\n"
-
-    nodes = node_from_org(org_text_jan) + node_from_org(org_text_feb)
-
-    result = filter_date_until(nodes, datetime(2025, 2, 1))
-
-    assert len(result) == 1
-    assert result[0] == nodes[0]
-
-
-def test_filter_date_until_boundary() -> None:
-    """Test filter_date_until with boundary date (inclusive)."""
-    org_text = "* DONE Task\nCLOSED: [2025-01-15 Wed 10:00]\n"
-    nodes = node_from_org(org_text)
-
-    result = filter_date_until(nodes, datetime(2025, 1, 15, 10, 00))
-
-    assert len(result) == 1
-
-
-def test_filter_date_until_no_timestamp() -> None:
-    """Test filter_date_until excludes nodes without timestamps."""
-    nodes = node_from_org("* DONE Task\n")
-
-    result = filter_date_until(nodes, datetime(2025, 12, 31))
-
-    assert len(result) == 0
 
 
 def test_filter_date_from_todo_task() -> None:
@@ -307,21 +258,106 @@ def test_filter_date_from_mixed_completion_states() -> None:
     assert len(result) == 3
 
 
-def test_filter_date_from_repeated_tasks_all_states() -> None:
-    """Test filter_date_from includes all repeated tasks regardless of state."""
+@pytest.mark.parametrize(
+    "filter_func,cutoff_date,expected_repeat_count,expected_date",
+    [
+        (filter_date_from, datetime(2025, 2, 1), 2, None),
+        (filter_date_from, datetime(2025, 2, 1), 1, date(2025, 2, 15)),
+        (filter_date_from, datetime(2025, 2, 1), 1, date(2025, 2, 1)),
+        (filter_date_until, datetime(2025, 2, 1), 2, None),
+        (filter_date_until, datetime(2025, 2, 1), 1, date(2025, 1, 10)),
+        (filter_date_until, datetime(2025, 2, 1, 9, 0), 1, date(2025, 2, 1)),
+    ],
+)
+def test_filter_date_with_repeats(
+    filter_func: Callable[[list[OrgNode], datetime], list[OrgNode]],
+    cutoff_date: datetime,
+    expected_repeat_count: int,
+    expected_date: date | None,
+) -> None:
+    """Test date filters with repeated tasks."""
+    if filter_func == filter_date_from:
+        if expected_repeat_count == 2:
+            org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-02-10 Mon 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+        elif expected_date == date(2025, 2, 15):
+            org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+        else:
+            org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-31 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-01 Sat 11:00]
+:END:
+"""
+    elif expected_repeat_count == 2:
+        org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-01-15 Wed 11:00]
+:END:
+"""
+    elif expected_date == date(2025, 1, 10):
+        org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+    else:
+        org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-02-01 Sat 09:00]
+- State "DONE" from "TODO" [2025-02-02 Sun 11:00]
+:END:
+"""
+
+    nodes = node_from_org(org_text)
+
+    result = filter_func(nodes, cutoff_date)
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == expected_repeat_count
+    if expected_date:
+        assert result[0].repeated_tasks[0].start.date() == expected_date
+
+
+def test_filter_date_from_repeats_none_match() -> None:
+    """Test filter_date_from with repeated tasks where none match."""
     org_text = """* DONE Task
 :LOGBOOK:
 - State "DONE" from "TODO" [2025-01-10 Fri 09:00]
-- State "TODO" from "DONE" [2025-01-15 Wed 11:00]
-- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+- State "DONE" from "TODO" [2025-01-15 Wed 11:00]
 :END:
 """
     nodes = node_from_org(org_text)
 
     result = filter_date_from(nodes, datetime(2025, 2, 1))
 
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 1
+    assert len(result) == 0
+
+
+def test_filter_date_until_repeats_none_match() -> None:
+    """Test filter_date_until with repeated tasks where none match."""
+    org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-02-10 Mon 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    result = filter_date_until(nodes, datetime(2025, 2, 1))
+
+    assert len(result) == 0
 
 
 def test_filter_property_basic() -> None:
@@ -427,72 +463,81 @@ def test_filter_tag_no_tag() -> None:
     assert len(result) == 0
 
 
-def test_filter_completed_basic() -> None:
-    """Test filter_completed with basic completion filtering."""
+@pytest.mark.parametrize(
+    "filter_func,expected_indices",
+    [
+        (filter_completed, [0, 2]),
+        (filter_not_completed, [1, 2]),
+    ],
+)
+def test_filter_completion_basic(
+    filter_func: Callable[[list[OrgNode]], list[OrgNode]], expected_indices: list[int]
+) -> None:
+    """Test completion filters with basic filtering."""
     nodes = (
         node_from_org("* DONE Task\n")
         + node_from_org("* TODO Task\n")
-        + node_from_org("* DONE Another\n")
+        + node_from_org(
+            "* DONE Another\n"
+            if 2 in expected_indices and filter_func == filter_completed
+            else "* TODO Another\n"
+        )
     )
 
-    result = filter_completed(nodes, ["DONE"])
+    result = filter_func(nodes)
 
-    assert len(result) == 2
-    assert result[0] == nodes[0]
-    assert result[1] == nodes[2]
-
-
-def test_filter_completed_multiple_done_keys() -> None:
-    """Test filter_completed with multiple done keys."""
-    nodes = node_from_org(
-        "* DONE Task\n", todo_keys=["TODO"], done_keys=["DONE", "DELEGATED"]
-    ) + node_from_org("* DELEGATED Task\n", todo_keys=["TODO"], done_keys=["DONE", "DELEGATED"])
-
-    result = filter_completed(nodes, ["DONE", "DELEGATED"])
-
-    assert len(result) == 2
+    assert len(result) == len(expected_indices)
+    for i, idx in enumerate(expected_indices):
+        assert result[i] == nodes[idx]
 
 
-def test_filter_completed_no_match() -> None:
-    """Test filter_completed with no matching nodes."""
-    nodes = node_from_org("* TODO Task\n")
+@pytest.mark.parametrize(
+    "filter_func,done_keys,todo_keys",
+    [
+        (filter_completed, ["DONE", "DELEGATED"], ["TODO"]),
+        (filter_not_completed, ["DONE"], ["TODO", "WAITING"]),
+    ],
+)
+def test_filter_completion_multiple_keys(
+    filter_func: Callable[[list[OrgNode]], list[OrgNode]],
+    done_keys: list[str],
+    todo_keys: list[str],
+) -> None:
+    """Test completion filters with multiple todo/done keys."""
+    if filter_func == filter_completed:
+        nodes = node_from_org(
+            "* DONE Task\n",
+            todo_keys=todo_keys,
+            done_keys=done_keys,
+        ) + node_from_org(
+            "* DELEGATED Task\n",
+            todo_keys=todo_keys,
+            done_keys=done_keys,
+        )
+    else:
+        nodes = node_from_org("* TODO Task\n", todo_keys=todo_keys) + node_from_org(
+            "* WAITING Task\n", todo_keys=todo_keys
+        )
 
-    result = filter_completed(nodes, ["DONE"])
-
-    assert len(result) == 0
-
-
-def test_filter_not_completed_basic() -> None:
-    """Test filter_not_completed with basic filtering."""
-    nodes = (
-        node_from_org("* DONE Task\n")
-        + node_from_org("* TODO Task\n")
-        + node_from_org("* TODO Another\n")
-    )
-
-    result = filter_not_completed(nodes, ["TODO"])
-
-    assert len(result) == 2
-    assert result[0] == nodes[1]
-    assert result[1] == nodes[2]
-
-
-def test_filter_not_completed_multiple_todo_keys() -> None:
-    """Test filter_not_completed with multiple todo keys."""
-    nodes = node_from_org(
-        "* TODO Task\n", todo_keys=["TODO", "WAITING"], done_keys=["DONE"]
-    ) + node_from_org("* WAITING Task\n", todo_keys=["TODO", "WAITING"], done_keys=["DONE"])
-
-    result = filter_not_completed(nodes, ["TODO", "WAITING"])
+    result = filter_func(nodes)
 
     assert len(result) == 2
 
 
-def test_filter_not_completed_no_match() -> None:
-    """Test filter_not_completed with no matching nodes."""
-    nodes = node_from_org("* DONE Task\n")
+@pytest.mark.parametrize(
+    "filter_func,todo_state",
+    [
+        (filter_completed, "TODO"),
+        (filter_not_completed, "DONE"),
+    ],
+)
+def test_filter_completion_no_match(
+    filter_func: Callable[[list[OrgNode]], list[OrgNode]], todo_state: str
+) -> None:
+    """Test completion filters with no matching nodes."""
+    nodes = node_from_org(f"* {todo_state} Task\n")
 
-    result = filter_not_completed(nodes, ["TODO"])
+    result = filter_func(nodes)
 
     assert len(result) == 0
 
@@ -511,286 +556,6 @@ def test_filters_preserve_order() -> None:
     assert result[0] == nodes[0]
     assert result[1] == nodes[1]
     assert result[2] == nodes[2]
-
-
-def test_filter_date_from_repeats_all_match() -> None:
-    """Test filter_date_from with repeated tasks where all match."""
-    org_text = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-02-10 Mon 09:00]
-- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text)
-
-    result = filter_date_from(nodes, datetime(2025, 2, 1))
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 2
-
-
-def test_filter_date_from_repeats_some_match() -> None:
-    """Test filter_date_from with repeated tasks where some match."""
-    org_text = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
-- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text)
-
-    result = filter_date_from(nodes, datetime(2025, 2, 1))
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 1
-    assert result[0].repeated_tasks[0].start.date() == date(2025, 2, 15)
-
-
-def test_filter_date_from_repeats_none_match() -> None:
-    """Test filter_date_from with repeated tasks where none match."""
-    org_text = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
-- State "DONE" from "TODO" [2025-01-15 Wed 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text)
-
-    result = filter_date_from(nodes, datetime(2025, 2, 1))
-
-    assert len(result) == 0
-
-
-def test_filter_date_from_repeats_boundary() -> None:
-    """Test filter_date_from with repeated tasks at boundary (inclusive)."""
-    org_text = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-01-31 Fri 09:00]
-- State "DONE" from "TODO" [2025-02-01 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text)
-
-    result = filter_date_from(nodes, datetime(2025, 2, 1))
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 1
-    assert result[0].repeated_tasks[0].start.date() == date(2025, 2, 1)
-
-
-def test_filter_date_from_repeats_mixed_states() -> None:
-    """Test filter_date_from includes all repeats by date regardless of state."""
-    org_text = """* TODO Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-02-10 Mon 09:00]
-- State "TODO" from "DONE" [2025-02-15 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
-
-    result = filter_date_from(nodes, datetime(2025, 2, 1))
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 2
-
-
-def test_filter_date_until_repeats_all_match() -> None:
-    """Test filter_date_until with repeated tasks where all match."""
-    org_text = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
-- State "DONE" from "TODO" [2025-01-15 Wed 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text)
-
-    result = filter_date_until(nodes, datetime(2025, 2, 1))
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 2
-
-
-def test_filter_date_until_repeats_some_match() -> None:
-    """Test filter_date_until with repeated tasks where some match."""
-    org_text = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
-- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text)
-
-    result = filter_date_until(nodes, datetime(2025, 2, 1))
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 1
-    assert result[0].repeated_tasks[0].start.date() == date(2025, 1, 10)
-
-
-def test_filter_date_until_repeats_none_match() -> None:
-    """Test filter_date_until with repeated tasks where none match."""
-    org_text = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-02-10 Mon 09:00]
-- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text)
-
-    result = filter_date_until(nodes, datetime(2025, 2, 1))
-
-    assert len(result) == 0
-
-
-def test_filter_date_until_repeats_boundary() -> None:
-    """Test filter_date_until with repeated tasks at boundary (inclusive)."""
-    org_text = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-02-01 Sat 09:00]
-- State "DONE" from "TODO" [2025-02-02 Sun 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text)
-
-    result = filter_date_until(nodes, datetime(2025, 2, 1, 9, 0))
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 1
-    assert result[0].repeated_tasks[0].start.date() == date(2025, 2, 1)
-
-
-def test_filter_completed_repeats_all_match() -> None:
-    """Test filter_completed with repeated tasks where all are DONE."""
-    org_text = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
-- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text)
-
-    result = filter_completed(nodes, ["DONE"])
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 2
-
-
-def test_filter_completed_repeats_some_match() -> None:
-    """Test filter_completed with repeated tasks where some are DONE."""
-    org_text = """* TODO Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
-- State "TODO" from "DONE" [2025-02-15 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
-
-    result = filter_completed(nodes, ["DONE"])
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 1
-    assert result[0].repeated_tasks[0].after == "DONE"
-
-
-def test_filter_completed_repeats_none_match() -> None:
-    """Test filter_completed with repeated tasks where none are DONE."""
-    org_text = """* TODO Task
-:LOGBOOK:
-- State "TODO" from "DONE" [2025-01-10 Fri 09:00]
-- State "TODO" from "DONE" [2025-02-15 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
-
-    result = filter_completed(nodes, ["DONE"])
-
-    assert len(result) == 0
-
-
-def test_filter_completed_without_repeats_matches() -> None:
-    """Test filter_completed with non-repeating task that is DONE."""
-    nodes = node_from_org("* DONE Task\n")
-
-    result = filter_completed(nodes, ["DONE"])
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 0
-
-
-def test_filter_completed_without_repeats_no_match() -> None:
-    """Test filter_completed with non-repeating task that is TODO."""
-    nodes = node_from_org("* TODO Task\n")
-
-    result = filter_completed(nodes, ["DONE"])
-
-    assert len(result) == 0
-
-
-def test_filter_not_completed_repeats_all_match() -> None:
-    """Test filter_not_completed with repeated tasks where all are TODO."""
-    org_text = """* TODO Task
-:LOGBOOK:
-- State "TODO" from "DONE" [2025-01-10 Fri 09:00]
-- State "TODO" from "DONE" [2025-02-15 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
-
-    result = filter_not_completed(nodes, ["TODO"])
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 2
-
-
-def test_filter_not_completed_repeats_some_match() -> None:
-    """Test filter_not_completed with repeated tasks where some are TODO."""
-    org_text = """* DONE Task
-:LOGBOOK:
-- State "TODO" from "DONE" [2025-01-10 Fri 09:00]
-- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
-
-    result = filter_not_completed(nodes, ["TODO"])
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 1
-    assert result[0].repeated_tasks[0].after == "TODO"
-
-
-def test_filter_not_completed_repeats_none_match() -> None:
-    """Test filter_not_completed with repeated tasks where none are TODO."""
-    org_text = """* DONE Task
-:LOGBOOK:
-- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
-- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
-:END:
-"""
-    nodes = node_from_org(org_text)
-
-    result = filter_not_completed(nodes, ["TODO"])
-
-    assert len(result) == 0
-
-
-def test_filter_not_completed_without_repeats_matches() -> None:
-    """Test filter_not_completed with non-repeating task that is TODO."""
-    nodes = node_from_org("* TODO Task\n")
-
-    result = filter_not_completed(nodes, ["TODO"])
-
-    assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 0
-
-
-def test_filter_not_completed_without_repeats_no_match() -> None:
-    """Test filter_not_completed with non-repeating task that is DONE."""
-    nodes = node_from_org("* DONE Task\n")
-
-    result = filter_not_completed(nodes, ["TODO"])
-
-    assert len(result) == 0
 
 
 def test_filter_date_range_repeats_combined() -> None:
@@ -829,6 +594,96 @@ def test_filters_do_not_mutate_original_nodes() -> None:
     assert len(result[0].repeated_tasks) == 1
 
 
+@pytest.mark.parametrize(
+    "filter_func,expected_repeat_count",
+    [
+        (filter_completed, 2),
+        (filter_completed, 1),
+        (filter_completed, 0),
+        (filter_not_completed, 2),
+        (filter_not_completed, 1),
+        (filter_not_completed, 0),
+    ],
+)
+def test_filter_completion_with_repeats(
+    filter_func: Callable[[list[OrgNode]], list[OrgNode]], expected_repeat_count: int
+) -> None:
+    """Test completion filters with repeated tasks."""
+    if filter_func == filter_completed:
+        if expected_repeat_count == 2:
+            org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+        elif expected_repeat_count == 1:
+            org_text = """* TODO Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "TODO" from "DONE" [2025-02-15 Sat 11:00]
+:END:
+"""
+        else:
+            org_text = """* TODO Task
+:LOGBOOK:
+- State "TODO" from "DONE" [2025-01-10 Fri 09:00]
+- State "TODO" from "DONE" [2025-02-15 Sat 11:00]
+:END:
+"""
+    elif expected_repeat_count == 2:
+        org_text = """* TODO Task
+:LOGBOOK:
+- State "TODO" from "DONE" [2025-01-10 Fri 09:00]
+- State "TODO" from "DONE" [2025-02-15 Sat 11:00]
+:END:
+"""
+    elif expected_repeat_count == 1:
+        org_text = """* DONE Task
+:LOGBOOK:
+- State "TODO" from "DONE" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+    else:
+        org_text = """* DONE Task
+:LOGBOOK:
+- State "DONE" from "TODO" [2025-01-10 Fri 09:00]
+- State "DONE" from "TODO" [2025-02-15 Sat 11:00]
+:END:
+"""
+
+    nodes = node_from_org(org_text, todo_keys=["TODO"])
+
+    result = filter_func(nodes)
+
+    if expected_repeat_count == 0:
+        assert len(result) == 0
+    else:
+        assert len(result) == 1
+        assert len(result[0].repeated_tasks) == expected_repeat_count
+
+
+def test_filter_completed_without_repeats_matches() -> None:
+    """Test filter_completed with non-repeating task that is DONE."""
+    nodes = node_from_org("* DONE Task\n")
+
+    result = filter_completed(nodes)
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 0
+
+
+def test_filter_not_completed_without_repeats_matches() -> None:
+    """Test filter_not_completed with non-repeating task that is TODO."""
+    nodes = node_from_org("* TODO Task\n")
+
+    result = filter_not_completed(nodes)
+
+    assert len(result) == 1
+    assert len(result[0].repeated_tasks) == 0
+
+
 def test_filter_completed_multiple_done_keys_with_repeats() -> None:
     """Test filter_completed with multiple done keys and repeated tasks."""
     org_text = """* DELEGATED Task
@@ -838,11 +693,9 @@ def test_filter_completed_multiple_done_keys_with_repeats() -> None:
 - State "CANCELLED" from "TODO" [2025-03-20 Thu 14:00]
 :END:
 """
-    nodes = node_from_org(
-        org_text, todo_keys=["TODO"], done_keys=["DONE", "DELEGATED", "CANCELLED"]
-    )
+    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE", "DELEGATED"])
 
-    result = filter_completed(nodes, ["DONE", "DELEGATED"])
+    result = filter_completed(nodes)
 
     assert len(result) == 1
     assert len(result[0].repeated_tasks) == 2
@@ -850,294 +703,158 @@ def test_filter_completed_multiple_done_keys_with_repeats() -> None:
     assert result[0].repeated_tasks[1].after in ["DONE", "DELEGATED"]
 
 
-def test_filter_tag_regex_basic() -> None:
-    """Test filter_tag with basic regex patterns."""
-    nodes = (
-        node_from_org("* DONE Task :testing:\n")
-        + node_from_org("* DONE Task :debugging:\n")
-        + node_from_org("* DONE Task :coding:\n")
-    )
-
-    result = filter_tag(nodes, ".*ing")
-
-    assert len(result) == 3
-
-
-def test_filter_tag_regex_exact_match() -> None:
-    """Test filter_tag with exact match using anchors."""
-    nodes = (
-        node_from_org("* DONE Task :test:\n")
-        + node_from_org("* DONE Task :testing:\n")
-        + node_from_org("* DONE Task :test123:\n")
-    )
-
-    result = filter_tag(nodes, "^test$")
-
-    assert len(result) == 1
-    assert result[0] == nodes[0]
-
-
-def test_filter_tag_regex_case_sensitive() -> None:
-    """Test filter_tag is case-sensitive."""
-    nodes = node_from_org("* DONE Task :Testing:\n") + node_from_org("* DONE Task :testing:\n")
-
-    result_lower = filter_tag(nodes, "^testing$")
-    result_upper = filter_tag(nodes, "^Testing$")
-
-    assert len(result_lower) == 1
-    assert result_lower[0] == nodes[1]
-    assert len(result_upper) == 1
-    assert result_upper[0] == nodes[0]
-
-
-def test_filter_tag_regex_multiple_tags() -> None:
-    """Test filter_tag matches any tag in list."""
-    nodes = node_from_org("* DONE Task :foo:bar:baz:\n")
-
-    result = filter_tag(nodes, "^bar$")
-
-    assert len(result) == 1
-
-
-def test_filter_tag_regex_no_match() -> None:
-    """Test filter_tag with no matching tags."""
-    nodes = node_from_org("* DONE Task :foo:bar:\n")
-
-    result = filter_tag(nodes, "^baz$")
-
-    assert len(result) == 0
-
-
-def test_filter_tag_regex_partial_match() -> None:
-    """Test filter_tag with partial match."""
-    nodes = (
-        node_from_org("* DONE Task :foobar:\n")
-        + node_from_org("* DONE Task :foo:\n")
-        + node_from_org("* DONE Task :barfoo:\n")
-    )
-
-    result = filter_tag(nodes, "foo")
-
-    assert len(result) == 3
-
-
-def test_filter_tag_regex_start_anchor() -> None:
-    """Test filter_tag with start anchor."""
-    nodes = (
-        node_from_org("* DONE Task :testing:\n")
-        + node_from_org("* DONE Task :mytesting:\n")
-        + node_from_org("* DONE Task :test:\n")
-    )
-
-    result = filter_tag(nodes, "^test")
-
-    assert len(result) == 2
-    assert result[0] == nodes[0]
-    assert result[1] == nodes[2]
-
-
-def test_filter_tag_regex_end_anchor() -> None:
-    """Test filter_tag with end anchor."""
-    nodes = (
-        node_from_org("* DONE Task :testing:\n")
-        + node_from_org("* DONE Task :testingmore:\n")
-        + node_from_org("* DONE Task :debugging:\n")
-    )
-
-    result = filter_tag(nodes, "ing$")
-
-    assert len(result) == 2
-    assert result[0] == nodes[0]
-    assert result[1] == nodes[2]
-
-
-def test_filter_tag_regex_character_class() -> None:
-    """Test filter_tag with character classes."""
-    nodes = (
-        node_from_org("* DONE Task :test1:\n")
-        + node_from_org("* DONE Task :test2:\n")
-        + node_from_org("* DONE Task :testa:\n")
-    )
-
-    result = filter_tag(nodes, "test[0-9]")
-
-    assert len(result) == 2
-    assert result[0] == nodes[0]
-    assert result[1] == nodes[1]
-
-
-def test_filter_tag_regex_alternation() -> None:
-    """Test filter_tag with alternation (OR)."""
-    nodes = (
-        node_from_org("* DONE Task :bug:\n")
-        + node_from_org("* DONE Task :fix:\n")
-        + node_from_org("* DONE Task :feature:\n")
-    )
-
-    result = filter_tag(nodes, "bug|fix")
-
-    assert len(result) == 2
-    assert result[0] == nodes[0]
-    assert result[1] == nodes[1]
-
-
-def test_filter_heading_basic() -> None:
-    """Test filter_heading with basic regex patterns."""
-    nodes = (
-        node_from_org("* DONE Fix bug in parser\n")
-        + node_from_org("* DONE Add new feature\n")
-        + node_from_org("* DONE Fix typo\n")
-    )
-
-    result = filter_heading(nodes, "Fix")
-
-    assert len(result) == 2
-    assert result[0] == nodes[0]
-    assert result[1] == nodes[2]
-
-
-def test_filter_heading_case_sensitive() -> None:
-    """Test filter_heading is case-sensitive."""
-    nodes = node_from_org("* DONE Fix Bug\n") + node_from_org("* DONE fix bug\n")
-
-    result_lower = filter_heading(nodes, "fix")
-    result_upper = filter_heading(nodes, "Fix")
-
-    assert len(result_lower) == 1
-    assert result_lower[0] == nodes[1]
-    assert len(result_upper) == 1
-    assert result_upper[0] == nodes[0]
-
-
-def test_filter_heading_word_boundary() -> None:
-    """Test filter_heading with word boundaries."""
-    nodes = (
-        node_from_org("* DONE test the feature\n")
-        + node_from_org("* DONE testing feature\n")
-        + node_from_org("* DONE test\n")
-    )
-
-    result = filter_heading(nodes, r"\btest\b")
-
-    assert len(result) == 2
-    assert result[0] == nodes[0]
-    assert result[1] == nodes[2]
-
-
-def test_filter_heading_alternation() -> None:
-    """Test filter_heading with alternation."""
-    nodes = (
-        node_from_org("* DONE Fix bug\n")
-        + node_from_org("* DONE Resolve issue\n")
-        + node_from_org("* DONE Add feature\n")
-    )
-
-    result = filter_heading(nodes, "bug|issue")
-
-    assert len(result) == 2
-    assert result[0] == nodes[0]
-    assert result[1] == nodes[1]
-
-
-def test_filter_heading_no_match() -> None:
-    """Test filter_heading with no matching headings."""
-    nodes = node_from_org("* DONE Task\n")
-
-    result = filter_heading(nodes, "nonexistent")
-
-    assert len(result) == 0
-
-
-def test_filter_body_basic() -> None:
-    """Test filter_body with basic regex patterns."""
-    nodes = (
-        node_from_org("* DONE Task\nThis is a test body\n")
-        + node_from_org("* DONE Task\nAnother body here\n")
-        + node_from_org("* DONE Task\nTest content\n")
-    )
-
-    result = filter_body(nodes, "test")
-
-    assert len(result) == 1
-    assert result[0] == nodes[0]
-
-
-def test_filter_body_case_sensitive() -> None:
-    """Test filter_body is case-sensitive."""
-    nodes = node_from_org("* DONE Task\nTest Body\n") + node_from_org("* DONE Task\ntest body\n")
-
-    result_lower = filter_body(nodes, "test")
-    result_upper = filter_body(nodes, "Test")
-
-    assert len(result_lower) == 1
-    assert result_lower[0] == nodes[1]
-    assert len(result_upper) == 1
-    assert result_upper[0] == nodes[0]
-
-
-def test_filter_body_multiline() -> None:
-    """Test filter_body with multiline content."""
-    org_text = """* DONE Task
+@pytest.mark.parametrize(
+    "pattern,expected_count,expected_indices",
+    [
+        (".*ing", 3, [0, 1, 2]),
+        ("^test$", 1, [0]),
+        ("^testing$", 1, [1]),
+        ("^Testing$", 1, [0]),
+        ("^bar$", 1, [0]),
+        ("^baz$", 1, [0]),
+        ("foo", 3, [0, 1, 2]),
+        ("^test", 2, [0, 2]),
+        ("ing$", 2, [0, 2]),
+        ("test[0-9]", 2, [0, 1]),
+        ("bug|fix", 2, [0, 1]),
+    ],
+)
+def test_filter_tag_regex(pattern: str, expected_count: int, expected_indices: list[int]) -> None:
+    """Test filter_tag with various regex patterns."""
+    if pattern == ".*ing":
+        nodes = (
+            node_from_org("* DONE Task :testing:\n")
+            + node_from_org("* DONE Task :debugging:\n")
+            + node_from_org("* DONE Task :coding:\n")
+        )
+    elif pattern in ["^test$", "^testing$"]:
+        nodes = (
+            node_from_org("* DONE Task :test:\n")
+            + node_from_org("* DONE Task :testing:\n")
+            + node_from_org("* DONE Task :test123:\n")
+        )
+    elif pattern in ["^testing$", "^Testing$"]:
+        nodes = node_from_org("* DONE Task :Testing:\n") + node_from_org("* DONE Task :testing:\n")
+    elif pattern in ["^bar$", "^baz$"]:
+        nodes = node_from_org("* DONE Task :foo:bar:baz:\n")
+    elif pattern == "foo":
+        nodes = (
+            node_from_org("* DONE Task :foobar:\n")
+            + node_from_org("* DONE Task :foo:\n")
+            + node_from_org("* DONE Task :barfoo:\n")
+        )
+    elif pattern == "^test":
+        nodes = (
+            node_from_org("* DONE Task :testing:\n")
+            + node_from_org("* DONE Task :mytesting:\n")
+            + node_from_org("* DONE Task :test:\n")
+        )
+    elif pattern == "ing$":
+        nodes = (
+            node_from_org("* DONE Task :testing:\n")
+            + node_from_org("* DONE Task :testingmore:\n")
+            + node_from_org("* DONE Task :debugging:\n")
+        )
+    elif pattern == "test[0-9]":
+        nodes = (
+            node_from_org("* DONE Task :test1:\n")
+            + node_from_org("* DONE Task :test2:\n")
+            + node_from_org("* DONE Task :testa:\n")
+        )
+    else:
+        nodes = (
+            node_from_org("* DONE Task :bug:\n")
+            + node_from_org("* DONE Task :fix:\n")
+            + node_from_org("* DONE Task :feature:\n")
+        )
+
+    result = filter_tag(nodes, pattern)
+
+    assert len(result) == expected_count
+    for i, idx in enumerate(expected_indices):
+        assert result[i] == nodes[idx]
+
+
+@pytest.mark.parametrize(
+    "filter_func,pattern,expected_count,expected_indices",
+    [
+        (filter_heading, "Fix", 2, [0, 2]),
+        (filter_heading, "fix", 1, [1]),
+        (filter_heading, r"\btest\b", 2, [0, 2]),
+        (filter_heading, "bug|issue", 2, [0, 1]),
+        (filter_heading, "nonexistent", 0, []),
+        (filter_body, "test", 1, [0]),
+        (filter_body, "Test", 1, [0]),
+        (filter_body, "^Second", 1, [0]),
+        (filter_body, "two$", 1, [0]),
+        (filter_body, "First.*Second", 0, []),
+        (filter_body, "TODO|FIXME", 2, [0, 1]),
+        (filter_body, "nonexistent", 0, []),
+    ],
+)
+def test_filter_regex_patterns(
+    filter_func: Callable[[list[OrgNode], str], list[OrgNode]],
+    pattern: str,
+    expected_count: int,
+    expected_indices: list[int],
+) -> None:
+    """Test heading and body filters with regex patterns."""
+    if filter_func == filter_heading:
+        if pattern in ["Fix", "fix"]:
+            nodes = (
+                node_from_org("* DONE Fix Bug\n")
+                + node_from_org("* DONE fix bug\n")
+                + node_from_org("* DONE Fix typo\n")
+            )
+        elif pattern == r"\btest\b":
+            nodes = (
+                node_from_org("* DONE test the feature\n")
+                + node_from_org("* DONE testing feature\n")
+                + node_from_org("* DONE test\n")
+            )
+        elif pattern == "bug|issue":
+            nodes = (
+                node_from_org("* DONE Fix bug\n")
+                + node_from_org("* DONE Resolve issue\n")
+                + node_from_org("* DONE Add feature\n")
+            )
+        else:
+            nodes = node_from_org("* DONE Task\n")
+    elif pattern == "test":
+        nodes = node_from_org("* DONE Task\ntest body\n") + node_from_org(
+            "* DONE Task\nTest Body\n"
+        )
+    elif pattern == "Test":
+        nodes = node_from_org("* DONE Task\nTest Body\n") + node_from_org(
+            "* DONE Task\ntest body\n"
+        )
+    elif pattern in ["^Second", "two$", "First.*Second"]:
+        org_text = """* DONE Task
 First line
 Second line
 Third line
 """
-    nodes = node_from_org(org_text)
-
-    result = filter_body(nodes, "^Second")
-
-    assert len(result) == 1
-
-
-def test_filter_body_multiline_anchor_end() -> None:
-    """Test filter_body with end-of-line anchor."""
-    org_text = """* DONE Task
+        if pattern == "two$":
+            org_text = """* DONE Task
 Line one
 Line two
 Line three
 """
-    nodes = node_from_org(org_text)
+        nodes = node_from_org(org_text)
+    elif pattern == "TODO|FIXME":
+        nodes = (
+            node_from_org("* DONE Task\nContains TODO\n")
+            + node_from_org("* DONE Task\nContains FIXME\n")
+            + node_from_org("* DONE Task\nContains nothing\n")
+        )
+    else:
+        nodes = node_from_org("* DONE Task\nBody content\n")
 
-    result = filter_body(nodes, "two$")
+    result = filter_func(nodes, pattern)
 
-    assert len(result) == 1
-
-
-def test_filter_body_dot_matches_not_newline() -> None:
-    """Test filter_body where dot doesn't match newline."""
-    org_text = """* DONE Task
-First line
-Second line
-"""
-    nodes = node_from_org(org_text)
-
-    result = filter_body(nodes, "First.*Second")
-
-    assert len(result) == 0
-
-
-def test_filter_body_alternation() -> None:
-    """Test filter_body with alternation."""
-    nodes = (
-        node_from_org("* DONE Task\nContains TODO\n")
-        + node_from_org("* DONE Task\nContains FIXME\n")
-        + node_from_org("* DONE Task\nContains nothing\n")
-    )
-
-    result = filter_body(nodes, "TODO|FIXME")
-
-    assert len(result) == 2
-    assert result[0] == nodes[0]
-    assert result[1] == nodes[1]
-
-
-def test_filter_body_no_match() -> None:
-    """Test filter_body with no matching bodies."""
-    nodes = node_from_org("* DONE Task\nBody content\n")
-
-    result = filter_body(nodes, "nonexistent")
-
-    assert len(result) == 0
+    assert len(result) == expected_count
+    for i, idx in enumerate(expected_indices):
+        assert result[i] == nodes[idx]
 
 
 def test_filter_heading_empty_heading() -> None:

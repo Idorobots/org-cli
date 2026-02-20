@@ -1,6 +1,6 @@
 """orgstats - Analyze Emacs Org-mode archive files for task statistics."""
 
-from orgstats.analyze import AnalysisResult, Frequency, Relations, TimeRange, analyze
+from orgstats.analyze import AnalysisResult, Frequency, Relations, Tag, TimeRange, analyze
 from orgstats.cli import main
 from orgstats.filters import (
     filter_completed,
@@ -23,6 +23,7 @@ __all__ = [
     "AnalysisResult",
     "Frequency",
     "Relations",
+    "Tag",
     "TimeRange",
     "__version__",
     "analyze",

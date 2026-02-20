@@ -8,7 +8,7 @@ def test_compute_relations_empty_nodes() -> None:
     """Test with empty nodes list."""
     nodes = node_from_org("")
 
-    relations = compute_relations(nodes, {}, "tags", ["DONE"])
+    relations = compute_relations(nodes, {}, "tags")
 
     assert relations == {}
 
@@ -17,7 +17,7 @@ def test_compute_relations_single_tag() -> None:
     """Test single tag creates no relations."""
     nodes = node_from_org("* DONE Task :Python:\n")
 
-    relations = compute_relations(nodes, {}, "tags", ["DONE"])
+    relations = compute_relations(nodes, {}, "tags")
 
     assert relations == {}
 
@@ -26,7 +26,7 @@ def test_compute_relations_two_tags() -> None:
     """Test two tags create bidirectional relation."""
     nodes = node_from_org("* DONE Task :Python:Testing:\n")
 
-    relations = compute_relations(nodes, {}, "tags", ["DONE"])
+    relations = compute_relations(nodes, {}, "tags")
 
     assert "Python" in relations
     assert "Testing" in relations
@@ -38,7 +38,7 @@ def test_compute_relations_three_tags() -> None:
     """Test three tags create all pair-wise relations."""
     nodes = node_from_org("* DONE Task :A:B:C:\n")
 
-    relations = compute_relations(nodes, {}, "tags", ["DONE"])
+    relations = compute_relations(nodes, {}, "tags")
 
     assert len(relations) == 3
     assert relations["A"].relations["B"] == 1
@@ -56,7 +56,7 @@ def test_compute_relations_accumulates() -> None:
 * DONE Task :Python:Testing:
 """)
 
-    relations = compute_relations(nodes, {}, "tags", ["DONE"])
+    relations = compute_relations(nodes, {}, "tags")
 
     assert relations["Python"].relations["Testing"] == 2
     assert relations["Testing"].relations["Python"] == 2
@@ -72,7 +72,7 @@ def test_compute_relations_repeated_tasks() -> None:
 :END:
 """)
 
-    relations = compute_relations(nodes, {}, "tags", ["DONE"])
+    relations = compute_relations(nodes, {}, "tags")
 
     assert relations["Python"].relations["Testing"] == 2
     assert relations["Testing"].relations["Python"] == 2
@@ -82,9 +82,7 @@ def test_compute_relations_with_mapping() -> None:
     """Test that mapping is applied."""
     nodes = node_from_org("* DONE Task :Test:SysAdmin:\n")
 
-    relations = compute_relations(
-        nodes, {"Test": "Testing", "SysAdmin": "DevOps"}, "tags", ["DONE"]
-    )
+    relations = compute_relations(nodes, {"Test": "Testing", "SysAdmin": "DevOps"}, "tags")
 
     assert "Testing" in relations
     assert "DevOps" in relations
@@ -96,7 +94,7 @@ def test_compute_relations_heading_category() -> None:
     """Test relations for heading words."""
     nodes = node_from_org("* DONE Implement feature\n")
 
-    relations = compute_relations(nodes, {}, "heading", ["DONE"])
+    relations = compute_relations(nodes, {}, "heading")
 
     assert "implement" in relations
     assert "feature" in relations
@@ -111,7 +109,7 @@ def test_compute_relations_body_category() -> None:
 Python code
 """)
 
-    relations = compute_relations(nodes, {}, "body", ["DONE"])
+    relations = compute_relations(nodes, {}, "body")
 
     assert "python" in relations
     assert "code" in relations
@@ -123,19 +121,20 @@ def test_compute_relations_no_self_relations() -> None:
     """Test that tags don't create relations with themselves."""
     nodes = node_from_org("* DONE Task :Python:Testing:\n")
 
-    relations = compute_relations(nodes, {}, "tags", ["DONE"])
+    relations = compute_relations(nodes, {}, "tags")
 
     assert "Python" not in relations["Python"].relations
     assert "Testing" not in relations["Testing"].relations
 
 
 def test_compute_relations_todo_task() -> None:
-    """Test TODO task has no relations (count=0)."""
+    """Test TODO task creates relations."""
     nodes = node_from_org("* TODO Task :Python:Testing:\n")
 
-    relations = compute_relations(nodes, {}, "tags", ["DONE"])
+    relations = compute_relations(nodes, {}, "tags")
 
-    assert relations == {}
+    assert relations["Python"].relations["Testing"] == 1
+    assert relations["Testing"].relations["Python"] == 1
 
 
 def test_compute_relations_mixed_nodes() -> None:
@@ -146,7 +145,7 @@ def test_compute_relations_mixed_nodes() -> None:
 * DONE Task :Testing:Debugging:
 """)
 
-    relations = compute_relations(nodes, {}, "tags", ["DONE"])
+    relations = compute_relations(nodes, {}, "tags")
 
     assert relations["Python"].relations["Testing"] == 1
     assert relations["Python"].relations["Debugging"] == 1

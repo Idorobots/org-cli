@@ -178,7 +178,7 @@ def test_handle_completion_filter_completed() -> None:
 
     args = argparse.Namespace(filter_completed=True, filter_not_completed=False)
 
-    filters = handle_completion_filter("--filter-completed", args, ["DONE"], ["TODO"])
+    filters = handle_completion_filter("--filter-completed", args)
 
     assert len(filters) == 1
     assert filters[0].filter is not None
@@ -190,7 +190,7 @@ def test_handle_completion_filter_not_completed() -> None:
 
     args = argparse.Namespace(filter_completed=False, filter_not_completed=True)
 
-    filters = handle_completion_filter("--filter-not-completed", args, ["DONE"], ["TODO"])
+    filters = handle_completion_filter("--filter-not-completed", args)
 
     assert len(filters) == 1
     assert filters[0].filter is not None
@@ -202,7 +202,7 @@ def test_handle_completion_filter_no_match() -> None:
 
     args = argparse.Namespace(filter_completed=False, filter_not_completed=False)
 
-    filters = handle_completion_filter("--filter-completed", args, ["DONE"], ["TODO"])
+    filters = handle_completion_filter("--filter-completed", args)
 
     assert len(filters) == 0
 
@@ -246,7 +246,7 @@ def test_create_filter_specs_simple_preset() -> None:
     )
 
     filter_order = ["--filter"]
-    filters = create_filter_specs_from_args(args, filter_order, ["DONE"], ["TODO"])
+    filters = create_filter_specs_from_args(args, filter_order)
 
     assert len(filters) == 1
 
@@ -270,7 +270,7 @@ def test_create_filter_specs_regular_preset() -> None:
     )
 
     filter_order = ["--filter"]
-    filters = create_filter_specs_from_args(args, filter_order, ["DONE"], ["TODO"])
+    filters = create_filter_specs_from_args(args, filter_order)
 
     assert len(filters) == 2
 
@@ -301,7 +301,7 @@ def test_create_filter_specs_multiple_filters() -> None:
         "--filter-tag",
         "--filter-completed",
     ]
-    filters = create_filter_specs_from_args(args, filter_order, ["DONE"], ["TODO"])
+    filters = create_filter_specs_from_args(args, filter_order)
 
     assert len(filters) >= 4
 
@@ -325,7 +325,7 @@ def test_create_filter_specs_property_order() -> None:
     )
 
     filter_order = ["--filter-property", "--filter-property"]
-    filters = create_filter_specs_from_args(args, filter_order, ["DONE"], ["TODO"])
+    filters = create_filter_specs_from_args(args, filter_order)
 
     assert len(filters) == 2
 
@@ -349,7 +349,7 @@ def test_create_filter_specs_tag_order() -> None:
     )
 
     filter_order = ["--filter-tag", "--filter-tag"]
-    filters = create_filter_specs_from_args(args, filter_order, ["DONE"], ["TODO"])
+    filters = create_filter_specs_from_args(args, filter_order)
 
     assert len(filters) == 2
 
@@ -373,7 +373,7 @@ def test_build_filter_chain() -> None:
     )
 
     argv = ["orgstats", "--filter", "simple", "file.org"]
-    filters = build_filter_chain(args, argv, ["DONE"], ["TODO"])
+    filters = build_filter_chain(args, argv)
 
     assert len(filters) == 1
 
@@ -446,13 +446,27 @@ def test_get_top_day_info_tie_uses_earliest() -> None:
 
 def test_display_category() -> None:
     """Test display_category outputs formatted results."""
-    from orgstats.analyze import Frequency, Relations, TimeRange
+    from orgstats.analyze import Tag, TimeRange
     from orgstats.cli import display_category
 
-    frequencies = {"python": Frequency(total=10), "java": Frequency(total=8)}
-    time_ranges: dict[str, TimeRange] = {}
-    exclude_set: set[str] = set()
-    relations_dict: dict[str, Relations] = {}
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(),
+            relations={},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+        "java": Tag(
+            name="java",
+            total_tasks=8,
+            time_range=TimeRange(),
+            relations={},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+    }
 
     original_stdout = sys.stdout
     try:
@@ -460,9 +474,9 @@ def test_display_category() -> None:
 
         display_category(
             "test tags",
-            (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None),
-            lambda item: -item[1].total,
+            tags,
+            (10, 3, 50, None, None, TimeRange(), 5, set()),
+            lambda item: -item[1].total_tasks,
         )
 
         output = sys.stdout.getvalue()
@@ -470,8 +484,6 @@ def test_display_category() -> None:
         assert "Top test tags:" in output
         assert "python" in output
         assert "java" in output
-        assert "python (10)" in output
-        assert "java (8)" in output
 
     finally:
         sys.stdout = original_stdout
@@ -481,17 +493,21 @@ def test_display_category_with_time_ranges() -> None:
     """Test display_category includes time range information."""
     from datetime import datetime
 
-    from orgstats.analyze import Frequency, Relations, TimeRange
+    from orgstats.analyze import Tag, TimeRange
     from orgstats.cli import display_category
 
-    frequencies = {"python": Frequency(total=10)}
-    time_ranges = {
-        "python": TimeRange(
-            earliest=datetime(2025, 1, 1), latest=datetime(2025, 1, 31), timeline={}
-        )
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(
+                earliest=datetime(2025, 1, 1), latest=datetime(2025, 1, 31), timeline={}
+            ),
+            relations={},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
     }
-    exclude_set: set[str] = set()
-    relations_dict: dict[str, Relations] = {}
 
     original_stdout = sys.stdout
     try:
@@ -499,14 +515,14 @@ def test_display_category_with_time_ranges() -> None:
 
         display_category(
             "test tags",
-            (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None),
-            lambda item: -item[1].total,
+            tags,
+            (10, 3, 50, None, None, TimeRange(), 5, set()),
+            lambda item: -item[1].total_tasks,
         )
 
         output = sys.stdout.getvalue()
 
-        assert "python (10)" in output
+        assert "python" in output
 
     finally:
         sys.stdout = original_stdout
@@ -514,13 +530,19 @@ def test_display_category_with_time_ranges() -> None:
 
 def test_display_category_with_relations() -> None:
     """Test display_category includes relations."""
-    from orgstats.analyze import Frequency, Relations, TimeRange
+    from orgstats.analyze import Tag, TimeRange
     from orgstats.cli import display_category
 
-    frequencies = {"python": Frequency(total=10)}
-    time_ranges: dict[str, TimeRange] = {}
-    exclude_set: set[str] = set()
-    relations_dict = {"python": Relations(name="python", relations={"django": 5, "flask": 3})}
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(),
+            relations={"django": 5, "flask": 3},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+    }
 
     original_stdout = sys.stdout
     try:
@@ -528,9 +550,9 @@ def test_display_category_with_relations() -> None:
 
         display_category(
             "test tags",
-            (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None),
-            lambda item: -item[1].total,
+            tags,
+            (10, 3, 50, None, None, TimeRange(), 5, set()),
+            lambda item: -item[1].total_tasks,
         )
 
         output = sys.stdout.getvalue()
@@ -542,28 +564,83 @@ def test_display_category_with_relations() -> None:
         sys.stdout = original_stdout
 
 
+def test_display_category_with_max_items_zero() -> None:
+    """Test display_category with max_items=0 omits section entirely."""
+    from orgstats.analyze import Tag, TimeRange
+    from orgstats.cli import display_category
+
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(),
+            relations={},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+        "java": Tag(
+            name="java",
+            total_tasks=8,
+            time_range=TimeRange(),
+            relations={},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+    }
+
+    original_stdout = sys.stdout
+    try:
+        sys.stdout = StringIO()
+
+        display_category(
+            "test tags",
+            tags,
+            (10, 3, 50, None, None, TimeRange(), 0, set()),
+            lambda item: -item[1].total_tasks,
+        )
+
+        output = sys.stdout.getvalue()
+
+        assert output == ""
+        assert "Top test tags:" not in output
+
+    finally:
+        sys.stdout = original_stdout
+
+
 def test_display_results_with_tag_groups() -> None:
     """Test display_results shows tag groups."""
     from io import StringIO
 
-    from orgstats.analyze import (
-        AnalysisResult,
-        Frequency,
-        Group,
-        TimeRange,
-    )
+    from orgstats.analyze import AnalysisResult, Group, Tag, TimeRange
     from orgstats.cli import display_results
     from orgstats.histogram import Histogram
 
-    tag_groups = [Group(tags=["python", "programming", "coding"], time_range=TimeRange())]
+    tag_groups = [
+        Group(
+            tags=["python", "programming", "coding"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        )
+    ]
 
     result = AnalysisResult(
         total_tasks=3,
         task_states=Histogram(values={"DONE": 3}),
+        task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 3}),
-        tag_frequencies={"python": Frequency(total=3)},
-        tag_time_ranges={},
-        tag_relations={},
+        tags={
+            "python": Tag(
+                name="python",
+                relations={},
+                time_range=TimeRange(),
+                total_tasks=3,
+                avg_tasks_per_day=0.0,
+                max_single_day_count=0,
+            )
+        },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -572,14 +649,20 @@ def test_display_results_with_tag_groups() -> None:
     )
 
     args = argparse.Namespace(
-        show="tags", max_results=10, max_relations=3, min_group_size=3, buckets=50
+        show="tags",
+        max_results=10,
+        max_tags=5,
+        max_relations=3,
+        min_group_size=3,
+        max_groups=5,
+        buckets=50,
     )
 
     original_stdout = sys.stdout
     try:
         sys.stdout = StringIO()
 
-        display_results(result, args, set(), (None, None), (["DONE"], ["TODO"]))
+        display_results(result, [], args, (set(), None, None, ["DONE"], ["TODO"]))
 
         output = sys.stdout.getvalue()
 
@@ -594,27 +677,42 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
     """Test display_results filters tag groups by min_group_size."""
     from io import StringIO
 
-    from orgstats.analyze import (
-        AnalysisResult,
-        Frequency,
-        Group,
-        TimeRange,
-    )
+    from orgstats.analyze import AnalysisResult, Group, Tag, TimeRange
     from orgstats.cli import display_results
     from orgstats.histogram import Histogram
 
     tag_groups = [
-        Group(tags=["python", "programming"], time_range=TimeRange()),
-        Group(tags=["java", "programming", "coding"], time_range=TimeRange()),
+        Group(
+            tags=["python", "programming"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
+        Group(
+            tags=["java", "programming", "coding"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
     ]
 
     result = AnalysisResult(
         total_tasks=5,
         task_states=Histogram(values={"DONE": 5}),
+        task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 5}),
-        tag_frequencies={"python": Frequency(total=5)},
-        tag_time_ranges={},
-        tag_relations={},
+        tags={
+            "python": Tag(
+                name="python",
+                relations={},
+                time_range=TimeRange(),
+                total_tasks=5,
+                avg_tasks_per_day=0.0,
+                max_single_day_count=0,
+            )
+        },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -623,14 +721,20 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
     )
 
     args = argparse.Namespace(
-        show="tags", max_results=10, max_relations=3, min_group_size=3, buckets=50
+        show="tags",
+        max_results=10,
+        max_tags=5,
+        max_relations=3,
+        min_group_size=3,
+        max_groups=5,
+        buckets=50,
     )
 
     original_stdout = sys.stdout
     try:
         sys.stdout = StringIO()
 
-        display_results(result, args, set(), (None, None), (["DONE"], ["TODO"]))
+        display_results(result, [], args, (set(), None, None, ["DONE"], ["TODO"]))
 
         output = sys.stdout.getvalue()
 
@@ -646,27 +750,42 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
     """Test display_results filters excluded tags from groups."""
     from io import StringIO
 
-    from orgstats.analyze import (
-        AnalysisResult,
-        Frequency,
-        Group,
-        TimeRange,
-    )
+    from orgstats.analyze import AnalysisResult, Group, Tag, TimeRange
     from orgstats.cli import display_results
     from orgstats.histogram import Histogram
 
     tag_groups = [
-        Group(tags=["python", "test", "programming"], time_range=TimeRange()),
-        Group(tags=["java", "test"], time_range=TimeRange()),
+        Group(
+            tags=["python", "test", "programming"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
+        Group(
+            tags=["java", "test"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
     ]
 
     result = AnalysisResult(
         total_tasks=5,
         task_states=Histogram(values={"DONE": 5}),
+        task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 5}),
-        tag_frequencies={"python": Frequency(total=5)},
-        tag_time_ranges={},
-        tag_relations={},
+        tags={
+            "python": Tag(
+                name="python",
+                relations={},
+                time_range=TimeRange(),
+                total_tasks=5,
+                avg_tasks_per_day=0.0,
+                max_single_day_count=0,
+            )
+        },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -675,14 +794,20 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
     )
 
     args = argparse.Namespace(
-        show="tags", max_results=10, max_relations=3, min_group_size=2, buckets=50
+        show="tags",
+        max_results=10,
+        max_tags=5,
+        max_relations=3,
+        min_group_size=2,
+        max_groups=5,
+        buckets=50,
     )
 
     original_stdout = sys.stdout
     try:
         sys.stdout = StringIO()
 
-        display_results(result, args, {"test"}, (None, None), (["DONE"], ["TODO"]))
+        display_results(result, [], args, ({"test"}, None, None, ["DONE"], ["TODO"]))
 
         output = sys.stdout.getvalue()
 
@@ -698,21 +823,25 @@ def test_display_results_no_tag_groups() -> None:
     """Test display_results works when tag_groups is empty."""
     from io import StringIO
 
-    from orgstats.analyze import (
-        AnalysisResult,
-        Frequency,
-        TimeRange,
-    )
+    from orgstats.analyze import AnalysisResult, Tag, TimeRange
     from orgstats.cli import display_results
     from orgstats.histogram import Histogram
 
     result = AnalysisResult(
-        total_tasks=3,
-        task_states=Histogram(values={"DONE": 3}),
-        task_days=Histogram(values={"Monday": 3}),
-        tag_frequencies={"python": Frequency(total=3)},
-        tag_time_ranges={},
-        tag_relations={},
+        total_tasks=5,
+        task_states=Histogram(values={"DONE": 5}),
+        task_categories=Histogram(values={}),
+        task_days=Histogram(values={"Monday": 5}),
+        tags={
+            "python": Tag(
+                name="python",
+                relations={},
+                time_range=TimeRange(),
+                total_tasks=5,
+                avg_tasks_per_day=0.0,
+                max_single_day_count=0,
+            )
+        },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -721,18 +850,24 @@ def test_display_results_no_tag_groups() -> None:
     )
 
     args = argparse.Namespace(
-        show="tags", max_results=10, max_relations=3, min_group_size=3, buckets=50
+        show="tags",
+        max_results=10,
+        max_tags=5,
+        max_relations=3,
+        min_group_size=3,
+        max_groups=5,
+        buckets=50,
     )
 
     original_stdout = sys.stdout
     try:
         sys.stdout = StringIO()
 
-        display_results(result, args, set(), (None, None), (["DONE"], ["TODO"]))
+        display_results(result, [], args, (set(), None, None, ["DONE"], ["TODO"]))
 
         output = sys.stdout.getvalue()
 
-        assert "Tag groups:" not in output
+        assert "Tag groups:" in output
 
     finally:
         sys.stdout = original_stdout
@@ -812,15 +947,15 @@ def test_main_with_tag_groups_high_min_size() -> None:
     )
 
     assert result.returncode == 0
-    assert "Tag groups:" not in result.stdout
+    assert "Tag groups:" in result.stdout
 
 
 def test_filter_nodes_deprecated() -> None:
     """Test deprecated filter_nodes function still works."""
-    from orgstats.cli import filter_nodes, load_org_files
+    from orgstats.cli import filter_nodes, load_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-    nodes, _, _ = load_org_files([fixture_path], ["TODO"], ["DONE"])
+    nodes, _, _ = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
 
     filtered = filter_nodes(nodes, "simple")
 
@@ -829,10 +964,10 @@ def test_filter_nodes_deprecated() -> None:
 
 def test_filter_nodes_all() -> None:
     """Test filter_nodes with 'all' returns all nodes."""
-    from orgstats.cli import filter_nodes, load_org_files
+    from orgstats.cli import filter_nodes, load_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-    nodes, _, _ = load_org_files([fixture_path], ["TODO"], ["DONE"])
+    nodes, _, _ = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
 
     filtered = filter_nodes(nodes, "all")
 
@@ -903,3 +1038,112 @@ def test_main_entry_point() -> None:
 
     assert result.returncode == 0
     assert "Total tasks:" in result.stdout
+
+
+def test_display_groups_with_max_groups_zero() -> None:
+    """Test display_groups with max_groups=0 omits section entirely."""
+    from orgstats.analyze import Group, TimeRange
+    from orgstats.cli import display_groups
+
+    groups = [
+        Group(
+            tags=["python", "test"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        )
+    ]
+    exclude_set: set[str] = set()
+
+    original_stdout = sys.stdout
+    try:
+        sys.stdout = StringIO()
+
+        display_groups(groups, exclude_set, (2, 50, None, None, TimeRange()), 0)
+
+        output = sys.stdout.getvalue()
+
+        assert output == ""
+        assert "Tag groups:" not in output
+
+    finally:
+        sys.stdout = original_stdout
+
+
+def test_display_groups_with_max_groups_limit() -> None:
+    """Test display_groups respects max_groups limit."""
+    from orgstats.analyze import Group, TimeRange
+    from orgstats.cli import display_groups
+
+    groups = [
+        Group(
+            tags=["a", "b", "c"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
+        Group(
+            tags=["d", "e"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
+        Group(
+            tags=["f", "g"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
+    ]
+    exclude_set: set[str] = set()
+
+    original_stdout = sys.stdout
+    try:
+        sys.stdout = StringIO()
+
+        display_groups(groups, exclude_set, (2, 50, None, None, TimeRange()), 2)
+
+        output = sys.stdout.getvalue()
+
+        assert "Tag groups:" in output
+        assert "a, b, c" in output
+        assert "d, e" in output
+        assert "f, g" not in output
+
+    finally:
+        sys.stdout = original_stdout
+
+
+def test_display_groups_shows_empty_section() -> None:
+    """Test display_groups shows section heading with no groups when max_groups > 0."""
+    from orgstats.analyze import Group, TimeRange
+    from orgstats.cli import display_groups
+
+    groups = [
+        Group(
+            tags=["a", "b"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        )
+    ]
+    exclude_set: set[str] = set()
+
+    original_stdout = sys.stdout
+    try:
+        sys.stdout = StringIO()
+
+        display_groups(groups, exclude_set, (100, 50, None, None, TimeRange()), 5)
+
+        output = sys.stdout.getvalue()
+
+        assert "Tag groups:" in output
+        assert "a, b" not in output
+
+    finally:
+        sys.stdout = original_stdout

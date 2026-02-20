@@ -7,15 +7,14 @@ import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 import orgparse
 
 from orgstats.analyze import (
     AnalysisResult,
-    Frequency,
     Group,
-    Relations,
+    Tag,
     TimeRange,
     analyze,
     clean,
@@ -33,10 +32,11 @@ from orgstats.filters import (
     filter_repeats_above,
     filter_repeats_below,
     filter_tag,
-    gamify_exp,
+    get_gamify_category,
 )
 from orgstats.histogram import render_histogram
 from orgstats.plot import render_timeline_chart
+from orgstats.timestamp import extract_timestamp_any
 
 
 MAP: dict[str, str] = {}
@@ -125,6 +125,13 @@ DEFAULT_EXCLUDE = TAGS.union(HEADING).union(
 CATEGORY_NAMES = {"tags": "tags", "heading": "heading words", "body": "body words"}
 
 
+@dataclass
+class Filter:
+    """Specification for a single filter operation."""
+
+    filter: Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]
+
+
 def load_exclude_list(filepath: str | None) -> set[str]:
     """Load exclude list from a file (one word per line).
 
@@ -211,56 +218,124 @@ def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
     return (top_day.isoformat(), max_count)
 
 
+def select_earliest_date(
+    date_from: datetime | None,
+    global_timerange: TimeRange,
+    local_timerange: TimeRange,
+) -> date | None:
+    """Select earliest date using priority: user filter > global > local.
+
+    Args:
+        date_from: User-provided filter date or None
+        global_timerange: Global timerange across all tasks
+        local_timerange: Local timerange for specific item
+
+    Returns:
+        Selected earliest date or None if no dates available
+    """
+    if date_from:
+        return date_from.date()
+    if global_timerange.earliest:
+        return global_timerange.earliest.date()
+    if local_timerange.earliest:
+        return local_timerange.earliest.date()
+    return None
+
+
+def select_latest_date(
+    date_until: datetime | None,
+    global_timerange: TimeRange,
+    local_timerange: TimeRange,
+) -> date | None:
+    """Select latest date using priority: user filter > global > local.
+
+    Args:
+        date_until: User-provided filter date or None
+        global_timerange: Global timerange across all tasks
+        local_timerange: Local timerange for specific item
+
+    Returns:
+        Selected latest date or None if no dates available
+    """
+    if date_until:
+        return date_until.date()
+    if global_timerange.latest:
+        return global_timerange.latest.date()
+    if local_timerange.latest:
+        return local_timerange.latest.date()
+    if local_timerange.earliest:
+        return local_timerange.earliest.date()
+    return None
+
+
 def display_category(
     category_name: str,
-    data: tuple[dict[str, Frequency], dict[str, TimeRange], set[str], dict[str, Relations]],
-    config: tuple[int, int, int, datetime | None, datetime | None],
-    order_fn: Callable[[tuple[str, Frequency]], int],
+    tags: dict[str, Tag],
+    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange, int, set[str]],
+    order_fn: Callable[[tuple[str, Tag]], int],
 ) -> None:
     """Display formatted output for a single category.
 
     Args:
         category_name: Display name for the category (e.g., "tags", "heading words")
-        data: Tuple of (frequencies, time_ranges, exclude_set, relations_dict)
-        config: Tuple of (max_results, max_relations, num_buckets, date_from, date_until)
+        tags: Dictionary mapping tag names to Tag objects
+        config: Tuple of (max_results, max_relations, num_buckets, date_from, date_until,
+                         global_timerange, max_items, exclude_set)
         order_fn: Function to sort items by
     """
-    max_results, max_relations, num_buckets, date_from, date_until = config
-    frequencies, time_ranges, exclude_set, relations_dict = data
-    cleaned = clean(exclude_set, frequencies)
-    sorted_items = sorted(cleaned.items(), key=order_fn)[0:max_results]
+    (
+        _max_results,
+        max_relations,
+        num_buckets,
+        date_from,
+        date_until,
+        global_timerange,
+        max_items,
+        exclude_set,
+    ) = config
+
+    if max_items == 0:
+        return
+    cleaned = clean(exclude_set, tags)
+    sorted_items = sorted(cleaned.items(), key=order_fn)[0:max_items]
 
     print(f"\nTop {category_name}:")
-    for idx, (name, freq) in enumerate(sorted_items):
+
+    if not sorted_items:
+        print("  No results")
+        return
+    for idx, (name, tag) in enumerate(sorted_items):
         if idx > 0:
             print()
 
-        time_range = time_ranges.get(name)
+        time_range = tag.time_range
 
         if time_range and time_range.earliest and time_range.timeline:
-            earliest_date = date_from.date() if date_from else time_range.earliest.date()
-            latest_date = (
-                date_until.date()
-                if date_until
-                else (time_range.latest.date() if time_range.latest else time_range.earliest.date())
-            )
-            date_line, chart_line, underline = render_timeline_chart(
-                time_range.timeline,
-                earliest_date,
-                latest_date,
-                num_buckets,
-            )
-            print(f"  {date_line}")
-            print(f"  {chart_line}")
-            print(f"  {underline}")
+            earliest_date = select_earliest_date(date_from, global_timerange, time_range)
+            latest_date = select_latest_date(date_until, global_timerange, time_range)
 
-        print(f"  {name} ({freq.total})")
+            if earliest_date and latest_date:
+                date_line, chart_line, underline = render_timeline_chart(
+                    time_range.timeline,
+                    earliest_date,
+                    latest_date,
+                    num_buckets,
+                )
+                print(f"  {date_line}")
+                print(f"  {chart_line}")
+                print(f"  {underline}")
 
-        if name in relations_dict and relations_dict[name].relations:
+        print(f"  {name}")
+        print(f"    Total tasks: {tag.total_tasks}")
+        if tag.time_range.earliest and tag.time_range.latest:
+            print(f"    Average tasks per day: {tag.avg_tasks_per_day:.2f}")
+            print(f"    Max tasks on a single day: {tag.max_single_day_count}")
+
+        if max_relations > 0 and tag.relations:
             filtered_relations = {
                 rel_name: count
-                for rel_name, count in relations_dict[name].relations.items()
-                if rel_name not in exclude_set
+                for rel_name, count in tag.relations.items()
+                if rel_name.lower() not in {e.lower() for e in exclude_set}
             }
             sorted_relations = sorted(filtered_relations.items(), key=lambda x: x[1], reverse=True)[
                 0:max_relations
@@ -275,55 +350,114 @@ def display_category(
 def display_groups(
     groups: list[Group],
     exclude_set: set[str],
-    config: tuple[int, int, datetime | None, datetime | None],
+    config: tuple[int, int, datetime | None, datetime | None, TimeRange],
+    max_groups: int,
 ) -> None:
     """Display tag groups with timelines.
 
     Args:
         groups: List of Group objects
         exclude_set: Set of tags to exclude
-        config: Tuple of (min_group_size, num_buckets, date_from, date_until)
+        config: Tuple of (min_group_size, num_buckets, date_from, date_until, global_timerange)
+        max_groups: Maximum number of groups to display (0 to omit section entirely)
     """
-    min_group_size, num_buckets, date_from, date_until = config
-    if not groups:
+    if max_groups == 0:
         return
+
+    min_group_size, num_buckets, date_from, date_until, global_timerange = config
 
     filtered_groups = []
     for group in groups:
         filtered_tags = [tag for tag in group.tags if tag not in exclude_set]
         if len(filtered_tags) >= min_group_size:
-            filtered_groups.append((filtered_tags, group.time_range))
+            filtered_groups.append((filtered_tags, group))
 
     filtered_groups.sort(key=lambda x: len(x[0]), reverse=True)
+    filtered_groups = filtered_groups[:max_groups]
 
-    if filtered_groups:
-        print("\nTag groups:")
-        for idx, (group_tags, time_range) in enumerate(filtered_groups):
-            if idx > 0:
-                print()
+    print("\nTag groups:")
 
-            if date_from and date_until:
-                earliest_date = date_from.date()
-                latest_date = date_until.date()
-            elif time_range.earliest and time_range.latest:
-                earliest_date = time_range.earliest.date()
-                latest_date = time_range.latest.date()
-            else:
-                earliest_date = None
-                latest_date = None
+    if not filtered_groups:
+        print("  No results")
+        return
+    for idx, (group_tags, group) in enumerate(filtered_groups):
+        if idx > 0:
+            print()
 
-            if earliest_date and latest_date:
-                date_line, chart_line, underline = render_timeline_chart(
-                    time_range.timeline,
-                    earliest_date,
-                    latest_date,
-                    num_buckets,
-                )
-                print(f"  {date_line}")
-                print(f"  {chart_line}")
-                print(f"  {underline}")
+        earliest_date = select_earliest_date(date_from, global_timerange, group.time_range)
+        latest_date = select_latest_date(date_until, global_timerange, group.time_range)
 
-            print(f"  {', '.join(group_tags)}")
+        if earliest_date and latest_date:
+            date_line, chart_line, underline = render_timeline_chart(
+                group.time_range.timeline,
+                earliest_date,
+                latest_date,
+                num_buckets,
+            )
+            print(f"  {date_line}")
+            print(f"  {chart_line}")
+            print(f"  {underline}")
+
+        print(f"  {', '.join(group_tags)}")
+        print(f"    Total tasks: {group.total_tasks}")
+        print(f"    Average tasks per day: {group.avg_tasks_per_day:.2f}")
+        print(f"    Max tasks on a single day: {group.max_single_day_count}")
+
+
+def get_most_recent_timestamp(node: orgparse.node.OrgNode) -> datetime | None:
+    """Get the most recent timestamp from a node.
+
+    Args:
+        node: Org-mode node
+
+    Returns:
+        Most recent datetime or None if no timestamps found
+    """
+    timestamps = extract_timestamp_any(node)
+    return max(timestamps) if timestamps else None
+
+
+def get_top_tasks(
+    nodes: list[orgparse.node.OrgNode], max_results: int
+) -> list[orgparse.node.OrgNode]:
+    """Get top N nodes sorted by most recent timestamp.
+
+    Args:
+        nodes: List of org-mode nodes
+        max_results: Maximum number of results to return
+
+    Returns:
+        List of nodes sorted by most recent timestamp (descending)
+    """
+    nodes_with_timestamps: list[tuple[orgparse.node.OrgNode, datetime]] = []
+    for node in nodes:
+        timestamp = get_most_recent_timestamp(node)
+        if timestamp:
+            nodes_with_timestamps.append((node, timestamp))
+
+    sorted_nodes = sorted(nodes_with_timestamps, key=lambda x: x[1], reverse=True)
+
+    return [node for node, _ in sorted_nodes[:max_results]]
+
+
+def display_top_tasks(nodes: list[orgparse.node.OrgNode], max_results: int) -> None:
+    """Display top tasks sorted by most recent timestamp.
+
+    Args:
+        nodes: List of org-mode nodes
+        max_results: Maximum number of results to display
+    """
+    top_tasks = get_top_tasks(nodes, max_results)
+
+    if not top_tasks:
+        return
+
+    print("\nTop tasks:")
+    for node in top_tasks:
+        filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
+        todo_state = node.todo if node.todo else ""
+        heading = node.heading if node.heading else ""
+        print(f"  {filename}: {todo_state} {heading}".strip())
 
 
 def filter_nodes(nodes: list[orgparse.node.OrgNode], task_type: str) -> list[orgparse.node.OrgNode]:
@@ -339,21 +473,7 @@ def filter_nodes(nodes: list[orgparse.node.OrgNode], task_type: str) -> list[org
     if task_type == "all":
         return nodes
 
-    filtered = []
-    for node in nodes:
-        exp = gamify_exp(node)
-
-        if exp is None:
-            if task_type == "regular":
-                filtered.append(node)
-        elif (
-            (task_type == "simple" and exp < 10)
-            or (task_type == "regular" and 10 <= exp < 20)
-            or (task_type == "hard" and exp >= 20)
-        ):
-            filtered.append(node)
-
-    return filtered
+    return [node for node in nodes if task_type == get_gamify_category(node)]
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -385,6 +505,14 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--max-tags",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Maximum number of tags to display in Top tags section (default: 5, use 0 to omit section)",
+    )
+
+    parser.add_argument(
         "--exclude",
         type=str,
         metavar="FILE",
@@ -413,9 +541,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--max-relations",
         type=int,
-        default=3,
+        default=5,
         metavar="N",
-        help="Maximum number of relations to display per item (default: 3, must be >= 1)",
+        help="Maximum number of relations to display per item (default: 5, use 0 to omit sections)",
     )
 
     parser.add_argument(
@@ -428,9 +556,17 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--min-group-size",
         type=int,
-        default=3,
+        default=2,
         metavar="N",
-        help="Minimum group size to display (default: 3)",
+        help="Minimum group size to display (default: 2)",
+    )
+
+    parser.add_argument(
+        "--max-groups",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Maximum number of tag groups to display (default: 5, use 0 to omit section)",
     )
 
     parser.add_argument(
@@ -540,7 +676,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--filter-not-completed",
         action="store_true",
-        help="Filter tasks with todo state in todo keys",
+        help="Filter tasks with todo state in todo keys or without a todo state",
     )
 
     parser.add_argument(
@@ -601,23 +737,26 @@ def validate_pattern(pattern: str, option_name: str, use_multiline: bool = False
         sys.exit(1)
 
 
-def load_org_files(
-    filenames: list[str], todo_keys: list[str], done_keys: list[str]
+def load_nodes(
+    filenames: list[str], todo_keys: list[str], done_keys: list[str], filters: list[Filter]
 ) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
-    """Load and parse org-mode files.
+    """Load, parse, and filter org-mode files.
+
+    Processes each file separately: preprocess → parse → filter → extract keys → combine.
 
     Args:
         filenames: List of file paths to load
-        todo_keys: List of TODO state keywords
-        done_keys: List of DONE state keywords
+        todo_keys: List of TODO state keywords to prepend to files
+        done_keys: List of DONE state keywords to prepend to files
+        filters: List of filter specs to apply to nodes from each file
 
     Returns:
-        List of parsed org-mode nodes
+        Tuple of (filtered nodes, all todo keys, all done keys)
 
     Raises:
         SystemExit: If file cannot be read
     """
-    nodes: list[orgparse.node.OrgNode] = []
+    all_nodes: list[orgparse.node.OrgNode] = []
     all_todo_keys: set[str] = set(todo_keys)
     all_done_keys: set[str] = set(done_keys)
 
@@ -635,7 +774,13 @@ def load_org_files(
                 if ns is not None:
                     all_todo_keys = all_todo_keys.union(set(ns.env.todo_keys))
                     all_done_keys = all_done_keys.union(set(ns.env.done_keys))
-                    nodes = nodes + list(ns[1:])
+
+                    file_nodes = list(ns[1:])
+
+                    for filter_spec in filters:
+                        file_nodes = filter_spec.filter(file_nodes)
+
+                    all_nodes = all_nodes + file_nodes
         except FileNotFoundError:
             print(f"Error: File '{name}' not found", file=sys.stderr)
             sys.exit(1)
@@ -643,7 +788,7 @@ def load_org_files(
             print(f"Error: Permission denied for '{name}'", file=sys.stderr)
             sys.exit(1)
 
-    return nodes, list(all_todo_keys), list(all_done_keys)
+    return all_nodes, list(all_todo_keys), list(all_done_keys)
 
 
 def parse_date_argument(date_str: str, arg_name: str) -> datetime:
@@ -729,13 +874,6 @@ def parse_property_filter(property_str: str) -> tuple[str, str]:
 
     parts = property_str.split("=", 1)
     return (parts[0], parts[1])
-
-
-@dataclass
-class Filter:
-    """Specification for a single filter operation."""
-
-    filter: Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]
 
 
 def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
@@ -839,30 +977,21 @@ def handle_date_filter(arg_name: str, args: argparse.Namespace) -> list[Filter]:
     return []
 
 
-def handle_completion_filter(
-    arg_name: str,
-    args: argparse.Namespace,
-    done_keys: list[str],
-    todo_keys: list[str],
-) -> list[Filter]:
+def handle_completion_filter(arg_name: str, args: argparse.Namespace) -> list[Filter]:
     """Handle completion status filter arguments.
 
     Args:
         arg_name: Argument name
         args: Parsed arguments
-        done_keys: List of completion state keywords
-        todo_keys: List of TODO state keywords
 
     Returns:
         List of Filter objects (0 or 1 item)
     """
     if arg_name == "--filter-completed" and args.filter_completed:
-        keys = done_keys
-        return [Filter(lambda nodes: filter_completed(nodes, keys))]
+        return [Filter(filter_completed)]
 
     if arg_name == "--filter-not-completed" and args.filter_not_completed:
-        keys = todo_keys
-        return [Filter(lambda nodes: filter_not_completed(nodes, keys))]
+        return [Filter(filter_not_completed)]
 
     return []
 
@@ -973,18 +1102,13 @@ def handle_indexed_filter(
 
 
 def create_filter_specs_from_args(
-    args: argparse.Namespace,
-    filter_order: list[str],
-    done_keys: list[str],
-    todo_keys: list[str],
+    args: argparse.Namespace, filter_order: list[str]
 ) -> list[Filter]:
     """Create filter specifications from parsed arguments.
 
     Args:
         args: Parsed command-line arguments
         filter_order: List of arg_name tuples
-        done_keys: List of completion state keywords
-        todo_keys: List of TODO state keywords
 
     Returns:
         List of Filter objects in command-line order
@@ -1007,14 +1131,12 @@ def create_filter_specs_from_args(
         elif arg_name in ("--filter-property", "--filter-tag", "--filter-heading", "--filter-body"):
             filter_specs.extend(handle_indexed_filter(arg_name, args, index_trackers))
         elif arg_name in ("--filter-completed", "--filter-not-completed"):
-            filter_specs.extend(handle_completion_filter(arg_name, args, done_keys, todo_keys))
+            filter_specs.extend(handle_completion_filter(arg_name, args))
 
     return filter_specs
 
 
-def build_filter_chain(
-    args: argparse.Namespace, argv: list[str], done_keys: list[str], todo_keys: list[str]
-) -> list[Filter]:
+def build_filter_chain(args: argparse.Namespace, argv: list[str]) -> list[Filter]:
     """Build ordered list of filter functions from CLI arguments.
 
     Processes filters in command-line order. Expands --filter presets inline
@@ -1023,34 +1145,29 @@ def build_filter_chain(
     Args:
         args: Parsed command-line arguments
         argv: Raw sys.argv to determine ordering
-        done_keys: List of completion state keywords
-        todo_keys: List of TODO state keywords
 
     Returns:
         List of filter specs to apply sequentially
     """
     filter_order = parse_filter_order_from_argv(argv)
-    return create_filter_specs_from_args(args, filter_order, done_keys, todo_keys)
+    return create_filter_specs_from_args(args, filter_order)
 
 
 def display_results(
     result: AnalysisResult,
+    nodes: list[orgparse.node.OrgNode],
     args: argparse.Namespace,
-    exclude_set: set[str],
-    date_range: tuple[datetime | None, datetime | None],
-    task_keys: tuple[list[str], list[str]],
+    display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str]],
 ) -> None:
     """Display analysis results in formatted output.
 
     Args:
         result: Analysis results to display
+        nodes: Filtered org-mode nodes used for analysis
         args: Command-line arguments containing display configuration
-        exclude_set: Set of items to exclude from display
-        date_range: Tuple of (date_from, date_until) for chart display range
-        task_keys: Tuple of (done_keys, todo_keys) state keywords
+        display_config: Tuple of (exclude_set, date_from, date_until, done_keys, todo_keys)
     """
-    date_from, date_until = date_range
-    done_keys, todo_keys = task_keys
+    exclude_set, date_from, date_until, done_keys, todo_keys = display_config
     if result.timerange.earliest and result.timerange.latest and result.timerange.timeline:
         earliest_date = date_from.date() if date_from else result.timerange.earliest.date()
         latest_date = date_until.date() if date_until else result.timerange.latest.date()
@@ -1068,8 +1185,8 @@ def display_results(
     print(f"Total tasks: {result.total_tasks}")
 
     if result.timerange.earliest and result.timerange.latest:
-        print(f"Average tasks completed per day: {result.avg_tasks_per_day:.2f}")
-        print(f"Max tasks completed on a single day: {result.max_single_day_count}")
+        print(f"Average tasks per day: {result.avg_tasks_per_day:.2f}")
+        print(f"Max tasks on a single day: {result.max_single_day_count}")
         print(f"Max repeats of a single task: {result.max_repeat_count}")
 
     print("\nTask states:")
@@ -1081,29 +1198,56 @@ def display_results(
     for line in histogram_lines:
         print(f"  {line}")
 
-    print("\nTask completion by day of week:")
-    day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    print("\nTask categories:")
+    category_order = ["simple", "regular", "hard"]
+    histogram_lines = render_histogram(result.task_categories, args.buckets, category_order)
+    for line in histogram_lines:
+        print(f"  {line}")
+
+    print("\nTask occurrence by day of week:")
+    day_order = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+        "unknown",
+    ]
     histogram_lines = render_histogram(result.task_days, args.buckets, day_order)
     for line in histogram_lines:
         print(f"  {line}")
 
+    display_top_tasks(nodes, args.max_results)
+
     category_name = CATEGORY_NAMES[args.show]
 
-    def order_by_total(item: tuple[str, Frequency]) -> int:
+    def order_by_total(item: tuple[str, Tag]) -> int:
         """Sort by total count (descending)."""
-        return -item[1].total
+        return -item[1].total_tasks
 
     display_category(
         category_name,
-        (result.tag_frequencies, result.tag_time_ranges, exclude_set, result.tag_relations),
-        (args.max_results, args.max_relations, args.buckets, date_from, date_until),
+        result.tags,
+        (
+            args.max_results,
+            args.max_relations,
+            args.buckets,
+            date_from,
+            date_until,
+            result.timerange,
+            args.max_tags,
+            exclude_set,
+        ),
         order_by_total,
     )
 
     display_groups(
         result.tag_groups,
         exclude_set,
-        (args.min_group_size, args.buckets, date_from, date_until),
+        (args.min_group_size, args.buckets, date_from, date_until, result.timerange),
+        args.max_groups,
     )
 
 
@@ -1119,8 +1263,16 @@ def validate_arguments(args: argparse.Namespace) -> tuple[list[str], list[str]]:
     Raises:
         SystemExit: If validation fails
     """
-    if args.max_relations < 1:
-        print("Error: --max-relations must be at least 1", file=sys.stderr)
+    if args.max_relations < 0:
+        print("Error: --max-relations must be non-negative", file=sys.stderr)
+        sys.exit(1)
+
+    if args.max_tags < 0:
+        print("Error: --max-tags must be non-negative", file=sys.stderr)
+        sys.exit(1)
+
+    if args.max_groups < 0:
+        print("Error: --max-groups must be non-negative", file=sys.stderr)
         sys.exit(1)
 
     if args.min_group_size < 0:
@@ -1158,19 +1310,15 @@ def main() -> None:
     mapping = load_mapping(args.mapping) or MAP
     exclude_set = load_exclude_list(args.exclude) or DEFAULT_EXCLUDE
 
-    nodes, todo_keys, done_keys = load_org_files(args.files, todo_keys, done_keys)
+    filters = build_filter_chain(args, sys.argv)
 
-    filters = build_filter_chain(args, sys.argv, done_keys, todo_keys)
+    nodes, todo_keys, done_keys = load_nodes(args.files, todo_keys, done_keys, filters)
 
-    filtered_nodes = nodes
-    for f in filters:
-        filtered_nodes = f.filter(filtered_nodes)
-
-    if not filtered_nodes:
+    if not nodes:
         print("No results")
         return
 
-    result = analyze(filtered_nodes, mapping, args.show, args.max_relations, done_keys)
+    result = analyze(nodes, mapping, args.show, args.max_relations)
 
     date_from = None
     date_until = None
@@ -1179,7 +1327,7 @@ def main() -> None:
     if args.filter_date_until is not None:
         date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
 
-    display_results(result, args, exclude_set, (date_from, date_until), (done_keys, todo_keys))
+    display_results(result, nodes, args, (exclude_set, date_from, date_until, done_keys, todo_keys))
 
 
 if __name__ == "__main__":
