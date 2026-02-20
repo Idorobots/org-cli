@@ -310,3 +310,41 @@ def test_integration_filtered_repeats_in_analysis() -> None:
 
     assert filtered_result.tag_frequencies["tag1"].total == 1
     assert filtered_result.tag_frequencies["tag2"].total == 1
+
+
+def test_integration_category_histogram() -> None:
+    """Test category histogram with tasks of different gamify_exp values."""
+    org_text = """* DONE Simple task 1
+:PROPERTIES:
+:gamify_exp: 5
+:END:
+
+* DONE Simple task 2
+:PROPERTIES:
+:gamify_exp: 8
+:END:
+
+* DONE Regular task 1
+:PROPERTIES:
+:gamify_exp: 10
+:END:
+
+* DONE Regular task 2
+:PROPERTIES:
+:gamify_exp: 15
+:END:
+
+* DONE Regular task 3
+
+* TODO Not counted
+:PROPERTIES:
+:gamify_exp: 5
+:END:
+"""
+    nodes = list(orgparse.loads(org_text)[1:])
+
+    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+
+    assert result.task_categories.values["simple"] == 2
+    assert result.task_categories.values["regular"] == 3
+    assert result.task_categories.values.get("hard", 0) == 0

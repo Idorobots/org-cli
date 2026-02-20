@@ -5,6 +5,7 @@ from datetime import date, datetime
 
 import orgparse
 
+from orgstats.filters import parse_gamify_exp
 from orgstats.histogram import Histogram
 from orgstats.timestamp import extract_timestamp
 
@@ -131,6 +132,7 @@ class AnalysisResult:
     Attributes:
         total_tasks: Total number of tasks analyzed
         task_states: Histogram of task states (TODO, DONE, DELEGATED, CANCELLED, SUSPENDED, other)
+        task_categories: Histogram of completed task categories by gamify_exp (simple, regular, hard)
         task_days: Histogram of DONE task completions by day of week
         timerange: Global time range for all completed (DONE) tasks
         avg_tasks_per_day: Average tasks completed per day (total DONE / days spanned)
@@ -147,6 +149,7 @@ class AnalysisResult:
 
     total_tasks: int
     task_states: Histogram
+    task_categories: Histogram
     task_days: Histogram
     timerange: TimeRange
     avg_tasks_per_day: float
@@ -360,6 +363,48 @@ def compute_day_of_week_histogram(
                 task_days.update("unknown", 1)
 
     return task_days
+
+
+def compute_category_histogram(
+    nodes: list[orgparse.node.OrgNode], done_keys: list[str]
+) -> Histogram:
+    """Compute histogram of task categories for completed tasks.
+
+    Categorizes completed tasks by gamify_exp value:
+    - simple: gamify_exp < 10
+    - regular: 10 <= gamify_exp < 20 (or missing gamify_exp)
+    - hard: gamify_exp >= 20
+
+    Args:
+        nodes: List of org-mode nodes
+        done_keys: List of completion state keywords
+
+    Returns:
+        Histogram with counts for each category (simple, regular, hard)
+    """
+    task_categories = Histogram(values={})
+
+    for node in nodes:
+        done_count = _compute_done_count(node, done_keys)
+
+        if done_count > 0:
+            gamify_exp_raw = node.properties.get("gamify_exp", None)
+            gamify_exp_str = str(gamify_exp_raw) if gamify_exp_raw is not None else None
+
+            exp_value = parse_gamify_exp(gamify_exp_str)
+
+            if exp_value is None:
+                category = "regular"
+            elif exp_value < 10:
+                category = "simple"
+            elif exp_value < 20:
+                category = "regular"
+            else:
+                category = "hard"
+
+            task_categories.update(category, done_count)
+
+    return task_categories
 
 
 def compute_global_timerange(nodes: list[orgparse.node.OrgNode], done_keys: list[str]) -> TimeRange:
@@ -630,6 +675,7 @@ def analyze(
     tag_time_ranges = compute_time_ranges(nodes, mapping, category, done_keys)
     tag_groups = compute_groups(tag_relations, max_relations, tag_time_ranges)
     task_states = compute_task_state_histogram(nodes)
+    task_categories = compute_category_histogram(nodes, done_keys)
     task_days = compute_day_of_week_histogram(nodes, done_keys)
     global_timerange = compute_global_timerange(nodes, done_keys)
     total, max_repeat_count = compute_task_stats(nodes, done_keys)
@@ -640,6 +686,7 @@ def analyze(
     return AnalysisResult(
         total_tasks=total,
         task_states=task_states,
+        task_categories=task_categories,
         task_days=task_days,
         timerange=global_timerange,
         avg_tasks_per_day=avg_tasks_per_day,

@@ -594,6 +594,7 @@ def test_display_results_with_tag_groups() -> None:
     result = AnalysisResult(
         total_tasks=3,
         task_states=Histogram(values={"DONE": 3}),
+        task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 3}),
         tag_frequencies={"python": Frequency(total=3)},
         tag_time_ranges={},
@@ -651,6 +652,7 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
     result = AnalysisResult(
         total_tasks=5,
         task_states=Histogram(values={"DONE": 5}),
+        task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 5}),
         tag_frequencies={"python": Frequency(total=5)},
         tag_time_ranges={},
@@ -709,6 +711,7 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
     result = AnalysisResult(
         total_tasks=5,
         task_states=Histogram(values={"DONE": 5}),
+        task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 5}),
         tag_frequencies={"python": Frequency(total=5)},
         tag_time_ranges={},
@@ -759,10 +762,11 @@ def test_display_results_no_tag_groups() -> None:
     from orgstats.histogram import Histogram
 
     result = AnalysisResult(
-        total_tasks=3,
-        task_states=Histogram(values={"DONE": 3}),
-        task_days=Histogram(values={"Monday": 3}),
-        tag_frequencies={"python": Frequency(total=3)},
+        total_tasks=5,
+        task_states=Histogram(values={"DONE": 5}),
+        task_categories=Histogram(values={}),
+        task_days=Histogram(values={"Monday": 5}),
+        tag_frequencies={"python": Frequency(total=5)},
         tag_time_ranges={},
         tag_relations={},
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
