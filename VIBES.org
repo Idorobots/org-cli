@@ -1248,7 +1248,11 @@ To validate:
 
 Don't worry about backwards compatibility, completed task stats can be fetched explicitly with ~--filter-completed~.
 
-** Broken test slop                                                                   :Test:Cleanup:
+** REWORKED Broken test slop                                                          :Test:Cleanup:
+:LOGBOOK:
+- State "REWORKED"   from              [2026-02-20 Fri 20:07] \\
+  Needed manual work.
+:END:
 *** DONE Cleanup and removal
 :LOGBOOK:
 - State "DONE"       from              [2026-02-20 Fri 19:27] \\
@@ -1278,14 +1282,21 @@ Please fix the linter errors in tests. The test code is as important as the main
   Did this myself. Turns out it was due to the missing "unknown" category display.
 :END:
 
-** TODO Display inconsistencies fixes                                                       :UX:Bug:
+** REWORKED Display inconsistencies fixes                                                   :UX:Bug:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-20 Fri 20:24] \\
+  Neded some manual intervention.
+:END:
 There are some inconsistencies in data display. I'd like to fix those inconsistencies:
 
 - When a section is requested (corresponding max filter > 0) but there are no results. Show the section header and "No results" below. The "No results" string should be indented as usual.
 
 - When a section is not requested (max == 0) omit the section.
 
-- --filter-not-completed should also include tasks withuout a todo state (so, task state in todo keys or absent).
+- --filter-not-completed should also include tasks withuout a todo state (so, it's effectively a reverse of the --filter-complete, task state must be in todo keys or absent).
+
+** Group computation performance optimization                                         :Optimization:
+Computing filtered node lists for each group is pretty slow. This needs to be improved, so that we iterate over the nodes once as that's a much larger set.
 
 ** TODO Output colors etc                                                                   :TUI:UX:
 Please add a boolean CLI switch called ~--color~ that defaults to ~true~. This switch should be used to enable/disable the coloring of the CLI output. When the switch is set to ~true~, the CLI output should be colored. If the switch is set to ~false~ then the output should not be colored (same as currently). The details of how the coloring should be done follows soon.

@@ -362,6 +362,26 @@ def _make_completion_predicate(
     return predicate
 
 
+def _make_not_completion_predicate(
+    keys: list[str],
+) -> Callable[[orgparse.date.OrgDateRepeatedTask], bool]:
+    """Create a predicate function for checking not-completed status.
+
+    Includes tasks with state in keys OR without a state.
+
+    Args:
+        keys: List of state keywords
+
+    Returns:
+        Predicate function
+    """
+
+    def predicate(rt: orgparse.date.OrgDateRepeatedTask) -> bool:
+        return rt.after in keys or not rt.after
+
+    return predicate
+
+
 def filter_completed(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
     """Filter nodes with todo state in node.env.done_keys.
 
@@ -390,11 +410,12 @@ def filter_completed(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.O
 
 
 def filter_not_completed(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
-    """Filter nodes with todo state in node.env.todo_keys.
+    """Filter nodes with todo state in node.env.todo_keys or without a todo state.
 
     For nodes with repeated tasks, filters the repeated_tasks list to only include
-    tasks with after state in the node's environment todo_keys. For nodes without
-    repeated tasks, checks node.todo against node.env.todo_keys.
+    tasks with after state in the node's environment todo_keys or without a state.
+    For nodes without repeated tasks, checks node.todo against node.env.todo_keys
+    or includes nodes without a todo state.
 
     Args:
         nodes: List of org-mode nodes to filter
@@ -407,10 +428,10 @@ def filter_not_completed(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.no
     for node in nodes:
         todo_keys = node.env.todo_keys if hasattr(node, "env") else []
         if node.repeated_tasks:
-            filtered_node = _filter_node_repeats(node, _make_completion_predicate(todo_keys))
+            filtered_node = _filter_node_repeats(node, _make_not_completion_predicate(todo_keys))
             if filtered_node is not None:
                 result.append(filtered_node)
-        elif node.todo in todo_keys:
+        elif node.todo in todo_keys or not node.todo:
             result.append(node)
 
     return result

@@ -300,6 +300,10 @@ def display_category(
     sorted_items = sorted(cleaned.items(), key=order_fn)[0:max_items]
 
     print(f"\nTop {category_name}:")
+
+    if not sorted_items:
+        print("  No results")
+        return
     for idx, (name, tag) in enumerate(sorted_items):
         if idx > 0:
             print()
@@ -372,6 +376,10 @@ def display_groups(
     filtered_groups = filtered_groups[:max_groups]
 
     print("\nTag groups:")
+
+    if not filtered_groups:
+        print("  No results")
+        return
     for idx, (group_tags, group) in enumerate(filtered_groups):
         if idx > 0:
             print()
@@ -668,7 +676,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--filter-not-completed",
         action="store_true",
-        help="Filter tasks with todo state in todo keys",
+        help="Filter tasks with todo state in todo keys or without a todo state",
     )
 
     parser.add_argument(
