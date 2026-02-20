@@ -431,7 +431,7 @@ def test_cli_max_relations_shows_no_results() -> None:
         display_category(
             "test tags",
             (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None),
+            (10, 3, 50, None, None, TimeRange()),
             lambda item: -item[1].total,
             10,
         )
@@ -464,7 +464,7 @@ def test_cli_max_relations_zero_skips_relations() -> None:
         display_category(
             "test tags",
             (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 0, 50, None, None),
+            (10, 0, 50, None, None, TimeRange()),
             lambda item: -item[1].total,
             10,
         )

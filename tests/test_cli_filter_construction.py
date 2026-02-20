@@ -461,7 +461,7 @@ def test_display_category() -> None:
         display_category(
             "test tags",
             (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None),
+            (10, 3, 50, None, None, TimeRange()),
             lambda item: -item[1].total,
             10,
         )
@@ -501,7 +501,7 @@ def test_display_category_with_time_ranges() -> None:
         display_category(
             "test tags",
             (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None),
+            (10, 3, 50, None, None, TimeRange()),
             lambda item: -item[1].total,
             10,
         )
@@ -531,7 +531,7 @@ def test_display_category_with_relations() -> None:
         display_category(
             "test tags",
             (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None),
+            (10, 3, 50, None, None, TimeRange()),
             lambda item: -item[1].total,
             10,
         )
@@ -562,7 +562,7 @@ def test_display_category_with_max_items_zero() -> None:
         display_category(
             "test tags",
             (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None),
+            (10, 3, 50, None, None, TimeRange()),
             lambda item: -item[1].total,
             0,
         )
@@ -975,7 +975,7 @@ def test_display_groups_with_max_groups_zero() -> None:
     try:
         sys.stdout = StringIO()
 
-        display_groups(groups, exclude_set, (2, 50, None, None), 0)
+        display_groups(groups, exclude_set, (2, 50, None, None, TimeRange()), 0)
 
         output = sys.stdout.getvalue()
 
@@ -1002,7 +1002,7 @@ def test_display_groups_with_max_groups_limit() -> None:
     try:
         sys.stdout = StringIO()
 
-        display_groups(groups, exclude_set, (2, 50, None, None), 2)
+        display_groups(groups, exclude_set, (2, 50, None, None, TimeRange()), 2)
 
         output = sys.stdout.getvalue()
 
@@ -1027,7 +1027,7 @@ def test_display_groups_shows_empty_section() -> None:
     try:
         sys.stdout = StringIO()
 
-        display_groups(groups, exclude_set, (100, 50, None, None), 5)
+        display_groups(groups, exclude_set, (100, 50, None, None, TimeRange()), 5)
 
         output = sys.stdout.getvalue()
 

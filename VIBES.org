@@ -1135,6 +1135,13 @@ Change the semantics of the ~--max-relations~ switch, so that it defaults to 5. 
 
 It is completely OK if there are fewer results than the limit. Do show the section title and "No results" in such a case (unless the user requested 0 results).
 
+** DONE Consistent timerange on all charts                                                  :UX:TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-20 Fri 11:53] \\
+  The AI added a bit of boilerplatey code to handle the various time range limits but it works over all.
+:END:
+When date filters are not provided, adjust the display of all per-tag & per-group timeline plots to the global timerange. The order of preference for dates is: user-provided filters, global timerange, local timerange.
+
 ** TODO Task "category" histogram                                                     :Analysis:TUI:
 Add an additional histogram based on the ~gamify_exp~ property - each task should be classified as ~simple~, ~regular~ or ~hard~ and the corresponding histogram category incremented. Make sure to take the repeated tasks into account, but only the completed ones.
 
@@ -1249,9 +1256,6 @@ Please add colors to the CLI output:
 You can use Python's ~colorama~ library to get colors in.
 
 Please make sure that the current tests pass by setting the color switch to false. Please add additional tests that specifically test for the colored output.
-
-** TODO Consistent timerange an all charts
-When date filters are not provided, adjust the display of all per-tag & per-group timeline plots to the global timerange. The order of preference for dates is: user-provided filters, global timerange, local timerange.
 
 ** Another attempt at a fix for task states counts
 Now the counts for day of week histogram are higher than the total count of done tasks. Likely, now it's the done task count that's wrong.

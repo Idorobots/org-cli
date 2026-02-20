@@ -7,7 +7,7 @@ import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 import orgparse
 
@@ -219,10 +219,60 @@ def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
     return (top_day.isoformat(), max_count)
 
 
+def select_earliest_date(
+    date_from: datetime | None,
+    global_timerange: TimeRange,
+    local_timerange: TimeRange,
+) -> date | None:
+    """Select earliest date using priority: user filter > global > local.
+
+    Args:
+        date_from: User-provided filter date or None
+        global_timerange: Global timerange across all tasks
+        local_timerange: Local timerange for specific item
+
+    Returns:
+        Selected earliest date or None if no dates available
+    """
+    if date_from:
+        return date_from.date()
+    if global_timerange.earliest:
+        return global_timerange.earliest.date()
+    if local_timerange.earliest:
+        return local_timerange.earliest.date()
+    return None
+
+
+def select_latest_date(
+    date_until: datetime | None,
+    global_timerange: TimeRange,
+    local_timerange: TimeRange,
+) -> date | None:
+    """Select latest date using priority: user filter > global > local.
+
+    Args:
+        date_until: User-provided filter date or None
+        global_timerange: Global timerange across all tasks
+        local_timerange: Local timerange for specific item
+
+    Returns:
+        Selected latest date or None if no dates available
+    """
+    if date_until:
+        return date_until.date()
+    if global_timerange.latest:
+        return global_timerange.latest.date()
+    if local_timerange.latest:
+        return local_timerange.latest.date()
+    if local_timerange.earliest:
+        return local_timerange.earliest.date()
+    return None
+
+
 def display_category(
     category_name: str,
     data: tuple[dict[str, Frequency], dict[str, TimeRange], set[str], dict[str, Relations]],
-    config: tuple[int, int, int, datetime | None, datetime | None],
+    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange],
     order_fn: Callable[[tuple[str, Frequency]], int],
     max_items: int,
 ) -> None:
@@ -231,14 +281,15 @@ def display_category(
     Args:
         category_name: Display name for the category (e.g., "tags", "heading words")
         data: Tuple of (frequencies, time_ranges, exclude_set, relations_dict)
-        config: Tuple of (max_results, max_relations, num_buckets, date_from, date_until)
+        config: Tuple of (max_results, max_relations, num_buckets, date_from, date_until,
+                         global_timerange)
         order_fn: Function to sort items by
         max_items: Maximum number of items to display (0 to omit section entirely)
     """
     if max_items == 0:
         return
 
-    _max_results, max_relations, num_buckets, date_from, date_until = config
+    _max_results, max_relations, num_buckets, date_from, date_until, global_timerange = config
     frequencies, time_ranges, exclude_set, relations_dict = data
     cleaned = clean(exclude_set, frequencies)
     sorted_items = sorted(cleaned.items(), key=order_fn)[0:max_items]
@@ -251,21 +302,19 @@ def display_category(
         time_range = time_ranges.get(name)
 
         if time_range and time_range.earliest and time_range.timeline:
-            earliest_date = date_from.date() if date_from else time_range.earliest.date()
-            latest_date = (
-                date_until.date()
-                if date_until
-                else (time_range.latest.date() if time_range.latest else time_range.earliest.date())
-            )
-            date_line, chart_line, underline = render_timeline_chart(
-                time_range.timeline,
-                earliest_date,
-                latest_date,
-                num_buckets,
-            )
-            print(f"  {date_line}")
-            print(f"  {chart_line}")
-            print(f"  {underline}")
+            earliest_date = select_earliest_date(date_from, global_timerange, time_range)
+            latest_date = select_latest_date(date_until, global_timerange, time_range)
+
+            if earliest_date and latest_date:
+                date_line, chart_line, underline = render_timeline_chart(
+                    time_range.timeline,
+                    earliest_date,
+                    latest_date,
+                    num_buckets,
+                )
+                print(f"  {date_line}")
+                print(f"  {chart_line}")
+                print(f"  {underline}")
 
         print(f"  {name} ({freq.total})")
 
@@ -290,7 +339,7 @@ def display_category(
 def display_groups(
     groups: list[Group],
     exclude_set: set[str],
-    config: tuple[int, int, datetime | None, datetime | None],
+    config: tuple[int, int, datetime | None, datetime | None, TimeRange],
     max_groups: int,
 ) -> None:
     """Display tag groups with timelines.
@@ -298,13 +347,13 @@ def display_groups(
     Args:
         groups: List of Group objects
         exclude_set: Set of tags to exclude
-        config: Tuple of (min_group_size, num_buckets, date_from, date_until)
+        config: Tuple of (min_group_size, num_buckets, date_from, date_until, global_timerange)
         max_groups: Maximum number of groups to display (0 to omit section entirely)
     """
     if max_groups == 0:
         return
 
-    min_group_size, num_buckets, date_from, date_until = config
+    min_group_size, num_buckets, date_from, date_until, global_timerange = config
 
     filtered_groups = []
     for group in groups:
@@ -320,15 +369,8 @@ def display_groups(
         if idx > 0:
             print()
 
-        if date_from and date_until:
-            earliest_date = date_from.date()
-            latest_date = date_until.date()
-        elif time_range.earliest and time_range.latest:
-            earliest_date = time_range.earliest.date()
-            latest_date = time_range.latest.date()
-        else:
-            earliest_date = None
-            latest_date = None
+        earliest_date = select_earliest_date(date_from, global_timerange, time_range)
+        latest_date = select_latest_date(date_until, global_timerange, time_range)
 
         if earliest_date and latest_date:
             date_line, chart_line, underline = render_timeline_chart(
@@ -1169,7 +1211,14 @@ def display_results(
     display_category(
         category_name,
         (result.tag_frequencies, result.tag_time_ranges, exclude_set, result.tag_relations),
-        (args.max_results, args.max_relations, args.buckets, date_from, date_until),
+        (
+            args.max_results,
+            args.max_relations,
+            args.buckets,
+            date_from,
+            date_until,
+            result.timerange,
+        ),
         order_by_total,
         args.max_tags,
     )
@@ -1177,7 +1226,7 @@ def display_results(
     display_groups(
         result.tag_groups,
         exclude_set,
-        (args.min_group_size, args.buckets, date_from, date_until),
+        (args.min_group_size, args.buckets, date_from, date_until, result.timerange),
         args.max_groups,
     )
 
