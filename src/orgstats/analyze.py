@@ -140,10 +140,16 @@ class Group:
     Attributes:
         tags: List of tag names in this group, sorted alphabetically
         time_range: Combined time range for all tags in the group
+        total_tasks: Total number of tasks across all tags in the group
+        avg_tasks_per_day: Average tasks completed per day for the group
+        max_single_day_count: Maximum tasks completed on a single day for the group
     """
 
     tags: list[str]
     time_range: TimeRange
+    total_tasks: int
+    avg_tasks_per_day: float
+    max_single_day_count: int
 
 
 @dataclass
@@ -688,10 +694,23 @@ def compute_groups(tags: dict[str, Tag], max_relations: int) -> list[Group]:
             strongconnect(node)
 
     tag_time_ranges = {tag_name: tag_obj.time_range for tag_name, tag_obj in tags.items()}
-    return [
-        Group(tags=sorted(scc), time_range=_combine_time_ranges(tag_time_ranges, scc))
-        for scc in sccs
-    ]
+    groups = []
+    for scc in sccs:
+        combined_time_range = _combine_time_ranges(tag_time_ranges, scc)
+        total_tasks = sum(tags[tag_name].total_tasks for tag_name in scc)
+        avg_per_day = compute_avg_tasks_per_day(combined_time_range, total_tasks)
+        max_single_day = compute_max_single_day(combined_time_range)
+
+        groups.append(
+            Group(
+                tags=sorted(scc),
+                time_range=combined_time_range,
+                total_tasks=total_tasks,
+                avg_tasks_per_day=avg_per_day,
+                max_single_day_count=max_single_day,
+            )
+        )
+    return groups
 
 
 def analyze(

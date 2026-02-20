@@ -5,13 +5,18 @@ from datetime import date, datetime
 from orgstats.analyze import Tag, TimeRange, compute_groups
 
 
-def make_tag(name: str, relations_dict: dict[str, int], time_range: TimeRange | None = None) -> Tag:
+def make_tag(
+    name: str,
+    relations_dict: dict[str, int],
+    time_range: TimeRange | None = None,
+    total_tasks: int = 0,
+) -> Tag:
     """Helper to create a Tag with specified relations."""
     return Tag(
         name=name,
         relations=relations_dict,
         time_range=time_range or TimeRange(),
-        total_tasks=0,
+        total_tasks=total_tasks,
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
     )
@@ -348,3 +353,189 @@ def test_compute_groups_multiple_groups_separate_time_ranges() -> None:
     java_group = next(g for g in groups if "java" in g.tags)
     assert java_group.time_range.earliest == datetime(2023, 6, 1)
     assert java_group.time_range.latest == datetime(2023, 6, 15)
+
+
+def test_compute_groups_total_tasks_sum() -> None:
+    """Test that total_tasks is correctly summed from group members."""
+    tags = {
+        "python": make_tag("python", {"testing": 5}, total_tasks=10),
+        "testing": make_tag("testing", {"python": 5}, total_tasks=8),
+    }
+    groups = compute_groups(tags, max_relations=3)
+
+    assert len(groups) == 1
+    assert groups[0].total_tasks == 18
+
+
+def test_compute_groups_total_tasks_multiple_groups() -> None:
+    """Test total_tasks for multiple separate groups."""
+    tags = {
+        "python": make_tag("python", {"testing": 5}, total_tasks=10),
+        "testing": make_tag("testing", {"python": 5}, total_tasks=8),
+        "java": make_tag("java", {"maven": 3}, total_tasks=5),
+        "maven": make_tag("maven", {"java": 3}, total_tasks=7),
+    }
+    groups = compute_groups(tags, max_relations=3)
+
+    assert len(groups) == 2
+
+    python_group = next(g for g in groups if "python" in g.tags)
+    assert python_group.total_tasks == 18
+
+    java_group = next(g for g in groups if "java" in g.tags)
+    assert java_group.total_tasks == 12
+
+
+def test_compute_groups_avg_tasks_per_day() -> None:
+    """Test that avg_tasks_per_day is computed correctly."""
+    python_time_range = TimeRange(
+        earliest=datetime(2023, 1, 1),
+        latest=datetime(2023, 1, 5),
+        timeline={date(2023, 1, 1): 3, date(2023, 1, 5): 2},
+    )
+    testing_time_range = TimeRange(
+        earliest=datetime(2023, 1, 3),
+        latest=datetime(2023, 1, 7),
+        timeline={date(2023, 1, 3): 4, date(2023, 1, 7): 1},
+    )
+
+    tags = {
+        "python": make_tag("python", {"testing": 5}, python_time_range, total_tasks=5),
+        "testing": make_tag("testing", {"python": 5}, testing_time_range, total_tasks=5),
+    }
+    groups = compute_groups(tags, max_relations=3)
+
+    assert len(groups) == 1
+    assert groups[0].time_range.earliest == datetime(2023, 1, 1)
+    assert groups[0].time_range.latest == datetime(2023, 1, 7)
+    assert groups[0].total_tasks == 10
+    assert groups[0].avg_tasks_per_day == 10 / 7
+
+
+def test_compute_groups_avg_tasks_per_day_empty_timerange() -> None:
+    """Test that avg_tasks_per_day is 0.0 when timerange is empty."""
+    tags = {
+        "python": make_tag("python", {"testing": 5}, total_tasks=10),
+        "testing": make_tag("testing", {"python": 5}, total_tasks=8),
+    }
+    groups = compute_groups(tags, max_relations=3)
+
+    assert len(groups) == 1
+    assert groups[0].total_tasks == 18
+    assert groups[0].avg_tasks_per_day == 0.0
+
+
+def test_compute_groups_max_single_day_count() -> None:
+    """Test that max_single_day_count is extracted correctly."""
+    python_time_range = TimeRange(
+        earliest=datetime(2023, 1, 1),
+        latest=datetime(2023, 1, 5),
+        timeline={date(2023, 1, 1): 3, date(2023, 1, 5): 2},
+    )
+    testing_time_range = TimeRange(
+        earliest=datetime(2023, 1, 3),
+        latest=datetime(2023, 1, 7),
+        timeline={date(2023, 1, 3): 4, date(2023, 1, 7): 1},
+    )
+
+    tags = {
+        "python": make_tag("python", {"testing": 5}, python_time_range, total_tasks=5),
+        "testing": make_tag("testing", {"python": 5}, testing_time_range, total_tasks=5),
+    }
+    groups = compute_groups(tags, max_relations=3)
+
+    assert len(groups) == 1
+    assert groups[0].max_single_day_count == 4
+
+
+def test_compute_groups_max_single_day_count_overlapping() -> None:
+    """Test max_single_day_count with overlapping dates (counts are summed)."""
+    python_time_range = TimeRange(
+        earliest=datetime(2023, 1, 1),
+        latest=datetime(2023, 1, 5),
+        timeline={date(2023, 1, 1): 3, date(2023, 1, 3): 2, date(2023, 1, 5): 1},
+    )
+    testing_time_range = TimeRange(
+        earliest=datetime(2023, 1, 3),
+        latest=datetime(2023, 1, 7),
+        timeline={date(2023, 1, 3): 4, date(2023, 1, 5): 2, date(2023, 1, 7): 1},
+    )
+
+    tags = {
+        "python": make_tag("python", {"testing": 5}, python_time_range, total_tasks=6),
+        "testing": make_tag("testing", {"python": 5}, testing_time_range, total_tasks=7),
+    }
+    groups = compute_groups(tags, max_relations=3)
+
+    assert len(groups) == 1
+    assert groups[0].time_range.timeline == {
+        date(2023, 1, 1): 3,
+        date(2023, 1, 3): 6,
+        date(2023, 1, 5): 3,
+        date(2023, 1, 7): 1,
+    }
+    assert groups[0].max_single_day_count == 6
+
+
+def test_compute_groups_max_single_day_count_empty_timerange() -> None:
+    """Test that max_single_day_count is 0 when timerange is empty."""
+    tags = {
+        "python": make_tag("python", {"testing": 5}, total_tasks=10),
+        "testing": make_tag("testing", {"python": 5}, total_tasks=8),
+    }
+    groups = compute_groups(tags, max_relations=3)
+
+    assert len(groups) == 1
+    assert groups[0].max_single_day_count == 0
+
+
+def test_compute_groups_single_tag_statistics() -> None:
+    """Test statistics for a single-tag group."""
+    time_range = TimeRange(
+        earliest=datetime(2023, 1, 1),
+        latest=datetime(2023, 1, 10),
+        timeline={date(2023, 1, 1): 5, date(2023, 1, 5): 3, date(2023, 1, 10): 2},
+    )
+
+    tags = {
+        "python": make_tag("python", {}, time_range, total_tasks=10),
+    }
+    groups = compute_groups(tags, max_relations=3)
+
+    assert len(groups) == 1
+    assert groups[0].total_tasks == 10
+    assert groups[0].avg_tasks_per_day == 10 / 10
+    assert groups[0].max_single_day_count == 5
+
+
+def test_compute_groups_three_tag_cycle_statistics() -> None:
+    """Test statistics for a three-tag cycle."""
+    a_time_range = TimeRange(
+        earliest=datetime(2023, 1, 1),
+        latest=datetime(2023, 1, 3),
+        timeline={date(2023, 1, 1): 2, date(2023, 1, 3): 1},
+    )
+    b_time_range = TimeRange(
+        earliest=datetime(2023, 1, 2),
+        latest=datetime(2023, 1, 4),
+        timeline={date(2023, 1, 2): 3, date(2023, 1, 4): 2},
+    )
+    c_time_range = TimeRange(
+        earliest=datetime(2023, 1, 3),
+        latest=datetime(2023, 1, 5),
+        timeline={date(2023, 1, 3): 1, date(2023, 1, 5): 4},
+    )
+
+    tags = {
+        "a": make_tag("a", {"b": 10}, a_time_range, total_tasks=3),
+        "b": make_tag("b", {"c": 10}, b_time_range, total_tasks=5),
+        "c": make_tag("c", {"a": 10}, c_time_range, total_tasks=5),
+    }
+    groups = compute_groups(tags, max_relations=3)
+
+    assert len(groups) == 1
+    assert groups[0].total_tasks == 13
+    assert groups[0].time_range.earliest == datetime(2023, 1, 1)
+    assert groups[0].time_range.latest == datetime(2023, 1, 5)
+    assert groups[0].avg_tasks_per_day == 13 / 5
+    assert groups[0].max_single_day_count == 4

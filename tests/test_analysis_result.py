@@ -220,7 +220,15 @@ def test_analysis_result_mutable_fields() -> None:
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
     )
-    result.tag_groups.append(Group(tags=["python", "testing"], time_range=TimeRange()))
+    result.tag_groups.append(
+        Group(
+            tags=["python", "testing"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        )
+    )
 
     assert result.total_tasks == 10
     assert result.task_states.values["DONE"] == 5

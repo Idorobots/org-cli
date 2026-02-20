@@ -616,7 +616,15 @@ def test_display_results_with_tag_groups() -> None:
     from orgstats.cli import display_results
     from orgstats.histogram import Histogram
 
-    tag_groups = [Group(tags=["python", "programming", "coding"], time_range=TimeRange())]
+    tag_groups = [
+        Group(
+            tags=["python", "programming", "coding"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        )
+    ]
 
     result = AnalysisResult(
         total_tasks=3,
@@ -674,8 +682,20 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
     from orgstats.histogram import Histogram
 
     tag_groups = [
-        Group(tags=["python", "programming"], time_range=TimeRange()),
-        Group(tags=["java", "programming", "coding"], time_range=TimeRange()),
+        Group(
+            tags=["python", "programming"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
+        Group(
+            tags=["java", "programming", "coding"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
     ]
 
     result = AnalysisResult(
@@ -735,8 +755,20 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
     from orgstats.histogram import Histogram
 
     tag_groups = [
-        Group(tags=["python", "test", "programming"], time_range=TimeRange()),
-        Group(tags=["java", "test"], time_range=TimeRange()),
+        Group(
+            tags=["python", "test", "programming"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
+        Group(
+            tags=["java", "test"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
     ]
 
     result = AnalysisResult(
@@ -1013,7 +1045,15 @@ def test_display_groups_with_max_groups_zero() -> None:
     from orgstats.analyze import Group, TimeRange
     from orgstats.cli import display_groups
 
-    groups = [Group(tags=["python", "test"], time_range=TimeRange())]
+    groups = [
+        Group(
+            tags=["python", "test"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        )
+    ]
     exclude_set: set[str] = set()
 
     original_stdout = sys.stdout
@@ -1037,9 +1077,27 @@ def test_display_groups_with_max_groups_limit() -> None:
     from orgstats.cli import display_groups
 
     groups = [
-        Group(tags=["a", "b", "c"], time_range=TimeRange()),
-        Group(tags=["d", "e"], time_range=TimeRange()),
-        Group(tags=["f", "g"], time_range=TimeRange()),
+        Group(
+            tags=["a", "b", "c"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
+        Group(
+            tags=["d", "e"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
+        Group(
+            tags=["f", "g"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        ),
     ]
     exclude_set: set[str] = set()
 
@@ -1065,7 +1123,15 @@ def test_display_groups_shows_empty_section() -> None:
     from orgstats.analyze import Group, TimeRange
     from orgstats.cli import display_groups
 
-    groups = [Group(tags=["a", "b"], time_range=TimeRange())]
+    groups = [
+        Group(
+            tags=["a", "b"],
+            time_range=TimeRange(),
+            total_tasks=0,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        )
+    ]
     exclude_set: set[str] = set()
 
     original_stdout = sys.stdout

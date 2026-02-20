@@ -366,22 +366,22 @@ def display_groups(
     for group in groups:
         filtered_tags = [tag for tag in group.tags if tag not in exclude_set]
         if len(filtered_tags) >= min_group_size:
-            filtered_groups.append((filtered_tags, group.time_range))
+            filtered_groups.append((filtered_tags, group))
 
     filtered_groups.sort(key=lambda x: len(x[0]), reverse=True)
     filtered_groups = filtered_groups[:max_groups]
 
     print("\nTag groups:")
-    for idx, (group_tags, time_range) in enumerate(filtered_groups):
+    for idx, (group_tags, group) in enumerate(filtered_groups):
         if idx > 0:
             print()
 
-        earliest_date = select_earliest_date(date_from, global_timerange, time_range)
-        latest_date = select_latest_date(date_until, global_timerange, time_range)
+        earliest_date = select_earliest_date(date_from, global_timerange, group.time_range)
+        latest_date = select_latest_date(date_until, global_timerange, group.time_range)
 
         if earliest_date and latest_date:
             date_line, chart_line, underline = render_timeline_chart(
-                time_range.timeline,
+                group.time_range.timeline,
                 earliest_date,
                 latest_date,
                 num_buckets,
@@ -391,6 +391,9 @@ def display_groups(
             print(f"  {underline}")
 
         print(f"  {', '.join(group_tags)}")
+        print(f"    Total tasks: {group.total_tasks}")
+        print(f"    Average tasks completed per day: {group.avg_tasks_per_day:.2f}")
+        print(f"    Max tasks completed on a single day: {group.max_single_day_count}")
 
 
 def get_most_recent_timestamp(node: orgparse.node.OrgNode) -> datetime | None:

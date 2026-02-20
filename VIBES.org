@@ -1193,7 +1193,11 @@ The computed values should follow the tag name and be indented an extra level.
 :END:
 Move Relations fields to Tag and fix the broken tests.
 
-** TODO Per-group stats                                                               :Analysis:TUI:
+** REWORKED Per-group stats                                                           :Analysis:TUI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-20 Fri 18:19] \\
+  The AI implemented the feature, but made the total task count just a sum of all the tag total counts in that group, resulting in inconsistencies when a single task has multiple tags that belong to this group. Needs to be adjusted at a later point.
+:END:
 Extend the analysis to compute per-group statistics:
 - Total tasks
 - Average tasks completed per day
@@ -1210,7 +1214,7 @@ Update the CLI output to include the extra information. The values should be dis
   Erlang, Debugging, OTP
     Total tasks: 3
     Average tasks completed per day: 0.67
-    Max tasks completed an a single day: 2
+    Max tasks completed on a single day: 2
 #+end_example
 
 The computed values should follow the group contents name and be indented an extra level.
