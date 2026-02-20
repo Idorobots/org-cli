@@ -1099,7 +1099,11 @@ Top tasks:
   path/to/other.org: DONE Do some other stuff
 #+end_example
 
-** TODO Separate limit switches for tags, groups & tasks                                    :CLI:UX:
+** DONE Separate limit switches for tags, groups & tasks                                    :CLI:UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-20 Fri 11:32] \\
+  Over all, pretty good.
+:END:
 Add additional switches that limit the number of results in various sections of the CLI output.
 
 *** DONE Top tags limit
@@ -1122,7 +1126,11 @@ The ~--min-group-size~ switch should now default to 2 instead of 3 as it is no l
 
 It is completely OK if there are fewer results than the limit. Do show the section title and "No results" in such a case (unless the user requested 0 results).
 
-*** TODO Top relations limit
+*** REWORKED Top relations limit
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-20 Fri 11:31] \\
+  It implemented the feature, but made it inconsistent with the other related switches. That's on me as the spec stated to do that, but since it omitted that requirement the previous two times I went with it.
+:END:
 Change the semantics of the ~--max-relations~ switch, so that it defaults to 5. The switch should accept values >= 0, and if it is 0, omit those sections from tags display.
 
 It is completely OK if there are fewer results than the limit. Do show the section title and "No results" in such a case (unless the user requested 0 results).

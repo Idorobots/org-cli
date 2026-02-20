@@ -102,7 +102,7 @@ poetry run orgstats file1.org file2.org file3.org
 - `files` - Org-mode archive files to analyze (positional arguments)
 - `--max-results N` / `-n N` - Maximum number of results to display (default: 10)
 - `--max-tags N` - Maximum number of tags to display in Top tags section (default: 5, use 0 to omit section)
-- `--max-relations N` - Maximum number of relations to display per item (default: 3, must be >= 1)
+- `--max-relations N` - Maximum number of relations to display per item (default: 5, use 0 to omit sections)
 - `--max-groups N` - Maximum number of tag groups to display (default: 5, use 0 to omit section)
 - `--min-group-size N` - Minimum group size to display (default: 2)
 - `--buckets N` - Number of time buckets for timeline charts (default: 50, minimum: 20)

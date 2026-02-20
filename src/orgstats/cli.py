@@ -269,7 +269,7 @@ def display_category(
 
         print(f"  {name} ({freq.total})")
 
-        if name in relations_dict and relations_dict[name].relations:
+        if max_relations > 0 and name in relations_dict and relations_dict[name].relations:
             filtered_relations = {
                 rel_name: count
                 for rel_name, count in relations_dict[name].relations.items()
@@ -279,10 +279,12 @@ def display_category(
                 0:max_relations
             ]
 
+            print("    Top relations:")
             if sorted_relations:
-                print("    Top relations:")
                 for related_name, count in sorted_relations:
                     print(f"      {related_name} ({count})")
+            else:
+                print("      No results")
 
 
 def display_groups(
@@ -493,9 +495,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--max-relations",
         type=int,
-        default=3,
+        default=5,
         metavar="N",
-        help="Maximum number of relations to display per item (default: 3, must be >= 1)",
+        help="Maximum number of relations to display per item (default: 5, use 0 to omit sections)",
     )
 
     parser.add_argument(
@@ -1192,8 +1194,8 @@ def validate_arguments(args: argparse.Namespace) -> tuple[list[str], list[str]]:
     Raises:
         SystemExit: If validation fails
     """
-    if args.max_relations < 1:
-        print("Error: --max-relations must be at least 1", file=sys.stderr)
+    if args.max_relations < 0:
+        print("Error: --max-relations must be non-negative", file=sys.stderr)
         sys.exit(1)
 
     if args.max_tags < 0:
