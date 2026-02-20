@@ -83,11 +83,11 @@ def test_max_tags_negative_fails() -> None:
 
 
 def test_max_tags_with_show_heading() -> None:
-    """Test that --max-tags affects heading words when --show heading is used."""
+    """Test that --max-tags affects heading words when --use heading is used."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--show", "heading", "--max-tags", "2", fixture_path],
+        [sys.executable, "-m", "orgstats", "--use", "heading", "--max-tags", "2", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -99,11 +99,11 @@ def test_max_tags_with_show_heading() -> None:
 
 
 def test_max_tags_with_show_body() -> None:
-    """Test that --max-tags affects body words when --show body is used."""
+    """Test that --max-tags affects body words when --use body is used."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--show", "body", "--max-tags", "2", fixture_path],
+        [sys.executable, "-m", "orgstats", "--use", "body", "--max-tags", "2", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -130,7 +130,7 @@ def test_max_tags_with_fewer_results() -> None:
 
 
 def test_max_tags_zero_with_show_heading() -> None:
-    """Test that --max-tags 0 omits heading section when --show heading is used."""
+    """Test that --max-tags 0 omits heading section when --use heading is used."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
@@ -138,7 +138,7 @@ def test_max_tags_zero_with_show_heading() -> None:
             sys.executable,
             "-m",
             "orgstats",
-            "--show",
+            "--use",
             "heading",
             "--max-tags",
             "0",

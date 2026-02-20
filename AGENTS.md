@@ -65,9 +65,9 @@ poetry run orgstats --filter hard examples/ARCHIVE_small
 poetry run orgstats --filter simple -n 20 examples/ARCHIVE_small
 
 # Show different data categories
-poetry run orgstats --show tags examples/ARCHIVE_small       # Analyze tags (default)
-poetry run orgstats --show heading examples/ARCHIVE_small    # Analyze headline words
-poetry run orgstats --show body examples/ARCHIVE_small       # Analyze body words
+poetry run orgstats --use tags examples/ARCHIVE_small       # Analyze tags (default)
+poetry run orgstats --use heading examples/ARCHIVE_small    # Analyze headline words
+poetry run orgstats --use body examples/ARCHIVE_small       # Analyze body words
 
 # Use custom stopword file (one word per line)
 poetry run orgstats --exclude my_words.txt examples/ARCHIVE_small
@@ -111,7 +111,7 @@ poetry run orgstats file1.org file2.org file3.org
   - `regular` - Tasks with 10 ≤ gamify_exp < 20
   - `hard` - Tasks with gamify_exp ≥ 20
   - `all` - All tasks combined (default)
-- `--show CATEGORY` - Category to display: tags, heading, or body (default: tags)
+- `--use CATEGORY` - Category to display: tags, heading, or body (default: tags)
 - `--exclude FILE` - File with words to exclude (one per line, replaces default exclusion list)
 - `--mapping FILE` - JSON file containing tag mappings (dict[str, str])
 - `--todo-keys KEYS` - Comma-separated list of incomplete task states (default: TODO)

@@ -31,9 +31,9 @@ poetry run orgstats --filter hard examples/ARCHIVE_small     # Hard tasks (exp â
 poetry run orgstats --filter all examples/ARCHIVE_small      # All tasks (default)
 
 # Show different data categories
-poetry run orgstats --show tags examples/ARCHIVE_small       # Analyze tags (default)
-poetry run orgstats --show heading examples/ARCHIVE_small    # Analyze headline words
-poetry run orgstats --show body examples/ARCHIVE_small       # Analyze body words
+poetry run orgstats --use tags examples/ARCHIVE_small       # Analyze tags (default)
+poetry run orgstats --use heading examples/ARCHIVE_small    # Analyze headline words
+poetry run orgstats --use body examples/ARCHIVE_small       # Analyze body words
 
 # Use custom exclusion list
 poetry run orgstats --exclude stopwords.txt examples/ARCHIVE_small
@@ -133,7 +133,7 @@ Tag groups:
 - `--min-group-size N` - Minimum group size to display (default: 3)
 - `--buckets N` - Number of time buckets for timeline charts (default: 50, minimum: 20)
 - `--filter TYPE`, `-f TYPE` - Filter tasks by difficulty: `simple`, `regular`, `hard`, or `all` (default: `all`)
-- `--show CATEGORY` - Category to display: `tags`, `heading`, or `body` (default: `tags`)
+- `--use CATEGORY` - Category to display: `tags`, `heading`, or `body` (default: `tags`)
 - `--exclude FILE` - File with words to exclude (one per line, replaces default)
 - `--mapping FILE` - JSON file containing tag mappings (dict[str, str])
 - `--todo-keys KEYS` - Comma-separated list of incomplete task states (default: TODO)

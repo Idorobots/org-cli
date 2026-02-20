@@ -152,7 +152,7 @@ def test_chart_spanning_filters_out_all_data() -> None:
 
 
 def test_chart_spanning_with_show_heading() -> None:
-    """Test chart spanning works with --show heading."""
+    """Test chart spanning works with --use heading."""
     fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
 
     result = subprocess.run(
@@ -160,7 +160,7 @@ def test_chart_spanning_with_show_heading() -> None:
             sys.executable,
             "-m",
             "orgstats",
-            "--show",
+            "--use",
             "heading",
             "--filter-date-from",
             "2024-01-01",
@@ -177,7 +177,7 @@ def test_chart_spanning_with_show_heading() -> None:
 
 
 def test_chart_spanning_with_show_body() -> None:
-    """Test chart spanning works with --show body."""
+    """Test chart spanning works with --use body."""
     fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
 
     result = subprocess.run(
@@ -185,7 +185,7 @@ def test_chart_spanning_with_show_body() -> None:
             sys.executable,
             "-m",
             "orgstats",
-            "--show",
+            "--use",
             "body",
             "--filter-date-from",
             "2024-01-01",

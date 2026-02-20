@@ -649,7 +649,7 @@ def test_display_results_with_tag_groups() -> None:
     )
 
     args = argparse.Namespace(
-        show="tags",
+        use="tags",
         max_results=10,
         max_tags=5,
         max_relations=3,
@@ -721,7 +721,7 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
     )
 
     args = argparse.Namespace(
-        show="tags",
+        use="tags",
         max_results=10,
         max_tags=5,
         max_relations=3,
@@ -756,7 +756,7 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
 
     tag_groups = [
         Group(
-            tags=["python", "test", "programming"],
+            tags=["python", "test", "programming", "coding"],
             time_range=TimeRange(),
             total_tasks=0,
             avg_tasks_per_day=0.0,
@@ -794,11 +794,11 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
     )
 
     args = argparse.Namespace(
-        show="tags",
+        use="tags",
         max_results=10,
         max_tags=5,
         max_relations=3,
-        min_group_size=2,
+        min_group_size=3,
         max_groups=5,
         buckets=50,
     )
@@ -812,7 +812,7 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
         output = sys.stdout.getvalue()
 
         assert "Tag groups:" in output
-        assert "python, programming" in output
+        assert "python, programming, coding" in output
         assert "java" not in output
 
     finally:
@@ -850,7 +850,7 @@ def test_display_results_no_tag_groups() -> None:
     )
 
     args = argparse.Namespace(
-        show="tags",
+        use="tags",
         max_results=10,
         max_tags=5,
         max_relations=3,

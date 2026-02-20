@@ -246,7 +246,7 @@ def test_cli_max_relations_value_1() -> None:
 
 
 def test_cli_relations_with_show_heading() -> None:
-    """Test that relations work with --show heading."""
+    """Test that relations work with --use heading."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
     result = subprocess.run(
@@ -256,7 +256,7 @@ def test_cli_relations_with_show_heading() -> None:
             "orgstats",
             "--max-relations",
             "2",
-            "--show",
+            "--use",
             "heading",
             fixture_path,
         ],
@@ -270,11 +270,11 @@ def test_cli_relations_with_show_heading() -> None:
 
 
 def test_cli_relations_with_show_body() -> None:
-    """Test that relations work with --show body."""
+    """Test that relations work with --use body."""
     fixture_path = os.path.join(FIXTURES_DIR, "relations_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--max-relations", "2", "--show", "body", fixture_path],
+        [sys.executable, "-m", "orgstats", "--max-relations", "2", "--use", "body", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,

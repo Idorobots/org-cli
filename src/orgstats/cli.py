@@ -530,7 +530,7 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--show",
+        "--use",
         type=str,
         choices=["tags", "heading", "body"],
         default="tags",
@@ -1221,7 +1221,7 @@ def display_results(
 
     display_top_tasks(nodes, args.max_results)
 
-    category_name = CATEGORY_NAMES[args.show]
+    category_name = CATEGORY_NAMES[args.use]
 
     def order_by_total(item: tuple[str, Tag]) -> int:
         """Sort by total count (descending)."""
@@ -1318,7 +1318,7 @@ def main() -> None:
         print("No results")
         return
 
-    result = analyze(nodes, mapping, args.show, args.max_relations)
+    result = analyze(nodes, mapping, args.use, args.max_relations)
 
     date_from = None
     date_until = None
