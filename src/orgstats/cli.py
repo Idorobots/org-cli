@@ -1204,7 +1204,7 @@ def display_results(
     for line in histogram_lines:
         print(f"  {line}")
 
-    print("\nTask occurence day of week:")
+    print("\nTask occurrence by day of week:")
     day_order = [
         "Monday",
         "Tuesday",
