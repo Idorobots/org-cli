@@ -1151,7 +1151,11 @@ Add an additional histogram based on the ~gamify_exp~ property - each task shoul
 
 Extend the CLI output to include the category histogram. Place it right after the 'states histogram' with a name of ~Task completion by category:~. The usual rules for histograms apply here as well.
 
-** TODO Per-tag stats                                                                 :Analysis:TUI:
+** CANCELLED Per-tag stats                                                            :Analysis:TUI:
+:LOGBOOK:
+- State "CANCELLED"   from "TODO"       [2026-02-20 Fri 16:50] \\
+  The AI added a lot of slop, including weird code formatting and ignoring specific requirements. There were a lot of manual changes required. The code did work, but it forgot to adjust the test cases.
+:END:
 Extend the analysis to compute more per-tag statistics:
 - Total tasks
 - Average tasks completed per day

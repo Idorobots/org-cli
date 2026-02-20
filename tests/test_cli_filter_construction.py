@@ -596,9 +596,27 @@ def test_display_results_with_tag_groups() -> None:
         task_states=Histogram(values={"DONE": 3}),
         task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 3}),
-        tag_frequencies={"python": Frequency(total=3)},
-        tag_time_ranges={},
-        tag_relations={},
+        tags={
+
+            "python": Tag(
+
+                name="python",
+
+                frequency=Frequency(total=3),
+
+                relations=Relations(name="python", relations={}),
+
+                time_range=TimeRange(),
+
+                total_tasks=3,
+
+                avg_tasks_per_day=0.0,
+
+                max_single_day_count=0,
+
+            )
+
+        },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -654,9 +672,27 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
         task_states=Histogram(values={"DONE": 5}),
         task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 5}),
-        tag_frequencies={"python": Frequency(total=5)},
-        tag_time_ranges={},
-        tag_relations={},
+        tags={
+
+            "python": Tag(
+
+                name="python",
+
+                frequency=Frequency(total=5),
+
+                relations=Relations(name="python", relations={}),
+
+                time_range=TimeRange(),
+
+                total_tasks=5,
+
+                avg_tasks_per_day=0.0,
+
+                max_single_day_count=0,
+
+            )
+
+        },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -713,9 +749,27 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
         task_states=Histogram(values={"DONE": 5}),
         task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 5}),
-        tag_frequencies={"python": Frequency(total=5)},
-        tag_time_ranges={},
-        tag_relations={},
+        tags={
+
+            "python": Tag(
+
+                name="python",
+
+                frequency=Frequency(total=5),
+
+                relations=Relations(name="python", relations={}),
+
+                time_range=TimeRange(),
+
+                total_tasks=5,
+
+                avg_tasks_per_day=0.0,
+
+                max_single_day_count=0,
+
+            )
+
+        },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -766,9 +820,27 @@ def test_display_results_no_tag_groups() -> None:
         task_states=Histogram(values={"DONE": 5}),
         task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 5}),
-        tag_frequencies={"python": Frequency(total=5)},
-        tag_time_ranges={},
-        tag_relations={},
+        tags={
+
+            "python": Tag(
+
+                name="python",
+
+                frequency=Frequency(total=5),
+
+                relations=Relations(name="python", relations={}),
+
+                time_range=TimeRange(),
+
+                total_tasks=5,
+
+                avg_tasks_per_day=0.0,
+
+                max_single_day_count=0,
+
+            )
+
+        },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,

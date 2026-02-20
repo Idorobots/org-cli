@@ -13,9 +13,8 @@ import orgparse
 
 from orgstats.analyze import (
     AnalysisResult,
-    Frequency,
     Group,
-    Relations,
+    Tag,
     TimeRange,
     analyze,
     clean,
@@ -271,35 +270,41 @@ def select_latest_date(
 
 def display_category(
     category_name: str,
-    data: tuple[dict[str, Frequency], dict[str, TimeRange], set[str], dict[str, Relations]],
-    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange],
-    order_fn: Callable[[tuple[str, Frequency]], int],
-    max_items: int,
+    tags: dict[str, Tag],
+    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange, int, set[str]],
+    order_fn: Callable[[tuple[str, Tag]], int],
 ) -> None:
     """Display formatted output for a single category.
 
     Args:
         category_name: Display name for the category (e.g., "tags", "heading words")
-        data: Tuple of (frequencies, time_ranges, exclude_set, relations_dict)
+        tags: Dictionary mapping tag names to Tag objects
         config: Tuple of (max_results, max_relations, num_buckets, date_from, date_until,
-                         global_timerange)
+                         global_timerange, max_items, exclude_set)
         order_fn: Function to sort items by
-        max_items: Maximum number of items to display (0 to omit section entirely)
     """
+    (
+        _max_results,
+        max_relations,
+        num_buckets,
+        date_from,
+        date_until,
+        global_timerange,
+        max_items,
+        exclude_set,
+    ) = config
+
     if max_items == 0:
         return
-
-    _max_results, max_relations, num_buckets, date_from, date_until, global_timerange = config
-    frequencies, time_ranges, exclude_set, relations_dict = data
-    cleaned = clean(exclude_set, frequencies)
+    cleaned = clean(exclude_set, tags)
     sorted_items = sorted(cleaned.items(), key=order_fn)[0:max_items]
 
     print(f"\nTop {category_name}:")
-    for idx, (name, freq) in enumerate(sorted_items):
+    for idx, (name, tag) in enumerate(sorted_items):
         if idx > 0:
             print()
 
-        time_range = time_ranges.get(name)
+        time_range = tag.time_range
 
         if time_range and time_range.earliest and time_range.timeline:
             earliest_date = select_earliest_date(date_from, global_timerange, time_range)
@@ -316,24 +321,26 @@ def display_category(
                 print(f"  {chart_line}")
                 print(f"  {underline}")
 
-        print(f"  {name} ({freq.total})")
+        print(f"  {name} ({tag.frequency.total})")
+        print(f"    Total tasks: {tag.total_tasks}")
+        if tag.time_range.earliest and tag.time_range.latest:
+            print(f"    Average tasks completed per day: {tag.avg_tasks_per_day:.2f}")
+            print(f"    Max tasks completed on a single day: {tag.max_single_day_count}")
 
-        if max_relations > 0 and name in relations_dict and relations_dict[name].relations:
+        if max_relations > 0 and tag.relations.relations:
             filtered_relations = {
                 rel_name: count
-                for rel_name, count in relations_dict[name].relations.items()
-                if rel_name not in exclude_set
+                for rel_name, count in tag.relations.relations.items()
+                if rel_name.lower() not in {e.lower() for e in exclude_set}
             }
             sorted_relations = sorted(filtered_relations.items(), key=lambda x: x[1], reverse=True)[
                 0:max_relations
             ]
 
-            print("    Top relations:")
             if sorted_relations:
+                print("    Top relations:")
                 for related_name, count in sorted_relations:
                     print(f"      {related_name} ({count})")
-            else:
-                print("      No results")
 
 
 def display_groups(
@@ -1196,13 +1203,13 @@ def display_results(
 
     category_name = CATEGORY_NAMES[args.show]
 
-    def order_by_total(item: tuple[str, Frequency]) -> int:
+    def order_by_total(item: tuple[str, Tag]) -> int:
         """Sort by total count (descending)."""
-        return -item[1].total
+        return -item[1].frequency.total
 
     display_category(
         category_name,
-        (result.tag_frequencies, result.tag_time_ranges, exclude_set, result.tag_relations),
+        result.tags,
         (
             args.max_results,
             args.max_relations,
@@ -1210,9 +1217,10 @@ def display_results(
             date_from,
             date_until,
             result.timerange,
+            args.max_tags,
+            exclude_set,
         ),
         order_by_total,
-        args.max_tags,
     )
 
     display_groups(

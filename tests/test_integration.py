@@ -42,20 +42,18 @@ def test_integration_single_task() -> None:
     assert result_tags.total_tasks == 1
     assert result_tags.task_states.values["DONE"] == 1
     # Check tags (Testing, Python - CamelCase preserved)
-    assert "Testing" in result_tags.tag_frequencies
-    assert "Python" in result_tags.tag_frequencies
+    assert "Testing" in result_tags.tags
+    assert "Python" in result_tags.tags
 
     # Check heading words
     result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
-    assert "write" in result_heading.tag_frequencies
-    assert "comprehensive" in result_heading.tag_frequencies
-    assert "tests" in result_heading.tag_frequencies
+    assert "write" in result_heading.tags
+    assert "comprehensive" in result_heading.tags
+    assert "tests" in result_heading.tags
 
     # Check body words
     result_body = analyze(nodes, {}, category="body", max_relations=3, done_keys=["DONE"])
-    assert (
-        "task" in result_body.tag_frequencies or "this" in result_body.tag_frequencies
-    )  # Some words from body
+    assert "task" in result_body.tags or "this" in result_body.tags  # Some words from body
 
 
 def test_integration_multiple_tags() -> None:
@@ -82,16 +80,16 @@ def test_integration_multiple_tags() -> None:
 
     # Check tag mappings
     # Test -> Testing, WebDev -> Frontend, Unix -> Linux
-    assert "Testing" in result.tag_frequencies
-    assert "Frontend" in result.tag_frequencies
-    assert "Linux" in result.tag_frequencies
+    assert "Testing" in result.tags
+    assert "Frontend" in result.tags
+    assert "Linux" in result.tags
 
     # SysAdmin -> DevOps
-    assert "DevOps" in result.tag_frequencies
+    assert "DevOps" in result.tags
 
     # Maintenance tag is on TODO task, so it should not appear in frequencies
-    assert "Refactoring" not in result.tag_frequencies
-    assert "Maintenance" not in result.tag_frequencies
+    assert "Refactoring" not in result.tags
+    assert "Maintenance" not in result.tags
 
 
 def test_integration_edge_cases() -> None:
@@ -107,13 +105,13 @@ def test_integration_edge_cases() -> None:
     # Note: orgparse doesn't parse tags with punctuation in the heading line
     # Only properly formatted tags like :NoBody: are parsed
     # NoBody tag should be present (CamelCase preserved)
-    assert "NoBody" in result.tag_frequencies
-    assert result.tag_frequencies["NoBody"] == 1
+    assert "NoBody" in result.tags
+    assert result.tags["NoBody"] == 1
 
     # Check that special characters in heading are handled
     result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
-    assert "task" in result_heading.tag_frequencies
-    assert "special" in result_heading.tag_frequencies or "chars" in result_heading.tag_frequencies
+    assert "task" in result_heading.tags
+    assert "special" in result_heading.tags or "chars" in result_heading.tags
 
 
 def test_integration_24_00_time_handling() -> None:
@@ -153,8 +151,8 @@ def test_integration_repeated_tasks() -> None:
     # Check tag mapping without normalization (Agile, GTD with mapping)
     # Note: without explicit mapping for CamelCase tags, they remain as-is
     # If there are tags in result, just verify they exist
-    if len(result.tag_frequencies) > 0:
-        assert any(freq.total > 0 for freq in result.tag_frequencies.values())
+    if len(result.tags) > 0:
+        assert any(freq.total > 0 for freq in result.tags.values())
 
 
 def test_integration_archive_small() -> None:
@@ -177,15 +175,15 @@ def test_integration_archive_small() -> None:
 
     # Check that some expected tags exist
     # The file has various tags like ProjectManagement, Debugging, etc.
-    assert len(result.tag_frequencies) > 0
+    assert len(result.tags) > 0
 
     # Check that heading words are extracted
     result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
-    assert len(result_heading.tag_frequencies) > 0
+    assert len(result_heading.tags) > 0
 
     # Check that body words are extracted
     result_body = analyze(nodes, {}, category="body", max_relations=3, done_keys=["DONE"])
-    assert len(result_body.tag_frequencies) > 0
+    assert len(result_body.tags) > 0
 
 
 def test_integration_clean_filters_stopwords() -> None:
@@ -197,9 +195,9 @@ def test_integration_clean_filters_stopwords() -> None:
     result_body = analyze(nodes, {}, category="body", max_relations=3, done_keys=["DONE"])
 
     # Apply cleaning
-    cleaned_tags = clean(DEFAULT_EXCLUDE, result_tags.tag_frequencies)
-    cleaned_heading = clean(DEFAULT_EXCLUDE, result_heading.tag_frequencies)
-    cleaned_words = clean(DEFAULT_EXCLUDE, result_body.tag_frequencies)
+    cleaned_tags = clean(DEFAULT_EXCLUDE, result_tags.tags)
+    cleaned_heading = clean(DEFAULT_EXCLUDE, result_heading.tags)
+    cleaned_words = clean(DEFAULT_EXCLUDE, result_body.tags)
 
     # Stop words should be removed
     for stop_word in DEFAULT_EXCLUDE:
@@ -219,7 +217,7 @@ def test_integration_frequency_sorting() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
 
     # Sort tags by frequency (descending)
-    sorted_tags = sorted(result.tag_frequencies.items(), key=lambda item: -item[1].total)
+    sorted_tags = sorted(result.tags.items(), key=lambda item: -item[1].total)
 
     # Should have at least one tag
     assert len(sorted_tags) > 0
@@ -238,8 +236,8 @@ def test_integration_word_uniqueness() -> None:
 
     # Words should be deduplicated within each task
     # but counted across tasks
-    assert isinstance(result_heading.tag_frequencies, dict)
-    assert isinstance(result_body.tag_frequencies, dict)
+    assert isinstance(result_heading.tags, dict)
+    assert isinstance(result_body.tags, dict)
 
 
 def test_integration_no_tags_task() -> None:
@@ -249,9 +247,7 @@ def test_integration_no_tags_task() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
 
     # Simple task has no tags
-    assert len(result.tag_frequencies) == 0 or all(
-        v.total == 0 for v in result.tag_frequencies.values()
-    )
+    assert len(result.tags) == 0 or all(v.total == 0 for v in result.tags.values())
 
 
 def test_integration_all_fixtures_parseable() -> None:
@@ -274,9 +270,9 @@ def test_integration_all_fixtures_parseable() -> None:
         assert result.total_tasks >= 0
         assert result.task_states.values.get("DONE", 0) >= 0
         assert result.task_states.values.get("TODO", 0) >= 0
-        assert isinstance(result.tag_frequencies, dict)
-        assert isinstance(result.tag_relations, dict)
-        assert isinstance(result.tag_time_ranges, dict)
+        assert isinstance(result.tags, dict)
+        assert isinstance(result.tags, dict)
+        assert isinstance(result.tags, dict)
 
 
 def test_integration_filtered_repeats_in_analysis() -> None:
@@ -308,8 +304,8 @@ def test_integration_filtered_repeats_in_analysis() -> None:
     assert filtered_result.total_tasks == 1
     assert filtered_result.task_states.values["DONE"] == 1
 
-    assert filtered_result.tag_frequencies["tag1"].total == 1
-    assert filtered_result.tag_frequencies["tag2"].total == 1
+    assert filtered_result.tags["tag1"].total == 1
+    assert filtered_result.tags["tag2"].total == 1
 
 
 def test_integration_category_histogram() -> None:

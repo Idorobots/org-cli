@@ -113,6 +113,29 @@ class TimeRange:
 
 
 @dataclass
+class Tag:
+    """Represents complete statistics for a single tag.
+
+    Attributes:
+        name: Tag name
+        frequency: Frequency statistics (total count)
+        relations: Co-occurrence relationships with other tags
+        time_range: Temporal data (earliest, latest, timeline)
+        total_tasks: Total number of completed tasks with this tag
+        avg_tasks_per_day: Average tasks completed per day for this tag
+        max_single_day_count: Maximum tasks completed on a single day for this tag
+    """
+
+    name: str
+    frequency: Frequency
+    relations: Relations
+    time_range: TimeRange
+    total_tasks: int
+    avg_tasks_per_day: float
+    max_single_day_count: int
+
+
+@dataclass
 class Group:
     """Represents a group of related tags (strongly connected component).
 
@@ -138,12 +161,10 @@ class AnalysisResult:
         avg_tasks_per_day: Average tasks completed per day (total DONE / days spanned)
         max_single_day_count: Highest number of tasks completed on a single day
         max_repeat_count: Highest number of DONE repeats for any individual task
-        tag_frequencies: Dictionary mapping items to their frequency counts
-        tag_relations: Dictionary mapping items to their Relations objects
-        tag_time_ranges: Dictionary mapping items to their TimeRange objects
+        tags: Dictionary mapping tag/item names to their Tag objects
         tag_groups: List of tag groups (strongly connected components)
 
-    Note: Despite the 'tag_' prefix, these fields hold data for whichever
+    Note: Despite the 'tag' naming, tags field holds data for whichever
     category was analyzed (tags, heading, or body).
     """
 
@@ -155,9 +176,7 @@ class AnalysisResult:
     avg_tasks_per_day: float
     max_single_day_count: int
     max_repeat_count: int
-    tag_frequencies: dict[str, Frequency]
-    tag_relations: dict[str, Relations]
-    tag_time_ranges: dict[str, TimeRange]
+    tags: dict[str, Tag]
     tag_groups: list[Group]
 
 
@@ -575,27 +594,67 @@ def _combine_time_ranges(tag_time_ranges: dict[str, TimeRange], tags: list[str])
     return combined
 
 
-def compute_groups(
-    relations: dict[str, Relations], max_relations: int, tag_time_ranges: dict[str, TimeRange]
-) -> list[Group]:
+def compute_per_tag_statistics(
+    frequencies: dict[str, Frequency],
+    relations: dict[str, Relations],
+    time_ranges: dict[str, TimeRange],
+) -> dict[str, Tag]:
+    """Compute complete Tag objects with all statistics.
+
+    For each tag:
+    - total_tasks equals frequency.total (total completed task count)
+    - avg_tasks_per_day computed from time_range and frequency
+    - max_single_day_count computed from time_range.timeline
+
+    Args:
+        frequencies: Pre-computed frequency data
+        relations: Pre-computed relations data
+        time_ranges: Pre-computed time range data
+
+    Returns:
+        Dictionary mapping tag names to Tag objects
+    """
+    tags: dict[str, Tag] = {}
+
+    for tag_name, frequency in frequencies.items():
+        time_range = time_ranges.get(tag_name, TimeRange())
+        relation = relations.get(tag_name, Relations(name=tag_name, relations={}))
+
+        total_tasks = frequency.total
+        avg_per_day = compute_avg_tasks_per_day(time_range, frequency.total)
+        max_single_day = compute_max_single_day(time_range)
+
+        tags[tag_name] = Tag(
+            name=tag_name,
+            frequency=frequency,
+            relations=relation,
+            time_range=time_range,
+            total_tasks=total_tasks,
+            avg_tasks_per_day=avg_per_day,
+            max_single_day_count=max_single_day,
+        )
+
+    return tags
+
+
+def compute_groups(tags: dict[str, Tag], max_relations: int) -> list[Group]:
     """Compute strongly connected components from tag relations using Tarjan's algorithm.
 
     Args:
-        relations: Dictionary mapping tags to their Relations objects
+        tags: Dictionary mapping tag names to their Tag objects
         max_relations: Maximum number of relations to consider per tag
-        tag_time_ranges: Dictionary mapping tags to their TimeRange objects
 
     Returns:
         List of Group objects representing strongly connected components
     """
-    if not relations:
+    if not tags:
         return []
 
     graph: dict[str, list[str]] = {}
-    for tag, rel_obj in relations.items():
-        sorted_relations = sorted(rel_obj.relations.items(), key=lambda x: -x[1])
+    for tag_name, tag_obj in tags.items():
+        sorted_relations = sorted(tag_obj.relations.relations.items(), key=lambda x: -x[1])
         top_relations = sorted_relations[:max_relations]
-        graph[tag] = [rel_name for rel_name, _ in top_relations]
+        graph[tag_name] = [rel_name for rel_name, _ in top_relations]
 
     index_counter = [0]
     stack: list[str] = []
@@ -632,6 +691,7 @@ def compute_groups(
         if node not in index:
             strongconnect(node)
 
+    tag_time_ranges = {tag_name: tag_obj.time_range for tag_name, tag_obj in tags.items()}
     return [
         Group(tags=sorted(scc), time_range=_combine_time_ranges(tag_time_ranges, scc))
         for scc in sccs
@@ -655,12 +715,13 @@ def analyze(
         done_keys: List of completion state keywords
 
     Returns:
-        AnalysisResult containing task counts and frequency dictionaries for the selected category
+        AnalysisResult containing task counts and Tag objects for the selected category
     """
     tag_frequencies = compute_frequencies(nodes, mapping, category, done_keys)
     tag_relations = compute_relations(nodes, mapping, category, done_keys)
     tag_time_ranges = compute_time_ranges(nodes, mapping, category, done_keys)
-    tag_groups = compute_groups(tag_relations, max_relations, tag_time_ranges)
+    tags = compute_per_tag_statistics(tag_frequencies, tag_relations, tag_time_ranges)
+    tag_groups = compute_groups(tags, max_relations)
     task_states = compute_task_state_histogram(nodes)
     task_categories = compute_category_histogram(nodes, done_keys)
     task_days = compute_day_of_week_histogram(nodes, done_keys)
@@ -679,19 +740,17 @@ def analyze(
         avg_tasks_per_day=avg_tasks_per_day,
         max_single_day_count=max_single_day,
         max_repeat_count=max_repeat_count,
-        tag_frequencies=tag_frequencies,
-        tag_relations=tag_relations,
-        tag_time_ranges=tag_time_ranges,
+        tags=tags,
         tag_groups=tag_groups,
     )
 
 
-def clean(disallowed: set[str], tags: dict[str, Frequency]) -> dict[str, Frequency]:
+def clean(disallowed: set[str], tags: dict[str, Tag]) -> dict[str, Tag]:
     """Remove tags from the disallowed set (stop words).
 
     Args:
         disallowed: Set of tags to filter out (stop words, lowercase)
-        tags: Dictionary of tag frequencies
+        tags: Dictionary of Tag objects
 
     Returns:
         Dictionary with disallowed tags removed (case-insensitive comparison)

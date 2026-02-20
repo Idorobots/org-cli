@@ -14,9 +14,9 @@ def test_analyze_empty_nodes() -> None:
     assert result.total_tasks == 0
     assert result.task_states.values.get("DONE", 0) == 0
     assert result.task_states.values.get("TODO", 0) == 0
-    assert result.tag_frequencies == {}
-    assert result.tag_relations == {}
-    assert result.tag_time_ranges == {}
+    assert result.tags == {}
+    assert result.tags == {}
+    assert result.tags == {}
 
 
 def test_analyze_single_done_task() -> None:
@@ -28,8 +28,8 @@ def test_analyze_single_done_task() -> None:
     assert result.total_tasks == 1
     assert result.task_states.values["DONE"] == 1
     assert result.task_states.values.get("TODO", 0) == 0
-    assert "Testing" in result.tag_frequencies
-    assert result.tag_frequencies["Testing"] == 1
+    assert "Testing" in result.tags
+    assert result.tags["Testing"] == 1
 
 
 def test_analyze_single_todo_task() -> None:
@@ -68,8 +68,8 @@ def test_analyze_tag_frequencies() -> None:
 
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
 
-    assert result.tag_frequencies["Python"] == 3
-    assert result.tag_frequencies["Testing"] == 1
+    assert result.tags["Python"] == 3
+    assert result.tags["Testing"] == 1
 
 
 def test_analyze_heading_word_frequencies() -> None:
@@ -82,11 +82,11 @@ def test_analyze_heading_word_frequencies() -> None:
 
     result = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
 
-    assert result.tag_frequencies["implement"] == 2
-    assert result.tag_frequencies["feature"] == 1
-    assert result.tag_frequencies["tests"] == 1
-    assert result.tag_frequencies["write"] == 1
-    assert result.tag_frequencies["documentation"] == 1
+    assert result.tags["implement"] == 2
+    assert result.tags["feature"] == 1
+    assert result.tags["tests"] == 1
+    assert result.tags["write"] == 1
+    assert result.tags["documentation"] == 1
 
 
 def test_analyze_body_word_frequencies() -> None:
@@ -100,10 +100,10 @@ Python tests
 
     result = analyze(nodes, {}, category="body", max_relations=3, done_keys=["DONE"])
 
-    assert result.tag_frequencies["python"] == 2
-    assert result.tag_frequencies["code"] == 1
-    assert result.tag_frequencies["implementation"] == 1
-    assert result.tag_frequencies["tests"] == 1
+    assert result.tags["python"] == 2
+    assert result.tags["code"] == 1
+    assert result.tags["implementation"] == 1
+    assert result.tags["tests"] == 1
 
 
 def test_analyze_repeated_tasks() -> None:
@@ -125,7 +125,7 @@ def test_analyze_repeated_tasks() -> None:
     assert result.task_states.values["TODO"] == 1
     assert result.task_states.values["DONE"] == 2
     # Tags should be counted with count=2
-    assert result.tag_frequencies["Recurring"] == 2
+    assert result.tags["Recurring"] == 2
 
 
 def test_analyze_repeated_tasks_count_in_tags() -> None:
@@ -139,7 +139,7 @@ def test_analyze_repeated_tasks_count_in_tags() -> None:
 """)
 
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
-    assert result.tag_frequencies["Daily"] == 2
+    assert result.tags["Daily"] == 2
 
     result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
     assert result_heading.tag_frequencies["meeting"] == 2
@@ -154,7 +154,7 @@ def test_analyze_done_task_no_repeats() -> None:
     assert result.total_tasks == 1
     assert result.task_states.values["DONE"] == 1
     assert result.task_states.values.get("TODO", 0) == 0
-    assert result.tag_frequencies["Simple"] == 1
+    assert result.tags["Simple"] == 1
 
 
 def test_analyze_normalizes_tags() -> None:
@@ -171,8 +171,8 @@ def test_analyze_normalizes_tags() -> None:
 
     # "Test" -> "Testing" (mapped, no normalization)
     # "SysAdmin" -> "DevOps" (mapped, no normalization)
-    assert "Testing" in result.tag_frequencies
-    assert "DevOps" in result.tag_frequencies
+    assert "Testing" in result.tags
+    assert "DevOps" in result.tags
 
 
 def test_analyze_multiple_tags_per_task() -> None:
@@ -181,10 +181,10 @@ def test_analyze_multiple_tags_per_task() -> None:
 
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
 
-    assert len(result.tag_frequencies) == 3
-    assert "Python" in result.tag_frequencies
-    assert "Testing" in result.tag_frequencies
-    assert "Debugging" in result.tag_frequencies
+    assert len(result.tags) == 3
+    assert "Python" in result.tags
+    assert "Testing" in result.tags
+    assert "Debugging" in result.tags
 
 
 def test_analyze_empty_tags() -> None:
@@ -193,7 +193,7 @@ def test_analyze_empty_tags() -> None:
 
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
 
-    assert result.tag_frequencies == {}
+    assert result.tags == {}
 
 
 def test_analyze_empty_heading() -> None:
@@ -202,7 +202,7 @@ def test_analyze_empty_heading() -> None:
 
     result = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
 
-    assert result.tag_frequencies == {}
+    assert result.tags == {}
 
 
 def test_analyze_empty_body() -> None:
@@ -213,8 +213,8 @@ def test_analyze_empty_body() -> None:
 
     # Empty body split() returns [''], which becomes {''} in normalize
     # Frequency objects, so check if empty string exists
-    if "" in result.tag_frequencies:
-        assert result.tag_frequencies[""].total >= 0
+    if "" in result.tags:
+        assert result.tags[""].total >= 0
 
 
 def test_analyze_returns_tuple() -> None:
@@ -228,9 +228,9 @@ def test_analyze_returns_tuple() -> None:
     assert result.total_tasks == 0
     assert result.task_states.values.get("DONE", 0) == 0
     assert result.task_states.values.get("TODO", 0) == 0
-    assert result.tag_frequencies == {}
-    assert result.tag_relations == {}
-    assert result.tag_time_ranges == {}
+    assert result.tags == {}
+    assert result.tags == {}
+    assert result.tags == {}
 
 
 def test_analyze_accumulates_across_nodes() -> None:
@@ -275,8 +275,8 @@ def test_analyze_max_count_logic() -> None:
 
     # Node1: count = max(1, 0) = 1
     # Node2: count = max(0, 2) = 2
-    assert result.tag_frequencies["A"] == 1
-    assert result.tag_frequencies["B"] == 2
+    assert result.tags["A"] == 1
+    assert result.tags["B"] == 2
 
 
 def test_analyze_with_custom_mapping() -> None:
@@ -286,11 +286,11 @@ def test_analyze_with_custom_mapping() -> None:
 
     result = analyze(nodes, custom_map, category="tags", max_relations=3, done_keys=["DONE"])
 
-    assert "Bar" in result.tag_frequencies
-    assert "Qux" in result.tag_frequencies
-    assert "Unmapped" in result.tag_frequencies
-    assert "Foo" not in result.tag_frequencies
-    assert "Baz" not in result.tag_frequencies
+    assert "Bar" in result.tags
+    assert "Qux" in result.tags
+    assert "Unmapped" in result.tags
+    assert "Foo" not in result.tags
+    assert "Baz" not in result.tags
 
 
 def test_analyze_with_empty_mapping() -> None:
@@ -300,10 +300,10 @@ def test_analyze_with_empty_mapping() -> None:
 
     result = analyze(nodes, empty_map, category="tags", max_relations=3, done_keys=["DONE"])
 
-    assert "Test" in result.tag_frequencies
-    assert "SysAdmin" in result.tag_frequencies
-    assert "Testing" not in result.tag_frequencies
-    assert "DevOps" not in result.tag_frequencies
+    assert "Test" in result.tags
+    assert "SysAdmin" in result.tags
+    assert "Testing" not in result.tags
+    assert "DevOps" not in result.tags
 
 
 def test_analyze_default_mapping_parameter() -> None:
@@ -318,8 +318,8 @@ def test_analyze_default_mapping_parameter() -> None:
         done_keys=["DONE"],
     )
 
-    assert "Testing" in result.tag_frequencies
-    assert "DevOps" in result.tag_frequencies
+    assert "Testing" in result.tags
+    assert "DevOps" in result.tags
 
 
 def test_analyze_mapping_affects_all_categories() -> None:
