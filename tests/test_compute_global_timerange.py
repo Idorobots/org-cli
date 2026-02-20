@@ -10,7 +10,7 @@ def test_compute_global_timerange_empty_nodes() -> None:
     """Test with empty nodes list."""
     nodes = node_from_org("")
 
-    timerange = compute_global_timerange(nodes, ["DONE"])
+    timerange = compute_global_timerange(nodes)
 
     assert timerange.earliest is None
     assert timerange.latest is None
@@ -24,7 +24,7 @@ def test_compute_global_timerange_single_done_task() -> None:
 CLOSED: [2023-10-20 Fri 14:43]
 """)
 
-    timerange = compute_global_timerange(nodes, ["DONE"])
+    timerange = compute_global_timerange(nodes)
 
     dt = datetime(2023, 10, 20, 14, 43)
     assert timerange.earliest == dt
@@ -41,7 +41,7 @@ CLOSED: [2023-10-18 Wed 09:15]
 CLOSED: [2023-10-20 Fri 14:43]
 """)
 
-    timerange = compute_global_timerange(nodes, ["DONE"])
+    timerange = compute_global_timerange(nodes)
 
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 20, 14, 43)
@@ -49,17 +49,19 @@ CLOSED: [2023-10-20 Fri 14:43]
     assert timerange.latest == dt2
 
 
-def test_compute_global_timerange_todo_task_ignored() -> None:
-    """Test TODO task is not included."""
+def test_compute_global_timerange_todo_task_counted() -> None:
+    """Test TODO task is included."""
     nodes = node_from_org("""
 * TODO Task
 SCHEDULED: <2023-10-20 Fri>
 """)
 
-    timerange = compute_global_timerange(nodes, ["DONE"])
+    timerange = compute_global_timerange(nodes)
 
-    assert timerange.earliest is None
-    assert timerange.latest is None
+    assert timerange.earliest is not None
+    assert timerange.latest is not None
+    assert timerange.earliest.date().isoformat() == "2023-10-20"
+    assert timerange.latest.date().isoformat() == "2023-10-20"
 
 
 def test_compute_global_timerange_repeated_tasks() -> None:
@@ -73,7 +75,7 @@ def test_compute_global_timerange_repeated_tasks() -> None:
 :END:
 """)
 
-    timerange = compute_global_timerange(nodes, ["DONE"])
+    timerange = compute_global_timerange(nodes)
 
     dt1 = datetime(2023, 10, 18, 9, 5)
     dt3 = datetime(2023, 10, 20, 9, 15)
@@ -94,7 +96,7 @@ CLOSED: [2023-10-18 Wed 14:30]
 CLOSED: [2023-10-20 Fri 14:43]
 """)
 
-    timerange = compute_global_timerange(nodes, ["DONE"])
+    timerange = compute_global_timerange(nodes)
 
     from datetime import date
 
@@ -107,7 +109,7 @@ def test_compute_global_timerange_no_timestamps() -> None:
     """Test DONE task without timestamp is not included."""
     nodes = node_from_org("* DONE Task\n")
 
-    timerange = compute_global_timerange(nodes, ["DONE"])
+    timerange = compute_global_timerange(nodes)
 
     assert timerange.earliest is None
     assert timerange.latest is None

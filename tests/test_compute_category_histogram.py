@@ -8,7 +8,7 @@ def test_compute_category_histogram_empty_nodes() -> None:
     """Test with empty nodes list."""
     nodes = node_from_org("")
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values.get("simple", 0) == 0
     assert histogram.values.get("regular", 0) == 0
@@ -24,7 +24,7 @@ def test_compute_category_histogram_single_simple() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["simple"] == 1
     assert histogram.values.get("regular", 0) == 0
@@ -40,7 +40,7 @@ def test_compute_category_histogram_single_regular() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values.get("simple", 0) == 0
     assert histogram.values["regular"] == 1
@@ -56,7 +56,7 @@ def test_compute_category_histogram_single_hard() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values.get("simple", 0) == 0
     assert histogram.values.get("regular", 0) == 0
@@ -67,7 +67,7 @@ def test_compute_category_histogram_missing_gamify_exp_defaults_regular() -> Non
     """Test task without gamify_exp defaults to regular."""
     nodes = node_from_org("* DONE Task\n")
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values.get("simple", 0) == 0
     assert histogram.values["regular"] == 1
@@ -103,7 +103,7 @@ def test_compute_category_histogram_multiple_tasks() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["simple"] == 2
     assert histogram.values["regular"] == 2
@@ -134,7 +134,7 @@ def test_compute_category_histogram_boundary_values() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["simple"] == 1
     assert histogram.values["regular"] == 2
@@ -154,13 +154,13 @@ def test_compute_category_histogram_repeated_tasks() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["regular"] == 2
 
 
-def test_compute_category_histogram_todo_tasks_excluded() -> None:
-    """Test that TODO tasks are not counted."""
+def test_compute_category_histogram_todo_tasks_counted() -> None:
+    """Test that TODO tasks are counted."""
     nodes = node_from_org("""
 * TODO Task 1
 :PROPERTIES:
@@ -173,9 +173,9 @@ def test_compute_category_histogram_todo_tasks_excluded() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
-    assert histogram.values.get("simple", 0) == 0
+    assert histogram.values["simple"] == 1
     assert histogram.values["regular"] == 1
     assert histogram.values.get("hard", 0) == 0
 
@@ -199,14 +199,14 @@ def test_compute_category_histogram_multiple_done_keys() -> None:
     ns = orgparse.loads(content)
     nodes = list(ns[1:]) if ns else []
 
-    histogram = compute_category_histogram(nodes, ["DONE", "COMPLETED"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["simple"] == 1
     assert histogram.values["hard"] == 1
 
 
-def test_compute_category_histogram_cancelled_tasks_excluded() -> None:
-    """Test that CANCELLED tasks are not counted."""
+def test_compute_category_histogram_cancelled_tasks_counted() -> None:
+    """Test that CANCELLED tasks are counted."""
     import orgparse
 
     content = """#+TODO: TODO | DONE CANCELLED
@@ -224,9 +224,9 @@ def test_compute_category_histogram_cancelled_tasks_excluded() -> None:
     ns = orgparse.loads(content)
     nodes = list(ns[1:]) if ns else []
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
-    assert histogram.values.get("simple", 0) == 0
+    assert histogram.values["simple"] == 1
     assert histogram.values["regular"] == 1
 
 
@@ -244,7 +244,7 @@ def test_compute_category_histogram_tuple_format() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["simple"] == 1
     assert histogram.values["hard"] == 1
@@ -271,7 +271,7 @@ def test_compute_category_histogram_mixed_formats() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["simple"] == 1
     assert histogram.values["regular"] == 2
@@ -287,7 +287,7 @@ def test_compute_category_histogram_zero_value() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["simple"] == 1
 
@@ -301,13 +301,13 @@ def test_compute_category_histogram_large_value() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["hard"] == 1
 
 
-def test_compute_category_histogram_sum_equals_done_count() -> None:
-    """Test that sum of category counts equals total DONE tasks."""
+def test_compute_category_histogram_sum_equals_total_count() -> None:
+    """Test that sum of category counts equals total tasks."""
     nodes = node_from_org("""
 * TODO Task 1
 :PROPERTIES:
@@ -334,10 +334,10 @@ def test_compute_category_histogram_sum_equals_done_count() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     total_category_counts = sum(histogram.values.values())
-    assert total_category_counts == 4
+    assert total_category_counts == 5
 
 
 def test_compute_category_histogram_invalid_gamify_exp() -> None:
@@ -349,7 +349,7 @@ def test_compute_category_histogram_invalid_gamify_exp() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values.get("simple", 0) == 0
     assert histogram.values["regular"] == 1
@@ -365,7 +365,7 @@ def test_compute_category_histogram_empty_gamify_exp() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, ["DONE"])
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values.get("simple", 0) == 0
     assert histogram.values["regular"] == 1

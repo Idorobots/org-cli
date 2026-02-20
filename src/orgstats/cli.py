@@ -324,8 +324,8 @@ def display_category(
         print(f"  {name}")
         print(f"    Total tasks: {tag.total_tasks}")
         if tag.time_range.earliest and tag.time_range.latest:
-            print(f"    Average tasks completed per day: {tag.avg_tasks_per_day:.2f}")
-            print(f"    Max tasks completed on a single day: {tag.max_single_day_count}")
+            print(f"    Average tasks per day: {tag.avg_tasks_per_day:.2f}")
+            print(f"    Max tasks on a single day: {tag.max_single_day_count}")
 
         if max_relations > 0 and tag.relations:
             filtered_relations = {
@@ -392,8 +392,8 @@ def display_groups(
 
         print(f"  {', '.join(group_tags)}")
         print(f"    Total tasks: {group.total_tasks}")
-        print(f"    Average tasks completed per day: {group.avg_tasks_per_day:.2f}")
-        print(f"    Max tasks completed on a single day: {group.max_single_day_count}")
+        print(f"    Average tasks per day: {group.avg_tasks_per_day:.2f}")
+        print(f"    Max tasks on a single day: {group.max_single_day_count}")
 
 
 def get_most_recent_timestamp(node: orgparse.node.OrgNode) -> datetime | None:
@@ -1177,8 +1177,8 @@ def display_results(
     print(f"Total tasks: {result.total_tasks}")
 
     if result.timerange.earliest and result.timerange.latest:
-        print(f"Average tasks completed per day: {result.avg_tasks_per_day:.2f}")
-        print(f"Max tasks completed on a single day: {result.max_single_day_count}")
+        print(f"Average tasks per day: {result.avg_tasks_per_day:.2f}")
+        print(f"Max tasks on a single day: {result.max_single_day_count}")
         print(f"Max repeats of a single task: {result.max_repeat_count}")
 
     print("\nTask states:")
@@ -1190,13 +1190,13 @@ def display_results(
     for line in histogram_lines:
         print(f"  {line}")
 
-    print("\nTask completion by category:")
+    print("\nTask category histogram:")
     category_order = ["simple", "regular", "hard"]
     histogram_lines = render_histogram(result.task_categories, args.buckets, category_order)
     for line in histogram_lines:
         print(f"  {line}")
 
-    print("\nTask completion by day of week:")
+    print("\nTask day of week histogram:")
     day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     histogram_lines = render_histogram(result.task_days, args.buckets, day_order)
     for line in histogram_lines:
@@ -1301,7 +1301,7 @@ def main() -> None:
         print("No results")
         return
 
-    result = analyze(nodes, mapping, args.show, args.max_relations, done_keys)
+    result = analyze(nodes, mapping, args.show, args.max_relations)
 
     date_from = None
     date_until = None

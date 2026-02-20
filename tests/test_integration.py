@@ -28,7 +28,7 @@ def test_integration_simple_file() -> None:
     """Test with the simple.org fixture."""
     nodes = load_org_file("simple.org")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 1
     assert result.task_states.values["DONE"] == 1
@@ -38,7 +38,7 @@ def test_integration_single_task() -> None:
     """Test with single_task.org fixture."""
     nodes = load_org_file("single_task.org")
 
-    result_tags = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result_tags = analyze(nodes, {}, category="tags", max_relations=3)
     assert result_tags.total_tasks == 1
     assert result_tags.task_states.values["DONE"] == 1
     # Check tags (Testing, Python - CamelCase preserved)
@@ -46,13 +46,13 @@ def test_integration_single_task() -> None:
     assert "Python" in result_tags.tags
 
     # Check heading words
-    result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
+    result_heading = analyze(nodes, {}, category="heading", max_relations=3)
     assert "write" in result_heading.tags
     assert "comprehensive" in result_heading.tags
     assert "tests" in result_heading.tags
 
     # Check body words
-    result_body = analyze(nodes, {}, category="body", max_relations=3, done_keys=["DONE"])
+    result_body = analyze(nodes, {}, category="body", max_relations=3)
     assert "task" in result_body.tags or "this" in result_body.tags  # Some words from body
 
 
@@ -71,7 +71,6 @@ def test_integration_multiple_tags() -> None:
         },
         category="tags",
         max_relations=3,
-        done_keys=["DONE"],
     )
 
     assert result.total_tasks == 3
@@ -87,16 +86,16 @@ def test_integration_multiple_tags() -> None:
     # SysAdmin -> DevOps
     assert "DevOps" in result.tags
 
-    # Maintenance tag is on TODO task, so it should not appear in frequencies
-    assert "Refactoring" not in result.tags
-    assert "Maintenance" not in result.tags
+    # Maintenance tag is on TODO task and now appears in frequencies
+    assert "Refactoring" in result.tags
+    assert "Maintenance" not in result.tags  # Mapped to Refactoring
 
 
 def test_integration_edge_cases() -> None:
     """Test with edge_cases.org fixture."""
     nodes = load_org_file("edge_cases.org")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     # All three tasks are DONE (only repeated tasks counted)
     assert result.total_tasks == 3
@@ -109,7 +108,7 @@ def test_integration_edge_cases() -> None:
     assert result.tags["NoBody"].total_tasks == 1
 
     # Check that special characters in heading are handled
-    result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
+    result_heading = analyze(nodes, {}, category="heading", max_relations=3)
     assert "task" in result_heading.tags
     assert "special" in result_heading.tags or "chars" in result_heading.tags
 
@@ -120,7 +119,7 @@ def test_integration_24_00_time_handling() -> None:
 
     # Should not crash when parsing file with 24:00
     # (file has 24:00 which is replaced with 00:00)
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks > 0
     assert result.task_states.values["DONE"] > 0
@@ -130,7 +129,7 @@ def test_integration_empty_file() -> None:
     """Test with empty.org fixture (TODO tasks)."""
     nodes = load_org_file("empty.org")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 1
     assert result.task_states.values.get("DONE", 0) == 0
@@ -141,7 +140,7 @@ def test_integration_repeated_tasks() -> None:
     """Test with repeated_tasks.org fixture."""
     nodes = load_org_file("repeated_tasks.org")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     # Note: orgparse may or may not parse repeated tasks from LOGBOOK
     # This depends on orgparse's implementation
@@ -167,7 +166,7 @@ def test_integration_archive_small() -> None:
         if ns is not None:
             nodes = list(ns[1:])
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     # All tasks in ARCHIVE_small are DONE
     assert result.total_tasks > 0
@@ -178,11 +177,11 @@ def test_integration_archive_small() -> None:
     assert len(result.tags) > 0
 
     # Check that heading words are extracted
-    result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
+    result_heading = analyze(nodes, {}, category="heading", max_relations=3)
     assert len(result_heading.tags) > 0
 
     # Check that body words are extracted
-    result_body = analyze(nodes, {}, category="body", max_relations=3, done_keys=["DONE"])
+    result_body = analyze(nodes, {}, category="body", max_relations=3)
     assert len(result_body.tags) > 0
 
 
@@ -190,9 +189,9 @@ def test_integration_clean_filters_stopwords() -> None:
     """Test that clean() properly filters stop words from real data."""
     nodes = load_org_file("multiple_tags.org")
 
-    result_tags = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
-    result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
-    result_body = analyze(nodes, {}, category="body", max_relations=3, done_keys=["DONE"])
+    result_tags = analyze(nodes, {}, category="tags", max_relations=3)
+    result_heading = analyze(nodes, {}, category="heading", max_relations=3)
+    result_body = analyze(nodes, {}, category="body", max_relations=3)
 
     # Apply cleaning
     cleaned_tags = clean(DEFAULT_EXCLUDE, result_tags.tags)
@@ -214,7 +213,7 @@ def test_integration_frequency_sorting() -> None:
     """Test that results can be sorted by frequency."""
     nodes = load_org_file("multiple_tags.org")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     # Sort tags by frequency (descending)
     sorted_tags = sorted(result.tags.items(), key=lambda item: -item[1].total_tasks)
@@ -231,8 +230,8 @@ def test_integration_word_uniqueness() -> None:
     """Test that words in headings/body are deduplicated per task."""
     nodes = load_org_file("single_task.org")
 
-    result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
-    result_body = analyze(nodes, {}, category="body", max_relations=3, done_keys=["DONE"])
+    result_heading = analyze(nodes, {}, category="heading", max_relations=3)
+    result_body = analyze(nodes, {}, category="body", max_relations=3)
 
     # Words should be deduplicated within each task
     # but counted across tasks
@@ -244,7 +243,7 @@ def test_integration_no_tags_task() -> None:
     """Test task without any tags."""
     nodes = load_org_file("simple.org")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     # Simple task has no tags
     assert len(result.tags) == 0 or all(v.total_tasks == 0 for v in result.tags.values())
@@ -264,7 +263,7 @@ def test_integration_all_fixtures_parseable() -> None:
     for fixture in fixtures:
         nodes = load_org_file(fixture)
         # Should not raise any exceptions
-        result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+        result = analyze(nodes, {}, category="tags", max_relations=3)
 
         # Basic sanity checks
         assert result.total_tasks >= 0
@@ -288,12 +287,15 @@ def test_integration_filtered_repeats_in_analysis() -> None:
 """
     nodes = list(orgparse.loads(org_text)[1:])
 
-    unfiltered_result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    unfiltered_result = analyze(nodes, {}, category="tags", max_relations=3)
 
     filtered_nodes = filter_date_from(nodes, datetime(2025, 2, 1))
     filtered_nodes = filter_date_until(filtered_nodes, datetime(2025, 3, 1))
     filtered_result = analyze(
-        filtered_nodes, {}, category="tags", max_relations=3, done_keys=["DONE"]
+        filtered_nodes,
+        {},
+        category="tags",
+        max_relations=3,  # REMOVED done_keys=["DONE"]
     )
 
     assert unfiltered_result.total_tasks == 3
@@ -330,15 +332,15 @@ def test_integration_category_histogram() -> None:
 
 * DONE Regular task 3
 
-* TODO Not counted
+* TODO Now counted
 :PROPERTIES:
 :gamify_exp: 5
 :END:
 """
     nodes = list(orgparse.loads(org_text)[1:])
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
-    assert result.task_categories.values["simple"] == 2
+    assert result.task_categories.values["simple"] == 3
     assert result.task_categories.values["regular"] == 3
     assert result.task_categories.values.get("hard", 0) == 0

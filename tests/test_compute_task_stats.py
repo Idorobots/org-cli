@@ -8,7 +8,7 @@ def test_compute_task_stats_empty_nodes() -> None:
     """Test with empty nodes list."""
     nodes = node_from_org("")
 
-    total, max_repeat = compute_task_stats(nodes, ["DONE"])
+    total, max_repeat = compute_task_stats(nodes)
 
     assert total == 0
     assert max_repeat == 0
@@ -18,34 +18,34 @@ def test_compute_task_stats_single_task() -> None:
     """Test single task without repeats."""
     nodes = node_from_org("* TODO Task\n")
 
-    total, max_repeat = compute_task_stats(nodes, ["DONE"])
+    total, max_repeat = compute_task_stats(nodes)
 
     assert total == 1
     assert max_repeat == 0
 
 
 def test_compute_task_stats_single_done_task() -> None:
-    """Test single DONE task."""
+    """Test single DONE task without repeats."""
     nodes = node_from_org("* DONE Task\n")
 
-    total, max_repeat = compute_task_stats(nodes, ["DONE"])
+    total, max_repeat = compute_task_stats(nodes)
 
     assert total == 1
-    assert max_repeat == 1
+    assert max_repeat == 0
 
 
 def test_compute_task_stats_multiple_tasks() -> None:
-    """Test multiple tasks."""
+    """Test multiple tasks without repeats."""
     nodes = node_from_org("""
 * TODO Task 1
 * DONE Task 2
 * TODO Task 3
 """)
 
-    total, max_repeat = compute_task_stats(nodes, ["DONE"])
+    total, max_repeat = compute_task_stats(nodes)
 
     assert total == 3
-    assert max_repeat == 1
+    assert max_repeat == 0
 
 
 def test_compute_task_stats_repeated_tasks() -> None:
@@ -59,10 +59,10 @@ def test_compute_task_stats_repeated_tasks() -> None:
 :END:
 """)
 
-    total, max_repeat = compute_task_stats(nodes, ["DONE"])
+    total, max_repeat = compute_task_stats(nodes)
 
     assert total == 3
-    assert max_repeat == 2
+    assert max_repeat == 3
 
 
 def test_compute_task_stats_max_repeat_count() -> None:
@@ -85,7 +85,7 @@ def test_compute_task_stats_max_repeat_count() -> None:
 :END:
 """)
 
-    total, max_repeat = compute_task_stats(nodes, ["DONE"])
+    total, max_repeat = compute_task_stats(nodes)
 
     assert total == 7
     assert max_repeat == 4
@@ -104,7 +104,7 @@ def test_compute_task_stats_mixed_repeats() -> None:
 :END:
 """)
 
-    total, max_repeat = compute_task_stats(nodes, ["DONE"])
+    total, max_repeat = compute_task_stats(nodes)
 
     assert total == 3
     assert max_repeat == 1

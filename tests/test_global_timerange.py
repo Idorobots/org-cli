@@ -7,8 +7,8 @@ import orgparse
 from orgstats.analyze import analyze
 
 
-def test_global_timerange_empty_when_no_done_tasks() -> None:
-    """Test that global timerange is empty when no DONE tasks exist."""
+def test_global_timerange_includes_todo_tasks() -> None:
+    """Test that global timerange includes TODO tasks."""
     org_content = """
 * TODO Task 1
 CLOSED: [2024-01-15 Mon 10:00]
@@ -17,11 +17,11 @@ CLOSED: [2024-01-15 Mon 10:00]
 :END:
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
-    assert result.timerange.earliest is None
-    assert result.timerange.latest is None
-    assert result.timerange.timeline == {}
+    assert result.timerange.earliest is not None
+    assert result.timerange.latest is not None
+    assert len(result.timerange.timeline) > 0
 
 
 def test_global_timerange_single_done_task() -> None:
@@ -31,7 +31,7 @@ def test_global_timerange_single_done_task() -> None:
 CLOSED: [2024-01-15 Mon 10:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.timerange.earliest == datetime(2024, 1, 15, 10, 0)
     assert result.timerange.latest == datetime(2024, 1, 15, 10, 0)
@@ -51,15 +51,15 @@ CLOSED: [2024-03-20 Wed 14:30]
 CLOSED: [2024-02-10 Sat 09:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.timerange.earliest == datetime(2024, 1, 15, 10, 0)
     assert result.timerange.latest == datetime(2024, 3, 20, 14, 30)
     assert len(result.timerange.timeline) == 3
 
 
-def test_global_timerange_ignores_non_done_tasks() -> None:
-    """Test that global timerange ignores non-DONE tasks."""
+def test_global_timerange_includes_all_tasks() -> None:
+    """Test that global timerange includes all tasks regardless of state."""
     org_content = """
 * TODO Task 1
 CLOSED: [2024-01-15 Mon 10:00]
@@ -71,11 +71,11 @@ CLOSED: [2024-01-20 Sat 14:00]
 CLOSED: [2024-01-25 Thu 09:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
-    assert result.timerange.earliest == datetime(2024, 1, 25, 9, 0)
+    assert result.timerange.earliest == datetime(2024, 1, 15, 10, 0)
     assert result.timerange.latest == datetime(2024, 1, 25, 9, 0)
-    assert len(result.timerange.timeline) == 1
+    assert len(result.timerange.timeline) == 3
 
 
 def test_global_timerange_with_done_repeated_tasks() -> None:
@@ -89,7 +89,7 @@ def test_global_timerange_with_done_repeated_tasks() -> None:
 :END:
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.timerange.earliest == datetime(2024, 1, 10, 10, 0)
     assert result.timerange.latest == datetime(2024, 1, 20, 12, 0)
@@ -97,7 +97,7 @@ def test_global_timerange_with_done_repeated_tasks() -> None:
 
 
 def test_global_timerange_with_mixed_repeated_tasks() -> None:
-    """Test global timerange with mixed DONE and non-DONE repeated tasks."""
+    """Test global timerange with all repeated tasks regardless of state."""
     org_content = """
 * TODO Task with mixed repeats
 :LOGBOOK:
@@ -107,11 +107,11 @@ def test_global_timerange_with_mixed_repeated_tasks() -> None:
 :END:
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.timerange.earliest == datetime(2024, 1, 10, 10, 0)
     assert result.timerange.latest == datetime(2024, 1, 15, 12, 0)
-    assert len(result.timerange.timeline) == 2
+    assert len(result.timerange.timeline) == 3
 
 
 def test_global_timerange_combines_main_and_repeated_done() -> None:
@@ -130,7 +130,7 @@ CLOSED: [2024-01-10 Wed 10:00]
 CLOSED: [2024-01-25 Thu 14:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.timerange.earliest == datetime(2024, 1, 10, 10, 0)
     assert result.timerange.latest == datetime(2024, 1, 25, 14, 0)
@@ -150,7 +150,7 @@ CLOSED: [2024-01-15 Mon 14:00]
 CLOSED: [2024-01-15 Mon 18:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     from datetime import date
 
@@ -165,7 +165,7 @@ def test_global_timerange_with_scheduled_fallback() -> None:
 SCHEDULED: <2024-01-15 Mon>
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.timerange.earliest is not None
     assert result.timerange.latest is not None
@@ -183,7 +183,7 @@ CLOSED: [2024-01-15 Mon 10:00]
 CLOSED: [2024-01-20 Sat 14:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.timerange.earliest == datetime(2024, 1, 15, 10, 0)
     assert result.timerange.latest == datetime(2024, 1, 20, 14, 0)
@@ -201,9 +201,9 @@ CLOSED: [2024-01-20 Sat 14:00]
 """
     nodes = orgparse.loads(org_content)
 
-    result_tags = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
-    result_heading = analyze(list(nodes[1:]), {}, "heading", 10, ["DONE"])
-    result_body = analyze(list(nodes[1:]), {}, "body", 10, ["DONE"])
+    result_tags = analyze(list(nodes[1:]), {}, "tags", 10)
+    result_heading = analyze(list(nodes[1:]), {}, "heading", 10)
+    result_body = analyze(list(nodes[1:]), {}, "body", 10)
 
     assert result_tags.timerange.earliest == result_heading.timerange.earliest
     assert result_tags.timerange.latest == result_body.timerange.latest

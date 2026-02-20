@@ -1219,6 +1219,40 @@ Update the CLI output to include the extra information. The values should be dis
 
 The computed values should follow the group contents name and be indented an extra level.
 
+** TODO Analysis inconsistencies fixes                                                  :UX:Cleanup:
+The analysis yields inconsistent results:
+- Task counts for total tasks don't always match the task state histogram sum,
+- Day of week histogram counts should sum up to the same value as the completed tasks.
+
+I don't immediately see the issue there, so instead I'd like to change the logic a bit. All computations should be performed on all nodes left by filtering. There should be no need for extracting done/toodo states. If a node is on the list, it participates. If it has repeats, take all those repeats into account.
+
+Here's the breakdown of changes I want:
+
+- All total counts computations should take all filtered nodes into account.
+- Average & max computation should also take all filtered nodes into account.
+- Frequencies computations should also take all filtered nodes into account.
+- Time ranges computations should also take all filtered nodes into account.
+- Group counts should be computed bases on the node list, not as a sum of per-Tag frequencies.
+
+Do not select only the completed ones for any of the computations, refactor the code to not require the done or todo keys.
+
+To validate:
+
+- Make sure to check that task counts for global total tasks are equal to the sum of the task state histogram values.
+- Make sure to check that task counts for global total tasks are equal to the sum of the task category histogram values.
+- Make sure to check that task counts for global total tasks are equal to the sum of the day-of-week histogram values.
+
+Don't worry about backwards compatibility, completed task stats can be fetched explicitly with ~--filter-completed~.
+
+** TODO Display inconsistencies fixes                                                       :UX:Bug:
+There are some inconsistencies in data display. I'd like to fix those inconsistencies:
+
+- When a section is requested (corresponding max filter > 0) but there are no results. Show the section header and "No results" below. The "No results" string should be indented as usual.
+
+- When a section is not requested (max == 0) omit the section.
+
+- --filter-not-completed should also include tasks withuout a todo state (so, task state in todo keys or absent).
+
 ** TODO Output colors etc                                                                   :TUI:UX:
 Please add a boolean CLI switch called ~--color~ that defaults to ~true~. This switch should be used to enable/disable the coloring of the CLI output. When the switch is set to ~true~, the CLI output should be colored. If the switch is set to ~false~ then the output should not be colored (same as currently). The details of how the coloring should be done follows soon.
 

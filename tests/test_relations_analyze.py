@@ -9,7 +9,7 @@ from tests.conftest import node_from_org
 def test_analyze_empty_nodes_has_empty_relations() -> None:
     """Test analyze with empty nodes returns empty relations."""
     nodes: list[orgparse.node.OrgNode] = []
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.tags == {}
 
@@ -18,7 +18,7 @@ def test_analyze_single_tag_no_relations() -> None:
     """Test task with single tag creates no Relations objects."""
     nodes = node_from_org("* DONE Task :Python:\n")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.tags["Python"].relations == {}
 
@@ -27,7 +27,7 @@ def test_analyze_two_tags_bidirectional_relation() -> None:
     """Test task with two tags creates bidirectional relation."""
     nodes = node_from_org("* DONE Task :Python:Testing:\n")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert "Python" in result.tags
     assert "Testing" in result.tags
@@ -40,7 +40,7 @@ def test_analyze_three_tags_all_relations() -> None:
     """Test task with three tags creates all bidirectional relations."""
     nodes = node_from_org("* DONE Task :TagA:TagB:TagC:\n")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert "TagA" in result.tags
     assert "TagB" in result.tags
@@ -62,7 +62,7 @@ def test_analyze_no_self_relations() -> None:
     """Test that tags do not create relations with themselves."""
     nodes = node_from_org("* DONE Task :Python:Testing:\n")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert "Python" not in result.tags["Python"].relations
     assert "Testing" not in result.tags["Testing"].relations
@@ -77,7 +77,6 @@ def test_analyze_relations_normalized() -> None:
         {"Test": "Testing", "SysAdmin": "DevOps"},
         category="tags",
         max_relations=3,
-        done_keys=["DONE"],
     )
 
     # "Test" -> "Testing" (mapped, no normalization)
@@ -95,7 +94,7 @@ def test_analyze_relations_accumulate() -> None:
 * DONE Task :Python:Testing:
 """)
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.tags["Python"].relations["Testing"] == 2
     assert result.tags["Testing"].relations["Python"] == 2
@@ -111,7 +110,7 @@ def test_analyze_relations_with_repeated_tasks() -> None:
 :END:
 """)
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     # count = max(0, 2) = 2
     assert result.tags["Daily"].relations["Meeting"] == 2
@@ -122,7 +121,7 @@ def test_analyze_heading_relations() -> None:
     """Test that heading word relations are computed for heading category."""
     nodes = node_from_org("* DONE Implement feature\n")
 
-    result = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="heading", max_relations=3)
 
     assert "implement" in result.tags
     assert "feature" in result.tags
@@ -134,7 +133,7 @@ def test_analyze_body_relations() -> None:
     """Test that body word relations are computed for body category."""
     nodes = node_from_org("* DONE Task\nPython code implementation\n")
 
-    result = analyze(nodes, {}, category="body", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="body", max_relations=3)
 
     assert "python" in result.tags
     assert "code" in result.tags
@@ -152,18 +151,18 @@ def test_analyze_relations_independent() -> None:
     """Test that tag, heading, and body relations are computed independently."""
     nodes = node_from_org("* DONE Python tests :Python:Testing:\nPython code\n")
 
-    result_tags = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result_tags = analyze(nodes, {}, category="tags", max_relations=3)
     # Tag relations: Python-Testing
     assert result_tags.tags["Python"].relations.get("Testing") == 1
     assert "tests" not in result_tags.tags["Python"].relations
 
-    result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
+    result_heading = analyze(nodes, {}, category="heading", max_relations=3)
     # Heading relations: python-tests (lowercase, normalized)
     assert result_heading.tags["python"].relations.get("tests") == 1
     assert "python" in result_heading.tags
     assert "Testing" not in result_heading.tags["python"].relations
 
-    result_body = analyze(nodes, {}, category="body", max_relations=3, done_keys=["DONE"])
+    result_body = analyze(nodes, {}, category="body", max_relations=3)
     # Body relations: python-code (lowercase, normalized)
     assert result_body.tags["python"].relations.get("code") == 1
 
@@ -184,7 +183,7 @@ def test_analyze_relations_with_different_counts() -> None:
 :END:
 """)
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     # First node: count = max(1, 1) = 1
     # Second node: count = max(0, 3) = 3
@@ -201,7 +200,7 @@ def test_analyze_relations_mixed_tags() -> None:
 * DONE Task :Testing:Debugging:
 """)
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     # Python appears with Testing (1x) and Debugging (1x)
     assert result.tags["Python"].relations["Testing"] == 1
@@ -220,7 +219,7 @@ def test_analyze_relations_empty_tags() -> None:
     """Test that tasks with no tags create no relations."""
     nodes = node_from_org("* DONE Task\nContent\n")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.tags == {}
 
@@ -229,7 +228,7 @@ def test_analyze_four_tags_six_relations() -> None:
     """Test task with four tags creates six bidirectional relations."""
     nodes = node_from_org("* DONE Task :A:B:C:D:\n")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     # With 4 tags, we should have C(4,2) = 6 unique pairs
     # A-B, A-C, A-D, B-C, B-D, C-D
@@ -254,7 +253,7 @@ def test_analyze_relations_result_structure() -> None:
 
     nodes = node_from_org("* DONE Task :Python:Testing:\n")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert isinstance(result.tags["Python"], Tag)
     assert result.tags["Python"].name == "Python"

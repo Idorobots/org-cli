@@ -445,8 +445,14 @@ def test_filter_completed_basic() -> None:
 def test_filter_completed_multiple_done_keys() -> None:
     """Test filter_completed with multiple done keys."""
     nodes = node_from_org(
-        "* DONE Task\n", todo_keys=["TODO"], done_keys=["DONE", "DELEGATED"]
-    ) + node_from_org("* DELEGATED Task\n", todo_keys=["TODO"], done_keys=["DONE", "DELEGATED"])
+        "* DONE Task\n",
+        todo_keys=["TODO"],
+        done_keys=["DONE", "DELEGATED"],
+    ) + node_from_org(
+        "* DELEGATED Task\n",
+        todo_keys=["TODO"],
+        done_keys=["DONE", "DELEGATED"],
+    )
 
     result = filter_completed(nodes)
 
@@ -480,8 +486,9 @@ def test_filter_not_completed_basic() -> None:
 def test_filter_not_completed_multiple_todo_keys() -> None:
     """Test filter_not_completed with multiple todo keys."""
     nodes = node_from_org(
-        "* TODO Task\n", todo_keys=["TODO", "WAITING"], done_keys=["DONE"]
-    ) + node_from_org("* WAITING Task\n", todo_keys=["TODO", "WAITING"], done_keys=["DONE"])
+        "* TODO Task\n",
+        todo_keys=["TODO", "WAITING"],  # REMOVED done_keys=["DONE"]
+    ) + node_from_org("* WAITING Task\n", todo_keys=["TODO", "WAITING"])
 
     result = filter_not_completed(nodes)
 
@@ -586,7 +593,7 @@ def test_filter_date_from_repeats_mixed_states() -> None:
 - State "TODO" from "DONE" [2025-02-15 Sat 11:00]
 :END:
 """
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
+    nodes = node_from_org(org_text, todo_keys=["TODO"])
 
     result = filter_date_from(nodes, datetime(2025, 2, 1))
 
@@ -683,7 +690,7 @@ def test_filter_completed_repeats_some_match() -> None:
 - State "TODO" from "DONE" [2025-02-15 Sat 11:00]
 :END:
 """
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
+    nodes = node_from_org(org_text, todo_keys=["TODO"])
 
     result = filter_completed(nodes)
 
@@ -700,7 +707,7 @@ def test_filter_completed_repeats_none_match() -> None:
 - State "TODO" from "DONE" [2025-02-15 Sat 11:00]
 :END:
 """
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
+    nodes = node_from_org(org_text, todo_keys=["TODO"])
 
     result = filter_completed(nodes)
 
@@ -734,7 +741,7 @@ def test_filter_not_completed_repeats_all_match() -> None:
 - State "TODO" from "DONE" [2025-02-15 Sat 11:00]
 :END:
 """
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
+    nodes = node_from_org(org_text, todo_keys=["TODO"])
 
     result = filter_not_completed(nodes)
 
@@ -750,7 +757,7 @@ def test_filter_not_completed_repeats_some_match() -> None:
 - State "DONE" from "TODO" [2025-02-15 Sat 11:00]
 :END:
 """
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
+    nodes = node_from_org(org_text, todo_keys=["TODO"])
 
     result = filter_not_completed(nodes)
 

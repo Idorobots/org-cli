@@ -18,7 +18,7 @@ CLOSED: [2024-01-15 Mon 14:00]
 CLOSED: [2024-01-15 Mon 18:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.avg_tasks_per_day == 3.0
 
@@ -36,7 +36,7 @@ CLOSED: [2024-01-17 Wed 14:00]
 CLOSED: [2024-01-18 Thu 18:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.avg_tasks_per_day == 3.0 / 4
 
@@ -51,13 +51,13 @@ CLOSED: [2024-01-15 Mon 10:00]
 CLOSED: [2024-01-20 Sat 14:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.avg_tasks_per_day == 2.0 / 6
 
 
 def test_avg_tasks_per_day_no_done_tasks() -> None:
-    """Test average per day when no DONE tasks exist."""
+    """Test average per day when only TODO tasks exist."""
     org_content = """
 * TODO Task 1
 SCHEDULED: <2024-01-15 Mon>
@@ -66,9 +66,9 @@ SCHEDULED: <2024-01-15 Mon>
 SCHEDULED: <2024-01-20 Sat>
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
-    assert result.avg_tasks_per_day == 0.0
+    assert result.avg_tasks_per_day > 0.0
 
 
 def test_max_single_day_count_clear_winner() -> None:
@@ -87,7 +87,7 @@ CLOSED: [2024-01-15 Mon 18:00]
 CLOSED: [2024-01-16 Tue 10:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.max_single_day_count == 3
 
@@ -108,21 +108,21 @@ CLOSED: [2024-01-16 Tue 10:00]
 CLOSED: [2024-01-16 Tue 14:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.max_single_day_count == 2
 
 
-def test_max_single_day_count_no_done_tasks() -> None:
-    """Test max single day count when no DONE tasks exist."""
+def test_max_single_day_count_with_todo_task() -> None:
+    """Test max single day count with TODO task."""
     org_content = """
 * TODO Task 1
 SCHEDULED: <2024-01-15 Mon>
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
-    assert result.max_single_day_count == 0
+    assert result.max_single_day_count == 1
 
 
 def test_max_repeat_count_no_repeats() -> None:
@@ -135,9 +135,9 @@ CLOSED: [2024-01-15 Mon 10:00]
 CLOSED: [2024-01-16 Tue 14:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
-    assert result.max_repeat_count == 1
+    assert result.max_repeat_count == 0
 
 
 def test_max_repeat_count_single_task_with_repeats() -> None:
@@ -151,7 +151,7 @@ def test_max_repeat_count_single_task_with_repeats() -> None:
 :END:
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.max_repeat_count == 3
 
@@ -178,13 +178,13 @@ def test_max_repeat_count_multiple_tasks_different_counts() -> None:
 CLOSED: [2024-01-20 Sat 15:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.max_repeat_count == 5
 
 
-def test_max_repeat_count_only_done_repeats() -> None:
-    """Test max repeat count only counts DONE repeats, not other states."""
+def test_max_repeat_count_counts_all_repeats() -> None:
+    """Test max repeat count counts all repeats regardless of state."""
     org_content = """
 * TODO Task with mixed states
 :LOGBOOK:
@@ -196,9 +196,9 @@ def test_max_repeat_count_only_done_repeats() -> None:
 :END:
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
-    assert result.max_repeat_count == 3
+    assert result.max_repeat_count == 5
 
 
 def test_max_repeat_count_main_task_done_no_repeats() -> None:
@@ -211,9 +211,9 @@ CLOSED: [2024-01-15 Mon 10:00]
 CLOSED: [2024-01-16 Tue 14:00]
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
-    assert result.max_repeat_count == 1
+    assert result.max_repeat_count == 0
 
 
 def test_max_repeat_count_main_done_with_repeats() -> None:
@@ -228,14 +228,14 @@ CLOSED: [2024-01-25 Thu 15:00]
 :END:
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.max_repeat_count == 3
 
 
 def test_statistics_all_zero_for_empty_nodes() -> None:
     """Test that all statistics are zero when no nodes provided."""
-    result = analyze([], {}, "tags", 10, ["DONE"])
+    result = analyze([], {}, "tags", 10)
 
     assert result.avg_tasks_per_day == 0.0
     assert result.max_single_day_count == 0
@@ -252,7 +252,7 @@ def test_avg_tasks_per_day_with_repeated_tasks() -> None:
 :END:
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.avg_tasks_per_day == 2.0 / 5
 
@@ -268,6 +268,6 @@ def test_max_single_day_count_with_repeated_tasks() -> None:
 :END:
 """
     nodes = orgparse.loads(org_content)
-    result = analyze(list(nodes[1:]), {}, "tags", 10, ["DONE"])
+    result = analyze(list(nodes[1:]), {}, "tags", 10)
 
     assert result.max_single_day_count == 3

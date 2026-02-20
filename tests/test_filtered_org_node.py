@@ -189,7 +189,7 @@ def test_filter_node_repeats_returns_filtered_node() -> None:
 - State "TODO" from "DONE" [2025-02-15 Sat 11:00]
 :END:
 """
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE"])
+    nodes = node_from_org(org_text, todo_keys=["TODO"])
     node = nodes[0]
 
     filtered_node = _filter_node_repeats(node, lambda rt: rt.after == "DONE")

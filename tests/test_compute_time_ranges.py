@@ -10,7 +10,7 @@ def test_compute_time_ranges_empty_nodes() -> None:
     """Test with empty nodes list."""
     nodes = node_from_org("")
 
-    time_ranges = compute_time_ranges(nodes, {}, "tags", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     assert time_ranges == {}
 
@@ -19,7 +19,7 @@ def test_compute_time_ranges_node_without_timestamps() -> None:
     """Test with node that has no timestamps."""
     nodes = node_from_org("* DONE Task :Python:\n")
 
-    time_ranges = compute_time_ranges(nodes, {}, "tags", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     assert time_ranges == {}
 
@@ -31,7 +31,7 @@ def test_compute_time_ranges_single_tag_single_timestamp() -> None:
 CLOSED: [2023-10-20 Fri 14:43]
 """)
 
-    time_ranges = compute_time_ranges(nodes, {}, "tags", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     assert "Python" in time_ranges
     dt = datetime(2023, 10, 20, 14, 43)
@@ -50,7 +50,7 @@ def test_compute_time_ranges_single_tag_multiple_timestamps() -> None:
 :END:
 """)
 
-    time_ranges = compute_time_ranges(nodes, {}, "tags", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     assert "Python" in time_ranges
     dt1 = datetime(2023, 10, 18, 9, 15)
@@ -66,7 +66,7 @@ def test_compute_time_ranges_multiple_tags() -> None:
 CLOSED: [2023-10-20 Fri 14:43]
 """)
 
-    time_ranges = compute_time_ranges(nodes, {}, "tags", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     assert len(time_ranges) == 3
     dt = datetime(2023, 10, 20, 14, 43)
@@ -88,7 +88,7 @@ CLOSED: [2023-10-18 Wed 09:15]
 CLOSED: [2023-10-20 Fri 14:43]
 """)
 
-    time_ranges = compute_time_ranges(nodes, {}, "tags", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     dt1 = datetime(2023, 10, 18, 9, 15)
     dt2 = datetime(2023, 10, 20, 14, 43)
@@ -105,9 +105,7 @@ def test_compute_time_ranges_with_mapping() -> None:
 CLOSED: [2023-10-20 Fri 14:43]
 """)
 
-    time_ranges = compute_time_ranges(
-        nodes, {"Test": "Testing", "SysAdmin": "DevOps"}, "tags", ["DONE"]
-    )
+    time_ranges = compute_time_ranges(nodes, {"Test": "Testing", "SysAdmin": "DevOps"}, "tags")
 
     assert "Testing" in time_ranges
     assert "DevOps" in time_ranges
@@ -122,7 +120,7 @@ def test_compute_time_ranges_timeline_single_timestamp() -> None:
 CLOSED: [2023-10-20 Fri 14:43]
 """)
 
-    time_ranges = compute_time_ranges(nodes, {}, "tags", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     timeline = time_ranges["Python"].timeline
     assert len(timeline) == 1
@@ -140,7 +138,7 @@ def test_compute_time_ranges_timeline_multiple_timestamps() -> None:
 :END:
 """)
 
-    time_ranges = compute_time_ranges(nodes, {}, "tags", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     timeline = time_ranges["Python"].timeline
     assert len(timeline) == 3
@@ -159,7 +157,7 @@ def test_compute_time_ranges_timeline_same_day_timestamps() -> None:
 :END:
 """)
 
-    time_ranges = compute_time_ranges(nodes, {}, "tags", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     timeline = time_ranges["Python"].timeline
     assert len(timeline) == 1
@@ -179,7 +177,7 @@ CLOSED: [2023-10-18 Wed 14:30]
 CLOSED: [2023-10-19 Thu 10:00]
 """)
 
-    time_ranges = compute_time_ranges(nodes, {}, "tags", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     timeline = time_ranges["Python"].timeline
     assert len(timeline) == 2
@@ -197,7 +195,7 @@ def test_compute_time_ranges_timeline_multiple_tags() -> None:
 :END:
 """)
 
-    time_ranges = compute_time_ranges(nodes, {}, "tags", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "tags")
 
     python_timeline = time_ranges["Python"].timeline
     testing_timeline = time_ranges["Testing"].timeline
@@ -218,7 +216,7 @@ def test_compute_time_ranges_heading_category() -> None:
 CLOSED: [2023-10-20 Fri 14:43]
 """)
 
-    time_ranges = compute_time_ranges(nodes, {}, "heading", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "heading")
 
     assert "implement" in time_ranges
     assert "feature" in time_ranges
@@ -232,7 +230,7 @@ CLOSED: [2023-10-20 Fri 14:43]
 Python code
 """)
 
-    time_ranges = compute_time_ranges(nodes, {}, "body", ["DONE"])
+    time_ranges = compute_time_ranges(nodes, {}, "body")
 
     assert "python" in time_ranges
     assert "code" in time_ranges
