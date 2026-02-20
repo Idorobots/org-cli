@@ -1186,6 +1186,13 @@ Update the CLI output to include the extra information. The values should be dis
 
 The computed values should follow the tag name and be indented an extra level.
 
+** REWORKED Tag slop                                                                      :Bug:Test:
+:LOGBOOK:
+- State "REWORKED"  from "TODO"       [2026-02-20 Fri 18:04] \\
+  Did this myself as it was pretty fubar.
+:END:
+Move Relations fields to Tag and fix the broken tests.
+
 ** TODO Per-group stats                                                               :Analysis:TUI:
 Extend the analysis to compute per-group statistics:
 - Total tasks

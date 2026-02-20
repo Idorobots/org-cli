@@ -321,16 +321,16 @@ def display_category(
                 print(f"  {chart_line}")
                 print(f"  {underline}")
 
-        print(f"  {name} ({tag.frequency.total})")
+        print(f"  {name}")
         print(f"    Total tasks: {tag.total_tasks}")
         if tag.time_range.earliest and tag.time_range.latest:
             print(f"    Average tasks completed per day: {tag.avg_tasks_per_day:.2f}")
             print(f"    Max tasks completed on a single day: {tag.max_single_day_count}")
 
-        if max_relations > 0 and tag.relations.relations:
+        if max_relations > 0 and tag.relations:
             filtered_relations = {
                 rel_name: count
-                for rel_name, count in tag.relations.relations.items()
+                for rel_name, count in tag.relations.items()
                 if rel_name.lower() not in {e.lower() for e in exclude_set}
             }
             sorted_relations = sorted(filtered_relations.items(), key=lambda x: x[1], reverse=True)[
@@ -1205,7 +1205,7 @@ def display_results(
 
     def order_by_total(item: tuple[str, Tag]) -> int:
         """Sort by total count (descending)."""
-        return -item[1].frequency.total
+        return -item[1].total_tasks
 
     display_category(
         category_name,

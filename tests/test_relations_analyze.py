@@ -20,7 +20,7 @@ def test_analyze_single_tag_no_relations() -> None:
 
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
 
-    assert result.tags == {}
+    assert result.tags["Python"].relations == {}
 
 
 def test_analyze_two_tags_bidirectional_relation() -> None:
@@ -154,18 +154,18 @@ def test_analyze_relations_independent() -> None:
 
     result_tags = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
     # Tag relations: Python-Testing
-    assert result_tags.tag_relations["Python"].relations.get("Testing") == 1
-    assert "tests" not in result_tags.tag_relations["Python"].relations
+    assert result_tags.tags["Python"].relations.get("Testing") == 1
+    assert "tests" not in result_tags.tags["Python"].relations
 
     result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
     # Heading relations: python-tests (lowercase, normalized)
-    assert result_heading.tag_relations["python"].relations.get("tests") == 1
-    assert "python" in result_heading.tag_relations
-    assert "Testing" not in result_heading.tag_relations["python"].relations
+    assert result_heading.tags["python"].relations.get("tests") == 1
+    assert "python" in result_heading.tags
+    assert "Testing" not in result_heading.tags["python"].relations
 
     result_body = analyze(nodes, {}, category="body", max_relations=3, done_keys=["DONE"])
     # Body relations: python-code (lowercase, normalized)
-    assert result_body.tag_relations["python"].relations.get("code") == 1
+    assert result_body.tags["python"].relations.get("code") == 1
 
 
 def test_analyze_relations_with_different_counts() -> None:
@@ -248,14 +248,15 @@ def test_analyze_four_tags_six_relations() -> None:
 
 
 def test_analyze_relations_result_structure() -> None:
-    """Test that analyze returns Relations objects with correct structure."""
-    from orgstats.analyze import Relations
+    """Test that analyze returns Tags objects with correct structure."""
+
+    from orgstats.analyze import Tag
 
     nodes = node_from_org("* DONE Task :Python:Testing:\n")
 
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
 
-    assert isinstance(result.tags["Python"], Relations)
+    assert isinstance(result.tags["Python"], Tag)
     assert result.tags["Python"].name == "Python"
     assert isinstance(result.tags["Python"].relations, dict)
     assert isinstance(result.tags["Python"].relations["Testing"], int)

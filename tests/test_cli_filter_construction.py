@@ -446,13 +446,27 @@ def test_get_top_day_info_tie_uses_earliest() -> None:
 
 def test_display_category() -> None:
     """Test display_category outputs formatted results."""
-    from orgstats.analyze import Frequency, Relations, TimeRange
+    from orgstats.analyze import Tag, TimeRange
     from orgstats.cli import display_category
 
-    frequencies = {"python": Frequency(total=10), "java": Frequency(total=8)}
-    time_ranges: dict[str, TimeRange] = {}
-    exclude_set: set[str] = set()
-    relations_dict: dict[str, Relations] = {}
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(),
+            relations={},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+        "java": Tag(
+            name="java",
+            total_tasks=8,
+            time_range=TimeRange(),
+            relations={},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+    }
 
     original_stdout = sys.stdout
     try:
@@ -460,10 +474,9 @@ def test_display_category() -> None:
 
         display_category(
             "test tags",
-            (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None, TimeRange()),
-            lambda item: -item[1].total,
-            10,
+            tags,
+            (10, 3, 50, None, None, TimeRange(), 5, set()),
+            lambda item: -item[1].total_tasks,
         )
 
         output = sys.stdout.getvalue()
@@ -471,8 +484,6 @@ def test_display_category() -> None:
         assert "Top test tags:" in output
         assert "python" in output
         assert "java" in output
-        assert "python (10)" in output
-        assert "java (8)" in output
 
     finally:
         sys.stdout = original_stdout
@@ -482,17 +493,21 @@ def test_display_category_with_time_ranges() -> None:
     """Test display_category includes time range information."""
     from datetime import datetime
 
-    from orgstats.analyze import Frequency, Relations, TimeRange
+    from orgstats.analyze import Tag, TimeRange
     from orgstats.cli import display_category
 
-    frequencies = {"python": Frequency(total=10)}
-    time_ranges = {
-        "python": TimeRange(
-            earliest=datetime(2025, 1, 1), latest=datetime(2025, 1, 31), timeline={}
-        )
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(
+                earliest=datetime(2025, 1, 1), latest=datetime(2025, 1, 31), timeline={}
+            ),
+            relations={},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
     }
-    exclude_set: set[str] = set()
-    relations_dict: dict[str, Relations] = {}
 
     original_stdout = sys.stdout
     try:
@@ -500,15 +515,14 @@ def test_display_category_with_time_ranges() -> None:
 
         display_category(
             "test tags",
-            (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None, TimeRange()),
-            lambda item: -item[1].total,
-            10,
+            tags,
+            (10, 3, 50, None, None, TimeRange(), 5, set()),
+            lambda item: -item[1].total_tasks,
         )
 
         output = sys.stdout.getvalue()
 
-        assert "python (10)" in output
+        assert "python" in output
 
     finally:
         sys.stdout = original_stdout
@@ -516,13 +530,19 @@ def test_display_category_with_time_ranges() -> None:
 
 def test_display_category_with_relations() -> None:
     """Test display_category includes relations."""
-    from orgstats.analyze import Frequency, Relations, TimeRange
+    from orgstats.analyze import Tag, TimeRange
     from orgstats.cli import display_category
 
-    frequencies = {"python": Frequency(total=10)}
-    time_ranges: dict[str, TimeRange] = {}
-    exclude_set: set[str] = set()
-    relations_dict = {"python": Relations(name="python", relations={"django": 5, "flask": 3})}
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(),
+            relations={"django": 5, "flask": 3},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+    }
 
     original_stdout = sys.stdout
     try:
@@ -530,10 +550,9 @@ def test_display_category_with_relations() -> None:
 
         display_category(
             "test tags",
-            (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None, TimeRange()),
-            lambda item: -item[1].total,
-            10,
+            tags,
+            (10, 3, 50, None, None, TimeRange(), 5, set()),
+            lambda item: -item[1].total_tasks,
         )
 
         output = sys.stdout.getvalue()
@@ -547,13 +566,27 @@ def test_display_category_with_relations() -> None:
 
 def test_display_category_with_max_items_zero() -> None:
     """Test display_category with max_items=0 omits section entirely."""
-    from orgstats.analyze import Frequency, Relations, TimeRange
+    from orgstats.analyze import Tag, TimeRange
     from orgstats.cli import display_category
 
-    frequencies = {"python": Frequency(total=10), "java": Frequency(total=8)}
-    time_ranges: dict[str, TimeRange] = {}
-    exclude_set: set[str] = set()
-    relations_dict: dict[str, Relations] = {}
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(),
+            relations={},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+        "java": Tag(
+            name="java",
+            total_tasks=8,
+            time_range=TimeRange(),
+            relations={},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+    }
 
     original_stdout = sys.stdout
     try:
@@ -561,10 +594,9 @@ def test_display_category_with_max_items_zero() -> None:
 
         display_category(
             "test tags",
-            (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None, TimeRange()),
-            lambda item: -item[1].total,
-            0,
+            tags,
+            (10, 3, 50, None, None, TimeRange(), 0, set()),
+            lambda item: -item[1].total_tasks,
         )
 
         output = sys.stdout.getvalue()
@@ -580,12 +612,7 @@ def test_display_results_with_tag_groups() -> None:
     """Test display_results shows tag groups."""
     from io import StringIO
 
-    from orgstats.analyze import (
-        AnalysisResult,
-        Frequency,
-        Group,
-        TimeRange,
-    )
+    from orgstats.analyze import AnalysisResult, Group, Tag, TimeRange
     from orgstats.cli import display_results
     from orgstats.histogram import Histogram
 
@@ -597,25 +624,14 @@ def test_display_results_with_tag_groups() -> None:
         task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 3}),
         tags={
-
             "python": Tag(
-
                 name="python",
-
-                frequency=Frequency(total=3),
-
-                relations=Relations(name="python", relations={}),
-
+                relations={},
                 time_range=TimeRange(),
-
                 total_tasks=3,
-
                 avg_tasks_per_day=0.0,
-
                 max_single_day_count=0,
-
             )
-
         },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,
@@ -653,12 +669,7 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
     """Test display_results filters tag groups by min_group_size."""
     from io import StringIO
 
-    from orgstats.analyze import (
-        AnalysisResult,
-        Frequency,
-        Group,
-        TimeRange,
-    )
+    from orgstats.analyze import AnalysisResult, Group, Tag, TimeRange
     from orgstats.cli import display_results
     from orgstats.histogram import Histogram
 
@@ -673,25 +684,14 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
         task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 5}),
         tags={
-
             "python": Tag(
-
                 name="python",
-
-                frequency=Frequency(total=5),
-
-                relations=Relations(name="python", relations={}),
-
+                relations={},
                 time_range=TimeRange(),
-
                 total_tasks=5,
-
                 avg_tasks_per_day=0.0,
-
                 max_single_day_count=0,
-
             )
-
         },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,
@@ -730,12 +730,7 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
     """Test display_results filters excluded tags from groups."""
     from io import StringIO
 
-    from orgstats.analyze import (
-        AnalysisResult,
-        Frequency,
-        Group,
-        TimeRange,
-    )
+    from orgstats.analyze import AnalysisResult, Group, Tag, TimeRange
     from orgstats.cli import display_results
     from orgstats.histogram import Histogram
 
@@ -750,25 +745,14 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
         task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 5}),
         tags={
-
             "python": Tag(
-
                 name="python",
-
-                frequency=Frequency(total=5),
-
-                relations=Relations(name="python", relations={}),
-
+                relations={},
                 time_range=TimeRange(),
-
                 total_tasks=5,
-
                 avg_tasks_per_day=0.0,
-
                 max_single_day_count=0,
-
             )
-
         },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,
@@ -807,11 +791,7 @@ def test_display_results_no_tag_groups() -> None:
     """Test display_results works when tag_groups is empty."""
     from io import StringIO
 
-    from orgstats.analyze import (
-        AnalysisResult,
-        Frequency,
-        TimeRange,
-    )
+    from orgstats.analyze import AnalysisResult, Tag, TimeRange
     from orgstats.cli import display_results
     from orgstats.histogram import Histogram
 
@@ -821,25 +801,14 @@ def test_display_results_no_tag_groups() -> None:
         task_categories=Histogram(values={}),
         task_days=Histogram(values={"Monday": 5}),
         tags={
-
             "python": Tag(
-
                 name="python",
-
-                frequency=Frequency(total=5),
-
-                relations=Relations(name="python", relations={}),
-
+                relations={},
                 time_range=TimeRange(),
-
                 total_tasks=5,
-
                 avg_tasks_per_day=0.0,
-
                 max_single_day_count=0,
-
             )
-
         },
         timerange=TimeRange(earliest=None, latest=None, timeline={}),
         avg_tasks_per_day=0.0,

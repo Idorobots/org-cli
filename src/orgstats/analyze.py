@@ -45,19 +45,6 @@ class Frequency:  # noqa: PLW1641
 
 
 @dataclass
-class Relations:
-    """Represents pair-wise co-occurrence relationships for a tag/word.
-
-    Attributes:
-        name: The tag or word name
-        relations: Dictionary mapping related tags/words to co-occurrence counts
-    """
-
-    name: str
-    relations: dict[str, int]
-
-
-@dataclass
 class TimeRange:
     """Represents time range for a tag/word occurrence.
 
@@ -113,26 +100,37 @@ class TimeRange:
 
 
 @dataclass
+class Relations:
+    """Represents pair-wise co-occurrence relationships for a tag/word.
+
+    Attributes:
+        name: The tag or word name
+        relations: Dictionary mapping related tags/words to co-occurrence counts
+    """
+
+    name: str
+    relations: dict[str, int]
+
+
+@dataclass
 class Tag:
     """Represents complete statistics for a single tag.
 
     Attributes:
         name: Tag name
-        frequency: Frequency statistics (total count)
-        relations: Co-occurrence relationships with other tags
-        time_range: Temporal data (earliest, latest, timeline)
         total_tasks: Total number of completed tasks with this tag
         avg_tasks_per_day: Average tasks completed per day for this tag
         max_single_day_count: Maximum tasks completed on a single day for this tag
+        relations: Co-occurrence relationships with other tags
+        time_range: Temporal data (earliest, latest, timeline)
     """
 
     name: str
-    frequency: Frequency
-    relations: Relations
-    time_range: TimeRange
     total_tasks: int
     avg_tasks_per_day: float
     max_single_day_count: int
+    relations: dict[str, int]
+    time_range: TimeRange
 
 
 @dataclass
@@ -620,18 +618,16 @@ def compute_per_tag_statistics(
         time_range = time_ranges.get(tag_name, TimeRange())
         relation = relations.get(tag_name, Relations(name=tag_name, relations={}))
 
-        total_tasks = frequency.total
         avg_per_day = compute_avg_tasks_per_day(time_range, frequency.total)
         max_single_day = compute_max_single_day(time_range)
 
         tags[tag_name] = Tag(
             name=tag_name,
-            frequency=frequency,
-            relations=relation,
-            time_range=time_range,
-            total_tasks=total_tasks,
+            total_tasks=frequency.total,
             avg_tasks_per_day=avg_per_day,
             max_single_day_count=max_single_day,
+            relations=relation.relations,
+            time_range=time_range,
         )
 
     return tags
@@ -652,7 +648,7 @@ def compute_groups(tags: dict[str, Tag], max_relations: int) -> list[Group]:
 
     graph: dict[str, list[str]] = {}
     for tag_name, tag_obj in tags.items():
-        sorted_relations = sorted(tag_obj.relations.relations.items(), key=lambda x: -x[1])
+        sorted_relations = sorted(tag_obj.relations.items(), key=lambda x: -x[1])
         top_relations = sorted_relations[:max_relations]
         graph[tag_name] = [rel_name for rel_name, _ in top_relations]
 

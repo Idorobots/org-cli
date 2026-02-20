@@ -106,7 +106,7 @@ def test_integration_edge_cases() -> None:
     # Only properly formatted tags like :NoBody: are parsed
     # NoBody tag should be present (CamelCase preserved)
     assert "NoBody" in result.tags
-    assert result.tags["NoBody"] == 1
+    assert result.tags["NoBody"].total_tasks == 1
 
     # Check that special characters in heading are handled
     result_heading = analyze(nodes, {}, category="heading", max_relations=3, done_keys=["DONE"])
@@ -152,7 +152,7 @@ def test_integration_repeated_tasks() -> None:
     # Note: without explicit mapping for CamelCase tags, they remain as-is
     # If there are tags in result, just verify they exist
     if len(result.tags) > 0:
-        assert any(freq.total > 0 for freq in result.tags.values())
+        assert any(freq.total_tasks > 0 for freq in result.tags.values())
 
 
 def test_integration_archive_small() -> None:
@@ -217,14 +217,14 @@ def test_integration_frequency_sorting() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
 
     # Sort tags by frequency (descending)
-    sorted_tags = sorted(result.tags.items(), key=lambda item: -item[1].total)
+    sorted_tags = sorted(result.tags.items(), key=lambda item: -item[1].total_tasks)
 
     # Should have at least one tag
     assert len(sorted_tags) > 0
 
     # Check that sorting is correct (descending order)
     for i in range(len(sorted_tags) - 1):
-        assert sorted_tags[i][1].total >= sorted_tags[i + 1][1].total
+        assert sorted_tags[i][1].total_tasks >= sorted_tags[i + 1][1].total_tasks
 
 
 def test_integration_word_uniqueness() -> None:
@@ -247,7 +247,7 @@ def test_integration_no_tags_task() -> None:
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
 
     # Simple task has no tags
-    assert len(result.tags) == 0 or all(v.total == 0 for v in result.tags.values())
+    assert len(result.tags) == 0 or all(v.total_tasks == 0 for v in result.tags.values())
 
 
 def test_integration_all_fixtures_parseable() -> None:
@@ -270,8 +270,6 @@ def test_integration_all_fixtures_parseable() -> None:
         assert result.total_tasks >= 0
         assert result.task_states.values.get("DONE", 0) >= 0
         assert result.task_states.values.get("TODO", 0) >= 0
-        assert isinstance(result.tags, dict)
-        assert isinstance(result.tags, dict)
         assert isinstance(result.tags, dict)
 
 
@@ -304,8 +302,8 @@ def test_integration_filtered_repeats_in_analysis() -> None:
     assert filtered_result.total_tasks == 1
     assert filtered_result.task_states.values["DONE"] == 1
 
-    assert filtered_result.tags["tag1"].total == 1
-    assert filtered_result.tags["tag2"].total == 1
+    assert filtered_result.tags["tag1"].total_tasks == 1
+    assert filtered_result.tags["tag2"].total_tasks == 1
 
 
 def test_integration_category_histogram() -> None:

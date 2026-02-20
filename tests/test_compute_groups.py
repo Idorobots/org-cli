@@ -2,15 +2,14 @@
 
 from datetime import date, datetime
 
-from orgstats.analyze import Frequency, Relations, Tag, TimeRange, compute_groups
+from orgstats.analyze import Tag, TimeRange, compute_groups
 
 
 def make_tag(name: str, relations_dict: dict[str, int], time_range: TimeRange | None = None) -> Tag:
     """Helper to create a Tag with specified relations."""
     return Tag(
         name=name,
-        frequency=Frequency(0),
-        relations=Relations(name=name, relations=relations_dict),
+        relations=relations_dict,
         time_range=time_range or TimeRange(),
         total_tasks=0,
         avg_tasks_per_day=0.0,

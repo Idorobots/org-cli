@@ -1,6 +1,6 @@
 """Tests for the clean() function."""
 
-from orgstats.analyze import Frequency, Relations, Tag, TimeRange, clean
+from orgstats.analyze import Tag, TimeRange, clean
 from orgstats.cli import DEFAULT_EXCLUDE
 
 
@@ -9,8 +9,7 @@ def tag_dict_from_ints(d: dict[str, int]) -> dict[str, Tag]:
     return {
         k: Tag(
             name=k,
-            frequency=Frequency(v),
-            relations=Relations(name=k, relations={}),
+            relations={},
             time_range=TimeRange(),
             total_tasks=v,
             avg_tasks_per_day=0.0,
@@ -22,7 +21,7 @@ def tag_dict_from_ints(d: dict[str, int]) -> dict[str, Tag]:
 
 def tag_dict_to_ints(d: dict[str, Tag]) -> dict[str, int]:
     """Convert dict[str, Tag] to dict[str, int] for assertions."""
-    return {k: v.frequency.total for k, v in d.items()}
+    return {k: v.total_tasks for k, v in d.items()}
 
 
 def test_clean_basic() -> None:

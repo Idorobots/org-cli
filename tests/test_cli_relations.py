@@ -413,16 +413,23 @@ def test_cli_relations_max_applied_after_filtering() -> None:
 
 
 def test_cli_max_relations_shows_no_results() -> None:
-    """Test that 'No results' is shown when max_relations > 0 but all relations filtered."""
+    """Test that relations is omitted when max_relations > 0 but all relations filtered."""
     from io import StringIO
 
-    from orgstats.analyze import Frequency, Relations, TimeRange
+    from orgstats.analyze import Tag, TimeRange
     from orgstats.cli import display_category
 
-    frequencies = {"python": Frequency(total=10)}
-    time_ranges: dict[str, TimeRange] = {}
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(),
+            relations={"django": 5, "flask": 3},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+    }
     exclude_set = {"django", "flask"}
-    relations_dict = {"python": Relations(name="python", relations={"django": 5, "flask": 3})}
 
     original_stdout = sys.stdout
     try:
@@ -430,16 +437,15 @@ def test_cli_max_relations_shows_no_results() -> None:
 
         display_category(
             "test tags",
-            (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 3, 50, None, None, TimeRange()),
-            lambda item: -item[1].total,
-            10,
+            tags,
+            (10, 3, 50, None, None, TimeRange(), 5, exclude_set),
+            lambda item: -item[1].total_tasks,
         )
 
         output = sys.stdout.getvalue()
 
-        assert "Top relations:" in output
-        assert "No results" in output
+        assert "Top test tags:" in output
+        assert "Top relations:" not in output
 
     finally:
         sys.stdout = original_stdout
@@ -449,13 +455,19 @@ def test_cli_max_relations_zero_skips_relations() -> None:
     """Test that max_relations=0 completely skips relation display."""
     from io import StringIO
 
-    from orgstats.analyze import Frequency, Relations, TimeRange
+    from orgstats.analyze import Tag, TimeRange
     from orgstats.cli import display_category
 
-    frequencies = {"python": Frequency(total=10)}
-    time_ranges: dict[str, TimeRange] = {}
-    exclude_set: set[str] = set()
-    relations_dict = {"python": Relations(name="python", relations={"django": 5})}
+    tags = {
+        "python": Tag(
+            name="python",
+            total_tasks=10,
+            time_range=TimeRange(),
+            relations={"django": 5},
+            avg_tasks_per_day=0,
+            max_single_day_count=0,
+        ),
+    }
 
     original_stdout = sys.stdout
     try:
@@ -463,10 +475,9 @@ def test_cli_max_relations_zero_skips_relations() -> None:
 
         display_category(
             "test tags",
-            (frequencies, time_ranges, exclude_set, relations_dict),
-            (10, 0, 50, None, None, TimeRange()),
-            lambda item: -item[1].total,
-            10,
+            tags,
+            (10, 0, 50, None, None, TimeRange(), 5, set()),
+            lambda item: -item[1].total_tasks,
         )
 
         output = sys.stdout.getvalue()

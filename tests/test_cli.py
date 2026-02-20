@@ -185,8 +185,10 @@ def test_cli_filter_output_format() -> None:
     )
 
     assert result.returncode == 0
-    # Should have tag with count in parentheses
-    assert "(" in result.stdout and ")" in result.stdout
+    # Should have tag
+    assert "HardTag" in result.stdout
+    assert "RegularTag" in result.stdout
+    assert "SimpleTag" in result.stdout
     # Should NOT have Frequency objects
     assert "Frequency(" not in result.stdout
     assert "simple=" not in result.stdout

@@ -1,6 +1,6 @@
 """Tests for the AnalysisResult dataclass."""
 
-from orgstats.analyze import AnalysisResult, Frequency, Relations, Tag, TimeRange
+from orgstats.analyze import AnalysisResult, Tag, TimeRange
 from orgstats.histogram import Histogram
 
 
@@ -8,8 +8,7 @@ def test_analysis_result_initialization() -> None:
     """Test that AnalysisResult can be initialized with all fields."""
     python_tag = Tag(
         name="python",
-        frequency=Frequency(3),
-        relations=Relations(name="python", relations={}),
+        relations={},
         time_range=TimeRange(),
         total_tasks=3,
         avg_tasks_per_day=0.0,
@@ -38,7 +37,6 @@ def test_analysis_result_initialization() -> None:
     assert result.max_single_day_count == 0
     assert result.max_repeat_count == 0
     assert "python" in result.tags
-    assert result.tags["python"].frequency == Frequency(3)
     assert result.tags["python"].total_tasks == 3
     assert result.tag_groups == []
 
@@ -107,8 +105,7 @@ def test_analysis_result_repr() -> None:
     """Test the string representation of AnalysisResult."""
     test_tag = Tag(
         name="test",
-        frequency=Frequency(1),
-        relations=Relations(name="test", relations={}),
+        relations={},
         time_range=TimeRange(),
         total_tasks=1,
         avg_tasks_per_day=0.0,
@@ -138,8 +135,7 @@ def test_analysis_result_equality() -> None:
     """Test equality comparison of AnalysisResult objects."""
     python_tag = Tag(
         name="python",
-        frequency=Frequency(2),
-        relations=Relations(name="python", relations={}),
+        relations={},
         time_range=TimeRange(),
         total_tasks=2,
         avg_tasks_per_day=0.0,
@@ -218,8 +214,7 @@ def test_analysis_result_mutable_fields() -> None:
     result.max_repeat_count = 3
     result.tags["new"] = Tag(
         name="new",
-        frequency=Frequency(1),
-        relations=Relations(name="new", relations={}),
+        relations={},
         time_range=TimeRange(),
         total_tasks=1,
         avg_tasks_per_day=0.0,
@@ -236,7 +231,7 @@ def test_analysis_result_mutable_fields() -> None:
     assert result.max_single_day_count == 5
     assert result.max_repeat_count == 3
     assert "new" in result.tags
-    assert result.tags["new"].frequency.total == 1
+    assert result.tags["new"].total_tasks == 1
     assert len(result.tag_groups) == 1
 
 
@@ -244,8 +239,7 @@ def test_analysis_result_dict_operations() -> None:
     """Test that dictionary operations work on tags field."""
     python_tag = Tag(
         name="python",
-        frequency=Frequency(3),
-        relations=Relations(name="python", relations={}),
+        relations={},
         time_range=TimeRange(),
         total_tasks=3,
         avg_tasks_per_day=0.0,
@@ -253,8 +247,7 @@ def test_analysis_result_dict_operations() -> None:
     )
     testing_tag = Tag(
         name="testing",
-        frequency=Frequency(2),
-        relations=Relations(name="testing", relations={}),
+        relations={},
         time_range=TimeRange(),
         total_tasks=2,
         avg_tasks_per_day=0.0,
@@ -277,5 +270,4 @@ def test_analysis_result_dict_operations() -> None:
     assert len(result.tags) == 2
     assert "python" in result.tags
     assert list(result.tags.keys()) == ["python", "testing"]
-    assert result.tags["python"].frequency.total == 3
     assert result.tags["python"].total_tasks == 3

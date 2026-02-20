@@ -36,8 +36,8 @@ CLOSED: [2023-10-25 Wed 12:00]
     assert result.task_states.values["ARCHIVED"] == 1
     assert result.task_states.values["TODO"] == 1
 
-    assert "python" in result.tag_frequencies
-    assert result.tag_frequencies["python"].total == 3
+    assert "python" in result.tags
+    assert result.tags["python"].total_tasks == 3
 
     assert result.timerange.earliest == datetime(2023, 10, 18, 9, 15)
     assert result.timerange.latest == datetime(2023, 10, 20, 14, 43)
@@ -153,10 +153,10 @@ def test_analyze_relations_with_multiple_done_keys() -> None:
         nodes, {}, category="tags", max_relations=3, done_keys=["DONE", "CANCELLED", "ARCHIVED"]
     )
 
-    assert "python" in result.tag_relations
-    assert "testing" in result.tag_relations
-    assert result.tag_relations["python"].relations["testing"] == 3
-    assert result.tag_relations["testing"].relations["python"] == 3
+    assert "python" in result.tags
+    assert "testing" in result.tags
+    assert result.tags["python"].relations["testing"] == 3
+    assert result.tags["testing"].relations["python"] == 3
 
 
 def test_analyze_time_ranges_with_multiple_done_keys() -> None:
@@ -183,14 +183,14 @@ CLOSED: [2023-10-25 Wed 12:00]
         nodes, {}, category="tags", max_relations=3, done_keys=["DONE", "CANCELLED", "ARCHIVED"]
     )
 
-    assert "python" in result.tag_time_ranges
-    assert "testing" in result.tag_time_ranges
+    assert "python" in result.tags
+    assert "testing" in result.tags
 
-    python_tr = result.tag_time_ranges["python"]
+    python_tr = result.tags["python"].time_range
     assert python_tr.earliest == datetime(2023, 10, 18, 9, 15)
     assert python_tr.latest == datetime(2023, 10, 20, 14, 43)
 
-    testing_tr = result.tag_time_ranges["testing"]
+    testing_tr = result.tags["testing"].time_range
     assert testing_tr.earliest == datetime(2023, 10, 22, 16, 0)
     assert testing_tr.latest == datetime(2023, 10, 22, 16, 0)
 
@@ -209,18 +209,18 @@ def test_analyze_only_specified_done_keys_counted() -> None:
     )
 
     result_done_only = analyze(nodes, {}, category="tags", max_relations=3, done_keys=["DONE"])
-    assert "tag1" in result_done_only.tag_frequencies
-    assert "tag2" not in result_done_only.tag_frequencies
-    assert "tag3" not in result_done_only.tag_frequencies
-    assert "tag4" not in result_done_only.tag_frequencies
+    assert "tag1" in result_done_only.tags
+    assert "tag2" not in result_done_only.tags
+    assert "tag3" not in result_done_only.tags
+    assert "tag4" not in result_done_only.tags
 
     result_all = analyze(
         nodes, {}, category="tags", max_relations=3, done_keys=["DONE", "CANCELLED", "ARCHIVED"]
     )
-    assert "tag1" in result_all.tag_frequencies
-    assert "tag2" in result_all.tag_frequencies
-    assert "tag3" in result_all.tag_frequencies
-    assert "tag4" not in result_all.tag_frequencies
+    assert "tag1" in result_all.tags
+    assert "tag2" in result_all.tags
+    assert "tag3" in result_all.tags
+    assert "tag4" not in result_all.tags
 
 
 def test_analyze_done_count_sum_multiple_keys() -> None:
@@ -285,13 +285,13 @@ def test_analyze_custom_completion_states() -> None:
         nodes, {}, category="tags", max_relations=3, done_keys=["COMPLETED", "FINISHED", "RESOLVED"]
     )
 
-    assert "tag1" in result.tag_frequencies
-    assert "tag2" in result.tag_frequencies
-    assert "tag3" in result.tag_frequencies
-    assert "tag4" not in result.tag_frequencies
-    assert result.tag_frequencies["tag1"].total == 1
-    assert result.tag_frequencies["tag2"].total == 1
-    assert result.tag_frequencies["tag3"].total == 1
+    assert "tag1" in result.tags
+    assert "tag2" in result.tags
+    assert "tag3" in result.tags
+    assert "tag4" not in result.tags
+    assert result.tags["tag1"].total_tasks == 1
+    assert result.tags["tag2"].total_tasks == 1
+    assert result.tags["tag3"].total_tasks == 1
 
 
 def test_analyze_groups_with_multiple_done_keys() -> None:
@@ -312,10 +312,10 @@ def test_analyze_groups_with_multiple_done_keys() -> None:
         nodes, {}, category="tags", max_relations=3, done_keys=["DONE", "CANCELLED", "ARCHIVED"]
     )
 
-    assert result.tag_relations["a"].relations["b"] == 1
-    assert result.tag_relations["b"].relations["c"] == 1
-    assert result.tag_relations["c"].relations["a"] == 2
-    assert result.tag_relations["a"].relations["c"] == 2
+    assert result.tags["a"].relations["b"] == 1
+    assert result.tags["b"].relations["c"] == 1
+    assert result.tags["c"].relations["a"] == 2
+    assert result.tags["a"].relations["c"] == 2
     assert len(result.tag_groups) > 0
 
 
@@ -328,9 +328,7 @@ def test_analyze_empty_done_keys() -> None:
 
     result = analyze(nodes, {}, category="tags", max_relations=3, done_keys=[])
 
-    assert result.tag_frequencies == {}
-    assert result.tag_relations == {}
-    assert result.tag_time_ranges == {}
+    assert result.tags == {}
     assert result.timerange.earliest is None
     assert result.timerange.latest is None
 
@@ -354,18 +352,18 @@ Documentation update
     result_tags = analyze(
         nodes, {}, category="tags", max_relations=3, done_keys=["DONE", "CANCELLED", "ARCHIVED"]
     )
-    assert len(result_tags.tag_frequencies) == 3
+    assert len(result_tags.tags) == 3
 
     result_heading = analyze(
         nodes, {}, category="heading", max_relations=3, done_keys=["DONE", "CANCELLED", "ARCHIVED"]
     )
-    assert "implement" in result_heading.tag_frequencies
-    assert "fix" in result_heading.tag_frequencies
-    assert "update" in result_heading.tag_frequencies
+    assert "implement" in result_heading.tags
+    assert "fix" in result_heading.tags
+    assert "update" in result_heading.tags
 
     result_body = analyze(
         nodes, {}, category="body", max_relations=3, done_keys=["DONE", "CANCELLED", "ARCHIVED"]
     )
-    assert "feature" in result_body.tag_frequencies
-    assert "bug" in result_body.tag_frequencies
-    assert "documentation" in result_body.tag_frequencies
+    assert "feature" in result_body.tags
+    assert "bug" in result_body.tags
+    assert "documentation" in result_body.tags
