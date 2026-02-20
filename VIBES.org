@@ -1359,71 +1359,328 @@ You can use Python's ~colorama~ library to get colors in.
 
 Please make sure that the current tests pass by setting the color switch to false. Please add additional tests that specifically test for the colored output.
 
-** Another attempt at a fix for task states counts
-Now the counts for day of week histogram are higher than the total count of done tasks. Likely, now it's the done task count that's wrong.
+** TODO Gamify handling                                                                     :UX:CLI:
+Extract gamify_exp handling into a separate preprocessing step that will go through the list of filtered nodes, determine their "category" based on the gamify_exp property (same algorithm as currently) and update each node's properties with a new property of ~CATEGORY~ with the computed category as the value. If a node already has a ~CATEGORY~ property, its value should be overwritten.
 
-** Better heading & body parsing
+A new CLI switch named ~--with-gamify~ will control the preprocessing step. It should be disabled by default. When the switch is disabled, the preprocessing step doesn't run, when it is enabled, all nodes will receive a gamify category based on the exp value.
 
-** Stats command
-Wrap the current analysis logic into a dedicated ~stats~ command. There will be more commands to come.
+A new CLI switch named ~--category-property~ should be added that defaults to ~CATEGORY~. This switch can be used to override the name of the property to use for the coputation of the task category histogram.
 
-The CLI arguments should be divided into global & per-command options. Global arguments should be:
-- ~--mapping~,
-- ~--exclude~,
-- ~--max-results~,
-- ~--help~,
-- ~--filter-*~,
-- ~FILE~
+The Task category histogram should be updated to pick the tasks category based on the value of the property in a node named by ~--category-property~ switch. If a node doesn't have that property, then use ~other~ as the category value.
 
-The rest should be accepted by the ~stats~ command.
-I want these global arguments to be usable after the command name, i.e. the accepted invocation should be:
+The ~--filter~ CLI switch should be renamed to ~--filter-category~ and it should filter based on the value associated with ~--category-property~ in each node.
+
+The reasoning is that gamify_exp is optional, and by default unused by most people. It is a nice-to-have, but a more useful approach will be to rely on the properties for category histogram. Naming the property ~CATEGORY~ by default makes the most sense.
+
+** DONE --show rename                                                                          :CLI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-21 Sat 00:28] \\
+  Was going to do this myself, but ended up testing the LSP connection and AI did it.
+:END:
+Please rename the ~--show~ CLI switch to ~--use~ as it makes more sense. The logic behind it should stay unchanged.
+
+** TODO Default FILE to *.org in cwd                                                        :UX:CLI:
+When a ~FILE~ is not provided to the CLI command  we currently return an error. I'd like to change that to search the current working directory for all *.org files and if any are found, the command will analyze them.
+In addition to that, the command should accept a root directory and search it for all *.org files for processing.
+
+No recursive directory traversing should be implemented. Just the current or passed directory. When no files can be found, an error should be reported.
+
+The command should support these configurations:
+
+#+begin_example bash
+# Multiple files - only these files are parsed
+orgstats path/to/file1.org path/to/file2.org
+
+# Specific file - only this file is parsed
+orgstats path/to/file.org
+
+# Current working directory - all ./*.org files are parsed
+orgstats
+
+# Specific directory - all path/to/*.org files are parsed
+orgstats path/to
+
+# Multiple directories - all *.org files in both directories are parsed
+orgstats path/to1 path/to2
+
+# Mixed - all passed files and directories are searched and processed
+orgstats path/to/file.org path/to2
+#+end_example
+
+** TODO .org.json config                                                                    :UX:CLI:
+It is inconvenient to pass all the parameters to the CLI command each time. I'd like the command to parse an optional configuration file (named ~.org-cli.json~) that is found in the current working directory (doesn't matter if there are any files or directories passed to the command). If that file is absent or malformed, the usual defaults should be used.
+
+If the file is present, it is opened, parsed and the values stored in it should be used as the default values for the command switches.  CLI passed arguments take precedence over the supplied values, so the precedence should be: CLI arguments, config file, code defaults.
+
+The content of the file should be a JSON object with key-value pairs representing each CLI switch and the desired default value. Here's an example:
+
+#+begin_src js
+{
+  "--max-results": 10,
+  "--filter": "simple",
+  "--show": "heading"
+}
+#+end_src
+
+Keys are optional, so if a key is not found in the file, then the code defaults should be used instead. Specifically, an empty JSON object is also a valid configuration file.
+
+A new CLI parameter called ~--config~ should be added that names the config file to search for. By default its value should be ~.org-cli.json~. The value of this switch can itself be found in the config file, but that won't affect how the configuration is loaded.
+
+** TODO Stats command                                                                 :CLI:Analysis:
+Wrap the current analysis logic into a dedicated ~stats~ command. There will be more commands to come in the future.
+An example invocation of this command follows:
 
 #+begin_src bash
 orgstats analyze -n 5 examples/ARCHIVE_small
 #+end_src
 
-** Search command
-Add an extra ~search~ command that allows searching for specific tag occurances and shows statistics of tasks that are tagged with the specified tag.
+The functionality of this command should be exactly the same as the whole application currently.
 
-The invocation should look like this:
+Some of the CLI switches will affect all commands, some will be used only by some. Current global switches:
+
+- ~files~,
+- ~--color~
+- ~--config~,
+- ~--exclude~,
+- ~--mapping~,
+- ~--todo-keys~,
+- ~--done-keys~,
+- all ~--filter*~ switches.
+
+The remaining switches should be recognized by the ~stats~ command.
+Some switches will be shared and semantically the same for a subset of commands, but should be recognized only by the commands they affect.
+
+** TODO Tags command                                                                        :CLI:UX:
+Add a new ~stats tags~ command to the CLI that allows displaying tag stats for specific tags.
+An example invocation will look like this:
 
 #+begin_src bash
-orgstats search tagname
+orgstats stats tags -n 5 path/to/file.org
 #+end_src
 
-The comand should search for the occurance of specified tag in either the tags, heading or the task body. Add a new CLI parameter called ~--in~ that takes one of the following values: ~tags~, ~heading~, ~body~. The following logic should apply:
-- for ~tags~ the specified tag is search for in Org Node's tags, subject to the filter & mapping lists,
-- for ~heading~ the specified tag value, case-sensitive, is searched for in the Org Node's heading contents (string search),
-- for ~body~ the specified tag value, case-sensitive, is searched for in the Org Node's body contents (string search),
-The default value for this switch should be ~tags~. This switch should be a command switch, not global.
+The command should display a list of tags that are found on the tassk that match the search criteria (any tasks remaining after the filtering). The list should be presented the same way as is done in the ~stats~ command except without the initial indent:
 
-Once suitable tasks are found, the command should compute the analysis results much like ~analyze~ does.
+#+begin_example
+2016-02-20                                                              2026-10-31
+┊ ▂█▃▄▂▃▆▂▁▂▁▁ ▁▅▃▁▁▁▁▁▃▂▅▂▁▁▁▁▁▁▁▁  ▁▁▁ ▁▁▁▁▁▁▁ ▁    ▂  ▁ ▁ ▁                   ┊ 9 (2016-09-12)
+‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+Scala
+  Total tasks: 834
+  Average tasks per day: 0.29
+  Max tasks on a single day: 9
+  Top relations:
+    Testing (186)
+    Debugging (184)
 
-The command should respect any additional filters passed by the ~--filter*~ flags. In fact, the comands search logic can be implemented as a filter in itself.
+ 2016-02-20                                                              2026-10-31
+┊▁▁▃▄▃▃▃▄▅▄▄▂▁▁▁▂▂▃▁▁▂▄▃▆█▂▂▂▃▂▁▁ ▁  ▁▃▁ ▁▁ ▁▁▁▁ ▁▂▁▁ ▃▃▂▁▃▂▂▁▂▂▁▁▂▁▁▁▁▁▁▁▃▂     ┊ 4 (2016-06-08)
+ ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+Debugging
+  Total tasks: 542
+  Average tasks per day: 0.15
+  Max tasks on a single day: 4
+  Top relations:
+    Scala (184)
+    EmbeddedDevelopment (71)
 
-The command should display the following information:
-- A header stating that these are the results for a specific search term,
-- General statistics of the tasks containing the searched term,
-- State distribution,
-- Day distribution,
-- Time range of tasks with the specific tag present,
-- Top relations for this tag (respecting the ~--max-relations~ flag),
-- Top groups for this tag (respecting the ~--min-group-size~ flag),
-- A list of tasks with this tag ordered by their timestamp (most recent at the top, respecting the ~--max-results~ flag),
+2016-02-20                                                              2026-10-31
+┊█▆▁▁▁▁▁▁▂▁▁▁▁▁▁▁▁ ▁▁▁▁▁▂ ▁▁▁▁▁▁ ▁  ▁▁     ▁▁▁▁▁ ▁▁▁▁ ▁▁▁▁▁▁ ▁▁▁▁▁▁▁▁ ▁▁▁▁▅▁     ┊ 7 (2016-04-11)
+‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+EmbeddedDevelopment
+  Total tasks: 416
+  Average tasks per day: 0.11
+  Max tasks on a single day: 7
+  Top relations:
+    Debugging (71)
+    Soldering (48)
 
-The output will be fairly similar to the ~analyze~ output, with the caveat that the ~Top tags~ section would be replaced with search-term-specific relations & time range.
+...
+#+end_example
 
-I expect that groups won't be very useful, so don't bother testing the output of these just yet. We might remove them from the output.
+The colors should be applied the same way as in the ~stats~ command, including recognizing the ~--color~ CLI switch.
 
-List the tasks headings and the files where these can be found.
+The command should support a ~--max-results~ or ~-n~ switch and limit the displayed list to at most N results (it is OK if there are fewer results).
 
-** Task command
-*** Task CR*D
+The command should support all the generic filter switches, same as ~stats~. When there are no results, the command should display ~No results~.
+
+The command should support the ~--use~ CLI switch to select whether the tags, heading words or body words should be used.
+
+The command should support the ~--max-relations~ switch to limit the number of relations displayed.
+
+The command should support a new CLI switch ~--show~ that lists one or more tags to display. When this switch is provided a value, the command should display the tags in the listed order. If any of the tags are missing, they should be omitted. If there is no value provided for this switch, the command should display top tags (highest top_tasks count first).
+Example invocation:
+
+#+begin_src bash
+orgstats stats tags --show Scala,Debugging,EmbeddedDevelopment path/to/file.org
+#+end_src
+
+The output generated should include only the stats for ~Scala~, ~Debugging~ and ~EmbeddedDevelopment~.
+
+** TODO Groups command                                                                      :CLI:UX:
+Add a new ~stats tags~ command to the CLI that allows displaying tag stats for specific tags.
+An example invocation will look like this:
+
+#+begin_src bash
+orgstats stats groups -n 5 path/to/file.org
+#+end_src
+
+The command should display a list of groups that are found on the tasks that match the search criteria (any tasks remaining after the filtering). The list should be presented the same way as is done in the ~stats~ command except without the initial indent:
+
+#+begin_example
+2016-02-20                                                              2026-10-31
+┊▄▅█▄▅▃▃▆▄▃▃▂▁▁▁▇▃▂▁▂▂▂▄▄▇▃▁▂▂▃▁▁▁▁ ▁▁▂▁▁▁▁▁▁▁▁▁ ▁▁▁▁ ▂▁▁▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▄▁     ┊ 12 (2019-05-08)
+‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+Debugging, EmbeddedDevelopment, Scala, Soldering, Testing
+  Total tasks: 1684
+  Average tasks per day: 0.46
+  Max tasks on a single day: 12
+
+2016-02-20                                                              2026-10-31
+┊▁▁▁ ▁ ▁ ▁▁▁▁▁▁▁▁  ▁▁▁▁▁▁▁▁ ▁▁   ▁▁ ▁▁ ▁  ▁    ▁  ▁▁▁ ▁▁▁▁▁▁▁▁ ▁▁▁▁▁ ▁▁▁▁ ▁█     ┊ 21 (2026-02-08)
+‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+LaTeX, OrgMode, PromptEngineering, Python
+  Total tasks: 189
+  Average tasks per day: 0.05
+  Max tasks on a single day: 21
+
+2016-02-20                                                              2026-10-31
+┊▁ ▁▃█▅▁ ▁▃▁▃▄▄▂▁▁▂ ▁ ▁▁▁▁  ▁▁ ▁▁ ▁  ▁ ▁ ▁▁▁▁▁▁  ▁▁▁       ▁      ▆▁       ▁     ┊ 8 (2017-12-19)
+‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+CSS, Elm, ReactJS, TypeScript
+  Total tasks: 351
+  Average tasks per day: 0.10
+  Max tasks on a single day: 8
+
+...
+#+end_example
+
+The colors should be applied the same way as in the ~stats~ command, including recognizing the ~--color~ CLI switch.
+
+The command should support a ~--max-results~ or ~-n~ switch and limit the displayed list to at most N results (it is OK if there are fewer results).
+
+The command should support all the generic filter switches, same as ~stats~. When there are no results, the command should display ~No results~.
+
+The command should support the ~--use~ CLI switch to select whether the tags, heading words or body words should be used.
+
+The command should support the ~--max-relations~ switch to limit the number of relations used for group computation.
+
+The command should support a new CLI switch ~--group~ that lists one or more tags to group together. This switch can be provided multiple times (defining multiple groups).
+When this switch is provided a value, the command should display the groups in the listed order. The groups should be computed based on the analysis results, without using the relations graph. Instead, the groups should be computed as provided by the command line switches.
+If there no ~--groups~ is provided, the command should display top groups (largest first), same as ~stats~ command.
+Example invocation:
+
+#+begin_src bash
+orgstats stats groups --group Scala,Debugging,Testing --group Erlang,OTP path/to/file.org
+#+end_src
+
+The output generated should include only the stats for two groups:
+- Scala, Debugging, Testing,
+- Erlang, OTP
+
+The groups should be computed anew even if they are present in the analysis results. This is an extra step to be performed after main analysis by this command alone.
+
+** Tasks command                                                                          :CLI:CRUD:
+*** TODO Tasks *R**
+Add a new ~tasks~ command to the CLI that allows searching for specific tasks.
+An example invocation will look like this:
+
+#+begin_src bash
+orgstats tasks --filter-completed --filter-category simple path/to/file.org
+#+end_src
+
+The command should display a list of tasks that match the search criteria (any tasks remaining after the filtering). The list should be presented in task timestamp order, with most recent tasks comming first. The command should respect any additional filters passed by the ~--filter*~ flags.
+
+The command should support a ~--max-results~ or ~-n~ switch and limit the displayed list to at most N results (it is OK if there are fewer results). When there are no results, the command should display ~No results~.
+Some examples follow.
+
+Empty result:
+#+begin_example
+orgstats tags --filter-not-complete VIBES.org
+#+end_example
+
+#+begin_example
+No results.
+#+end_example
+
+Results found:
+#+begin_example
+orgstats tags --filter-complete VIBES.org
+#+end_example
+
+#+begin_example
+VIBES.org: CANCELLED Group computation performance optimization
+VIBES.org: REWORKED Display inconsistencies fixes
+VIBES.org: REWORKED Broken test slop
+VIBES.org: REWORKED Test typing slop cleanup
+VIBES.org: CANCELLED Test redundancy cleanup
+#+end_example
+
+The command should support a detailed display of each task enabled by a CLI switch called ~--details~ (disabled by default).
+The detailed display will show the entire Org Node prepended by a comment naming the file where it can be found. The Org Node levels, properties, tags, etc should be preserved. You can use the ~orgparse~-built-in ~__str__~ representation of nodes.
+
+Example:
+#+begin_example
+orgstats tags -n 4 --details tests/fixtures/simple.org
+#+end_example
+
+: # tests/fixtures/simple.org
+: * TODO Another incomplete :tag3:tag6:
+: :PROPERTIES:
+: :gamify_exp: 18
+: :custom_prop: value2
+: :END:
+: 
+: Another TODO task.
+: 
+: # tests/fixtures/simple.org
+: * DONE Case sensitive tag test :CaseSensitive:
+: CLOSED: <date>
+: :PROPERTIES:
+: :gamify_exp: 11
+: :CaseProp: CaseValue
+: :END:
+: 
+: Testing case sensitivity.
+: 
+: # tests/fixtures/simple.org
+: * DONE Property with equals :tag7:
+: CLOSED: <date>
+: :PROPERTIES:
+: :gamify_exp: 14
+: :equation: E=mc^2
+: :END:
+: 
+: Property value contains equals sign.
+: 
+: # tests/fixtures/simple.org
+: * DONE Task two repeats :tag8:
+: :PROPERTIES:
+: :gamify_exp: 20
+: :END:
+: :LOGBOOK:
+: - State "DONE" from "TODO" <date>
+: - State "DONE" from "TODO" <date>
+: :END:
+: 
+: Task with exactly 2 repeats.
+
+The output colors for the short display should match what is currently done for the ~stats~ command's "TASKS" section. The full detailed output can return just white results. Colors should be controled with the ~--color~ CLI switch.
+
+*** Output abstraction
+We will be adding more output options, for instance JSON output, visualization output, etc.
+
+*** JSON output
+- Could be done with pandoc
+
+*** Markdown output
+- Could be done with pandoc
+
+*** Tasks C**D
 - Adding new nodes
 - Removing nodes
 - Moving nodes between headings
 
-*** Task **U*
+*** Tasks **U*
 - Changing TODO state
   + Update repeats
   + Update completion dates
@@ -1433,6 +1690,71 @@ List the tasks headings and the files where these can be found.
 - Modifying the body
 
 ** Workflow command
+
+Break down next task:
+#+begin_example
+org workflow current-task --agent OpenCode --details --md VIBES.org
+No result
+
+org workflow next-available --details --md VIBES.org
+
+  # Do some stuff
+  Blah blah
+
+# AI analyzes the task, decides to break it down into smaller chunks.
+
+# org workflow claim "Do some stuff" --agent OpenCode VIBES.org
+org workflow sub-task "Do some stuff" --id "23" --heading "Foo" --body "Bar" --tags "Baz" VIBES.org
+org workflow sub-task "Do some stuff" --id "54" --heading "Faz" --body "Bar" --tags "Baz" VIBES.org
+#+end_example
+
+Plan implementing next task:
+#+begin_example
+org workflow next-available --details --md VIBES.org
+
+  # Foo :Baz:
+  ID: 23
+  Bar
+
+# AI analyzes the task, decides to compute an implementation plan.
+
+org workflow claim "Foo" --agent OpenCode VIBES.org
+org workflow add-plan "Foo" path/to/plan.md VIBES.org
+#+end_example
+
+Implement a plan:
+#+begin_example
+org workflow next-available --details --md VIBES.org
+
+  # Foo :Baz:
+  ID: 23
+  AGENT: OpenCode
+  PLAN: @path/to/plan.md
+
+  Bar
+
+# AI executes the plan, puts the task in review
+
+org workflow done "Foo" VIBES.org
+#+end_example
+
+This maps to something along those lines:
+
+#+begin_example
+org search --todo-keys TODO --max-results 1 --filter-not-completed --filter-property AGENT=OpenCode --details --md VIBES.org
+
+org search --todo-keys TODO --max-results 1 --filter-not-completed --filter-not-blocked --details --md VIBES.org
+# org task update --id "Do some stuff" --todo ACTIVE --property AGENT=OpenCode VIBES.org
+org task create --parent "Do some stuff" --id "23" --heading "Foo" --body "Bar" --tags "Baz" VIBES.org
+org task create --parent "Do some stuff" --id "54" --heading "Faz" --body "Bar" --tags "Baz" VIBES.org
+
+org search --todo-keys TODO --max-results 1 --filter-not-completed --filter-not-blocked --details --md VIBES.org
+org task update --id "Foo" --property PLAN=@path/to/plan.md VIBES.org
+org task update --id "Foo" --todo ACTIVE --property AGENT=OpenCode VIBES.org
+
+org task update --id "Foo" --todo REVIEW VIBES.org
+#+end_example
+
 *** workflow --init
 - Task links via properties
 - External attachments (for the execution plan)
@@ -1447,14 +1769,6 @@ List the tasks headings and the files where these can be found.
 - Add extra tasks, modify state
 - Loop
 
-*** Output abstraction
-We will be adding more output options, for instance JSON output, visualization output, etc.
-
-*** JSON output
-- Could be done with pandoc
-
-*** Markdown output
-- Could be done with pandoc
 ** JavaScript visualization
 
 *** D3 visualization - tag cloud
@@ -1465,6 +1779,7 @@ Node size is how many tasks are related to a tag. Closeness is how related these
 *** D3 visualization - tag charts over time
 Allow selecting specific tags or top tags.
 
+** File watching and updated display
 ** Dashboard command
 - Reads a dashboard config and shows a visualization on a server.
 - Live updating.
@@ -1474,3 +1789,5 @@ Allow selecting specific tags or top tags.
 --serve to start a server showing a visualization of the data
 
 ** Rename project to org-cli
+** Better heading & body parsing
+** MCP server
