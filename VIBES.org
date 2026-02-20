@@ -1295,7 +1295,11 @@ There are some inconsistencies in data display. I'd like to fix those inconsiste
 
 - --filter-not-completed should also include tasks withuout a todo state (so, it's effectively a reverse of the --filter-complete, task state must be in todo keys or absent).
 
-** Group computation performance optimization                                         :Optimization:
+** CANCELLED Group computation performance optimization                               :Optimization:
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-02-20 Fri 20:40] \\
+  Did this myself since the quota ran out.
+:END:
 Computing filtered node lists for each group is pretty slow. This needs to be improved, so that we iterate over the nodes once as that's a much larger set.
 
 ** TODO Output colors etc                                                                   :TUI:UX:

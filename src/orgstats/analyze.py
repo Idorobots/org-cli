@@ -658,25 +658,30 @@ def compute_groups(
     for scc in sccs:
         combined_time_range = _combine_time_ranges(tag_time_ranges, scc)
 
-        scc_set = set(scc)
-        group_node_count = 0
-        for org_node in nodes:
-            node_items = _extract_items(org_node, mapping, category)
-            if node_items & scc_set:
-                group_node_count += max(1, len(org_node.repeated_tasks))
-
-        avg_per_day = compute_avg_tasks_per_day(combined_time_range, group_node_count)
-        max_single_day = compute_max_single_day(combined_time_range)
-
         groups.append(
             Group(
                 tags=sorted(scc),
                 time_range=combined_time_range,
-                total_tasks=group_node_count,
-                avg_tasks_per_day=avg_per_day,
-                max_single_day_count=max_single_day,
+                total_tasks=0,
+                avg_tasks_per_day=0,
+                max_single_day_count=0,
             )
         )
+
+    # NOTE: Nodes is a much larger list, so we make sure to iterate that only once for better performance.
+    for org_node in nodes:
+        node_items = _extract_items(org_node, mapping, category)
+
+        for group in groups:
+            scc_set = set(group.tags)
+
+            if node_items & scc_set:
+                group.total_tasks += max(1, len(org_node.repeated_tasks))
+
+    for group in groups:
+        group.avg_tasks_per_day = compute_avg_tasks_per_day(group.time_range, group.total_tasks)
+        group.max_single_day_count = compute_max_single_day(group.time_range)
+
     return groups
 
 
