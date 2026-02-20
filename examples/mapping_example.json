@@ -10,5 +10,7 @@
     "Maintenance": "Refactoring",
     "SOA": "ServiceOrientedArchitecture",
     "Dia": "UML",
-    "Electronics": "EmbeddedDevelopment"
+    "Electronics": "EmbeddedDevelopment",
+    "ReadingEnglish": "Researching",
+    "VibeCoding": "PromptEngineering"
 }
