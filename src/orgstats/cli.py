@@ -166,7 +166,7 @@ def load_exclude_list(filepath: str | None) -> set[str]:
 
     try:
         with open(filepath, encoding="utf-8") as f:
-            return {line.strip() for line in f if line.strip()}
+            return normalize_exclude_values(list(f))
     except FileNotFoundError:
         print(f"Error: Exclude list file '{filepath}' not found", file=sys.stderr)
         sys.exit(1)
@@ -281,6 +281,18 @@ def is_string_list(value: object) -> TypeGuard[list[str]]:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
+def is_string_dict(value: object) -> TypeGuard[dict[str, str]]:
+    """Check if value is dict[str, str]."""
+    return isinstance(value, dict) and all(
+        isinstance(key, str) and isinstance(item, str) for key, item in value.items()
+    )
+
+
+def normalize_exclude_values(values: list[str]) -> set[str]:
+    """Normalize exclude values to match file-based behavior."""
+    return {line.strip() for line in values if line.strip()}
+
+
 def parse_color_defaults(config: dict[str, object]) -> tuple[dict[str, object], bool]:
     """Parse color-related config defaults."""
     defaults: dict[str, object] = {}
@@ -320,7 +332,7 @@ def validate_str_option(key: str, value: object) -> str | None:
     """Validate string option value."""
     if not isinstance(value, str):
         return None
-    if key in ("--exclude", "--mapping", "--config") and not value.strip():
+    if key == "--config" and not value.strip():
         return None
     if key == "--use" and value not in {"tags", "heading", "body"}:
         return None
@@ -348,14 +360,40 @@ def validate_list_option(key: str, value: object) -> list[str] | None:
     return list(value)
 
 
-def apply_config_entry(
+def apply_mapping_config(value: object, defaults: dict[str, object]) -> bool:
+    """Apply mapping config entry."""
+    if isinstance(value, str):
+        if not value.strip():
+            return False
+        defaults["mapping"] = value
+        return True
+    if is_string_dict(value):
+        defaults["mapping_inline"] = value
+        return True
+    return False
+
+
+def apply_exclude_config(value: object, defaults: dict[str, object]) -> bool:
+    """Apply exclude config entry."""
+    if isinstance(value, str):
+        if not value.strip():
+            return False
+        defaults["exclude"] = value
+        return True
+    if is_string_list(value):
+        defaults["exclude_inline"] = list(value)
+        return True
+    return False
+
+
+def apply_config_entry_by_options(
     key: str,
     value: object,
     defaults: dict[str, object],
     append_defaults: dict[str, list[str]],
     options: ConfigOptions,
 ) -> bool:
-    """Apply a config entry to defaults if valid."""
+    """Apply a config entry using option metadata."""
     valid = True
 
     if key in options.int_options:
@@ -384,6 +422,23 @@ def apply_config_entry(
             append_defaults[options.list_options[key]] = list_value
 
     return valid
+
+
+def apply_config_entry(
+    key: str,
+    value: object,
+    defaults: dict[str, object],
+    append_defaults: dict[str, list[str]],
+    options: ConfigOptions,
+) -> bool:
+    """Apply a config entry to defaults if valid."""
+    if key == "--mapping":
+        return apply_mapping_config(value, defaults)
+
+    if key == "--exclude":
+        return apply_exclude_config(value, defaults)
+
+    return apply_config_entry_by_options(key, value, defaults, append_defaults, options)
 
 
 def build_config_defaults(
@@ -427,8 +482,6 @@ def build_config_defaults(
     }
 
     str_options: dict[str, str] = {
-        "--exclude": "exclude",
-        "--mapping": "mapping",
         "--filter-category": "filter_category",
         "--category-property": "category_property",
         "--use": "use",
@@ -1021,6 +1074,8 @@ def create_parser() -> argparse.ArgumentParser:
         help="Disable colored output",
     )
 
+    parser.set_defaults(mapping_inline=None, exclude_inline=None)
+
     return parser
 
 
@@ -1041,7 +1096,9 @@ def parse_arguments() -> argparse.Namespace:
     parser = create_parser()
 
     config_name = parse_config_argument(sys.argv)
-    config_path = Path.cwd() / config_name
+    config_path = Path(config_name)
+    if not config_path.is_absolute():
+        config_path = Path.cwd() / config_name
     config, load_error = load_config(str(config_path))
 
     append_defaults: dict[str, list[str]] = {}
@@ -1745,8 +1802,17 @@ def main() -> None:
 
     todo_keys, done_keys = validate_arguments(args)
 
-    mapping = load_mapping(args.mapping) or MAP
-    exclude_set = load_exclude_list(args.exclude) or DEFAULT_EXCLUDE
+    mapping_inline = args.mapping_inline
+    if mapping_inline is not None:
+        mapping = mapping_inline or MAP
+    else:
+        mapping = load_mapping(args.mapping) or MAP
+
+    exclude_inline = args.exclude_inline
+    if exclude_inline is not None:
+        exclude_set = normalize_exclude_values(exclude_inline) or DEFAULT_EXCLUDE
+    else:
+        exclude_set = load_exclude_list(args.exclude) or DEFAULT_EXCLUDE
 
     filters = build_filter_chain(args, sys.argv)
 

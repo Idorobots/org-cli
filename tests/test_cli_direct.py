@@ -78,7 +78,15 @@ def test_main_with_filter_parameter() -> None:
         sys.stdout = StringIO()
 
         fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-        sys.argv = ["cli.py", "--with-gamify-category", "--filter-category", "hard", fixture_path]
+        sys.argv = [
+            "cli.py",
+            "--config",
+            "missing.json",
+            "--with-gamify-category",
+            "--filter-category",
+            "hard",
+            fixture_path,
+        ]
 
         main()
 

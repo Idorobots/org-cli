@@ -1435,7 +1435,11 @@ Filtering can't be done in advance, since the category filter uses the enriched 
 
 This will be handled at some future point, when orgparse is updated to be able to modify the nodes.
 
-** TODO .org.json config                                                                    :UX:CLI:
+** REWORKED .org.json config                                                         :UX:CLI:Config:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-21 Sat 15:51] \\
+  See commets.
+:END:
 It is inconvenient to pass all the parameters to the CLI command each time. I'd like the command to parse an optional configuration file (named ~.org-cli.json~) that is found in the current working directory (doesn't matter if there are any files or directories passed to the command). If that file is absent or malformed, the usual defaults should be used.
 
 If the file is present, it is opened, parsed and the values stored in it should be used as the default values for the command switches.  CLI passed arguments take precedence over the supplied values, so the precedence should be: CLI arguments, config file, code defaults.
@@ -1458,6 +1462,15 @@ A new CLI parameter called ~--config~ should be added that names the config file
 This task was done with two models, Claude Sonnet 4.5 did the planning while Codex 5.2 did the implementation.
 Codex took a while to implement the plan and didn't validate it in one go, but made fewer mistakes that needed to be mended.
 It made ~--config~ work in a weird way (just passing a filename to search for in the current directory) that needed reprompting.
+
+** TODO Better config handling                                                           :UX:Config:
+I see that the ~--config~ parameter accepts a file in the current directory. Can you make sure that an absolute path can be passed as well? The idea is to be ablet o run the command from anywhere and pass a config file that is some place else.
+
+I'd like to improve the usability of the config file. Currently, the ~--mapping~ and ~--exclude~ files are passed via the config as paths.
+I'd like that to be values embedded directly in the config, that is, if the config file is provided and the values are a JSON object and a JSON array respectively, treat them as the values for the mapping and exclusion lists, without parsing any files.
+If the values in the configuration are strings plain, please treat them as paths and attempt to load the files as is done currently.
+
+Other switches should be left unchanged. The behaviour will be adjusted in the future.
 
 ** TODO Default FILE to *.org in cwd                                                        :UX:CLI:
 When a ~FILE~ is not provided to the CLI command  we currently return an error. I'd like to change that to search the current working directory for all *.org files and if any are found, the command will analyze them.

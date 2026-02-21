@@ -117,3 +117,62 @@ def test_config_custom_name(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
 
     args = parse_arguments()
     assert args.use == "heading"
+
+
+def test_config_absolute_path(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Absolute config path should be respected."""
+    from orgstats.cli import parse_arguments
+
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+    config_path = tmp_path / "absolute.json"
+    write_config(config_path, {"--use": "body"})
+
+    monkeypatch.chdir("/")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["orgstats", "--config", str(config_path.resolve()), fixture_path],
+    )
+
+    args = parse_arguments()
+    assert args.use == "body"
+
+
+def test_config_inline_mapping(tmp_path: Path) -> None:
+    """Inline mapping should be used when provided as object."""
+    fixture_path = os.path.join(FIXTURES_DIR, "mapping_test.org")
+    config_path = tmp_path / ".org-cli.json"
+    write_config(
+        config_path,
+        {"--mapping": {"foo": "bar", "testing": "test", "python": "py"}},
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--no-color", fixture_path],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "bar" in result.stdout
+    assert "test" in result.stdout
+    assert "py" in result.stdout
+
+
+def test_config_inline_exclude(tmp_path: Path) -> None:
+    """Inline exclude list should be used when provided as array."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    config_path = tmp_path / ".org-cli.json"
+    write_config(config_path, {"--exclude": ["test", "debugging"]})
+
+    result = subprocess.run(
+        [sys.executable, "-m", "orgstats", "--no-color", fixture_path],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "  test\n" not in result.stdout
+    assert "  debugging\n" not in result.stdout
