@@ -1,6 +1,6 @@
 """Tests for tags-as-category preprocessing."""
 
-from orgstats.filters import preprocess_tags_as_category
+from org.filters import preprocess_tags_as_category
 from tests.conftest import node_from_org
 
 

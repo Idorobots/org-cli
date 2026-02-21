@@ -4,7 +4,7 @@ import os
 
 import orgparse
 
-from orgstats.analyze import analyze
+from org.analyze import analyze
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")

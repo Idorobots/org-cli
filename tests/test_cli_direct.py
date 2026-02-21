@@ -10,7 +10,7 @@ FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 def test_main_function_directly() -> None:
     """Test the main() function directly for coverage."""
-    from orgstats.cli import main
+    from org.cli import main
 
     # Save original argv and stdout
     original_argv = sys.argv
@@ -43,7 +43,7 @@ def test_main_function_directly() -> None:
 
 def test_main_with_multiple_files_direct() -> None:
     """Test main() with multiple files."""
-    from orgstats.cli import main
+    from org.cli import main
 
     original_argv = sys.argv
     original_stdout = sys.stdout
@@ -69,7 +69,7 @@ def test_main_with_multiple_files_direct() -> None:
 
 def test_main_with_filter_parameter() -> None:
     """Test main function with --filter parameter."""
-    from orgstats.cli import main
+    from org.cli import main
 
     original_argv = sys.argv
     original_stdout = sys.stdout
@@ -105,7 +105,7 @@ def test_main_with_filter_parameter() -> None:
 
 def test_main_with_custom_todo_keys() -> None:
     """Test main function with --todo-keys parameter."""
-    from orgstats.cli import main
+    from org.cli import main
 
     original_argv = sys.argv
     original_stdout = sys.stdout
@@ -131,7 +131,7 @@ def test_main_with_custom_todo_keys() -> None:
 
 def test_main_with_custom_done_keys() -> None:
     """Test main function with --done-keys parameter."""
-    from orgstats.cli import main
+    from org.cli import main
 
     original_argv = sys.argv
     original_stdout = sys.stdout
@@ -157,7 +157,7 @@ def test_main_with_custom_done_keys() -> None:
 
 def test_main_with_both_todo_and_done_keys() -> None:
     """Test main function with both --todo-keys and --done-keys."""
-    from orgstats.cli import main
+    from org.cli import main
 
     original_argv = sys.argv
     original_stdout = sys.stdout
@@ -190,7 +190,7 @@ def test_main_with_both_todo_and_done_keys() -> None:
 
 def test_main_displays_none_state() -> None:
     """Test that tasks without state show as 'none' in output."""
-    from orgstats.cli import main
+    from org.cli import main
 
     original_argv = sys.argv
     original_stdout = sys.stdout

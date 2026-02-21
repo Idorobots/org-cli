@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from orgstats.filters import _filter_node_repeats, _FilteredOrgNode
+from org.filters import _filter_node_repeats, _FilteredOrgNode
 from tests.conftest import node_from_org
 
 

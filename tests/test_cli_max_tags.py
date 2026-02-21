@@ -12,7 +12,7 @@ FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 def test_max_tags_default_is_5() -> None:
     """Test that default max_tags is 5."""
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--help"],
+        [sys.executable, "-m", "org", "--no-color", "--help"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -28,14 +28,14 @@ def test_max_tags_limits_tags_section() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result_default = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
     )
 
     result_limited = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--max-tags", "1", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", "--max-tags", "1", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -57,7 +57,7 @@ def test_max_tags_zero_omits_section() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--max-tags", "0", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", "--max-tags", "0", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -72,7 +72,7 @@ def test_max_tags_negative_fails() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--max-tags", "-1", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", "--max-tags", "-1", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -90,7 +90,7 @@ def test_max_tags_with_show_heading() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--no-color",
             "--use",
             "heading",
@@ -116,7 +116,7 @@ def test_max_tags_with_show_body() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--no-color",
             "--use",
             "body",
@@ -139,7 +139,7 @@ def test_max_tags_with_fewer_results() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "single_task.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--max-tags", "10", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", "--max-tags", "10", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -157,7 +157,7 @@ def test_max_tags_zero_with_show_heading() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--use",
             "heading",
             "--max-tags",
@@ -181,7 +181,7 @@ def test_max_tags_with_max_results() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--max-tags",
             "2",
             "--max-results",
@@ -203,7 +203,7 @@ def test_max_tags_one() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--max-tags", "1", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", "--max-tags", "1", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,

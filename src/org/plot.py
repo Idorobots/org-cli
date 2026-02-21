@@ -2,7 +2,7 @@
 
 from datetime import date, timedelta
 
-from orgstats.color import bright_blue, dim_white, magenta
+from org.color import bright_blue, dim_white, magenta
 
 
 def expand_timeline(timeline: dict[date, int], earliest: date, latest: date) -> dict[date, int]:

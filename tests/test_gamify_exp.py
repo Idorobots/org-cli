@@ -1,6 +1,6 @@
 """Tests for gamify_exp parsing."""
 
-from orgstats.filters import get_gamify_exp, parse_gamify_exp
+from org.filters import get_gamify_exp, parse_gamify_exp
 from tests.conftest import node_from_org
 
 

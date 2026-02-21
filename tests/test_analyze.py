@@ -2,7 +2,7 @@
 
 import orgparse
 
-from orgstats.analyze import analyze
+from org.analyze import analyze
 from tests.conftest import node_from_org
 
 

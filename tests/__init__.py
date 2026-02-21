@@ -1,1 +1,1 @@
-"""Tests for orgstats."""
+"""Tests for org."""

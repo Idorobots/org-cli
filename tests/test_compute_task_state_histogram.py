@@ -1,6 +1,6 @@
 """Tests for the compute_task_state_histogram() function."""
 
-from orgstats.analyze import compute_task_state_histogram
+from org.analyze import compute_task_state_histogram
 from tests.conftest import node_from_org
 
 

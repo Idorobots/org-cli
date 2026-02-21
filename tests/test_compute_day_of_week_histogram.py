@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from orgstats.analyze import compute_day_of_week_histogram, weekday_to_string
+from org.analyze import compute_day_of_week_histogram, weekday_to_string
 from tests.conftest import node_from_org
 
 

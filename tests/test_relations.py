@@ -1,6 +1,6 @@
 """Tests for the Relations dataclass."""
 
-from orgstats.analyze import Relations
+from org.analyze import Relations
 
 
 def test_relations_initialization() -> None:

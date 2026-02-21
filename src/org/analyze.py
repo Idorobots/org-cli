@@ -5,8 +5,8 @@ from datetime import date, datetime
 
 import orgparse
 
-from orgstats.histogram import Histogram
-from orgstats.timestamp import extract_timestamp_any
+from org.histogram import Histogram
+from org.timestamp import extract_timestamp_any
 
 
 @dataclass

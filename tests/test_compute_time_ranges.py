@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from orgstats.analyze import compute_time_ranges
+from org.analyze import compute_time_ranges
 from tests.conftest import node_from_org
 
 

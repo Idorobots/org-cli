@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from orgstats.cli import get_most_recent_timestamp, get_top_tasks
+from org.cli import get_most_recent_timestamp, get_top_tasks
 from tests.conftest import node_from_org
 
 

@@ -14,7 +14,7 @@ def test_chart_spanning_no_filters() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -33,7 +33,7 @@ def test_chart_spanning_with_filter_date_from_only() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2024-01-01",
             fixture_path,
@@ -58,7 +58,7 @@ def test_chart_spanning_with_filter_date_until_only() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-until",
             "2025-12-31",
             fixture_path,
@@ -83,7 +83,7 @@ def test_chart_spanning_with_both_date_filters() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2024-01-01",
             "--filter-date-until",
@@ -111,7 +111,7 @@ def test_chart_spanning_with_narrow_date_range() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2025-01-01",
             "--filter-date-until",
@@ -135,7 +135,7 @@ def test_chart_spanning_filters_out_all_data() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2099-01-01",
             "--filter-date-until",
@@ -159,7 +159,7 @@ def test_chart_spanning_with_show_heading() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--use",
             "heading",
             "--filter-date-from",
@@ -184,7 +184,7 @@ def test_chart_spanning_with_show_body() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--use",
             "body",
             "--filter-date-from",
@@ -209,7 +209,7 @@ def test_chart_spanning_with_time_component() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2024-01-01T00:00:00",
             "--filter-date-until",

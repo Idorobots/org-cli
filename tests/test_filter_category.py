@@ -1,6 +1,6 @@
 """Tests for filter_category function."""
 
-from orgstats.filters import filter_category, preprocess_gamify_categories
+from org.filters import filter_category, preprocess_gamify_categories
 from tests.conftest import node_from_org
 
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 from colorama import Style
 
-from orgstats.color import bright_blue, dim_white, get_state_color
+from org.color import bright_blue, dim_white, get_state_color
 
 
 @dataclass

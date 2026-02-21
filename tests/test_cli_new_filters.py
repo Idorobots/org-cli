@@ -17,7 +17,7 @@ def test_cli_filter_gamify_exp_above() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--no-color",
             "--filter-gamify-exp-above",
             "20",
@@ -41,7 +41,7 @@ def test_cli_filter_gamify_exp_below() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--no-color",
             "--filter-gamify-exp-below",
             "10",
@@ -64,7 +64,7 @@ def test_cli_filter_repeats_above() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--no-color",
             "--filter-repeats-above",
             "2",
@@ -87,7 +87,7 @@ def test_cli_filter_repeats_below() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--no-color",
             "--filter-repeats-below",
             "3",
@@ -110,7 +110,7 @@ def test_cli_filter_date_from() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2025-01-01",
             fixture_path,
@@ -132,7 +132,7 @@ def test_cli_filter_date_until() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-until",
             "2025-12-31",
             fixture_path,
@@ -154,7 +154,7 @@ def test_cli_filter_date_range() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2025-01-01",
             "--filter-date-until",
@@ -178,7 +178,7 @@ def test_cli_filter_property() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-property",
             "custom_prop=value1",
             fixture_path,
@@ -200,7 +200,7 @@ def test_cli_filter_property_with_equals() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-property",
             "equation=E=mc^2",
             fixture_path,
@@ -221,7 +221,7 @@ def test_cli_filter_multiple_properties() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-property",
             "custom_prop=value1",
             "--filter-property",
@@ -241,7 +241,7 @@ def test_cli_filter_tag() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--filter-tag", "tag1", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", "--filter-tag", "tag1", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -259,7 +259,7 @@ def test_cli_filter_multiple_tags() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-tag",
             "tag1",
             "--filter-tag",
@@ -279,7 +279,7 @@ def test_cli_filter_completed() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--filter-completed", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", "--filter-completed", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -294,7 +294,7 @@ def test_cli_filter_not_completed() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--filter-not-completed", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", "--filter-not-completed", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -312,7 +312,7 @@ def test_cli_preset_simple_still_works() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--no-color",
             "--filter-category",
             "simple",
@@ -335,7 +335,7 @@ def test_cli_preset_regular_still_works() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--no-color",
             "--filter-category",
             "regular",
@@ -355,7 +355,7 @@ def test_cli_preset_hard_still_works() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--filter-category", "hard", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", "--filter-category", "hard", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -373,7 +373,7 @@ def test_cli_preset_combined_with_explicit_filter() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-category",
             "simple",
             "--filter-tag",
@@ -396,7 +396,7 @@ def test_cli_complex_filter_combination() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-gamify-exp-above",
             "10",
             "--filter-gamify-exp-below",
@@ -422,7 +422,7 @@ def test_cli_no_results() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-gamify-exp-above",
             "100",
             fixture_path,
@@ -444,7 +444,7 @@ def test_cli_invalid_date_format() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "01/01/2025",
             fixture_path,
@@ -466,7 +466,7 @@ def test_cli_invalid_property_format() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-property",
             "noequals",
             fixture_path,
@@ -483,7 +483,7 @@ def test_cli_invalid_property_format() -> None:
 def test_cli_help_shows_new_options() -> None:
     """Test that --help displays new filter options."""
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--help"],
+        [sys.executable, "-m", "org", "--no-color", "--help"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -510,7 +510,7 @@ def test_cli_filter_date_from_with_time() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2025-01-01T12:00",
             fixture_path,
@@ -532,7 +532,7 @@ def test_cli_filter_date_from_with_seconds() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2025-01-01T12:30:45",
             fixture_path,
@@ -554,7 +554,7 @@ def test_cli_filter_date_from_space_separator() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2025-01-01 12:00",
             fixture_path,
@@ -576,7 +576,7 @@ def test_cli_filter_date_from_space_with_seconds() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2025-01-01 12:30:45",
             fixture_path,
@@ -598,7 +598,7 @@ def test_cli_filter_date_until_with_time() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-until",
             "2025-12-31T23:59",
             fixture_path,
@@ -620,7 +620,7 @@ def test_cli_filter_date_until_with_seconds() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-until",
             "2025-12-31T23:59:59",
             fixture_path,
@@ -642,7 +642,7 @@ def test_cli_filter_date_until_space_separator() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-until",
             "2025-12-31 23:59",
             fixture_path,
@@ -664,7 +664,7 @@ def test_cli_filter_date_range_mixed_formats() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2025-01-01T00:00:00",
             "--filter-date-until",
@@ -688,7 +688,7 @@ def test_cli_filter_date_from_midnight() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "2025-01-01T00:00:00",
             fixture_path,
@@ -710,7 +710,7 @@ def test_cli_filter_date_invalid_format() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-date-from",
             "01/15/2025",
             fixture_path,
@@ -730,7 +730,7 @@ def test_cli_filter_date_invalid_format() -> None:
 def test_cli_filter_date_help_shows_formats() -> None:
     """Test that --help shows the new timestamp formats."""
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--help"],
+        [sys.executable, "-m", "org", "--no-color", "--help"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,

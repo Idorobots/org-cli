@@ -1,6 +1,6 @@
 """Tests for gamify category preprocessing."""
 
-from orgstats.filters import preprocess_gamify_categories
+from org.filters import preprocess_gamify_categories
 from tests.conftest import node_from_org
 
 

@@ -1,6 +1,6 @@
 """Tests for the mapped() function."""
 
-from orgstats.analyze import mapped
+from org.analyze import mapped
 
 
 def test_mapped_found_in_mapping() -> None:

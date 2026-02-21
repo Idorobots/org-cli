@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""CLI interface for orgstats - Org-mode archive file analysis."""
+"""CLI interface for org - Org-mode archive file analysis."""
 
 import argparse
 import json
@@ -15,7 +15,7 @@ import orgparse
 from colorama import Style
 from colorama import init as colorama_init
 
-from orgstats.analyze import (
+from org.analyze import (
     AnalysisResult,
     Group,
     Tag,
@@ -23,8 +23,8 @@ from orgstats.analyze import (
     analyze,
     clean,
 )
-from orgstats.color import bright_white, dim_white, get_state_color, magenta, should_use_color
-from orgstats.filters import (
+from org.color import bright_white, dim_white, get_state_color, magenta, should_use_color
+from org.filters import (
     filter_body,
     filter_category,
     filter_completed,
@@ -41,9 +41,9 @@ from orgstats.filters import (
     preprocess_gamify_categories,
     preprocess_tags_as_category,
 )
-from orgstats.histogram import RenderConfig, render_histogram
-from orgstats.plot import render_timeline_chart
-from orgstats.timestamp import extract_timestamp_any
+from org.histogram import RenderConfig, render_histogram
+from org.plot import render_timeline_chart
+from org.timestamp import extract_timestamp_any
 
 
 MAP: dict[str, str] = {}
@@ -825,7 +825,7 @@ def display_top_tasks(
 def create_parser() -> argparse.ArgumentParser:
     """Create argument parser for CLI."""
     parser = argparse.ArgumentParser(
-        prog="orgstats",
+        prog="org",
         description="Analyze Emacs Org-mode archive files for task statistics.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

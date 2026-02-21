@@ -13,7 +13,7 @@ PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 def test_handle_simple_filter_gamify_exp_above() -> None:
     """Test handle_simple_filter creates gamify_exp_above filter."""
-    from orgstats.cli import handle_simple_filter
+    from org.cli import handle_simple_filter
 
     args = argparse.Namespace(
         filter_gamify_exp_above=15,
@@ -30,7 +30,7 @@ def test_handle_simple_filter_gamify_exp_above() -> None:
 
 def test_handle_simple_filter_gamify_exp_below() -> None:
     """Test handle_simple_filter creates gamify_exp_below filter."""
-    from orgstats.cli import handle_simple_filter
+    from org.cli import handle_simple_filter
 
     args = argparse.Namespace(
         filter_gamify_exp_above=None,
@@ -47,7 +47,7 @@ def test_handle_simple_filter_gamify_exp_below() -> None:
 
 def test_handle_simple_filter_repeats_above() -> None:
     """Test handle_simple_filter creates repeats_above filter."""
-    from orgstats.cli import handle_simple_filter
+    from org.cli import handle_simple_filter
 
     args = argparse.Namespace(
         filter_gamify_exp_above=None,
@@ -64,7 +64,7 @@ def test_handle_simple_filter_repeats_above() -> None:
 
 def test_handle_simple_filter_repeats_below() -> None:
     """Test handle_simple_filter creates repeats_below filter."""
-    from orgstats.cli import handle_simple_filter
+    from org.cli import handle_simple_filter
 
     args = argparse.Namespace(
         filter_gamify_exp_above=None,
@@ -81,7 +81,7 @@ def test_handle_simple_filter_repeats_below() -> None:
 
 def test_handle_simple_filter_no_match() -> None:
     """Test handle_simple_filter returns empty list when arg doesn't match."""
-    from orgstats.cli import handle_simple_filter
+    from org.cli import handle_simple_filter
 
     args = argparse.Namespace(
         filter_gamify_exp_above=None,
@@ -98,7 +98,7 @@ def test_handle_simple_filter_no_match() -> None:
 def test_handle_date_filter_from() -> None:
     """Test handle_date_filter creates date_from filter."""
 
-    from orgstats.cli import handle_date_filter
+    from org.cli import handle_date_filter
 
     args = argparse.Namespace(filter_date_from="2025-01-01", filter_date_until=None)
 
@@ -110,7 +110,7 @@ def test_handle_date_filter_from() -> None:
 
 def test_handle_date_filter_until() -> None:
     """Test handle_date_filter creates date_until filter."""
-    from orgstats.cli import handle_date_filter
+    from org.cli import handle_date_filter
 
     args = argparse.Namespace(filter_date_from=None, filter_date_until="2025-12-31")
 
@@ -122,7 +122,7 @@ def test_handle_date_filter_until() -> None:
 
 def test_handle_date_filter_no_match() -> None:
     """Test handle_date_filter returns empty list when arg doesn't match."""
-    from orgstats.cli import handle_date_filter
+    from org.cli import handle_date_filter
 
     args = argparse.Namespace(filter_date_from=None, filter_date_until=None)
 
@@ -133,7 +133,7 @@ def test_handle_date_filter_no_match() -> None:
 
 def test_handle_completion_filter_completed() -> None:
     """Test handle_completion_filter creates completed filter."""
-    from orgstats.cli import handle_completion_filter
+    from org.cli import handle_completion_filter
 
     args = argparse.Namespace(filter_completed=True, filter_not_completed=False)
 
@@ -145,7 +145,7 @@ def test_handle_completion_filter_completed() -> None:
 
 def test_handle_completion_filter_not_completed() -> None:
     """Test handle_completion_filter creates not_completed filter."""
-    from orgstats.cli import handle_completion_filter
+    from org.cli import handle_completion_filter
 
     args = argparse.Namespace(filter_completed=False, filter_not_completed=True)
 
@@ -157,7 +157,7 @@ def test_handle_completion_filter_not_completed() -> None:
 
 def test_handle_completion_filter_no_match() -> None:
     """Test handle_completion_filter returns empty list when not set."""
-    from orgstats.cli import handle_completion_filter
+    from org.cli import handle_completion_filter
 
     args = argparse.Namespace(filter_completed=False, filter_not_completed=False)
 
@@ -168,7 +168,7 @@ def test_handle_completion_filter_no_match() -> None:
 
 def test_handle_property_filter() -> None:
     """Test handle_property_filter creates property filter."""
-    from orgstats.cli import handle_property_filter
+    from org.cli import handle_property_filter
 
     filters = handle_property_filter("gamify_exp", "15")
 
@@ -178,7 +178,7 @@ def test_handle_property_filter() -> None:
 
 def test_handle_tag_filter() -> None:
     """Test handle_tag_filter creates tag filter."""
-    from orgstats.cli import handle_tag_filter
+    from org.cli import handle_tag_filter
 
     filters = handle_tag_filter("python")
 
@@ -188,7 +188,7 @@ def test_handle_tag_filter() -> None:
 
 def test_create_filter_specs_simple_preset() -> None:
     """Test create_filter_specs with simple preset."""
-    from orgstats.cli import create_filter_specs_from_args
+    from org.cli import create_filter_specs_from_args
 
     args = argparse.Namespace(
         filter_category="simple",
@@ -213,7 +213,7 @@ def test_create_filter_specs_simple_preset() -> None:
 
 def test_create_filter_specs_regular_preset() -> None:
     """Test create_filter_specs with regular preset."""
-    from orgstats.cli import create_filter_specs_from_args
+    from org.cli import create_filter_specs_from_args
 
     args = argparse.Namespace(
         filter_category="regular",
@@ -238,7 +238,7 @@ def test_create_filter_specs_regular_preset() -> None:
 
 def test_create_filter_specs_multiple_filters() -> None:
     """Test create_filter_specs with multiple filter types."""
-    from orgstats.cli import create_filter_specs_from_args
+    from org.cli import create_filter_specs_from_args
 
     args = argparse.Namespace(
         filter_category="all",
@@ -270,7 +270,7 @@ def test_create_filter_specs_multiple_filters() -> None:
 
 def test_create_filter_specs_property_order() -> None:
     """Test create_filter_specs respects order of multiple property filters."""
-    from orgstats.cli import create_filter_specs_from_args
+    from org.cli import create_filter_specs_from_args
 
     args = argparse.Namespace(
         filter_category="all",
@@ -295,7 +295,7 @@ def test_create_filter_specs_property_order() -> None:
 
 def test_create_filter_specs_tag_order() -> None:
     """Test create_filter_specs respects order of multiple tag filters."""
-    from orgstats.cli import create_filter_specs_from_args
+    from org.cli import create_filter_specs_from_args
 
     args = argparse.Namespace(
         filter_category="all",
@@ -320,7 +320,7 @@ def test_create_filter_specs_tag_order() -> None:
 
 def test_build_filter_chain() -> None:
     """Test build_filter_chain creates filter chain from args."""
-    from orgstats.cli import build_filter_chain
+    from org.cli import build_filter_chain
 
     args = argparse.Namespace(
         filter_category="simple",
@@ -337,7 +337,7 @@ def test_build_filter_chain() -> None:
         filter_not_completed=False,
     )
 
-    argv = ["orgstats", "--filter-category", "simple", "file.org"]
+    argv = ["org", "--filter-category", "simple", "file.org"]
     filters = build_filter_chain(args, argv)
 
     assert len(filters) == 1
@@ -345,7 +345,7 @@ def test_build_filter_chain() -> None:
 
 def test_get_top_day_info_none() -> None:
     """Test get_top_day_info returns None when time_range is None."""
-    from orgstats.cli import get_top_day_info
+    from org.cli import get_top_day_info
 
     result = get_top_day_info(None)
 
@@ -354,8 +354,8 @@ def test_get_top_day_info_none() -> None:
 
 def test_get_top_day_info_empty_timeline() -> None:
     """Test get_top_day_info returns None when timeline is empty."""
-    from orgstats.analyze import TimeRange
-    from orgstats.cli import get_top_day_info
+    from org.analyze import TimeRange
+    from org.cli import get_top_day_info
 
     time_range = TimeRange(earliest=None, latest=None, timeline={})
     result = get_top_day_info(time_range)
@@ -367,8 +367,8 @@ def test_get_top_day_info_with_data() -> None:
     """Test get_top_day_info returns correct top day."""
     from datetime import date, datetime
 
-    from orgstats.analyze import TimeRange
-    from orgstats.cli import get_top_day_info
+    from org.analyze import TimeRange
+    from org.cli import get_top_day_info
 
     timeline = {
         date(2025, 1, 1): 5,
@@ -390,8 +390,8 @@ def test_get_top_day_info_tie_uses_earliest() -> None:
     """Test get_top_day_info returns earliest date when there's a tie."""
     from datetime import date, datetime
 
-    from orgstats.analyze import TimeRange
-    from orgstats.cli import get_top_day_info
+    from org.analyze import TimeRange
+    from org.cli import get_top_day_info
 
     timeline = {
         date(2025, 1, 3): 10,
@@ -411,8 +411,8 @@ def test_get_top_day_info_tie_uses_earliest() -> None:
 
 def test_display_category() -> None:
     """Test display_category outputs formatted results."""
-    from orgstats.analyze import Tag, TimeRange
-    from orgstats.cli import display_category
+    from org.analyze import Tag, TimeRange
+    from org.cli import display_category
 
     tags = {
         "python": Tag(
@@ -458,8 +458,8 @@ def test_display_category_with_time_ranges() -> None:
     """Test display_category includes time range information."""
     from datetime import datetime
 
-    from orgstats.analyze import Tag, TimeRange
-    from orgstats.cli import display_category
+    from org.analyze import Tag, TimeRange
+    from org.cli import display_category
 
     tags = {
         "python": Tag(
@@ -495,8 +495,8 @@ def test_display_category_with_time_ranges() -> None:
 
 def test_display_category_with_relations() -> None:
     """Test display_category includes relations."""
-    from orgstats.analyze import Tag, TimeRange
-    from orgstats.cli import display_category
+    from org.analyze import Tag, TimeRange
+    from org.cli import display_category
 
     tags = {
         "python": Tag(
@@ -531,8 +531,8 @@ def test_display_category_with_relations() -> None:
 
 def test_display_category_with_max_items_zero() -> None:
     """Test display_category with max_items=0 omits section entirely."""
-    from orgstats.analyze import Tag, TimeRange
-    from orgstats.cli import display_category
+    from org.analyze import Tag, TimeRange
+    from org.cli import display_category
 
     tags = {
         "python": Tag(
@@ -577,9 +577,9 @@ def test_display_results_with_tag_groups() -> None:
     """Test display_results shows tag groups."""
     from io import StringIO
 
-    from orgstats.analyze import AnalysisResult, Group, Tag, TimeRange
-    from orgstats.cli import display_results
-    from orgstats.histogram import Histogram
+    from org.analyze import AnalysisResult, Group, Tag, TimeRange
+    from org.cli import display_results
+    from org.histogram import Histogram
 
     tag_groups = [
         Group(
@@ -642,9 +642,9 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
     """Test display_results filters tag groups by min_group_size."""
     from io import StringIO
 
-    from orgstats.analyze import AnalysisResult, Group, Tag, TimeRange
-    from orgstats.cli import display_results
-    from orgstats.histogram import Histogram
+    from org.analyze import AnalysisResult, Group, Tag, TimeRange
+    from org.cli import display_results
+    from org.histogram import Histogram
 
     tag_groups = [
         Group(
@@ -715,9 +715,9 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
     """Test display_results filters excluded tags from groups."""
     from io import StringIO
 
-    from orgstats.analyze import AnalysisResult, Group, Tag, TimeRange
-    from orgstats.cli import display_results
-    from orgstats.histogram import Histogram
+    from org.analyze import AnalysisResult, Group, Tag, TimeRange
+    from org.cli import display_results
+    from org.histogram import Histogram
 
     tag_groups = [
         Group(
@@ -788,9 +788,9 @@ def test_display_results_no_tag_groups() -> None:
     """Test display_results works when tag_groups is empty."""
     from io import StringIO
 
-    from orgstats.analyze import AnalysisResult, Tag, TimeRange
-    from orgstats.cli import display_results
-    from orgstats.histogram import Histogram
+    from org.analyze import AnalysisResult, Tag, TimeRange
+    from org.cli import display_results
+    from org.histogram import Histogram
 
     result = AnalysisResult(
         total_tasks=5,
@@ -846,7 +846,7 @@ def test_main_no_results_after_filtering() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-gamify-exp-above",
             "1000",
             fixture_path,
@@ -869,7 +869,7 @@ def test_main_no_results_with_impossible_filter() -> None:
         [
             sys.executable,
             "-m",
-            "orgstats",
+            "org",
             "--filter-gamify-exp-above",
             "1000",
             "--filter-gamify-exp-below",
@@ -890,7 +890,7 @@ def test_main_with_tag_groups() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "tag_groups_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--min-group-size", "2", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", "--min-group-size", "2", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -905,7 +905,7 @@ def test_main_with_tag_groups_high_min_size() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "tag_groups_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "orgstats", "--no-color", "--min-group-size", "100", fixture_path],
+        [sys.executable, "-m", "org", "--no-color", "--min-group-size", "100", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -917,10 +917,10 @@ def test_main_with_tag_groups_high_min_size() -> None:
 
 def test_parse_filter_order_from_argv() -> None:
     """Test parse_filter_order_from_argv extracts filter args."""
-    from orgstats.cli import parse_filter_order_from_argv
+    from org.cli import parse_filter_order_from_argv
 
     argv = [
-        "orgstats",
+        "org",
         "--filter-category",
         "simple",
         "--filter-gamify-exp-above",
@@ -935,9 +935,9 @@ def test_parse_filter_order_from_argv() -> None:
 
 def test_parse_filter_order_from_argv_no_filters() -> None:
     """Test parse_filter_order_from_argv with no filter args."""
-    from orgstats.cli import parse_filter_order_from_argv
+    from org.cli import parse_filter_order_from_argv
 
-    argv = ["orgstats", "--max-results", "10", "file.org"]
+    argv = ["org", "--max-results", "10", "file.org"]
 
     result = parse_filter_order_from_argv(argv)
 
@@ -946,10 +946,10 @@ def test_parse_filter_order_from_argv_no_filters() -> None:
 
 def test_parse_filter_order_from_argv_multiple_properties() -> None:
     """Test parse_filter_order_from_argv with multiple property filters."""
-    from orgstats.cli import parse_filter_order_from_argv
+    from org.cli import parse_filter_order_from_argv
 
     argv = [
-        "orgstats",
+        "org",
         "--filter-property",
         "key1=val1",
         "--filter-property",
@@ -970,7 +970,7 @@ def test_main_entry_point() -> None:
         [
             sys.executable,
             "-c",
-            f"from orgstats.cli import main; import sys; sys.argv = ['cli', '{fixture_path}']; main()",
+            f"from org.cli import main; import sys; sys.argv = ['cli', '{fixture_path}']; main()",
         ],
         cwd=PROJECT_ROOT,
         capture_output=True,
@@ -983,8 +983,8 @@ def test_main_entry_point() -> None:
 
 def test_display_groups_with_max_groups_zero() -> None:
     """Test display_groups with max_groups=0 omits section entirely."""
-    from orgstats.analyze import Group, TimeRange
-    from orgstats.cli import display_groups
+    from org.analyze import Group, TimeRange
+    from org.cli import display_groups
 
     groups = [
         Group(
@@ -1014,8 +1014,8 @@ def test_display_groups_with_max_groups_zero() -> None:
 
 def test_display_groups_with_max_groups_limit() -> None:
     """Test display_groups respects max_groups limit."""
-    from orgstats.analyze import Group, TimeRange
-    from orgstats.cli import display_groups
+    from org.analyze import Group, TimeRange
+    from org.cli import display_groups
 
     groups = [
         Group(
@@ -1061,8 +1061,8 @@ def test_display_groups_with_max_groups_limit() -> None:
 
 def test_display_groups_shows_empty_section() -> None:
     """Test display_groups shows section heading with no groups when max_groups > 0."""
-    from orgstats.analyze import Group, TimeRange
-    from orgstats.cli import display_groups
+    from org.analyze import Group, TimeRange
+    from org.cli import display_groups
 
     groups = [
         Group(

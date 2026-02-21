@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from orgstats.filters import (
+from org.filters import (
     filter_completed,
     filter_date_from,
     filter_date_until,

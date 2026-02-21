@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from orgstats.analyze import Tag, TimeRange, compute_groups
+from org.analyze import Tag, TimeRange, compute_groups
 
 
 def make_tag(

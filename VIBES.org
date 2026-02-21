@@ -1508,12 +1508,25 @@ orgstats path/to1 path/to2
 orgstats path/to/file.org path/to2
 #+end_example
 
+** DONE Rename project to org-cli                                                          :Cleanup:
+:LOGBOOK:
+- State "DONE"       from              [2026-02-21 Sat 17:46] \\
+  Took a while, but it was easy enough.
+:END:
+Please rename the project to ~org-cli~ and the command to ~org~.
+I'd like the entry point to be just ~org~, we will add subcommands in the future.
+The project itself should be called ~org-cli~ as just ~org~ is too short.
+
+Installing ~org-cli~ should result in a command called ~org~ to be made available.
+
+Please update the README.md and AGENTS.md with the updated names, code structure and command breakdown.
+
 ** TODO Stats command                                                                 :CLI:Analysis:
 Wrap the current analysis logic into a dedicated ~stats~ command. There will be more commands to come in the future.
 An example invocation of this command follows:
 
 #+begin_src bash
-orgstats analyze -n 5 examples/ARCHIVE_small
+org analyze -n 5 examples/ARCHIVE_small
 #+end_src
 
 The functionality of this command should be exactly the same as the whole application currently.
@@ -1537,7 +1550,7 @@ Add a new ~stats tags~ command to the CLI that allows displaying tag stats for s
 An example invocation will look like this:
 
 #+begin_src bash
-orgstats stats tags -n 5 path/to/file.org
+org stats tags -n 5 path/to/file.org
 #+end_src
 
 The command should display a list of tags that are found on the tassk that match the search criteria (any tasks remaining after the filtering). The list should be presented the same way as is done in the ~stats~ command except without the initial indent:
@@ -1593,7 +1606,7 @@ The command should support a new CLI switch ~--show~ that lists one or more tags
 Example invocation:
 
 #+begin_src bash
-orgstats stats tags --show Scala,Debugging,EmbeddedDevelopment path/to/file.org
+org stats tags --show Scala,Debugging,EmbeddedDevelopment path/to/file.org
 #+end_src
 
 The output generated should include only the stats for ~Scala~, ~Debugging~ and ~EmbeddedDevelopment~.
@@ -1603,7 +1616,7 @@ Add a new ~stats tags~ command to the CLI that allows displaying tag stats for s
 An example invocation will look like this:
 
 #+begin_src bash
-orgstats stats groups -n 5 path/to/file.org
+org stats groups -n 5 path/to/file.org
 #+end_src
 
 The command should display a list of groups that are found on the tasks that match the search criteria (any tasks remaining after the filtering). The list should be presented the same way as is done in the ~stats~ command except without the initial indent:
@@ -1652,7 +1665,7 @@ If there no ~--groups~ is provided, the command should display top groups (large
 Example invocation:
 
 #+begin_src bash
-orgstats stats groups --group Scala,Debugging,Testing --group Erlang,OTP path/to/file.org
+org stats groups --group Scala,Debugging,Testing --group Erlang,OTP path/to/file.org
 #+end_src
 
 The output generated should include only the stats for two groups:
@@ -1667,7 +1680,7 @@ Add a new ~tasks~ command to the CLI that allows searching for specific tasks.
 An example invocation will look like this:
 
 #+begin_src bash
-orgstats tasks --filter-completed --filter-category simple path/to/file.org
+org tasks --filter-completed --filter-category simple path/to/file.org
 #+end_src
 
 The command should display a list of tasks that match the search criteria (any tasks remaining after the filtering). The list should be presented in task timestamp order, with most recent tasks comming first. The command should respect any additional filters passed by the ~--filter*~ flags.
@@ -1677,7 +1690,7 @@ Some examples follow.
 
 Empty result:
 #+begin_example
-orgstats tags --filter-not-complete VIBES.org
+org tags --filter-not-complete VIBES.org
 #+end_example
 
 #+begin_example
@@ -1686,7 +1699,7 @@ No results.
 
 Results found:
 #+begin_example
-orgstats tags --filter-complete VIBES.org
+org tags --filter-complete VIBES.org
 #+end_example
 
 #+begin_example
@@ -1702,7 +1715,7 @@ The detailed display will show the entire Org Node prepended by a comment naming
 
 Example:
 #+begin_example
-orgstats tags -n 4 --details tests/fixtures/simple.org
+org tags -n 4 --details tests/fixtures/simple.org
 #+end_example
 
 : # tests/fixtures/simple.org
@@ -1870,6 +1883,5 @@ Allow selecting specific tags or top tags.
 --watch for file watching and updating live on changes
 --serve to start a server showing a visualization of the data
 
-** Rename project to org-cli
 ** Better heading & body parsing
 ** MCP server

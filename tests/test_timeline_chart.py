@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from orgstats.plot import _map_value_to_bar, render_timeline_chart
+from org.plot import _map_value_to_bar, render_timeline_chart
 
 
 def test_map_value_to_bar_zero_max() -> None:

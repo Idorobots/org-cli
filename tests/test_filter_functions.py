@@ -6,7 +6,7 @@ from datetime import date, datetime
 import pytest
 from orgparse.node import OrgNode
 
-from orgstats.filters import (
+from org.filters import (
     filter_body,
     filter_completed,
     filter_date_from,

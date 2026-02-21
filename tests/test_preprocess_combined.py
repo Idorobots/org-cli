@@ -1,6 +1,6 @@
 """Tests for combined preprocessing (gamify + tags)."""
 
-from orgstats.filters import preprocess_gamify_categories, preprocess_tags_as_category
+from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
 from tests.conftest import node_from_org
 
 

@@ -1,7 +1,7 @@
 """Tests for the compute_category_histogram() function."""
 
-from orgstats.analyze import compute_category_histogram
-from orgstats.filters import preprocess_gamify_categories
+from org.analyze import compute_category_histogram
+from org.filters import preprocess_gamify_categories
 from tests.conftest import node_from_org
 
 

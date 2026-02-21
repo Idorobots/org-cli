@@ -7,7 +7,7 @@ from datetime import datetime
 
 import orgparse
 
-from orgstats.timestamp import extract_timestamp_any
+from org.timestamp import extract_timestamp_any
 
 
 class _FilteredOrgNode(orgparse.node.OrgNode):

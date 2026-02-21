@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from orgstats.analyze import TimeRange
+from org.analyze import TimeRange
 
 
 def test_time_range_initialization() -> None:

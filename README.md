@@ -1,4 +1,4 @@
-# orgstats
+# org-cli
 
 Analyze Emacs Org-mode archive files to extract task statistics and tag/word frequencies.
 
@@ -8,58 +8,77 @@ Analyze Emacs Org-mode archive files to extract task statistics and tag/word fre
 poetry install
 ```
 
+Installing `org-cli` provides the `org` command.
+
+## Project Structure
+
+```
+org-cli/
+├── src/
+│   └── org/                  # Main package
+│       ├── __init__.py       # Package initialization (exports main, version, etc.)
+│       ├── __main__.py       # Entry point for `python -m org`
+│       ├── cli.py            # CLI interface
+│       ├── analyze.py        # Analysis logic
+│       └── filters.py        # Filtering utilities
+├── tests/                    # Test suite
+├── examples/                 # Sample Org-mode archive files
+├── pyproject.toml            # Poetry configuration & build settings
+└── poetry.lock               # Poetry dependency lock file
+```
+
 ## Usage
 
 Basic usage:
 ```bash
-poetry run orgstats <org-file> [<org-file> ...]
+poetry run org <org-file> [<org-file> ...]
 ```
 
 ### Common Options
 
 ```bash
 # Display help
-poetry run orgstats --help
+poetry run org --help
 
 # Limit number of results
-poetry run orgstats -n 10 examples/ARCHIVE_small
+poetry run org -n 10 examples/ARCHIVE_small
 
-# Filter by task difficulty
-poetry run orgstats --filter simple examples/ARCHIVE_small   # Simple tasks (gamify_exp < 10)
-poetry run orgstats --filter regular examples/ARCHIVE_small  # Regular tasks (10 ≤ exp < 20)
-poetry run orgstats --filter hard examples/ARCHIVE_small     # Hard tasks (exp ≥ 20)
-poetry run orgstats --filter all examples/ARCHIVE_small      # All tasks (default)
+# Filter by task difficulty (requires --with-gamify-category)
+poetry run org --with-gamify-category --filter-category simple examples/ARCHIVE_small
+poetry run org --with-gamify-category --filter-category regular examples/ARCHIVE_small
+poetry run org --with-gamify-category --filter-category hard examples/ARCHIVE_small
+poetry run org --with-gamify-category --filter-category all examples/ARCHIVE_small
 
 # Show different data categories
-poetry run orgstats --use tags examples/ARCHIVE_small       # Analyze tags (default)
-poetry run orgstats --use heading examples/ARCHIVE_small    # Analyze headline words
-poetry run orgstats --use body examples/ARCHIVE_small       # Analyze body words
+poetry run org --use tags examples/ARCHIVE_small       # Analyze tags (default)
+poetry run org --use heading examples/ARCHIVE_small    # Analyze headline words
+poetry run org --use body examples/ARCHIVE_small       # Analyze body words
 
 # Use custom exclusion list
-poetry run orgstats --exclude stopwords.txt examples/ARCHIVE_small
+poetry run org --exclude stopwords.txt examples/ARCHIVE_small
 
 # Use custom tag mappings
-poetry run orgstats --mapping tag_mappings.json examples/ARCHIVE_small
+poetry run org --mapping tag_mappings.json examples/ARCHIVE_small
 
 # Filter by date range
-poetry run orgstats --filter-date-from 2023-10-01 --filter-date-until 2023-10-31 examples/ARCHIVE_small
+poetry run org --filter-date-from 2023-10-01 --filter-date-until 2023-10-31 examples/ARCHIVE_small
 
 # Filter by completion status
-poetry run orgstats --filter-completed examples/ARCHIVE_small
-poetry run orgstats --filter-not-completed examples/ARCHIVE_small
+poetry run org --filter-completed examples/ARCHIVE_small
+poetry run org --filter-not-completed examples/ARCHIVE_small
 
 # Filter by specific tags or properties
-poetry run orgstats --filter-tag debugging examples/ARCHIVE_small
-poetry run orgstats --filter-property priority=A examples/ARCHIVE_small
+poetry run org --filter-tag debugging examples/ARCHIVE_small
+poetry run org --filter-property priority=A examples/ARCHIVE_small
 
 # Combine multiple options
-poetry run orgstats -n 25 --filter hard --exclude stopwords.txt examples/ARCHIVE_small
+poetry run org -n 25 --with-gamify-category --filter-category hard --exclude stopwords.txt examples/ARCHIVE_small
 ```
 
 ### Example Output
 
 ```bash
-poetry run orgstats examples/ARCHIVE_small
+poetry run org examples/ARCHIVE_small
 ```
 
 ```
@@ -129,12 +148,17 @@ Tag groups:
 ### Available Options
 
 - `--max-results N`, `-n N` - Maximum number of results to display (default: 10)
-- `--max-relations N` - Maximum number of relations to display per item (default: 3, must be >= 1)
-- `--min-group-size N` - Minimum group size to display (default: 3)
+- `--max-tags N` - Maximum number of tags to display in Top tags section (default: 5, use 0 to omit section)
+- `--max-relations N` - Maximum number of relations to display per item (default: 5, use 0 to omit sections)
+- `--max-groups N` - Maximum number of tag groups to display (default: 5, use 0 to omit section)
+- `--min-group-size N` - Minimum group size to display (default: 2)
 - `--buckets N` - Number of time buckets for timeline charts (default: 50, minimum: 20)
-- `--filter TYPE`, `-f TYPE` - Filter tasks by difficulty: `simple`, `regular`, `hard`, or `all` (default: `all`)
-- `--use CATEGORY` - Category to display: `tags`, `heading`, or `body` (default: `tags`)
-- `--exclude FILE` - File with words to exclude (one per line, replaces default)
+- `--with-gamify-category` - Preprocess nodes to set category property based on gamify_exp value (disabled by default)
+- `--with-tags-as-category` - Preprocess nodes to set category property based on first tag (disabled by default)
+- `--category-property PROPERTY` - Property name for category histogram and filtering (default: CATEGORY)
+- `--filter-category VALUE` - Filter tasks by category property value (e.g., simple, regular, hard, none, or custom). Use 'all' to skip category filtering (default: all)
+- `--use CATEGORY` - Category to display: tags, heading, or body (default: tags)
+- `--exclude FILE` - File with words to exclude (one word per line, replaces default)
 - `--mapping FILE` - JSON file containing tag mappings (dict[str, str])
 - `--todo-keys KEYS` - Comma-separated list of incomplete task states (default: TODO)
 - `--done-keys KEYS` - Comma-separated list of completed task states (default: DONE)

@@ -1,10 +1,10 @@
 # AGENTS.md - Developer Guide for Coding Agents
 
-This document provides essential information for AI coding agents working in the `orgstats` repository.
+This document provides essential information for AI coding agents working in the `org-cli` repository.
 
 ## Project Overview
 
-**orgstats** is a Python CLI tool that analyzes Emacs Org-mode archive files to extract task statistics and generate frequency analysis of tags, headline words, and body words.
+**org-cli** is a Python CLI tool that analyzes Emacs Org-mode archive files to extract task statistics and generate frequency analysis of tags, headline words, and body words.
 
 **Tech Stack:**
 - Python 3.14.2
@@ -13,13 +13,14 @@ This document provides essential information for AI coding agents working in the
 
 **Project Structure:**
 ```
-orgstats/
+org-cli/
 ├── src/
-│   └── orgstats/             # Main package
+│   └── org/                  # Main package
 │       ├── __init__.py       # Package initialization (exports main, version, etc.)
-│       ├── __main__.py       # Entry point for `python -m orgstats`
+│       ├── __main__.py       # Entry point for `python -m org`
 │       ├── cli.py            # CLI interface
-│       └── core.py           # Core business logic
+│       ├── analyze.py        # Analysis logic
+│       └── filters.py        # Filtering utilities
 ├── tests/
 │   ├── fixtures/             # Test Org-mode files
 │   ├── test_*.py             # Logic test files
@@ -43,68 +44,68 @@ poetry install
 ### Running the Application
 ```bash
 # Recommended: Use the installed CLI command (after poetry install)
-poetry run orgstats examples/ARCHIVE_small
+poetry run org examples/ARCHIVE_small
 
 # View help and all options
-poetry run orgstats --help
+poetry run org --help
 
 # Limit number of results displayed
-poetry run orgstats --max-results 50 examples/ARCHIVE_small
-poetry run orgstats -n 50 examples/ARCHIVE_small
+poetry run org --max-results 50 examples/ARCHIVE_small
+poetry run org -n 50 examples/ARCHIVE_small
 
 # Limit number of tags displayed in Top tags section
-poetry run orgstats --max-tags 3 examples/ARCHIVE_small
-poetry run orgstats --max-tags 0 examples/ARCHIVE_small  # Omit Top tags section entirely
+poetry run org --max-tags 3 examples/ARCHIVE_small
+poetry run org --max-tags 0 examples/ARCHIVE_small  # Omit Top tags section entirely
 
 # Limit number of tag groups displayed
-poetry run orgstats --max-groups 3 examples/ARCHIVE_small
-poetry run orgstats --max-groups 0 examples/ARCHIVE_small  # Omit Tag groups section entirely
+poetry run org --max-groups 3 examples/ARCHIVE_small
+poetry run org --max-groups 0 examples/ARCHIVE_small  # Omit Tag groups section entirely
 
 # Filter by task difficulty (requires --with-gamify-category)
-poetry run orgstats --with-gamify-category --filter-category hard examples/ARCHIVE_small
-poetry run orgstats --with-gamify-category --filter-category simple -n 20 examples/ARCHIVE_small
+poetry run org --with-gamify-category --filter-category hard examples/ARCHIVE_small
+poetry run org --with-gamify-category --filter-category simple -n 20 examples/ARCHIVE_small
 
 # Use first tag as category
-poetry run orgstats --with-tags-as-category examples/ARCHIVE_small
+poetry run org --with-tags-as-category examples/ARCHIVE_small
 
 # Combine both preprocessors (tags will override gamify)
-poetry run orgstats --with-gamify-category --with-tags-as-category examples/ARCHIVE_small
+poetry run org --with-gamify-category --with-tags-as-category examples/ARCHIVE_small
 
 # Filter by tag-based category
-poetry run orgstats --with-tags-as-category --filter-category work examples/ARCHIVE_small
+poetry run org --with-tags-as-category --filter-category work examples/ARCHIVE_small
 
 # Show different data categories
-poetry run orgstats --use tags examples/ARCHIVE_small       # Analyze tags (default)
-poetry run orgstats --use heading examples/ARCHIVE_small    # Analyze headline words
-poetry run orgstats --use body examples/ARCHIVE_small       # Analyze body words
+poetry run org --use tags examples/ARCHIVE_small       # Analyze tags (default)
+poetry run org --use heading examples/ARCHIVE_small    # Analyze headline words
+poetry run org --use body examples/ARCHIVE_small       # Analyze body words
 
 # Use custom stopword file (one word per line)
-poetry run orgstats --exclude my_words.txt examples/ARCHIVE_small
+poetry run org --exclude my_words.txt examples/ARCHIVE_small
 
 # Use custom tag mappings
-poetry run orgstats --mapping tag_mappings.json examples/ARCHIVE_small
+poetry run org --mapping tag_mappings.json examples/ARCHIVE_small
 
 # Filter by date range
-poetry run orgstats --filter-date-from 2023-10-01 --filter-date-until 2023-10-31 examples/ARCHIVE_small
+poetry run org --filter-date-from 2023-10-01 --filter-date-until 2023-10-31 examples/ARCHIVE_small
 
 # Filter by completion status
-poetry run orgstats --filter-completed examples/ARCHIVE_small
-poetry run orgstats --filter-not-completed examples/ARCHIVE_small
+poetry run org --filter-completed examples/ARCHIVE_small
+poetry run org --filter-not-completed examples/ARCHIVE_small
 
 # Filter by specific tags or properties
-poetry run orgstats --filter-tag debugging examples/ARCHIVE_small
-poetry run orgstats --filter-property priority=A examples/ARCHIVE_small
+poetry run org --filter-tag debugging examples/ARCHIVE_small
+poetry run org --filter-property priority=A examples/ARCHIVE_small
 
 # Filter by regex patterns
-poetry run orgstats --filter-tag "^test" examples/ARCHIVE_small         # Tags starting with "test"
-poetry run orgstats --filter-heading "bug|fix" examples/ARCHIVE_small   # Headings containing "bug" or "fix"
-poetry run orgstats --filter-body "TODO:" examples/ARCHIVE_small        # Body containing "TODO:"
+poetry run org --filter-tag "^test" examples/ARCHIVE_small         # Tags starting with "test"
+poetry run org --filter-heading "bug|fix" examples/ARCHIVE_small   # Headings containing "bug" or "fix"
+poetry run org --filter-body "TODO:" examples/ARCHIVE_small        # Body containing "TODO:"
 
 # Combine multiple options
-poetry run orgstats -n 25 --with-gamify-category --filter-category regular --exclude words.txt examples/ARCHIVE_small
+poetry run org -n 25 --with-gamify-category --filter-category regular --exclude words.txt examples/ARCHIVE_small
 
 # Process multiple files
-poetry run orgstats file1.org file2.org file3.org
+poetry run org file1.org file2.org file3.org
 ```
 
 **CLI Arguments:**
@@ -247,8 +248,8 @@ import os
 import orgparse
 
 # Local package imports last
-from orgstats.core import analyze, Frequency
-from orgstats.cli import main
+from org.analyze import analyze, Frequency
+from org.cli import main
 ```
 
 ### Naming Conventions
@@ -368,7 +369,7 @@ git status
 git checkout -b feature/description
 
 # Stage and commit
-git add src/cli.py
+git add src/org/cli.py
 git commit -m "Add feature: description"
 
 # Push to remote (when configured)

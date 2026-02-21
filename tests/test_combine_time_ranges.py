@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from orgstats.analyze import TimeRange, _combine_time_ranges
+from org.analyze import TimeRange, _combine_time_ranges
 
 
 def test_combine_time_ranges_empty_list() -> None:

@@ -1,7 +1,7 @@
 """Tests for the AnalysisResult dataclass."""
 
-from orgstats.analyze import AnalysisResult, Tag, TimeRange
-from orgstats.histogram import Histogram
+from org.analyze import AnalysisResult, Tag, TimeRange
+from org.histogram import Histogram
 
 
 def test_analysis_result_initialization() -> None:
@@ -189,7 +189,7 @@ def test_analysis_result_mutable_fields() -> None:
     """Test that AnalysisResult fields can be modified."""
     from datetime import datetime
 
-    from orgstats.analyze import Group
+    from org.analyze import Group
 
     result = AnalysisResult(
         total_tasks=0,
