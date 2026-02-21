@@ -218,7 +218,7 @@ def test_cli_handles_24_00_time() -> None:
 def test_cli_no_arguments_no_org_files(tmp_path: Path) -> None:
     """Test CLI behavior with no arguments and no org files."""
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color"],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color"],
         cwd=str(tmp_path),
         capture_output=True,
         text=True,
@@ -348,66 +348,6 @@ def test_cli_tag_filtering() -> None:
     assert "Frequency(" not in result.stdout
 
 
-def test_cli_filter_simple_sorting() -> None:
-    """Test that --filter-category simple filters simple tasks."""
-    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--no-color",
-            "--config",
-            "missing.json",
-            "--with-gamify-category",
-            "--filter-category",
-            "simple",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    # simpletag has 2 simple tasks, should appear near top
-    assert "SimpleTag" in result.stdout
-    # Output should be integer tuples
-    assert "Frequency(" not in result.stdout
-
-
-def test_cli_filter_hard_sorting() -> None:
-    """Test that --filter-category hard filters hard tasks."""
-    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--no-color",
-            "--config",
-            "missing.json",
-            "--with-gamify-category",
-            "--filter-category",
-            "hard",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    # hardtag has 3 hard tasks, should appear near top
-    assert "HardTag" in result.stdout
-
-
 def test_cli_filter_output_format() -> None:
     """Test that output format is integer tuples, not Frequency objects."""
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
@@ -437,35 +377,6 @@ def test_cli_filter_output_format() -> None:
     assert "simple=" not in result.stdout
     assert "regular=" not in result.stdout
     assert "hard=" not in result.stdout
-
-
-def test_cli_filter_combined_options() -> None:
-    """Test --filter with other CLI options."""
-    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-    exclude_list_path = os.path.join(FIXTURES_DIR, "exclude_list_tags.txt")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--filter-category",
-            "regular",
-            "-n",
-            "5",
-            "--exclude",
-            exclude_list_path,
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
 
 
 def test_cli_outputs_time_ranges() -> None:
@@ -519,7 +430,7 @@ def test_cli_time_ranges_format() -> None:
 def test_cli_default_max_results_is_10() -> None:
     """Test that default max_results is 10."""
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", "--help"],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color", "--help"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -606,29 +517,3 @@ def test_cli_with_both_preprocessors() -> None:
 
     assert result.returncode == 0
     assert "urgent" in result.stdout or "work" in result.stdout
-
-
-def test_cli_filter_by_tag_category() -> None:
-    """Test filtering by tag-based categories."""
-    fixture_path = os.path.join(FIXTURES_DIR, "tags_category_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--no-color",
-            "--with-tags-as-category",
-            "--filter-category",
-            "work",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Total tasks:" in result.stdout

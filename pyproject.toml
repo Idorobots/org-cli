@@ -16,6 +16,7 @@ build-backend = "poetry.core.masonry.api"
 orgparse = "^0.4.20251020"
 colorama = "^0.4.6"
 types-colorama = "^0.4.15.20250801"
+typer = "^0.24.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"

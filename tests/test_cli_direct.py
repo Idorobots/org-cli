@@ -25,7 +25,10 @@ def test_main_function_directly() -> None:
         sys.argv = ["cli.py", "stats", "summary", fixture_path]
 
         # Call main()
-        main()
+        try:
+            main()
+        except SystemExit as exc:
+            assert exc.code == 0
 
         # Get output
         output = sys.stdout.getvalue()
@@ -55,7 +58,10 @@ def test_main_with_multiple_files_direct() -> None:
         fixture2 = os.path.join(FIXTURES_DIR, "single_task.org")
         sys.argv = ["cli.py", "stats", "summary", fixture1, fixture2]
 
-        main()
+        try:
+            main()
+        except SystemExit as exc:
+            assert exc.code == 0
 
         output = sys.stdout.getvalue()
 
@@ -68,7 +74,7 @@ def test_main_with_multiple_files_direct() -> None:
 
 
 def test_main_with_filter_parameter() -> None:
-    """Test main function with --filter parameter."""
+    """Test main function with filter parameters."""
     from org.cli import main
 
     original_argv = sys.argv
@@ -84,13 +90,15 @@ def test_main_with_filter_parameter() -> None:
             "summary",
             "--config",
             "missing.json",
-            "--with-gamify-category",
-            "--filter-category",
-            "hard",
+            "--filter-gamify-exp-above",
+            "0",
             fixture_path,
         ]
 
-        main()
+        try:
+            main()
+        except SystemExit as exc:
+            assert exc.code == 0
 
         output = sys.stdout.getvalue()
 
@@ -125,7 +133,10 @@ def test_main_with_custom_todo_keys() -> None:
             fixture_path,
         ]
 
-        main()
+        try:
+            main()
+        except SystemExit as exc:
+            assert exc.code == 0
 
         output = sys.stdout.getvalue()
 
@@ -158,7 +169,10 @@ def test_main_with_custom_done_keys() -> None:
             fixture_path,
         ]
 
-        main()
+        try:
+            main()
+        except SystemExit as exc:
+            assert exc.code == 0
 
         output = sys.stdout.getvalue()
 
@@ -193,7 +207,10 @@ def test_main_with_both_todo_and_done_keys() -> None:
             fixture_path,
         ]
 
-        main()
+        try:
+            main()
+        except SystemExit as exc:
+            assert exc.code == 0
 
         output = sys.stdout.getvalue()
 
@@ -219,7 +236,10 @@ def test_main_displays_none_state() -> None:
         fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
         sys.argv = ["cli.py", "stats", "summary", fixture_path]
 
-        main()
+        try:
+            main()
+        except SystemExit as exc:
+            assert exc.code == 0
 
         output = sys.stdout.getvalue()
 

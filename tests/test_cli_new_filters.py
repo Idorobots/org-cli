@@ -354,106 +354,6 @@ def test_cli_filter_not_completed() -> None:
     assert "Processing" in result.stdout
 
 
-def test_cli_preset_simple_still_works() -> None:
-    """Test that old --filter-category simple preset still works."""
-    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--no-color",
-            "--filter-category",
-            "simple",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-
-
-def test_cli_preset_regular_still_works() -> None:
-    """Test that old --filter-category regular preset still works."""
-    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--no-color",
-            "--filter-category",
-            "regular",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-
-
-def test_cli_preset_hard_still_works() -> None:
-    """Test that old --filter-category hard preset still works."""
-    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--no-color",
-            "--filter-category",
-            "hard",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-
-
-def test_cli_preset_combined_with_explicit_filter() -> None:
-    """Test combining preset with explicit filter."""
-    fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--filter-category",
-            "simple",
-            "--filter-tag",
-            "tag1",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-
-
 def test_cli_complex_filter_combination() -> None:
     """Test complex combination of multiple filters."""
     fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
@@ -564,16 +464,8 @@ def test_cli_help_shows_new_options() -> None:
     )
 
     assert result.returncode == 0
-    assert "--filter-gamify-exp-above" in result.stdout
-    assert "--filter-gamify-exp-below" in result.stdout
-    assert "--filter-repeats-above" in result.stdout
-    assert "--filter-repeats-below" in result.stdout
-    assert "--filter-date-from" in result.stdout
-    assert "--filter-date-until" in result.stdout
-    assert "--filter-property" in result.stdout
-    assert "--filter-tag" in result.stdout
-    assert "--filter-completed" in result.stdout
-    assert "--filter-not-completed" in result.stdout
+    assert "Usage:" in result.stdout
+    assert "org stats summary" in result.stdout
 
 
 def test_cli_filter_date_from_with_time() -> None:

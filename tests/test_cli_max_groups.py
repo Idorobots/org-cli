@@ -12,7 +12,7 @@ FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 def test_max_groups_default_is_5() -> None:
     """Test that default max_groups is 5."""
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", "--help"],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color", "--help"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -133,6 +133,7 @@ def test_max_groups_with_fewer_groups() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--no-color",
             "--max-groups",
             "100",
@@ -157,6 +158,7 @@ def test_max_groups_with_min_group_size() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--min-group-size",
             "2",
             "--max-groups",
@@ -182,6 +184,7 @@ def test_max_groups_one() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--min-group-size",
             "2",
             "--max-groups",
@@ -207,6 +210,7 @@ def test_max_groups_shows_section_with_no_results() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--min-group-size",
             "100",
             "--max-groups",
@@ -225,7 +229,7 @@ def test_max_groups_shows_section_with_no_results() -> None:
 def test_min_group_size_default_is_2() -> None:
     """Test that default min_group_size is 2."""
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", "--help"],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color", "--help"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,

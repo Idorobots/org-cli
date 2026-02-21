@@ -187,7 +187,7 @@ def test_cli_buckets_different_values() -> None:
 def test_cli_help_shows_buckets() -> None:
     """Test that --buckets appears in help text."""
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", "--help"],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color", "--help"],
         capture_output=True,
         text=True,
     )

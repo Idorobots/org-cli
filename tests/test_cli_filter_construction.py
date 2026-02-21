@@ -1,10 +1,10 @@
 """Tests for CLI filter construction and display logic."""
 
-import argparse
 import os
 import subprocess
 import sys
 from io import StringIO
+from types import SimpleNamespace
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -15,7 +15,7 @@ def test_handle_simple_filter_gamify_exp_above() -> None:
     """Test handle_simple_filter creates gamify_exp_above filter."""
     from org.cli import handle_simple_filter
 
-    args = argparse.Namespace(
+    args = SimpleNamespace(
         filter_gamify_exp_above=15,
         filter_gamify_exp_below=None,
         filter_repeats_above=None,
@@ -32,7 +32,7 @@ def test_handle_simple_filter_gamify_exp_below() -> None:
     """Test handle_simple_filter creates gamify_exp_below filter."""
     from org.cli import handle_simple_filter
 
-    args = argparse.Namespace(
+    args = SimpleNamespace(
         filter_gamify_exp_above=None,
         filter_gamify_exp_below=25,
         filter_repeats_above=None,
@@ -49,7 +49,7 @@ def test_handle_simple_filter_repeats_above() -> None:
     """Test handle_simple_filter creates repeats_above filter."""
     from org.cli import handle_simple_filter
 
-    args = argparse.Namespace(
+    args = SimpleNamespace(
         filter_gamify_exp_above=None,
         filter_gamify_exp_below=None,
         filter_repeats_above=5,
@@ -66,7 +66,7 @@ def test_handle_simple_filter_repeats_below() -> None:
     """Test handle_simple_filter creates repeats_below filter."""
     from org.cli import handle_simple_filter
 
-    args = argparse.Namespace(
+    args = SimpleNamespace(
         filter_gamify_exp_above=None,
         filter_gamify_exp_below=None,
         filter_repeats_above=None,
@@ -83,7 +83,7 @@ def test_handle_simple_filter_no_match() -> None:
     """Test handle_simple_filter returns empty list when arg doesn't match."""
     from org.cli import handle_simple_filter
 
-    args = argparse.Namespace(
+    args = SimpleNamespace(
         filter_gamify_exp_above=None,
         filter_gamify_exp_below=None,
         filter_repeats_above=None,
@@ -100,7 +100,7 @@ def test_handle_date_filter_from() -> None:
 
     from org.cli import handle_date_filter
 
-    args = argparse.Namespace(filter_date_from="2025-01-01", filter_date_until=None)
+    args = SimpleNamespace(filter_date_from="2025-01-01", filter_date_until=None)
 
     filters = handle_date_filter("--filter-date-from", args)
 
@@ -112,7 +112,7 @@ def test_handle_date_filter_until() -> None:
     """Test handle_date_filter creates date_until filter."""
     from org.cli import handle_date_filter
 
-    args = argparse.Namespace(filter_date_from=None, filter_date_until="2025-12-31")
+    args = SimpleNamespace(filter_date_from=None, filter_date_until="2025-12-31")
 
     filters = handle_date_filter("--filter-date-until", args)
 
@@ -124,7 +124,7 @@ def test_handle_date_filter_no_match() -> None:
     """Test handle_date_filter returns empty list when arg doesn't match."""
     from org.cli import handle_date_filter
 
-    args = argparse.Namespace(filter_date_from=None, filter_date_until=None)
+    args = SimpleNamespace(filter_date_from=None, filter_date_until=None)
 
     filters = handle_date_filter("--filter-date-from", args)
 
@@ -135,7 +135,7 @@ def test_handle_completion_filter_completed() -> None:
     """Test handle_completion_filter creates completed filter."""
     from org.cli import handle_completion_filter
 
-    args = argparse.Namespace(filter_completed=True, filter_not_completed=False)
+    args = SimpleNamespace(filter_completed=True, filter_not_completed=False)
 
     filters = handle_completion_filter("--filter-completed", args)
 
@@ -147,7 +147,7 @@ def test_handle_completion_filter_not_completed() -> None:
     """Test handle_completion_filter creates not_completed filter."""
     from org.cli import handle_completion_filter
 
-    args = argparse.Namespace(filter_completed=False, filter_not_completed=True)
+    args = SimpleNamespace(filter_completed=False, filter_not_completed=True)
 
     filters = handle_completion_filter("--filter-not-completed", args)
 
@@ -159,7 +159,7 @@ def test_handle_completion_filter_no_match() -> None:
     """Test handle_completion_filter returns empty list when not set."""
     from org.cli import handle_completion_filter
 
-    args = argparse.Namespace(filter_completed=False, filter_not_completed=False)
+    args = SimpleNamespace(filter_completed=False, filter_not_completed=False)
 
     filters = handle_completion_filter("--filter-completed", args)
 
@@ -186,63 +186,11 @@ def test_handle_tag_filter() -> None:
     assert filters[0].filter is not None
 
 
-def test_create_filter_specs_simple_preset() -> None:
-    """Test create_filter_specs with simple preset."""
-    from org.cli import create_filter_specs_from_args
-
-    args = argparse.Namespace(
-        filter_category="simple",
-        category_property="CATEGORY",
-        filter_gamify_exp_above=None,
-        filter_gamify_exp_below=None,
-        filter_repeats_above=None,
-        filter_repeats_below=None,
-        filter_date_from=None,
-        filter_date_until=None,
-        filter_properties=None,
-        filter_tags=None,
-        filter_completed=False,
-        filter_not_completed=False,
-    )
-
-    filter_order = ["--filter-category"]
-    filters = create_filter_specs_from_args(args, filter_order)
-
-    assert len(filters) == 1
-
-
-def test_create_filter_specs_regular_preset() -> None:
-    """Test create_filter_specs with regular preset."""
-    from org.cli import create_filter_specs_from_args
-
-    args = argparse.Namespace(
-        filter_category="regular",
-        category_property="CATEGORY",
-        filter_gamify_exp_above=None,
-        filter_gamify_exp_below=None,
-        filter_repeats_above=None,
-        filter_repeats_below=None,
-        filter_date_from=None,
-        filter_date_until=None,
-        filter_properties=None,
-        filter_tags=None,
-        filter_completed=False,
-        filter_not_completed=False,
-    )
-
-    filter_order = ["--filter-category"]
-    filters = create_filter_specs_from_args(args, filter_order)
-
-    assert len(filters) == 1
-
-
 def test_create_filter_specs_multiple_filters() -> None:
     """Test create_filter_specs with multiple filter types."""
     from org.cli import create_filter_specs_from_args
 
-    args = argparse.Namespace(
-        filter_category="all",
-        category_property="CATEGORY",
+    args = SimpleNamespace(
         filter_gamify_exp_above=10,
         filter_gamify_exp_below=None,
         filter_repeats_above=None,
@@ -251,12 +199,13 @@ def test_create_filter_specs_multiple_filters() -> None:
         filter_date_until=None,
         filter_properties=["gamify_exp=15"],
         filter_tags=["python"],
+        filter_headings=None,
+        filter_bodies=None,
         filter_completed=True,
         filter_not_completed=False,
     )
 
     filter_order = [
-        "--filter-category",
         "--filter-gamify-exp-above",
         "--filter-date-from",
         "--filter-property",
@@ -272,9 +221,7 @@ def test_create_filter_specs_property_order() -> None:
     """Test create_filter_specs respects order of multiple property filters."""
     from org.cli import create_filter_specs_from_args
 
-    args = argparse.Namespace(
-        filter_category="all",
-        category_property="CATEGORY",
+    args = SimpleNamespace(
         filter_gamify_exp_above=None,
         filter_gamify_exp_below=None,
         filter_repeats_above=None,
@@ -283,6 +230,8 @@ def test_create_filter_specs_property_order() -> None:
         filter_date_until=None,
         filter_properties=["gamify_exp=10", "gamify_exp=20"],
         filter_tags=None,
+        filter_headings=None,
+        filter_bodies=None,
         filter_completed=False,
         filter_not_completed=False,
     )
@@ -297,9 +246,7 @@ def test_create_filter_specs_tag_order() -> None:
     """Test create_filter_specs respects order of multiple tag filters."""
     from org.cli import create_filter_specs_from_args
 
-    args = argparse.Namespace(
-        filter_category="all",
-        category_property="CATEGORY",
+    args = SimpleNamespace(
         filter_gamify_exp_above=None,
         filter_gamify_exp_below=None,
         filter_repeats_above=None,
@@ -308,6 +255,8 @@ def test_create_filter_specs_tag_order() -> None:
         filter_date_until=None,
         filter_properties=None,
         filter_tags=["python", "java"],
+        filter_headings=None,
+        filter_bodies=None,
         filter_completed=False,
         filter_not_completed=False,
     )
@@ -322,9 +271,7 @@ def test_build_filter_chain() -> None:
     """Test build_filter_chain creates filter chain from args."""
     from org.cli import build_filter_chain
 
-    args = argparse.Namespace(
-        filter_category="simple",
-        category_property="CATEGORY",
+    args = SimpleNamespace(
         filter_gamify_exp_above=None,
         filter_gamify_exp_below=None,
         filter_repeats_above=None,
@@ -332,12 +279,14 @@ def test_build_filter_chain() -> None:
         filter_date_from=None,
         filter_date_until=None,
         filter_properties=None,
-        filter_tags=None,
+        filter_tags=["simple"],
+        filter_headings=None,
+        filter_bodies=None,
         filter_completed=False,
         filter_not_completed=False,
     )
 
-    argv = ["org", "stats", "summary", "--filter-category", "simple", "file.org"]
+    argv = ["org", "stats", "summary", "--filter-tag", "simple", "file.org"]
     filters = build_filter_chain(args, argv)
 
     assert len(filters) == 1
@@ -613,7 +562,7 @@ def test_display_results_with_tag_groups() -> None:
         tag_groups=tag_groups,
     )
 
-    args = argparse.Namespace(
+    args = SimpleNamespace(
         use="tags",
         max_results=10,
         max_tags=5,
@@ -685,7 +634,7 @@ def test_display_results_tag_groups_filtered_by_min_size() -> None:
         tag_groups=tag_groups,
     )
 
-    args = argparse.Namespace(
+    args = SimpleNamespace(
         use="tags",
         max_results=10,
         max_tags=5,
@@ -758,7 +707,7 @@ def test_display_results_tag_groups_with_excluded_tags() -> None:
         tag_groups=tag_groups,
     )
 
-    args = argparse.Namespace(
+    args = SimpleNamespace(
         use="tags",
         max_results=10,
         max_tags=5,
@@ -814,7 +763,7 @@ def test_display_results_no_tag_groups() -> None:
         tag_groups=[],
     )
 
-    args = argparse.Namespace(
+    args = SimpleNamespace(
         use="tags",
         max_results=10,
         max_tags=5,
@@ -947,16 +896,16 @@ def test_parse_filter_order_from_argv() -> None:
         "org",
         "stats",
         "summary",
-        "--filter-category",
-        "simple",
         "--filter-gamify-exp-above",
         "10",
+        "--filter-tag",
+        "work$",
         "file.org",
     ]
 
     result = parse_filter_order_from_argv(argv)
 
-    assert result == ["--filter-category", "--filter-gamify-exp-above"]
+    assert result == ["--filter-gamify-exp-above", "--filter-tag"]
 
 
 def test_parse_filter_order_from_argv_no_filters() -> None:

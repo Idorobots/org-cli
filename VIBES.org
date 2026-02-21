@@ -1632,7 +1632,11 @@ The commands should be organized in subcommand trees and properly handle parsing
 Each command should have a separate implementation function, do not pass a flag that changes how another command's implementation is supposed to display things.
 I want these to be separate commands entirely, that share some of the code for th, parsing of arguments, analysis and formatting of the results.
 
-** TODO Refactor the CLI commands with Typer                                           :Cleanup:CLI:
+** REWORKED Refactor the CLI commands with Typer                                       :Cleanup:CLI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-21 Sat 20:46] \\
+  See comment.
+:END:
 Refactor the CLI commands with the python Typer library.
 
 To achieve this I'd like you to refactor the cli.py module in terms of Typer commands. The logic and output should remain the same, save for the command layout, help strings, etc. Typer should make it much easier to handle many subcommands in a nicer fashion.
@@ -1640,6 +1644,73 @@ To achieve this I'd like you to refactor the cli.py module in terms of Typer com
 You can define a separate Typer app per command and combine them for the wrapping commands. You might need to duplicate some parameter configs for different commands, but that is OK. Try to reuse as much of the validation/analysis/display code as possible.
 
 Please don't bother adjusting the tests just yet, focus on the functionality and usability of this solution. We'll address the tests next.
+
+*** COMMENT
+I expected this to go poorly, but the initial refactor went well. The output for the ~org~ command alone was a bit weird though, so it needed a bit of reprompting.
+
+** DONE Typer CLI switches cleanup                                                     :Cleanup:CLI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-21 Sat 21:15] \\
+  This was easy enough.
+:END:
+Some of the CLI switches don't make much sense for the new ~org stats tasks~ command, please remove them from this command alone (the ~org stats summary~ should still accept them):
+- ~--max-tags~
+- ~--max-relations~
+- ~--max-groups~
+- ~--min-group-size~
+- ~--use~
+
+I also realised that the ~--filter-category~ switch now works the same way that ~--filter-property CATEGORY=<value>~ filter is supposed to works, so we can remove ~--filter-category~ entirely.
+Please remove it.
+
+The descriptions for various CLI switches explicitly state the default value, but Typer shows the current defaults automatically. Please adjust the descriptions to omit the "(default: ...)" text and just rely on Typer for that.
+
+Please don't adjust any test cases just yet. We'll handle that next.
+
+** CANCELLED Option groups                                                                  :UX:CLI:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-02-21 Sat 21:31] \\
+  The AI wanted to do that, but it turned out click-option-group is not compatible with Typer and the resulting solution was very hacky.
+:END:
+Please use ~click-option-group~ to group the switches on both commands as follows:
+
+Common filters:
+- all ~--filter*~ switches
+
+Display options:
+- all ~--max*~ switches
+- all ~--min*~ switches
+- ~--use~
+- ~--buckets~
+
+Task categories:
+- ~--category-property~
+- ~--with-gamify-category~
+- ~--with-tags-as-category~
+
+Configuration switches:
+- ~--config~
+- ~--exclude~
+- ~--mapping~
+- ~--todo-keys~
+- ~--done-keys~
+
+Common switches:
+- ~--help~
+- ~--color~ and ~--no-color~
+- any remaining switches that didn't make it to the other groups
+
+Please preserve the same ordering of option groups in the help messages.
+It is OK if some commands don't include all the switches in those groups, or even if they omit some groups.
+
+Please don't adjust the test cases just yet, we'll handle that next.
+
+** REWORKED Typer tests                                                                      :Tests:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-21 Sat 22:06] \\
+  Needed extra prompts to get the AI to properly fix the tests & linter errors.
+:END:
+Adjust the test cases to use the new command layout based on Typer. Don't bother testing the ~org tasks~ command (yet).
 
 ** TODO Tags stats command                                                                  :CLI:UX:
 Add a new ~stats tags~ command to the CLI that allows displaying tag stats for specific tags.

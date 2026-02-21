@@ -12,7 +12,7 @@ FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 def test_max_tags_default_is_5() -> None:
     """Test that default max_tags is 5."""
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", "--help"],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color", "--help"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,

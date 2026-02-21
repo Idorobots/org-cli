@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """CLI interface for org - Org-mode archive file analysis."""
 
-import argparse
 import json
 import re
 import sys
@@ -9,9 +8,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import TypeGuard, cast
+from types import SimpleNamespace
+from typing import TypeGuard
 
 import orgparse
+import typer
 from colorama import Style
 from colorama import init as colorama_init
 
@@ -26,7 +27,6 @@ from org.analyze import (
 from org.color import bright_white, dim_white, get_state_color, magenta, should_use_color
 from org.filters import (
     filter_body,
-    filter_category,
     filter_completed,
     filter_date_from,
     filter_date_until,
@@ -132,6 +132,42 @@ DEFAULT_EXCLUDE = TAGS.union(HEADING).union(
 CATEGORY_NAMES = {"tags": "tags", "heading": "heading words", "body": "body words"}
 
 
+COMMAND_OPTION_NAMES = {
+    "buckets",
+    "category_property",
+    "color_flag",
+    "config",
+    "done_keys",
+    "exclude",
+    "filter_bodies",
+    "filter_completed",
+    "filter_date_from",
+    "filter_date_until",
+    "filter_gamify_exp_above",
+    "filter_gamify_exp_below",
+    "filter_headings",
+    "filter_not_completed",
+    "filter_properties",
+    "filter_repeats_above",
+    "filter_repeats_below",
+    "filter_tags",
+    "mapping",
+    "max_groups",
+    "max_relations",
+    "max_results",
+    "max_tags",
+    "min_group_size",
+    "todo_keys",
+    "use",
+    "with_gamify_category",
+    "with_tags_as_category",
+}
+
+
+CONFIG_APPEND_DEFAULTS: dict[str, list[str]] = {}
+CONFIG_INLINE_DEFAULTS: dict[str, object] = {}
+
+
 @dataclass
 class Filter:
     """Specification for a single filter operation."""
@@ -158,6 +194,41 @@ class ConfigContext:
     append_defaults: dict[str, list[str]]
     global_options: ConfigOptions
     stats_options: ConfigOptions
+
+
+@dataclass
+class ArgsPayload:
+    """Payload for CLI argument values."""
+
+    files: list[str] | None
+    config: str
+    exclude: str | None
+    mapping: str | None
+    todo_keys: str
+    done_keys: str
+    filter_gamify_exp_above: int | None
+    filter_gamify_exp_below: int | None
+    filter_repeats_above: int | None
+    filter_repeats_below: int | None
+    filter_date_from: str | None
+    filter_date_until: str | None
+    filter_properties: list[str] | None
+    filter_tags: list[str] | None
+    filter_headings: list[str] | None
+    filter_bodies: list[str] | None
+    filter_completed: bool
+    filter_not_completed: bool
+    color_flag: bool | None
+    max_results: int
+    max_tags: int
+    use: str
+    with_gamify_category: bool
+    with_tags_as_category: bool
+    category_property: str
+    max_relations: int
+    min_group_size: int
+    max_groups: int
+    buckets: int
 
 
 def load_exclude_list(filepath: str | None) -> set[str]:
@@ -519,7 +590,6 @@ def build_config_defaults(
     }
 
     global_str_options: dict[str, str] = {
-        "--filter-category": "filter_category",
         "--todo-keys": "todo_keys",
         "--done-keys": "done_keys",
         "--filter-date-from": "filter_date_from",
@@ -872,375 +942,15 @@ def display_top_tasks(
             print(f"  {colored_filename} {heading}".strip())
 
 
-def add_files_argument(parser: argparse.ArgumentParser) -> None:
-    """Add file arguments shared across commands."""
-    parser.add_argument(
-        "files",
-        nargs="*",
-        metavar="FILE",
-        help="Org-mode archive files or directories to analyze",
-    )
-
-
-def add_global_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add global CLI arguments shared across commands."""
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=".org-cli.json",
-        metavar="FILE",
-        help="Config file name to load from current directory (default: .org-cli.json)",
-    )
-
-    parser.add_argument(
-        "--exclude",
-        type=str,
-        metavar="FILE",
-        help="File containing words to exclude (one per line)",
-    )
-
-    parser.add_argument(
-        "--filter-category",
-        type=str,
-        default="all",
-        metavar="VALUE",
-        help=(
-            "Filter tasks by category property value (e.g., simple, regular, hard, none, "
-            "or any custom value). Use 'all' to skip category filtering (default: all)"
-        ),
-    )
-
-    parser.add_argument(
-        "--mapping",
-        type=str,
-        metavar="FILE",
-        help="JSON file containing tag mappings (dict[str, str])",
-    )
-
-    parser.add_argument(
-        "--todo-keys",
-        type=str,
-        default="TODO",
-        metavar="KEYS",
-        help="Comma-separated list of incomplete task states (default: TODO)",
-    )
-
-    parser.add_argument(
-        "--done-keys",
-        type=str,
-        default="DONE",
-        metavar="KEYS",
-        help="Comma-separated list of completed task states (default: DONE)",
-    )
-
-    parser.add_argument(
-        "--filter-gamify-exp-above",
-        type=int,
-        metavar="N",
-        help="Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)",
-    )
-
-    parser.add_argument(
-        "--filter-gamify-exp-below",
-        type=int,
-        metavar="N",
-        help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
-    )
-
-    parser.add_argument(
-        "--filter-repeats-above",
-        type=int,
-        metavar="N",
-        help="Filter tasks where repeat count > N (non-inclusive)",
-    )
-
-    parser.add_argument(
-        "--filter-repeats-below",
-        type=int,
-        metavar="N",
-        help="Filter tasks where repeat count < N (non-inclusive)",
-    )
-
-    parser.add_argument(
-        "--filter-date-from",
-        type=str,
-        metavar="TIMESTAMP",
-        help=(
-            "Filter tasks with timestamps after date (inclusive). "
-            "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
-            "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
-        ),
-    )
-
-    parser.add_argument(
-        "--filter-date-until",
-        type=str,
-        metavar="TIMESTAMP",
-        help=(
-            "Filter tasks with timestamps before date (inclusive). "
-            "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
-            "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
-        ),
-    )
-
-    parser.add_argument(
-        "--filter-property",
-        action="append",
-        dest="filter_properties",
-        metavar="KEY=VALUE",
-        help="Filter tasks with exact property match (case-sensitive, can specify multiple)",
-    )
-
-    parser.add_argument(
-        "--filter-tag",
-        action="append",
-        dest="filter_tags",
-        metavar="REGEX",
-        help="Filter tasks where any tag matches regex (case-sensitive, can specify multiple)",
-    )
-
-    parser.add_argument(
-        "--filter-heading",
-        action="append",
-        dest="filter_headings",
-        metavar="REGEX",
-        help="Filter tasks where heading matches regex (case-sensitive, can specify multiple)",
-    )
-
-    parser.add_argument(
-        "--filter-body",
-        action="append",
-        dest="filter_bodies",
-        metavar="REGEX",
-        help="Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)",
-    )
-
-    parser.add_argument(
-        "--filter-completed",
-        action="store_true",
-        help="Filter tasks with todo state in done keys",
-    )
-
-    parser.add_argument(
-        "--filter-not-completed",
-        action="store_true",
-        help="Filter tasks with todo state in todo keys or without a todo state",
-    )
-
-    color_group = parser.add_mutually_exclusive_group()
-    color_group.add_argument(
-        "--color",
-        action="store_true",
-        dest="color_flag",
-        default=None,
-        help="Force colored output (default: auto-detect based on TTY)",
-    )
-
-    color_group.add_argument(
-        "--no-color",
-        action="store_false",
-        dest="color_flag",
-        help="Disable colored output",
-    )
-
-    parser.set_defaults(mapping_inline=None, exclude_inline=None)
-
-
-def add_stats_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add stats command arguments."""
-    parser.add_argument(
-        "--max-results",
-        "-n",
-        type=int,
-        default=10,
-        metavar="N",
-        help="Maximum number of results to display (default: 10)",
-    )
-
-    parser.add_argument(
-        "--max-tags",
-        type=int,
-        default=5,
-        metavar="N",
-        help="Maximum number of tags to display in TAGS section (default: 5, use 0 to omit section)",
-    )
-
-    parser.add_argument(
-        "--use",
-        type=str,
-        choices=["tags", "heading", "body"],
-        default="tags",
-        metavar="CATEGORY",
-        help="Category to display: tags, heading, or body (default: tags)",
-    )
-
-    parser.add_argument(
-        "--with-gamify-category",
-        action="store_true",
-        help="Preprocess nodes to set category property based on gamify_exp value",
-    )
-
-    parser.add_argument(
-        "--with-tags-as-category",
-        action="store_true",
-        help="Preprocess nodes to set category property based on first tag",
-    )
-
-    parser.add_argument(
-        "--category-property",
-        type=str,
-        default="CATEGORY",
-        metavar="PROPERTY",
-        help="Property name to use for category histogram and filtering (default: CATEGORY)",
-    )
-
-    parser.add_argument(
-        "--max-relations",
-        type=int,
-        default=5,
-        metavar="N",
-        help="Maximum number of relations to display per item (default: 5, use 0 to omit sections)",
-    )
-
-    parser.add_argument(
-        "--min-group-size",
-        type=int,
-        default=2,
-        metavar="N",
-        help="Minimum group size to display (default: 2)",
-    )
-
-    parser.add_argument(
-        "--max-groups",
-        type=int,
-        default=5,
-        metavar="N",
-        help="Maximum number of tag groups to display (default: 5, use 0 to omit section)",
-    )
-
-    parser.add_argument(
-        "--buckets",
-        type=int,
-        default=50,
-        metavar="N",
-        help="Number of time buckets for timeline charts (default: 50, minimum: 20)",
-    )
-
-
-def create_parser() -> tuple[
-    argparse.ArgumentParser,
-    argparse.ArgumentParser,
-    argparse.ArgumentParser,
-    argparse.ArgumentParser,
-    argparse.ArgumentParser,
-]:
-    """Create argument parser for CLI."""
-    shared_parent = argparse.ArgumentParser(add_help=False)
-    add_global_arguments(shared_parent)
-
-    stats_parent = argparse.ArgumentParser(add_help=False)
-    add_stats_arguments(stats_parent)
-
-    parser = argparse.ArgumentParser(
-        prog="org",
-        description="Analyze Emacs Org-mode archive files for task statistics.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        parents=[shared_parent],
-    )
-
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    stats_parser = subparsers.add_parser(
-        "stats",
-        help="Analyze Org-mode archive files for task statistics.",
-        description="Analyze Emacs Org-mode archive files for task statistics.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        parents=[shared_parent, stats_parent],
-    )
-    stats_subparsers = stats_parser.add_subparsers(dest="stats_command", required=True)
-
-    stats_summary_parser = stats_subparsers.add_parser(
-        "summary",
-        help="Show overall task stats.",
-        description="Show overall task stats.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        parents=[shared_parent, stats_parent],
-    )
-    stats_summary_parser.set_defaults(func=run_stats)
-    add_files_argument(stats_summary_parser)
-
-    stats_tasks_parser = stats_subparsers.add_parser(
-        "tasks",
-        help="Show overall task stats without tag sections.",
-        description="Show overall task stats without tag sections.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        parents=[shared_parent, stats_parent],
-    )
-    stats_tasks_parser.set_defaults(func=run_stats_tasks)
-    add_files_argument(stats_tasks_parser)
-
-    return parser, stats_parser, stats_summary_parser, stats_tasks_parser, shared_parent
-
-
 def parse_config_argument(argv: list[str]) -> str:
     """Parse only the --config argument from argv."""
-    config_parser = argparse.ArgumentParser(add_help=False)
-    config_parser.add_argument("--config", type=str, default=".org-cli.json")
-    config_args, _ = config_parser.parse_known_args(argv[1:])
-    return cast(str, config_args.config)
-
-
-def parse_arguments() -> argparse.Namespace:
-    """Parse command-line arguments.
-
-    Returns:
-        Parsed arguments namespace
-    """
-    parser, stats_parser, stats_summary_parser, stats_tasks_parser, shared_parent = create_parser()
-
-    config_name = parse_config_argument(sys.argv)
-    config_path = Path(config_name)
-    if not config_path.is_absolute():
-        config_path = Path.cwd() / config_name
-    config, load_error = load_config(str(config_path))
-
-    append_defaults: dict[str, list[str]] = {}
-    if load_error:
-        print("Malformed config", file=sys.stderr)
-    else:
-        config_defaults = build_config_defaults(config)
-        if config_defaults is None:
-            print("Malformed config", file=sys.stderr)
-        else:
-            defaults, stats_defaults, append_defaults = config_defaults
-            if defaults:
-                shared_parent.set_defaults(**defaults)
-                stats_parser.set_defaults(**defaults)
-                stats_summary_parser.set_defaults(**defaults)
-                stats_tasks_parser.set_defaults(**defaults)
-            if stats_defaults:
-                stats_parser.set_defaults(**stats_defaults)
-                stats_summary_parser.set_defaults(**stats_defaults)
-                stats_tasks_parser.set_defaults(**stats_defaults)
-
-    argv = sys.argv[1:]
-    if argv and argv[0] == "stats":
-        stats_subcommands = {"summary", "tasks"}
-        has_help = any(arg in {"-h", "--help"} for arg in argv[1:])
-        if (
-            not has_help
-            and len(argv) > 1
-            and (argv[1].startswith("-") or argv[1] not in stats_subcommands)
-        ):
-            argv = ["stats", "summary", *argv[1:]]
-
-    args = parser.parse_args(argv)
-
-    for dest, values in append_defaults.items():
-        if getattr(args, dest) is None:
-            setattr(args, dest, values)
-
-    return args
+    default = ".org-cli.json"
+    for idx, arg in enumerate(argv[1:], start=1):
+        if arg == "--config" and idx + 1 < len(argv):
+            return argv[idx + 1]
+        if arg.startswith("--config="):
+            return arg.split("=", 1)[1]
+    return default
 
 
 def validate_and_parse_keys(keys_str: str, option_name: str) -> list[str]:
@@ -1295,7 +1005,7 @@ def load_nodes(
 ) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
     """Load, parse, and filter org-mode files.
 
-    Processes each file separately: preprocess → parse → filter → extract keys → combine.
+    Processes each file separately: preprocess -> parse -> filter -> extract keys -> combine.
 
     Args:
         filenames: List of file paths to load
@@ -1486,7 +1196,6 @@ def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
         List of filter arguments
     """
     filter_args = [
-        "--filter-category",
         "--filter-gamify-exp-above",
         "--filter-gamify-exp-below",
         "--filter-repeats-above",
@@ -1509,14 +1218,11 @@ def count_filter_values(value: list[str] | None) -> int:
     return len(value) if value else 0
 
 
-def extend_filter_order_with_defaults(
-    filter_order: list[str], args: argparse.Namespace
-) -> list[str]:
+def extend_filter_order_with_defaults(filter_order: list[str], args: SimpleNamespace) -> list[str]:
     """Extend filter order to include config-provided filters."""
     filter_headings = getattr(args, "filter_headings", None)
     filter_bodies = getattr(args, "filter_bodies", None)
     expected_counts = {
-        "--filter-category": 1 if args.filter_category != "all" else 0,
         "--filter-gamify-exp-above": 1 if args.filter_gamify_exp_above is not None else 0,
         "--filter-gamify-exp-below": 1 if args.filter_gamify_exp_below is not None else 0,
         "--filter-repeats-above": 1 if args.filter_repeats_above is not None else 0,
@@ -1541,21 +1247,7 @@ def extend_filter_order_with_defaults(
     return full_order
 
 
-def handle_preset_filter(preset: str, category_property: str) -> list[Filter]:
-    """Handle --filter-category preset expansion.
-
-    Args:
-        preset: Category value to filter by (e.g., simple, regular, hard, none, etc.)
-        category_property: Name of property to check
-
-    Returns:
-        List of Filter objects for the preset
-    """
-
-    return [Filter(lambda nodes: filter_category(nodes, category_property, preset))]
-
-
-def handle_simple_filter(arg_name: str, args: argparse.Namespace) -> list[Filter]:
+def handle_simple_filter(arg_name: str, args: SimpleNamespace) -> list[Filter]:
     """Handle simple filter arguments (gamify_exp, repeats).
 
     Args:
@@ -1584,7 +1276,7 @@ def handle_simple_filter(arg_name: str, args: argparse.Namespace) -> list[Filter
     return []
 
 
-def handle_date_filter(arg_name: str, args: argparse.Namespace) -> list[Filter]:
+def handle_date_filter(arg_name: str, args: SimpleNamespace) -> list[Filter]:
     """Handle date filter arguments.
 
     Args:
@@ -1605,7 +1297,7 @@ def handle_date_filter(arg_name: str, args: argparse.Namespace) -> list[Filter]:
     return []
 
 
-def handle_completion_filter(arg_name: str, args: argparse.Namespace) -> list[Filter]:
+def handle_completion_filter(arg_name: str, args: SimpleNamespace) -> list[Filter]:
     """Handle completion status filter arguments.
 
     Args:
@@ -1675,7 +1367,7 @@ def handle_body_filter(pattern: str) -> list[Filter]:
 
 def handle_indexed_filter(
     arg_name: str,
-    args: argparse.Namespace,
+    args: SimpleNamespace,
     index_trackers: dict[str, int],
 ) -> list[Filter]:
     """Handle indexed filter arguments (property, tag, heading, body).
@@ -1729,9 +1421,7 @@ def handle_indexed_filter(
     return []
 
 
-def create_filter_specs_from_args(
-    args: argparse.Namespace, filter_order: list[str]
-) -> list[Filter]:
+def create_filter_specs_from_args(args: SimpleNamespace, filter_order: list[str]) -> list[Filter]:
     """Create filter specifications from parsed arguments.
 
     Args:
@@ -1745,9 +1435,7 @@ def create_filter_specs_from_args(
     index_trackers = {"property": 0, "tag": 0, "heading": 0, "body": 0}
 
     for arg_name in filter_order:
-        if arg_name == "--filter-category":
-            filter_specs.extend(handle_preset_filter(args.filter_category, args.category_property))
-        elif arg_name in (
+        if arg_name in (
             "--filter-gamify-exp-above",
             "--filter-gamify-exp-below",
             "--filter-repeats-above",
@@ -1764,7 +1452,7 @@ def create_filter_specs_from_args(
     return filter_specs
 
 
-def build_filter_chain(args: argparse.Namespace, argv: list[str]) -> list[Filter]:
+def build_filter_chain(args: SimpleNamespace, argv: list[str]) -> list[Filter]:
     """Build ordered list of filter functions from CLI arguments.
 
     Processes filters in command-line order. Expands --filter presets inline
@@ -1785,7 +1473,7 @@ def build_filter_chain(args: argparse.Namespace, argv: list[str]) -> list[Filter
 def display_results(
     result: AnalysisResult,
     nodes: list[orgparse.node.OrgNode],
-    args: argparse.Namespace,
+    args: SimpleNamespace,
     display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
 ) -> None:
     """Display analysis results in formatted output.
@@ -1909,7 +1597,7 @@ def display_results(
 
 def display_task_summary(
     result: AnalysisResult,
-    args: argparse.Namespace,
+    args: SimpleNamespace,
     display_config: tuple[datetime | None, datetime | None, list[str], list[str], bool],
 ) -> None:
     """Display global task statistics without tag/group sections.
@@ -1998,7 +1686,7 @@ def display_task_summary(
         print(f"  {line}")
 
 
-def validate_global_arguments(args: argparse.Namespace) -> tuple[list[str], list[str]]:
+def validate_global_arguments(args: SimpleNamespace) -> tuple[list[str], list[str]]:
     """Validate shared command-line arguments.
 
     Args:
@@ -2028,8 +1716,12 @@ def validate_global_arguments(args: argparse.Namespace) -> tuple[list[str], list
     return (todo_keys, done_keys)
 
 
-def validate_stats_arguments(args: argparse.Namespace) -> None:
+def validate_stats_arguments(args: SimpleNamespace) -> None:
     """Validate stats command arguments."""
+    if args.use not in {"tags", "heading", "body"}:
+        print("Error: --use must be one of: tags, heading, body", file=sys.stderr)
+        sys.exit(1)
+
     if args.max_relations < 0:
         print("Error: --max-relations must be non-negative", file=sys.stderr)
         sys.exit(1)
@@ -2051,23 +1743,23 @@ def validate_stats_arguments(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def resolve_mapping(args: argparse.Namespace) -> dict[str, str]:
+def resolve_mapping(args: SimpleNamespace) -> dict[str, str]:
     """Resolve mapping based on inline or file-based configuration."""
-    mapping_inline = args.mapping_inline
+    mapping_inline = getattr(args, "mapping_inline", None)
     if mapping_inline is not None:
         return mapping_inline or MAP
     return load_mapping(args.mapping) or MAP
 
 
-def resolve_exclude_set(args: argparse.Namespace) -> set[str]:
+def resolve_exclude_set(args: SimpleNamespace) -> set[str]:
     """Resolve exclude set based on inline or file-based configuration."""
-    exclude_inline = args.exclude_inline
+    exclude_inline = getattr(args, "exclude_inline", None)
     if exclude_inline is not None:
         return normalize_exclude_values(exclude_inline) or DEFAULT_EXCLUDE
     return load_exclude_list(args.exclude) or DEFAULT_EXCLUDE
 
 
-def run_stats(args: argparse.Namespace) -> None:
+def run_stats(args: SimpleNamespace) -> None:
     """Run the stats command."""
     color_enabled = should_use_color(args.color_flag)
 
@@ -2115,7 +1807,7 @@ def run_stats(args: argparse.Namespace) -> None:
     )
 
 
-def run_stats_tasks(args: argparse.Namespace) -> None:
+def run_stats_tasks(args: SimpleNamespace) -> None:
     """Run the stats tasks command."""
     color_enabled = should_use_color(args.color_flag)
 
@@ -2161,12 +1853,538 @@ def run_stats_tasks(args: argparse.Namespace) -> None:
     )
 
 
+def apply_config_defaults(args: SimpleNamespace) -> None:
+    """Apply config-provided defaults for append and inline values."""
+    for dest, values in CONFIG_APPEND_DEFAULTS.items():
+        if getattr(args, dest, None) is None:
+            setattr(args, dest, values)
+
+    mapping_inline = CONFIG_INLINE_DEFAULTS.get("mapping_inline")
+    exclude_inline = CONFIG_INLINE_DEFAULTS.get("exclude_inline")
+    args.mapping_inline = mapping_inline if mapping_inline is not None else None
+    args.exclude_inline = exclude_inline if exclude_inline is not None else None
+
+
+def build_args_namespace(payload: ArgsPayload) -> SimpleNamespace:
+    """Build a namespace matching the legacy argparse shape."""
+    args = SimpleNamespace(
+        files=list(payload.files or []),
+        config=payload.config,
+        exclude=payload.exclude,
+        mapping=payload.mapping,
+        todo_keys=payload.todo_keys,
+        done_keys=payload.done_keys,
+        filter_gamify_exp_above=payload.filter_gamify_exp_above,
+        filter_gamify_exp_below=payload.filter_gamify_exp_below,
+        filter_repeats_above=payload.filter_repeats_above,
+        filter_repeats_below=payload.filter_repeats_below,
+        filter_date_from=payload.filter_date_from,
+        filter_date_until=payload.filter_date_until,
+        filter_properties=payload.filter_properties,
+        filter_tags=payload.filter_tags,
+        filter_headings=payload.filter_headings,
+        filter_bodies=payload.filter_bodies,
+        filter_completed=payload.filter_completed,
+        filter_not_completed=payload.filter_not_completed,
+        color_flag=payload.color_flag,
+        max_results=payload.max_results,
+        max_tags=payload.max_tags,
+        use=payload.use,
+        with_gamify_category=payload.with_gamify_category,
+        with_tags_as_category=payload.with_tags_as_category,
+        category_property=payload.category_property,
+        max_relations=payload.max_relations,
+        min_group_size=payload.min_group_size,
+        max_groups=payload.max_groups,
+        buckets=payload.buckets,
+    )
+    apply_config_defaults(args)
+    return args
+
+
+def load_cli_config(
+    argv: list[str],
+) -> tuple[dict[str, object], dict[str, list[str]], dict[str, object]]:
+    """Load config defaults from the configured file path."""
+    config_name = parse_config_argument(argv)
+    config_path = Path(config_name)
+    if not config_path.is_absolute():
+        config_path = Path.cwd() / config_name
+    config, load_error = load_config(str(config_path))
+
+    if load_error:
+        print("Malformed config", file=sys.stderr)
+        return ({}, {}, {})
+
+    config_defaults = build_config_defaults(config)
+    if config_defaults is None:
+        print("Malformed config", file=sys.stderr)
+        return ({}, {}, {})
+
+    defaults, stats_defaults, append_defaults = config_defaults
+
+    inline_defaults: dict[str, object] = {}
+    for key in ("mapping_inline", "exclude_inline"):
+        if key in defaults:
+            inline_defaults[key] = defaults[key]
+
+    combined_defaults = {**defaults, **stats_defaults}
+    filtered_defaults = {
+        key: value for key, value in combined_defaults.items() if key in COMMAND_OPTION_NAMES
+    }
+
+    return (filtered_defaults, append_defaults, inline_defaults)
+
+
+def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[str, object]]]:
+    """Build Click default_map for Typer commands."""
+    tasks_defaults = dict(defaults)
+    for key in ("max_tags", "max_relations", "max_groups", "min_group_size", "use"):
+        tasks_defaults.pop(key, None)
+
+    return {
+        "stats": {
+            "summary": dict(defaults),
+            "tasks": tasks_defaults,
+        }
+    }
+
+
+app = typer.Typer(
+    help="Analyze Emacs Org-mode archive files for task statistics.",
+    no_args_is_help=True,
+)
+stats_app = typer.Typer(
+    help="Analyze Org-mode archive files for task statistics.",
+    no_args_is_help=True,
+)
+
+
+@app.command("tasks")
+def tasks() -> None:
+    """Placeholder for future task commands."""
+    return
+
+
+@stats_app.command("summary")
+def stats_summary(  # noqa: PLR0913
+    files: list[str] | None = typer.Argument(  # noqa: B008
+        None, metavar="FILE", help="Org-mode archive files or directories to analyze"
+    ),
+    config: str = typer.Option(
+        ".org-cli.json",
+        "--config",
+        metavar="FILE",
+        help="Config file name to load from current directory",
+    ),
+    exclude: str | None = typer.Option(
+        None,
+        "--exclude",
+        metavar="FILE",
+        help="File containing words to exclude (one per line)",
+    ),
+    mapping: str | None = typer.Option(
+        None,
+        "--mapping",
+        metavar="FILE",
+        help="JSON file containing tag mappings (dict[str, str])",
+    ),
+    todo_keys: str = typer.Option(
+        "TODO",
+        "--todo-keys",
+        metavar="KEYS",
+        help="Comma-separated list of incomplete task states",
+    ),
+    done_keys: str = typer.Option(
+        "DONE",
+        "--done-keys",
+        metavar="KEYS",
+        help="Comma-separated list of completed task states",
+    ),
+    filter_gamify_exp_above: int | None = typer.Option(
+        None,
+        "--filter-gamify-exp-above",
+        metavar="N",
+        help="Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)",
+    ),
+    filter_gamify_exp_below: int | None = typer.Option(
+        None,
+        "--filter-gamify-exp-below",
+        metavar="N",
+        help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
+    ),
+    filter_repeats_above: int | None = typer.Option(
+        None,
+        "--filter-repeats-above",
+        metavar="N",
+        help="Filter tasks where repeat count > N (non-inclusive)",
+    ),
+    filter_repeats_below: int | None = typer.Option(
+        None,
+        "--filter-repeats-below",
+        metavar="N",
+        help="Filter tasks where repeat count < N (non-inclusive)",
+    ),
+    filter_date_from: str | None = typer.Option(
+        None,
+        "--filter-date-from",
+        metavar="TIMESTAMP",
+        help=(
+            "Filter tasks with timestamps after date (inclusive). "
+            "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
+            "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
+        ),
+    ),
+    filter_date_until: str | None = typer.Option(
+        None,
+        "--filter-date-until",
+        metavar="TIMESTAMP",
+        help=(
+            "Filter tasks with timestamps before date (inclusive). "
+            "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
+            "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
+        ),
+    ),
+    filter_properties: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-property",
+        metavar="KEY=VALUE",
+        help="Filter tasks with exact property match (case-sensitive, can specify multiple)",
+    ),
+    filter_tags: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-tag",
+        metavar="REGEX",
+        help="Filter tasks where any tag matches regex (case-sensitive, can specify multiple)",
+    ),
+    filter_headings: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-heading",
+        metavar="REGEX",
+        help="Filter tasks where heading matches regex (case-sensitive, can specify multiple)",
+    ),
+    filter_bodies: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-body",
+        metavar="REGEX",
+        help="Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)",
+    ),
+    filter_completed: bool = typer.Option(
+        False,
+        "--filter-completed",
+        help="Filter tasks with todo state in done keys",
+    ),
+    filter_not_completed: bool = typer.Option(
+        False,
+        "--filter-not-completed",
+        help="Filter tasks with todo state in todo keys or without a todo state",
+    ),
+    color_flag: bool | None = typer.Option(
+        None,
+        "--color/--no-color",
+        help="Force colored output",
+    ),
+    max_results: int = typer.Option(
+        10,
+        "--max-results",
+        "-n",
+        metavar="N",
+        help="Maximum number of results to display",
+    ),
+    max_tags: int = typer.Option(
+        5,
+        "--max-tags",
+        metavar="N",
+        help="Maximum number of tags to display in TAGS section (use 0 to omit section)",
+    ),
+    use: str = typer.Option(
+        "tags",
+        "--use",
+        metavar="CATEGORY",
+        help="Category to display: tags, heading, or body",
+    ),
+    with_gamify_category: bool = typer.Option(
+        False,
+        "--with-gamify-category",
+        help="Preprocess nodes to set category property based on gamify_exp value",
+    ),
+    with_tags_as_category: bool = typer.Option(
+        False,
+        "--with-tags-as-category",
+        help="Preprocess nodes to set category property based on first tag",
+    ),
+    category_property: str = typer.Option(
+        "CATEGORY",
+        "--category-property",
+        metavar="PROPERTY",
+        help="Property name to use for category histogram and filtering",
+    ),
+    max_relations: int = typer.Option(
+        5,
+        "--max-relations",
+        metavar="N",
+        help="Maximum number of relations to display per item (use 0 to omit sections)",
+    ),
+    min_group_size: int = typer.Option(
+        2,
+        "--min-group-size",
+        metavar="N",
+        help="Minimum group size to display",
+    ),
+    max_groups: int = typer.Option(
+        5,
+        "--max-groups",
+        metavar="N",
+        help="Maximum number of tag groups to display (use 0 to omit section)",
+    ),
+    buckets: int = typer.Option(
+        50,
+        "--buckets",
+        metavar="N",
+        help="Number of time buckets for timeline charts (minimum: 20)",
+    ),
+) -> None:
+    """Show overall task stats."""
+    args = build_args_namespace(
+        ArgsPayload(
+            files=files,
+            config=config,
+            exclude=exclude,
+            mapping=mapping,
+            todo_keys=todo_keys,
+            done_keys=done_keys,
+            filter_gamify_exp_above=filter_gamify_exp_above,
+            filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_repeats_above=filter_repeats_above,
+            filter_repeats_below=filter_repeats_below,
+            filter_date_from=filter_date_from,
+            filter_date_until=filter_date_until,
+            filter_properties=filter_properties,
+            filter_tags=filter_tags,
+            filter_headings=filter_headings,
+            filter_bodies=filter_bodies,
+            filter_completed=filter_completed,
+            filter_not_completed=filter_not_completed,
+            color_flag=color_flag,
+            max_results=max_results,
+            max_tags=max_tags,
+            use=use,
+            with_gamify_category=with_gamify_category,
+            with_tags_as_category=with_tags_as_category,
+            category_property=category_property,
+            max_relations=max_relations,
+            min_group_size=min_group_size,
+            max_groups=max_groups,
+            buckets=buckets,
+        )
+    )
+    run_stats(args)
+
+
+@stats_app.command("tasks")
+def stats_tasks(  # noqa: PLR0913
+    files: list[str] | None = typer.Argument(  # noqa: B008
+        None, metavar="FILE", help="Org-mode archive files or directories to analyze"
+    ),
+    config: str = typer.Option(
+        ".org-cli.json",
+        "--config",
+        metavar="FILE",
+        help="Config file name to load from current directory",
+    ),
+    exclude: str | None = typer.Option(
+        None,
+        "--exclude",
+        metavar="FILE",
+        help="File containing words to exclude (one per line)",
+    ),
+    mapping: str | None = typer.Option(
+        None,
+        "--mapping",
+        metavar="FILE",
+        help="JSON file containing tag mappings (dict[str, str])",
+    ),
+    todo_keys: str = typer.Option(
+        "TODO",
+        "--todo-keys",
+        metavar="KEYS",
+        help="Comma-separated list of incomplete task states",
+    ),
+    done_keys: str = typer.Option(
+        "DONE",
+        "--done-keys",
+        metavar="KEYS",
+        help="Comma-separated list of completed task states",
+    ),
+    filter_gamify_exp_above: int | None = typer.Option(
+        None,
+        "--filter-gamify-exp-above",
+        metavar="N",
+        help="Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)",
+    ),
+    filter_gamify_exp_below: int | None = typer.Option(
+        None,
+        "--filter-gamify-exp-below",
+        metavar="N",
+        help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
+    ),
+    filter_repeats_above: int | None = typer.Option(
+        None,
+        "--filter-repeats-above",
+        metavar="N",
+        help="Filter tasks where repeat count > N (non-inclusive)",
+    ),
+    filter_repeats_below: int | None = typer.Option(
+        None,
+        "--filter-repeats-below",
+        metavar="N",
+        help="Filter tasks where repeat count < N (non-inclusive)",
+    ),
+    filter_date_from: str | None = typer.Option(
+        None,
+        "--filter-date-from",
+        metavar="TIMESTAMP",
+        help=(
+            "Filter tasks with timestamps after date (inclusive). "
+            "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
+            "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
+        ),
+    ),
+    filter_date_until: str | None = typer.Option(
+        None,
+        "--filter-date-until",
+        metavar="TIMESTAMP",
+        help=(
+            "Filter tasks with timestamps before date (inclusive). "
+            "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
+            "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
+        ),
+    ),
+    filter_properties: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-property",
+        metavar="KEY=VALUE",
+        help="Filter tasks with exact property match (case-sensitive, can specify multiple)",
+    ),
+    filter_tags: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-tag",
+        metavar="REGEX",
+        help="Filter tasks where any tag matches regex (case-sensitive, can specify multiple)",
+    ),
+    filter_headings: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-heading",
+        metavar="REGEX",
+        help="Filter tasks where heading matches regex (case-sensitive, can specify multiple)",
+    ),
+    filter_bodies: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-body",
+        metavar="REGEX",
+        help="Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)",
+    ),
+    filter_completed: bool = typer.Option(
+        False,
+        "--filter-completed",
+        help="Filter tasks with todo state in done keys",
+    ),
+    filter_not_completed: bool = typer.Option(
+        False,
+        "--filter-not-completed",
+        help="Filter tasks with todo state in todo keys or without a todo state",
+    ),
+    color_flag: bool | None = typer.Option(
+        None,
+        "--color/--no-color",
+        help="Force colored output",
+    ),
+    max_results: int = typer.Option(
+        10,
+        "--max-results",
+        "-n",
+        metavar="N",
+        help="Maximum number of results to display",
+    ),
+    with_gamify_category: bool = typer.Option(
+        False,
+        "--with-gamify-category",
+        help="Preprocess nodes to set category property based on gamify_exp value",
+    ),
+    with_tags_as_category: bool = typer.Option(
+        False,
+        "--with-tags-as-category",
+        help="Preprocess nodes to set category property based on first tag",
+    ),
+    category_property: str = typer.Option(
+        "CATEGORY",
+        "--category-property",
+        metavar="PROPERTY",
+        help="Property name to use for category histogram and filtering",
+    ),
+    buckets: int = typer.Option(
+        50,
+        "--buckets",
+        metavar="N",
+        help="Number of time buckets for timeline charts (minimum: 20)",
+    ),
+) -> None:
+    """Show overall task stats without tag sections."""
+    args = build_args_namespace(
+        ArgsPayload(
+            files=files,
+            config=config,
+            exclude=exclude,
+            mapping=mapping,
+            todo_keys=todo_keys,
+            done_keys=done_keys,
+            filter_gamify_exp_above=filter_gamify_exp_above,
+            filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_repeats_above=filter_repeats_above,
+            filter_repeats_below=filter_repeats_below,
+            filter_date_from=filter_date_from,
+            filter_date_until=filter_date_until,
+            filter_properties=filter_properties,
+            filter_tags=filter_tags,
+            filter_headings=filter_headings,
+            filter_bodies=filter_bodies,
+            filter_completed=filter_completed,
+            filter_not_completed=filter_not_completed,
+            color_flag=color_flag,
+            max_results=max_results,
+            max_tags=5,
+            use="tags",
+            with_gamify_category=with_gamify_category,
+            with_tags_as_category=with_tags_as_category,
+            category_property=category_property,
+            max_relations=5,
+            min_group_size=2,
+            max_groups=5,
+            buckets=buckets,
+        )
+    )
+    run_stats_tasks(args)
+
+
+app.add_typer(stats_app, name="stats")
+
+
 def main() -> None:
     """Main CLI entry point."""
-    args = parse_arguments()
+    defaults, append_defaults, inline_defaults = load_cli_config(sys.argv)
+    CONFIG_APPEND_DEFAULTS.clear()
+    CONFIG_APPEND_DEFAULTS.update(append_defaults)
+    CONFIG_INLINE_DEFAULTS.clear()
+    CONFIG_INLINE_DEFAULTS.update(inline_defaults)
 
-    if hasattr(args, "func"):
-        args.func(args)
+    command = typer.main.get_command(app)
+    default_map = build_default_map(defaults) if defaults else None
+    command.main(
+        args=sys.argv[1:],
+        prog_name="org",
+        standalone_mode=True,
+        default_map=default_map,
+    )
 
 
 if __name__ == "__main__":

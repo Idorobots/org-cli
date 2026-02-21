@@ -38,7 +38,7 @@ def test_cli_accepts_mapping_parameter() -> None:
 def test_cli_mapping_help_text() -> None:
     """Test that --mapping appears in help text."""
     result = subprocess.run(
-        [sys.executable, "-m", "org", "--no-color", "--help"],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color", "--help"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -198,6 +198,7 @@ def test_cli_mapping_with_invalid_value_types() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--no-color",
             "--mapping",
             mapping_path,
