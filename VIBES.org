@@ -1782,7 +1782,11 @@ org stats tags --show Scala,Debugging,EmbeddedDevelopment path/to/file.org
 
 The output generated should include only the stats for ~Scala~, ~Debugging~ and ~EmbeddedDevelopment~.
 
-** TODO Groups stats command                                                                :CLI:UX:
+** DONE Groups stats command                                                                :CLI:UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-21 Sat 23:23] \\
+  All good.
+:END:
 Add a new ~stats tags~ command to the CLI that allows displaying tag stats for specific tags.
 An example invocation will look like this:
 

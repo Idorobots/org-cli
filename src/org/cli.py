@@ -163,6 +163,7 @@ COMMAND_OPTION_NAMES = {
     "with_gamify_category",
     "with_tags_as_category",
     "show",
+    "groups",
 }
 
 
@@ -232,6 +233,7 @@ class ArgsPayload:
     max_groups: int
     buckets: int
     show: str | None
+    groups: list[str] | None
 
 
 def load_exclude_list(filepath: str | None) -> set[str]:
@@ -623,7 +625,7 @@ def build_config_defaults(
         int_options=stats_int_options,
         bool_options=stats_bool_options,
         str_options=stats_str_options,
-        list_options={},
+        list_options={"--group": "groups"},
     )
 
     context = ConfigContext(
@@ -952,6 +954,162 @@ def display_groups(
         print(f"    Max tasks on a single day: {max_value}")
 
 
+def extract_items_for_category(
+    node: orgparse.node.OrgNode, mapping: dict[str, str], category: str
+) -> set[str]:
+    """Extract normalized items from a node based on category."""
+    if category == "tags":
+        stripped_tags = {t.strip() for t in node.tags}
+        return {mapping.get(t, t) for t in stripped_tags}
+    if category == "heading":
+        return normalize(set(node.heading.split()), mapping)
+    return normalize(set(node.body.split()), mapping)
+
+
+def combine_time_ranges(tag_time_ranges: dict[str, TimeRange], tags: list[str]) -> TimeRange:
+    """Combine time ranges from multiple tags into a single TimeRange."""
+    combined = TimeRange()
+
+    for tag in tags:
+        if tag not in tag_time_ranges:
+            continue
+
+        time_range = tag_time_ranges[tag]
+
+        if time_range.earliest is not None and (
+            combined.earliest is None or time_range.earliest < combined.earliest
+        ):
+            combined.earliest = time_range.earliest
+
+        if time_range.latest is not None and (
+            combined.latest is None or time_range.latest > combined.latest
+        ):
+            combined.latest = time_range.latest
+
+        for date_key, count in time_range.timeline.items():
+            combined.timeline[date_key] = combined.timeline.get(date_key, 0) + count
+
+    return combined
+
+
+def compute_max_single_day(timerange: TimeRange) -> int:
+    """Get the maximum number of tasks completed on a single day."""
+    if not timerange.timeline:
+        return 0
+    return max(timerange.timeline.values())
+
+
+def compute_avg_tasks_per_day(timerange: TimeRange, total_count: int) -> float:
+    """Compute average tasks per day for a timerange."""
+    if timerange.earliest is None or timerange.latest is None:
+        return 0.0
+
+    days_spanned = (timerange.latest.date() - timerange.earliest.date()).days + 1
+    if days_spanned <= 0:
+        return 0.0
+
+    return total_count / days_spanned
+
+
+def compute_explicit_groups(
+    nodes: list[orgparse.node.OrgNode],
+    mapping: dict[str, str],
+    category: str,
+    group_items: list[list[str]],
+    tag_time_ranges: dict[str, TimeRange],
+) -> list[Group]:
+    """Compute group statistics based on explicit tag lists."""
+    groups: list[Group] = []
+
+    for group in group_items:
+        present_tags = [tag for tag in group if tag in tag_time_ranges]
+        if not present_tags:
+            continue
+
+        group_set = set(present_tags)
+        total_tasks = 0
+
+        for node in nodes:
+            node_items = extract_items_for_category(node, mapping, category)
+            if node_items & group_set:
+                total_tasks += max(1, len(node.repeated_tasks))
+
+        if total_tasks == 0:
+            continue
+
+        time_range = combine_time_ranges(tag_time_ranges, present_tags)
+        avg_tasks_per_day = compute_avg_tasks_per_day(time_range, total_tasks)
+        max_single_day = compute_max_single_day(time_range)
+
+        groups.append(
+            Group(
+                tags=present_tags,
+                time_range=time_range,
+                total_tasks=total_tasks,
+                avg_tasks_per_day=avg_tasks_per_day,
+                max_single_day_count=max_single_day,
+            )
+        )
+
+    return groups
+
+
+def display_group_list(
+    groups: list[Group],
+    config: tuple[int, int, datetime | None, datetime | None, TimeRange, set[str], bool],
+) -> None:
+    """Display group stats without the leading indent."""
+    (
+        max_results,
+        num_buckets,
+        date_from,
+        date_until,
+        global_timerange,
+        exclude_set,
+        color_enabled,
+    ) = config
+
+    exclude_lower = {value.lower() for value in exclude_set}
+    filtered_groups = []
+    for group in groups:
+        display_tags = [tag for tag in group.tags if tag.lower() not in exclude_lower]
+        if display_tags:
+            filtered_groups.append((display_tags, group))
+
+    filtered_groups = filtered_groups[:max_results]
+
+    if not filtered_groups:
+        print("No results")
+        return
+
+    for idx, (group_tags, group) in enumerate(filtered_groups):
+        if idx > 0:
+            print()
+
+        earliest_date = select_earliest_date(date_from, global_timerange, group.time_range)
+        latest_date = select_latest_date(date_until, global_timerange, group.time_range)
+
+        if earliest_date and latest_date:
+            date_line, chart_line, underline = render_timeline_chart(
+                group.time_range.timeline,
+                earliest_date,
+                latest_date,
+                num_buckets,
+                color_enabled,
+            )
+            print(date_line)
+            print(chart_line)
+            print(underline)
+
+        print(f"{', '.join(group_tags)}")
+        total_tasks_value = magenta(str(group.total_tasks), color_enabled)
+        avg_value = magenta(f"{group.avg_tasks_per_day:.2f}", color_enabled)
+        max_value = magenta(str(group.max_single_day_count), color_enabled)
+        print(f"  Total tasks: {total_tasks_value}")
+        print(f"  Average tasks per day: {avg_value}")
+        print(f"  Max tasks on a single day: {max_value}")
+
+
 def get_most_recent_timestamp(node: orgparse.node.OrgNode) -> datetime | None:
     """Get the most recent timestamp from a node.
 
@@ -1099,6 +1257,52 @@ def normalize_show_value(value: str, mapping: dict[str, str]) -> str:
     """Normalize a single show value to match heading/body analysis."""
     normalized = normalize({value}, mapping)
     return next(iter(normalized), "")
+
+
+def dedupe_values(values: list[str]) -> list[str]:
+    """Deduplicate values while preserving order."""
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
+
+
+def parse_group_values(value: str) -> list[str]:
+    """Parse comma-separated group values."""
+    values = [item.strip() for item in value.split(",") if item.strip()]
+    if not values:
+        print("Error: --group cannot be empty", file=sys.stderr)
+        sys.exit(1)
+    return values
+
+
+def resolve_group_values(
+    groups: list[str] | None, mapping: dict[str, str], category: str
+) -> list[list[str]] | None:
+    """Resolve explicit group values from CLI arguments."""
+    if groups is None:
+        return None
+
+    resolved_groups: list[list[str]] = []
+    for group_value in groups:
+        raw_values = parse_group_values(group_value)
+        if category == "tags":
+            group_items = [mapping.get(value, value) for value in raw_values]
+        else:
+            group_items = []
+            for value in raw_values:
+                normalized_value = normalize_show_value(value, mapping)
+                if normalized_value:
+                    group_items.append(normalized_value)
+        group_items = dedupe_values(group_items)
+        if group_items:
+            resolved_groups.append(group_items)
+
+    return resolved_groups
 
 
 def load_nodes(
@@ -2022,6 +2226,68 @@ def run_stats_tags(args: SimpleNamespace) -> None:
     )
 
 
+def run_stats_groups(args: SimpleNamespace) -> None:
+    """Run the stats groups command."""
+    color_enabled = should_use_color(args.color_flag)
+
+    if color_enabled:
+        colorama_init(autoreset=True, strip=False)
+
+    todo_keys, done_keys = validate_global_arguments(args)
+    validate_stats_arguments(args)
+
+    mapping = resolve_mapping(args)
+    exclude_set = resolve_exclude_set(args)
+
+    filters = build_filter_chain(args, sys.argv)
+
+    filenames = resolve_input_paths(args.files)
+    nodes, todo_keys, done_keys = load_nodes(filenames, todo_keys, done_keys, [])
+
+    if args.with_gamify_category:
+        nodes = preprocess_gamify_categories(nodes, args.category_property)
+
+    if args.with_tags_as_category:
+        nodes = preprocess_tags_as_category(nodes, args.category_property)
+
+    for filter_spec in filters:
+        nodes = filter_spec.filter(nodes)
+
+    if not nodes:
+        print("No results")
+        return
+
+    result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
+
+    date_from = None
+    date_until = None
+    if args.filter_date_from is not None:
+        date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
+    if args.filter_date_until is not None:
+        date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
+
+    group_values = resolve_group_values(args.groups, mapping, args.use)
+
+    if group_values is not None:
+        tag_time_ranges = {tag_name: tag.time_range for tag_name, tag in result.tags.items()}
+        groups = compute_explicit_groups(nodes, mapping, args.use, group_values, tag_time_ranges)
+    else:
+        groups = sorted(result.tag_groups, key=lambda group: len(group.tags), reverse=True)
+
+    display_group_list(
+        groups,
+        (
+            args.max_results,
+            args.buckets,
+            date_from,
+            date_until,
+            result.timerange,
+            exclude_set,
+            color_enabled,
+        ),
+    )
+
+
 def apply_config_defaults(args: SimpleNamespace) -> None:
     """Apply config-provided defaults for append and inline values."""
     for dest, values in CONFIG_APPEND_DEFAULTS.items():
@@ -2067,6 +2333,7 @@ def build_args_namespace(payload: ArgsPayload) -> SimpleNamespace:
         max_groups=payload.max_groups,
         buckets=payload.buckets,
         show=payload.show,
+        groups=payload.groups,
     )
     apply_config_defaults(args)
     return args
@@ -2110,20 +2377,34 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     """Build Click default_map for Typer commands."""
     summary_defaults = dict(defaults)
     summary_defaults.pop("show", None)
+    summary_defaults.pop("groups", None)
 
     tasks_defaults = dict(defaults)
-    for key in ("max_tags", "max_relations", "max_groups", "min_group_size", "use", "show"):
+    for key in (
+        "max_tags",
+        "max_relations",
+        "max_groups",
+        "min_group_size",
+        "use",
+        "show",
+        "groups",
+    ):
         tasks_defaults.pop(key, None)
 
     tags_defaults = dict(defaults)
-    for key in ("max_tags", "max_groups", "min_group_size"):
+    for key in ("max_tags", "max_groups", "min_group_size", "groups"):
         tags_defaults.pop(key, None)
+
+    groups_defaults = dict(defaults)
+    for key in ("max_tags", "max_groups", "min_group_size", "show"):
+        groups_defaults.pop(key, None)
 
     return {
         "stats": {
             "summary": summary_defaults,
             "tasks": tasks_defaults,
             "tags": tags_defaults,
+            "groups": groups_defaults,
         }
     }
 
@@ -2355,6 +2636,7 @@ def stats_summary(  # noqa: PLR0913
             max_groups=max_groups,
             buckets=buckets,
             show=None,
+            groups=None,
         )
     )
     run_stats(args)
@@ -2559,9 +2841,215 @@ def stats_tags(  # noqa: PLR0913
             max_groups=0,
             buckets=buckets,
             show=show,
+            groups=None,
         )
     )
     run_stats_tags(args)
+
+
+@stats_app.command("groups")
+def stats_groups(  # noqa: PLR0913
+    files: list[str] | None = typer.Argument(  # noqa: B008
+        None, metavar="FILE", help="Org-mode archive files or directories to analyze"
+    ),
+    config: str = typer.Option(
+        ".org-cli.json",
+        "--config",
+        metavar="FILE",
+        help="Config file name to load from current directory",
+    ),
+    exclude: str | None = typer.Option(
+        None,
+        "--exclude",
+        metavar="FILE",
+        help="File containing words to exclude (one per line)",
+    ),
+    mapping: str | None = typer.Option(
+        None,
+        "--mapping",
+        metavar="FILE",
+        help="JSON file containing tag mappings (dict[str, str])",
+    ),
+    todo_keys: str = typer.Option(
+        "TODO",
+        "--todo-keys",
+        metavar="KEYS",
+        help="Comma-separated list of incomplete task states",
+    ),
+    done_keys: str = typer.Option(
+        "DONE",
+        "--done-keys",
+        metavar="KEYS",
+        help="Comma-separated list of completed task states",
+    ),
+    filter_gamify_exp_above: int | None = typer.Option(
+        None,
+        "--filter-gamify-exp-above",
+        metavar="N",
+        help="Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)",
+    ),
+    filter_gamify_exp_below: int | None = typer.Option(
+        None,
+        "--filter-gamify-exp-below",
+        metavar="N",
+        help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
+    ),
+    filter_repeats_above: int | None = typer.Option(
+        None,
+        "--filter-repeats-above",
+        metavar="N",
+        help="Filter tasks where repeat count > N (non-inclusive)",
+    ),
+    filter_repeats_below: int | None = typer.Option(
+        None,
+        "--filter-repeats-below",
+        metavar="N",
+        help="Filter tasks where repeat count < N (non-inclusive)",
+    ),
+    filter_date_from: str | None = typer.Option(
+        None,
+        "--filter-date-from",
+        metavar="TIMESTAMP",
+        help=(
+            "Filter tasks with timestamps after date (inclusive). "
+            "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
+            "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
+        ),
+    ),
+    filter_date_until: str | None = typer.Option(
+        None,
+        "--filter-date-until",
+        metavar="TIMESTAMP",
+        help=(
+            "Filter tasks with timestamps before date (inclusive). "
+            "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
+            "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
+        ),
+    ),
+    filter_properties: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-property",
+        metavar="KEY=VALUE",
+        help="Filter tasks with exact property match (case-sensitive, can specify multiple)",
+    ),
+    filter_tags: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-tag",
+        metavar="REGEX",
+        help="Filter tasks where any tag matches regex (case-sensitive, can specify multiple)",
+    ),
+    filter_headings: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-heading",
+        metavar="REGEX",
+        help="Filter tasks where heading matches regex (case-sensitive, can specify multiple)",
+    ),
+    filter_bodies: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-body",
+        metavar="REGEX",
+        help="Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)",
+    ),
+    filter_completed: bool = typer.Option(
+        False,
+        "--filter-completed",
+        help="Filter tasks with todo state in done keys",
+    ),
+    filter_not_completed: bool = typer.Option(
+        False,
+        "--filter-not-completed",
+        help="Filter tasks with todo state in todo keys or without a todo state",
+    ),
+    color_flag: bool | None = typer.Option(
+        None,
+        "--color/--no-color",
+        help="Force colored output",
+    ),
+    max_results: int = typer.Option(
+        10,
+        "--max-results",
+        "-n",
+        metavar="N",
+        help="Maximum number of results to display",
+    ),
+    use: str = typer.Option(
+        "tags",
+        "--use",
+        metavar="CATEGORY",
+        help="Category to display: tags, heading, or body",
+    ),
+    groups: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--group",
+        metavar="TAGS",
+        help="Comma-separated list of tags to group (can specify multiple)",
+    ),
+    with_gamify_category: bool = typer.Option(
+        False,
+        "--with-gamify-category",
+        help="Preprocess nodes to set category property based on gamify_exp value",
+    ),
+    with_tags_as_category: bool = typer.Option(
+        False,
+        "--with-tags-as-category",
+        help="Preprocess nodes to set category property based on first tag",
+    ),
+    category_property: str = typer.Option(
+        "CATEGORY",
+        "--category-property",
+        metavar="PROPERTY",
+        help="Property name to use for category histogram and filtering",
+    ),
+    max_relations: int = typer.Option(
+        5,
+        "--max-relations",
+        metavar="N",
+        help="Maximum number of relations to consider per item (use 0 to omit sections)",
+    ),
+    buckets: int = typer.Option(
+        50,
+        "--buckets",
+        metavar="N",
+        help="Number of time buckets for timeline charts (minimum: 20)",
+    ),
+) -> None:
+    """Show tag groups for selected groups or top results."""
+    args = build_args_namespace(
+        ArgsPayload(
+            files=files,
+            config=config,
+            exclude=exclude,
+            mapping=mapping,
+            todo_keys=todo_keys,
+            done_keys=done_keys,
+            filter_gamify_exp_above=filter_gamify_exp_above,
+            filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_repeats_above=filter_repeats_above,
+            filter_repeats_below=filter_repeats_below,
+            filter_date_from=filter_date_from,
+            filter_date_until=filter_date_until,
+            filter_properties=filter_properties,
+            filter_tags=filter_tags,
+            filter_headings=filter_headings,
+            filter_bodies=filter_bodies,
+            filter_completed=filter_completed,
+            filter_not_completed=filter_not_completed,
+            color_flag=color_flag,
+            max_results=max_results,
+            max_tags=0,
+            use=use,
+            with_gamify_category=with_gamify_category,
+            with_tags_as_category=with_tags_as_category,
+            category_property=category_property,
+            max_relations=max_relations,
+            min_group_size=0,
+            max_groups=0,
+            buckets=buckets,
+            show=None,
+            groups=groups,
+        )
+    )
+    run_stats_groups(args)
 
 
 @stats_app.command("tasks")
@@ -2745,6 +3233,7 @@ def stats_tasks(  # noqa: PLR0913
             max_groups=5,
             buckets=buckets,
             show=None,
+            groups=None,
         )
     )
     run_stats_tasks(args)
