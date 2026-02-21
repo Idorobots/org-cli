@@ -337,7 +337,7 @@ def test_build_filter_chain() -> None:
         filter_not_completed=False,
     )
 
-    argv = ["org", "stats", "--filter-category", "simple", "file.org"]
+    argv = ["org", "stats", "summary", "--filter-category", "simple", "file.org"]
     filters = build_filter_chain(args, argv)
 
     assert len(filters) == 1
@@ -848,6 +848,7 @@ def test_main_no_results_after_filtering() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--filter-gamify-exp-above",
             "1000",
             fixture_path,
@@ -872,6 +873,7 @@ def test_main_no_results_with_impossible_filter() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--filter-gamify-exp-above",
             "1000",
             "--filter-gamify-exp-below",
@@ -897,6 +899,7 @@ def test_main_with_tag_groups() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--no-color",
             "--min-group-size",
             "2",
@@ -921,6 +924,7 @@ def test_main_with_tag_groups_high_min_size() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--no-color",
             "--min-group-size",
             "100",
@@ -942,6 +946,7 @@ def test_parse_filter_order_from_argv() -> None:
     argv = [
         "org",
         "stats",
+        "summary",
         "--filter-category",
         "simple",
         "--filter-gamify-exp-above",
@@ -958,7 +963,7 @@ def test_parse_filter_order_from_argv_no_filters() -> None:
     """Test parse_filter_order_from_argv with no filter args."""
     from org.cli import parse_filter_order_from_argv
 
-    argv = ["org", "stats", "--max-results", "10", "file.org"]
+    argv = ["org", "stats", "summary", "--max-results", "10", "file.org"]
 
     result = parse_filter_order_from_argv(argv)
 
@@ -972,6 +977,7 @@ def test_parse_filter_order_from_argv_multiple_properties() -> None:
     argv = [
         "org",
         "stats",
+        "summary",
         "--filter-property",
         "key1=val1",
         "--filter-property",
@@ -994,7 +1000,7 @@ def test_main_entry_point() -> None:
             "-c",
             (
                 "from org.cli import main; import sys; "
-                f"sys.argv = ['cli', 'stats', '{fixture_path}']; main()"
+                f"sys.argv = ['cli', 'stats', 'summary', '{fixture_path}']; main()"
             ),
         ],
         cwd=PROJECT_ROOT,

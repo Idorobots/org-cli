@@ -1128,11 +1128,18 @@ def add_stats_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def create_parser() -> tuple[
-    argparse.ArgumentParser, argparse.ArgumentParser, argparse.ArgumentParser
+    argparse.ArgumentParser,
+    argparse.ArgumentParser,
+    argparse.ArgumentParser,
+    argparse.ArgumentParser,
+    argparse.ArgumentParser,
 ]:
     """Create argument parser for CLI."""
     shared_parent = argparse.ArgumentParser(add_help=False)
     add_global_arguments(shared_parent)
+
+    stats_parent = argparse.ArgumentParser(add_help=False)
+    add_stats_arguments(stats_parent)
 
     parser = argparse.ArgumentParser(
         prog="org",
@@ -1148,12 +1155,31 @@ def create_parser() -> tuple[
         help="Analyze Org-mode archive files for task statistics.",
         description="Analyze Emacs Org-mode archive files for task statistics.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        parents=[shared_parent],
+        parents=[shared_parent, stats_parent],
     )
-    add_files_argument(stats_parser)
-    add_stats_arguments(stats_parser)
+    stats_subparsers = stats_parser.add_subparsers(dest="stats_command", required=True)
 
-    return parser, stats_parser, shared_parent
+    stats_summary_parser = stats_subparsers.add_parser(
+        "summary",
+        help="Show overall task stats.",
+        description="Show overall task stats.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        parents=[shared_parent, stats_parent],
+    )
+    stats_summary_parser.set_defaults(func=run_stats)
+    add_files_argument(stats_summary_parser)
+
+    stats_tasks_parser = stats_subparsers.add_parser(
+        "tasks",
+        help="Show overall task stats without tag sections.",
+        description="Show overall task stats without tag sections.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        parents=[shared_parent, stats_parent],
+    )
+    stats_tasks_parser.set_defaults(func=run_stats_tasks)
+    add_files_argument(stats_tasks_parser)
+
+    return parser, stats_parser, stats_summary_parser, stats_tasks_parser, shared_parent
 
 
 def parse_config_argument(argv: list[str]) -> str:
@@ -1170,7 +1196,7 @@ def parse_arguments() -> argparse.Namespace:
     Returns:
         Parsed arguments namespace
     """
-    parser, stats_parser, shared_parent = create_parser()
+    parser, stats_parser, stats_summary_parser, stats_tasks_parser, shared_parent = create_parser()
 
     config_name = parse_config_argument(sys.argv)
     config_path = Path(config_name)
@@ -1190,10 +1216,25 @@ def parse_arguments() -> argparse.Namespace:
             if defaults:
                 shared_parent.set_defaults(**defaults)
                 stats_parser.set_defaults(**defaults)
+                stats_summary_parser.set_defaults(**defaults)
+                stats_tasks_parser.set_defaults(**defaults)
             if stats_defaults:
                 stats_parser.set_defaults(**stats_defaults)
+                stats_summary_parser.set_defaults(**stats_defaults)
+                stats_tasks_parser.set_defaults(**stats_defaults)
 
-    args = parser.parse_args()
+    argv = sys.argv[1:]
+    if argv and argv[0] == "stats":
+        stats_subcommands = {"summary", "tasks"}
+        has_help = any(arg in {"-h", "--help"} for arg in argv[1:])
+        if (
+            not has_help
+            and len(argv) > 1
+            and (argv[1].startswith("-") or argv[1] not in stats_subcommands)
+        ):
+            argv = ["stats", "summary", *argv[1:]]
+
+    args = parser.parse_args(argv)
 
     for dest, values in append_defaults.items():
         if getattr(args, dest) is None:
@@ -1866,6 +1907,97 @@ def display_results(
     )
 
 
+def display_task_summary(
+    result: AnalysisResult,
+    args: argparse.Namespace,
+    display_config: tuple[datetime | None, datetime | None, list[str], list[str], bool],
+) -> None:
+    """Display global task statistics without tag/group sections.
+
+    Args:
+        result: Analysis results to display
+        args: Command-line arguments containing display configuration
+        display_config: Tuple of (date_from, date_until, done_keys, todo_keys, color_enabled)
+    """
+    date_from, date_until, done_keys, todo_keys, color_enabled = display_config
+
+    if result.timerange.earliest and result.timerange.latest and result.timerange.timeline:
+        earliest_date = date_from.date() if date_from else result.timerange.earliest.date()
+        latest_date = date_until.date() if date_until else result.timerange.latest.date()
+        date_line, chart_line, underline = render_timeline_chart(
+            result.timerange.timeline,
+            earliest_date,
+            latest_date,
+            args.buckets,
+            color_enabled,
+        )
+        print()
+        print(date_line)
+        print(chart_line)
+        print(underline)
+
+    total_tasks_value = magenta(str(result.total_tasks), color_enabled)
+    print(f"Total tasks: {total_tasks_value}")
+
+    if result.timerange.earliest and result.timerange.latest:
+        avg_value = magenta(f"{result.avg_tasks_per_day:.2f}", color_enabled)
+        max_single_value = magenta(str(result.max_single_day_count), color_enabled)
+        max_repeat_value = magenta(str(result.max_repeat_count), color_enabled)
+        print(f"Average tasks per day: {avg_value}")
+        print(f"Max tasks on a single day: {max_single_value}")
+        print(f"Max repeats of a single task: {max_repeat_value}")
+
+    task_states_header = bright_white("\nTask states:", color_enabled)
+    print(task_states_header)
+    remaining_states = sorted(
+        set(result.task_states.values.keys()) - set(done_keys) - set(todo_keys)
+    )
+    state_order = done_keys + todo_keys + remaining_states
+    histogram_lines = render_histogram(
+        result.task_states,
+        args.buckets,
+        state_order,
+        RenderConfig(
+            color_enabled=color_enabled,
+            histogram_type="task_states",
+            done_keys=done_keys,
+            todo_keys=todo_keys,
+        ),
+    )
+    for line in histogram_lines:
+        print(f"  {line}")
+
+    task_categories_header = bright_white("\nTask categories:", color_enabled)
+    print(task_categories_header)
+    category_order = sorted(result.task_categories.values.keys())
+    histogram_lines = render_histogram(
+        result.task_categories,
+        args.buckets,
+        category_order,
+        RenderConfig(color_enabled=color_enabled),
+    )
+    for line in histogram_lines:
+        print(f"  {line}")
+
+    task_days_header = bright_white("\nTask occurrence by day of week:", color_enabled)
+    print(task_days_header)
+    day_order = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+        "unknown",
+    ]
+    histogram_lines = render_histogram(
+        result.task_days, args.buckets, day_order, RenderConfig(color_enabled=color_enabled)
+    )
+    for line in histogram_lines:
+        print(f"  {line}")
+
+
 def validate_global_arguments(args: argparse.Namespace) -> tuple[list[str], list[str]]:
     """Validate shared command-line arguments.
 
@@ -1983,12 +2115,58 @@ def run_stats(args: argparse.Namespace) -> None:
     )
 
 
+def run_stats_tasks(args: argparse.Namespace) -> None:
+    """Run the stats tasks command."""
+    color_enabled = should_use_color(args.color_flag)
+
+    if color_enabled:
+        colorama_init(autoreset=True, strip=False)
+
+    todo_keys, done_keys = validate_global_arguments(args)
+    validate_stats_arguments(args)
+
+    mapping = resolve_mapping(args)
+
+    filters = build_filter_chain(args, sys.argv)
+
+    filenames = resolve_input_paths(args.files)
+    nodes, todo_keys, done_keys = load_nodes(filenames, todo_keys, done_keys, [])
+
+    if args.with_gamify_category:
+        nodes = preprocess_gamify_categories(nodes, args.category_property)
+
+    if args.with_tags_as_category:
+        nodes = preprocess_tags_as_category(nodes, args.category_property)
+
+    for filter_spec in filters:
+        nodes = filter_spec.filter(nodes)
+
+    if not nodes:
+        print("No results")
+        return
+
+    result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
+
+    date_from = None
+    date_until = None
+    if args.filter_date_from is not None:
+        date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
+    if args.filter_date_until is not None:
+        date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
+
+    display_task_summary(
+        result,
+        args,
+        (date_from, date_until, done_keys, todo_keys, color_enabled),
+    )
+
+
 def main() -> None:
     """Main CLI entry point."""
     args = parse_arguments()
 
-    if args.command == "stats":
-        run_stats(args)
+    if hasattr(args, "func"):
+        args.func(args)
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ def test_config_applies_defaults(tmp_path: Path, monkeypatch: MonkeyPatch) -> No
     write_config(config_path, {"--use": "heading"})
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["org", "stats", fixture_path])
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary", fixture_path])
 
     args = parse_arguments()
     assert args.use == "heading"
@@ -42,7 +42,11 @@ def test_cli_overrides_config(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     write_config(config_path, {"--use": "heading"})
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "--use", "body", fixture_path])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "stats", "summary", "--use", "body", fixture_path],
+    )
 
     args = parse_arguments()
     assert args.use == "body"
@@ -60,7 +64,7 @@ def test_malformed_json_prints_and_ignored(
         f.write("{bad json")
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["org", "stats", fixture_path])
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary", fixture_path])
 
     args = parse_arguments()
     captured = capsys.readouterr()
@@ -79,7 +83,7 @@ def test_malformed_value_prints_and_ignored(
     write_config(config_path, {"--max-results": "ten"})
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["org", "stats", fixture_path])
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary", fixture_path])
 
     args = parse_arguments()
     captured = capsys.readouterr()
@@ -94,7 +98,7 @@ def test_config_filter_applies_with_no_cli_order(tmp_path: Path) -> None:
     write_config(config_path, {"--filter-tag": ["this-tag-does-not-exist"]})
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color", fixture_path],
         cwd=str(tmp_path),
         capture_output=True,
         text=True,
@@ -113,7 +117,11 @@ def test_config_custom_name(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     write_config(config_path, {"--use": "heading"})
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "--config", "custom.json", fixture_path])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "stats", "summary", "--config", "custom.json", fixture_path],
+    )
 
     args = parse_arguments()
     assert args.use == "heading"
@@ -131,7 +139,7 @@ def test_config_absolute_path(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["org", "stats", "--config", str(config_path.resolve()), fixture_path],
+        ["org", "stats", "summary", "--config", str(config_path.resolve()), fixture_path],
     )
 
     args = parse_arguments()
@@ -148,7 +156,7 @@ def test_config_inline_mapping(tmp_path: Path) -> None:
     )
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color", fixture_path],
         cwd=str(tmp_path),
         capture_output=True,
         text=True,
@@ -167,7 +175,7 @@ def test_config_inline_exclude(tmp_path: Path) -> None:
     write_config(config_path, {"--exclude": ["test", "debugging"]})
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color", fixture_path],
         cwd=str(tmp_path),
         capture_output=True,
         text=True,

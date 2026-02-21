@@ -1521,10 +1521,10 @@ Installing ~org-cli~ should result in a command called ~org~ to be made availabl
 
 Please update the README.md and AGENTS.md with the updated names, code structure and command breakdown.
 
-** DONE Stats command                                                                 :CLI:Analysis:
+** REWORKED Stats command                                                             :CLI:Analysis:
 :LOGBOOK:
-- State "DONE"       from "TODO"       [2026-02-21 Sat 18:53] \\
-  No comments here, was pretty easy.
+- State "REWORKED"       from "TODO"       [2026-02-21 Sat 18:53] \\
+  No comments here, was pretty easy. Upon closer inspection it turned out that the command was implemented as a positional argument, not as a subcommand.
 :END:
 Wrap the current analysis logic into a dedicated ~stats~ command. There will be more commands to come in the future.
 An example invocation of this command follows:
@@ -1549,7 +1549,98 @@ Some of the CLI switches will affect all commands, some will be used only by som
 The remaining switches should be recognized by the ~stats~ command.
 Some switches will be shared and semantically the same for a subset of commands, but should be recognized only by the commands they affect.
 
-** TODO Tasks stats command                                                                 :CLI:UX:
+** CANCELLED Tasks stats command                                                            :CLI:UX:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-02-21 Sat 19:07] \\
+  The AI went full slop and added switches that disable the display of some sections in the stats command instead of creating a proper subcommand. Same for stats.
+:END:
+Add a new ~stats tasks~ command to the CLI that allows displaying over-all stats for tasks.
+An example invocation will look like this:
+
+#+begin_src bash
+org stats tasks -n 5 path/to/file.org
+#+end_src
+
+The command should display a frequency chart of the tasks matching the filter criteria along with the global task stats, all three histograms of distributions and a list of most recent tasks contributing to the analysis results.
+
+Essentially, this is the initial part of the ~stats~ output, without the ~TASKS~, ~TAGS~ or ~GROUPS~ sections.
+This is how it's supposed to look:
+
+#+begin_example
+2026-02-07                                2026-02-21
+┊▃  ▄  ▅         ▁   ▄  █  ▄         ▁   ▁  ▇  ▄   ┊ 17 (2026-02-14)
+‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+Total tasks: 127
+Average tasks per day: 8.47
+Max tasks on a single day: 17
+Max repeats of a single task: 1
+
+Task states:
+  CANCELLED┊█████ 14
+  DELEGATED┊ 0
+  REWORKED ┊██████████████ 37
+  DONE     ┊██████████████████ 46
+  TODO     ┊█ 5
+  none     ┊█████████ 25
+
+Task categories:
+  Analysis ┊███████ 18
+  Bug      ┊█ 4
+  Build    ┊█ 4
+  UX       ┊███████ 18
+  none     ┊████████████ 33
+
+Task occurrence by day of week:
+  Monday   ┊████ 11
+  Tuesday  ┊ 0
+  Wednesday┊ 1
+  Thursday ┊██ 6
+  Friday   ┊██████████ 26
+  Saturday ┊█████████████ 34
+  Sunday   ┊███████ 19
+  unknown  ┊███████████ 30
+#+end_example
+
+The colors should be applied the exact same way as in the global ~stats~ command, including support for ~--color~ switches.
+
+The command should support all the usual switches, much like the full ~stats~ command and run the relevant analysis. The only difference is the output formatting which omits the ~TASKS~, ~TAGS~ and ~GROUPS~ sections.
+
+If there are no tasks matching the filter criteria, the command should print "No results".
+
+We will eventually refine the command output in the future.
+
+** REWORKED Refactor stats command                                                     :Cleanup:CLI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-21 Sat 19:50] \\
+  Required additional prompting since argparse turned out to be a limitation. The AI proposed to add `org stats summary` command.
+:END:
+Please refactor the ~org stats~ and ~org stats tasks~ commands to be proper subcommands of ~org~.
+I want the ~stats~ command to be a subcommand of ~org~ and ~tasks~ to be a subcommand of ~stats~.
+
+Eventually, we will have many more commands:
+#+begin_example
+org stats
+org stats tasks
+org stats tags
+org stats groups
+org tasks
+org tasks add
+...
+#+end_example
+
+The commands should be organized in subcommand trees and properly handle parsing of the arguments for each command.
+Each command should have a separate implementation function, do not pass a flag that changes how another command's implementation is supposed to display things.
+I want these to be separate commands entirely, that share some of the code for th, parsing of arguments, analysis and formatting of the results.
+
+** TODO Refactor the CLI commands with Typer                                           :Cleanup:CLI:
+Refactor the CLI commands with the python Typer library.
+
+To achieve this I'd like you to refactor the cli.py module in terms of Typer commands. The logic and output should remain the same, save for the command layout, help strings, etc. Typer should make it much easier to handle many subcommands in a nicer fashion.
+
+You can define a separate Typer app per command and combine them for the wrapping commands. You might need to duplicate some parameter configs for different commands, but that is OK. Try to reuse as much of the validation/analysis/display code as possible.
+
+Please don't bother adjusting the tests just yet, focus on the functionality and usability of this solution. We'll address the tests next.
+
 ** TODO Tags stats command                                                                  :CLI:UX:
 Add a new ~stats tags~ command to the CLI that allows displaying tag stats for specific tags.
 An example invocation will look like this:

@@ -16,7 +16,15 @@ def test_cli_runs_successfully() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "single_task.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            fixture_path,
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -34,7 +42,16 @@ def test_cli_with_multiple_files() -> None:
     fixture2 = os.path.join(FIXTURES_DIR, "single_task.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture1, fixture2],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            fixture1,
+            fixture2,
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -51,7 +68,15 @@ def test_cli_outputs_statistics() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            fixture_path,
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -63,12 +88,74 @@ def test_cli_outputs_statistics() -> None:
     assert "TAGS" in result.stdout
 
 
+def test_cli_stats_tasks_outputs_summary_only() -> None:
+    """Test stats tasks output excludes tag/group/task sections."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "tasks",
+            "--no-color",
+            fixture_path,
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Total tasks:" in result.stdout
+    assert "Task states:" in result.stdout
+    assert "Task categories:" in result.stdout
+    assert "Task occurrence by day of week:" in result.stdout
+    assert "TASKS" not in result.stdout
+    assert "TAGS" not in result.stdout
+    assert "GROUPS" not in result.stdout
+
+
+def test_cli_stats_tasks_no_results() -> None:
+    """Test stats tasks output for empty filter results."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "tasks",
+            "--no-color",
+            "--filter-tag",
+            "nomatchtag$",
+            fixture_path,
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "No results" in result.stdout
+
+
 def test_cli_with_archive_small() -> None:
     """Test CLI with the real ARCHIVE_small file."""
     archive_path = os.path.join(PROJECT_ROOT, "examples", "ARCHIVE_small")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", archive_path],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            archive_path,
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -86,7 +173,15 @@ def test_cli_via_cli_module() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            fixture_path,
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -101,7 +196,15 @@ def test_cli_handles_24_00_time() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "edge_cases.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            fixture_path,
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -131,7 +234,7 @@ def test_cli_no_arguments_with_org_files(tmp_path: Path) -> None:
     (tmp_path / "another.org").write_text("* DONE Task\n", encoding="utf-8")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color"],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color"],
         cwd=str(tmp_path),
         capture_output=True,
         text=True,
@@ -148,7 +251,15 @@ def test_cli_directory_argument(tmp_path: Path) -> None:
     (data_dir / "sample.org").write_text("* TODO Task\n", encoding="utf-8")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", str(data_dir)],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            str(data_dir),
+        ],
         cwd=str(tmp_path),
         capture_output=True,
         text=True,
@@ -165,7 +276,15 @@ def test_cli_directory_argument_no_org_files(tmp_path: Path) -> None:
     (data_dir / "sample.txt").write_text("not org", encoding="utf-8")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", str(data_dir)],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            str(data_dir),
+        ],
         cwd=str(tmp_path),
         capture_output=True,
         text=True,
@@ -189,6 +308,7 @@ def test_cli_mixed_file_and_directory(tmp_path: Path) -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--no-color",
             str(file_path),
             str(data_dir),
@@ -207,7 +327,15 @@ def test_cli_tag_filtering() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            fixture_path,
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -230,6 +358,7 @@ def test_cli_filter_simple_sorting() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--no-color",
             "--config",
             "missing.json",
@@ -260,6 +389,7 @@ def test_cli_filter_hard_sorting() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--no-color",
             "--config",
             "missing.json",
@@ -283,7 +413,15 @@ def test_cli_filter_output_format() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            fixture_path,
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -312,6 +450,7 @@ def test_cli_filter_combined_options() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--filter-category",
             "regular",
             "-n",
@@ -334,7 +473,15 @@ def test_cli_outputs_time_ranges() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            fixture_path,
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -350,7 +497,15 @@ def test_cli_time_ranges_format() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            fixture_path,
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -379,7 +534,17 @@ def test_cli_displays_top_tasks() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "repeated_tasks.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "--no-color", fixture_path, "-n", "3"],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "summary",
+            "--no-color",
+            fixture_path,
+            "-n",
+            "3",
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -404,6 +569,7 @@ def test_cli_with_tags_as_category() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--no-color",
             "--with-tags-as-category",
             fixture_path,
@@ -427,6 +593,7 @@ def test_cli_with_both_preprocessors() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--no-color",
             "--with-gamify-category",
             "--with-tags-as-category",
@@ -451,6 +618,7 @@ def test_cli_filter_by_tag_category() -> None:
             "-m",
             "org",
             "stats",
+            "summary",
             "--no-color",
             "--with-tags-as-category",
             "--filter-category",
