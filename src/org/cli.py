@@ -23,6 +23,7 @@ from org.analyze import (
     TimeRange,
     analyze,
     clean,
+    normalize,
 )
 from org.color import bright_white, dim_white, get_state_color, magenta, should_use_color
 from org.filters import (
@@ -161,6 +162,7 @@ COMMAND_OPTION_NAMES = {
     "use",
     "with_gamify_category",
     "with_tags_as_category",
+    "show",
 }
 
 
@@ -229,6 +231,7 @@ class ArgsPayload:
     min_group_size: int
     max_groups: int
     buckets: int
+    show: str | None
 
 
 def load_exclude_list(filepath: str | None) -> set[str]:
@@ -414,13 +417,17 @@ def validate_str_option(key: str, value: object) -> str | None:
     """Validate string option value."""
     if not isinstance(value, str):
         return None
-    if key == "--config" and not value.strip():
+    stripped = value.strip()
+    if key in ("--config", "--show") and not stripped:
         return None
-    if key == "--use" and value not in {"tags", "heading", "body"}:
-        return None
-    if key in ("--todo-keys", "--done-keys") and not is_valid_keys_string(value):
-        return None
-    if key in ("--filter-date-from", "--filter-date-until") and not is_valid_date_argument(value):
+
+    invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
+    invalid_keys = key in ("--todo-keys", "--done-keys") and not is_valid_keys_string(value)
+    invalid_dates = key in (
+        "--filter-date-from",
+        "--filter-date-until",
+    ) and not is_valid_date_argument(value)
+    if invalid_use or invalid_keys or invalid_dates:
         return None
     return value
 
@@ -587,6 +594,7 @@ def build_config_defaults(
     stats_str_options: dict[str, str] = {
         "--category-property": "category_property",
         "--use": "use",
+        "--show": "show",
     }
 
     global_str_options: dict[str, str] = {
@@ -803,6 +811,84 @@ def display_category(
                     print(f"      {related_name} ({count})")
 
 
+def display_selected_items(
+    tags: dict[str, Tag],
+    show: list[str] | None,
+    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange, set[str], bool],
+) -> None:
+    """Display formatted output for a selected tag list without leading indent."""
+    (
+        max_results,
+        max_relations,
+        num_buckets,
+        date_from,
+        date_until,
+        global_timerange,
+        exclude_set,
+        color_enabled,
+    ) = config
+
+    cleaned = clean(exclude_set, tags)
+
+    if show is not None:
+        selected_items = [(name, cleaned[name]) for name in show if name in cleaned]
+        selected_items = selected_items[:max_results]
+    else:
+        selected_items = sorted(cleaned.items(), key=lambda item: -item[1].total_tasks)[
+            0:max_results
+        ]
+
+    if not selected_items:
+        print("No results")
+        return
+
+    for idx, (name, tag) in enumerate(selected_items):
+        if idx > 0:
+            print()
+
+        time_range = tag.time_range
+
+        if time_range and time_range.earliest and time_range.timeline:
+            earliest_date = select_earliest_date(date_from, global_timerange, time_range)
+            latest_date = select_latest_date(date_until, global_timerange, time_range)
+
+            if earliest_date and latest_date:
+                date_line, chart_line, underline = render_timeline_chart(
+                    time_range.timeline,
+                    earliest_date,
+                    latest_date,
+                    num_buckets,
+                    color_enabled,
+                )
+                print(date_line)
+                print(chart_line)
+                print(underline)
+
+        print(name)
+        total_tasks_value = magenta(str(tag.total_tasks), color_enabled)
+        print(f"  Total tasks: {total_tasks_value}")
+        if tag.time_range.earliest and tag.time_range.latest:
+            avg_value = magenta(f"{tag.avg_tasks_per_day:.2f}", color_enabled)
+            max_value = magenta(str(tag.max_single_day_count), color_enabled)
+            print(f"  Average tasks per day: {avg_value}")
+            print(f"  Max tasks on a single day: {max_value}")
+
+        if max_relations > 0 and tag.relations:
+            filtered_relations = {
+                rel_name: count
+                for rel_name, count in tag.relations.items()
+                if rel_name.lower() not in {e.lower() for e in exclude_set}
+            }
+            sorted_relations = sorted(filtered_relations.items(), key=lambda x: x[1], reverse=True)[
+                0:max_relations
+            ]
+
+            if sorted_relations:
+                print("  Top relations:")
+                for related_name, count in sorted_relations:
+                    print(f"    {related_name} ({count})")
+
+
 def display_groups(
     groups: list[Group],
     exclude_set: set[str],
@@ -998,6 +1084,21 @@ def validate_pattern(pattern: str, option_name: str, use_multiline: bool = False
     except re.error as e:
         print(f"Error: Invalid regex pattern for {option_name}: '{pattern}'\n{e}", file=sys.stderr)
         sys.exit(1)
+
+
+def parse_show_values(value: str) -> list[str]:
+    """Parse comma-separated show values."""
+    values = [item.strip() for item in value.split(",") if item.strip()]
+    if not values:
+        print("Error: --show cannot be empty", file=sys.stderr)
+        sys.exit(1)
+    return values
+
+
+def normalize_show_value(value: str, mapping: dict[str, str]) -> str:
+    """Normalize a single show value to match heading/body analysis."""
+    normalized = normalize({value}, mapping)
+    return next(iter(normalized), "")
 
 
 def load_nodes(
@@ -1853,6 +1954,74 @@ def run_stats_tasks(args: SimpleNamespace) -> None:
     )
 
 
+def run_stats_tags(args: SimpleNamespace) -> None:
+    """Run the stats tags command."""
+    color_enabled = should_use_color(args.color_flag)
+
+    if color_enabled:
+        colorama_init(autoreset=True, strip=False)
+
+    todo_keys, done_keys = validate_global_arguments(args)
+    validate_stats_arguments(args)
+
+    mapping = resolve_mapping(args)
+    exclude_set = resolve_exclude_set(args)
+
+    filters = build_filter_chain(args, sys.argv)
+
+    filenames = resolve_input_paths(args.files)
+    nodes, todo_keys, done_keys = load_nodes(filenames, todo_keys, done_keys, [])
+
+    if args.with_gamify_category:
+        nodes = preprocess_gamify_categories(nodes, args.category_property)
+
+    if args.with_tags_as_category:
+        nodes = preprocess_tags_as_category(nodes, args.category_property)
+
+    for filter_spec in filters:
+        nodes = filter_spec.filter(nodes)
+
+    if not nodes:
+        print("No results")
+        return
+
+    result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
+
+    date_from = None
+    date_until = None
+    if args.filter_date_from is not None:
+        date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
+    if args.filter_date_until is not None:
+        date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
+
+    show_values = None
+    if args.show is not None:
+        raw_values = parse_show_values(args.show)
+        if args.use == "tags":
+            show_values = [mapping.get(value.strip(), value.strip()) for value in raw_values]
+        else:
+            show_values = []
+            for value in raw_values:
+                normalized_value = normalize_show_value(value, mapping)
+                if normalized_value:
+                    show_values.append(normalized_value)
+
+    display_selected_items(
+        result.tags,
+        show_values,
+        (
+            args.max_results,
+            args.max_relations,
+            args.buckets,
+            date_from,
+            date_until,
+            result.timerange,
+            exclude_set,
+            color_enabled,
+        ),
+    )
+
+
 def apply_config_defaults(args: SimpleNamespace) -> None:
     """Apply config-provided defaults for append and inline values."""
     for dest, values in CONFIG_APPEND_DEFAULTS.items():
@@ -1897,6 +2066,7 @@ def build_args_namespace(payload: ArgsPayload) -> SimpleNamespace:
         min_group_size=payload.min_group_size,
         max_groups=payload.max_groups,
         buckets=payload.buckets,
+        show=payload.show,
     )
     apply_config_defaults(args)
     return args
@@ -1938,14 +2108,22 @@ def load_cli_config(
 
 def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[str, object]]]:
     """Build Click default_map for Typer commands."""
+    summary_defaults = dict(defaults)
+    summary_defaults.pop("show", None)
+
     tasks_defaults = dict(defaults)
-    for key in ("max_tags", "max_relations", "max_groups", "min_group_size", "use"):
+    for key in ("max_tags", "max_relations", "max_groups", "min_group_size", "use", "show"):
         tasks_defaults.pop(key, None)
+
+    tags_defaults = dict(defaults)
+    for key in ("max_tags", "max_groups", "min_group_size"):
+        tags_defaults.pop(key, None)
 
     return {
         "stats": {
-            "summary": dict(defaults),
+            "summary": summary_defaults,
             "tasks": tasks_defaults,
+            "tags": tags_defaults,
         }
     }
 
@@ -2176,9 +2354,214 @@ def stats_summary(  # noqa: PLR0913
             min_group_size=min_group_size,
             max_groups=max_groups,
             buckets=buckets,
+            show=None,
         )
     )
     run_stats(args)
+
+
+@stats_app.command("tags")
+def stats_tags(  # noqa: PLR0913
+    files: list[str] | None = typer.Argument(  # noqa: B008
+        None, metavar="FILE", help="Org-mode archive files or directories to analyze"
+    ),
+    config: str = typer.Option(
+        ".org-cli.json",
+        "--config",
+        metavar="FILE",
+        help="Config file name to load from current directory",
+    ),
+    exclude: str | None = typer.Option(
+        None,
+        "--exclude",
+        metavar="FILE",
+        help="File containing words to exclude (one per line)",
+    ),
+    mapping: str | None = typer.Option(
+        None,
+        "--mapping",
+        metavar="FILE",
+        help="JSON file containing tag mappings (dict[str, str])",
+    ),
+    todo_keys: str = typer.Option(
+        "TODO",
+        "--todo-keys",
+        metavar="KEYS",
+        help="Comma-separated list of incomplete task states",
+    ),
+    done_keys: str = typer.Option(
+        "DONE",
+        "--done-keys",
+        metavar="KEYS",
+        help="Comma-separated list of completed task states",
+    ),
+    filter_gamify_exp_above: int | None = typer.Option(
+        None,
+        "--filter-gamify-exp-above",
+        metavar="N",
+        help="Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)",
+    ),
+    filter_gamify_exp_below: int | None = typer.Option(
+        None,
+        "--filter-gamify-exp-below",
+        metavar="N",
+        help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
+    ),
+    filter_repeats_above: int | None = typer.Option(
+        None,
+        "--filter-repeats-above",
+        metavar="N",
+        help="Filter tasks where repeat count > N (non-inclusive)",
+    ),
+    filter_repeats_below: int | None = typer.Option(
+        None,
+        "--filter-repeats-below",
+        metavar="N",
+        help="Filter tasks where repeat count < N (non-inclusive)",
+    ),
+    filter_date_from: str | None = typer.Option(
+        None,
+        "--filter-date-from",
+        metavar="TIMESTAMP",
+        help=(
+            "Filter tasks with timestamps after date (inclusive). "
+            "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
+            "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
+        ),
+    ),
+    filter_date_until: str | None = typer.Option(
+        None,
+        "--filter-date-until",
+        metavar="TIMESTAMP",
+        help=(
+            "Filter tasks with timestamps before date (inclusive). "
+            "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
+            "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
+        ),
+    ),
+    filter_properties: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-property",
+        metavar="KEY=VALUE",
+        help="Filter tasks with exact property match (case-sensitive, can specify multiple)",
+    ),
+    filter_tags: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-tag",
+        metavar="REGEX",
+        help="Filter tasks where any tag matches regex (case-sensitive, can specify multiple)",
+    ),
+    filter_headings: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-heading",
+        metavar="REGEX",
+        help="Filter tasks where heading matches regex (case-sensitive, can specify multiple)",
+    ),
+    filter_bodies: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--filter-body",
+        metavar="REGEX",
+        help="Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)",
+    ),
+    filter_completed: bool = typer.Option(
+        False,
+        "--filter-completed",
+        help="Filter tasks with todo state in done keys",
+    ),
+    filter_not_completed: bool = typer.Option(
+        False,
+        "--filter-not-completed",
+        help="Filter tasks with todo state in todo keys or without a todo state",
+    ),
+    color_flag: bool | None = typer.Option(
+        None,
+        "--color/--no-color",
+        help="Force colored output",
+    ),
+    max_results: int = typer.Option(
+        10,
+        "--max-results",
+        "-n",
+        metavar="N",
+        help="Maximum number of results to display",
+    ),
+    use: str = typer.Option(
+        "tags",
+        "--use",
+        metavar="CATEGORY",
+        help="Category to display: tags, heading, or body",
+    ),
+    show: str | None = typer.Option(
+        None,
+        "--show",
+        metavar="TAGS",
+        help="Comma-separated list of tags to display (default: top results)",
+    ),
+    with_gamify_category: bool = typer.Option(
+        False,
+        "--with-gamify-category",
+        help="Preprocess nodes to set category property based on gamify_exp value",
+    ),
+    with_tags_as_category: bool = typer.Option(
+        False,
+        "--with-tags-as-category",
+        help="Preprocess nodes to set category property based on first tag",
+    ),
+    category_property: str = typer.Option(
+        "CATEGORY",
+        "--category-property",
+        metavar="PROPERTY",
+        help="Property name to use for category histogram and filtering",
+    ),
+    max_relations: int = typer.Option(
+        5,
+        "--max-relations",
+        metavar="N",
+        help="Maximum number of relations to display per item (use 0 to omit sections)",
+    ),
+    buckets: int = typer.Option(
+        50,
+        "--buckets",
+        metavar="N",
+        help="Number of time buckets for timeline charts (minimum: 20)",
+    ),
+) -> None:
+    """Show tag stats for selected tags or top results."""
+    args = build_args_namespace(
+        ArgsPayload(
+            files=files,
+            config=config,
+            exclude=exclude,
+            mapping=mapping,
+            todo_keys=todo_keys,
+            done_keys=done_keys,
+            filter_gamify_exp_above=filter_gamify_exp_above,
+            filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_repeats_above=filter_repeats_above,
+            filter_repeats_below=filter_repeats_below,
+            filter_date_from=filter_date_from,
+            filter_date_until=filter_date_until,
+            filter_properties=filter_properties,
+            filter_tags=filter_tags,
+            filter_headings=filter_headings,
+            filter_bodies=filter_bodies,
+            filter_completed=filter_completed,
+            filter_not_completed=filter_not_completed,
+            color_flag=color_flag,
+            max_results=max_results,
+            max_tags=0,
+            use=use,
+            with_gamify_category=with_gamify_category,
+            with_tags_as_category=with_tags_as_category,
+            category_property=category_property,
+            max_relations=max_relations,
+            min_group_size=2,
+            max_groups=0,
+            buckets=buckets,
+            show=show,
+        )
+    )
+    run_stats_tags(args)
 
 
 @stats_app.command("tasks")
@@ -2361,6 +2744,7 @@ def stats_tasks(  # noqa: PLR0913
             min_group_size=2,
             max_groups=5,
             buckets=buckets,
+            show=None,
         )
     )
     run_stats_tasks(args)

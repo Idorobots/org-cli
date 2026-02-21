@@ -1712,7 +1712,11 @@ Please don't adjust the test cases just yet, we'll handle that next.
 :END:
 Adjust the test cases to use the new command layout based on Typer. Don't bother testing the ~org tasks~ command (yet).
 
-** TODO Tags stats command                                                                  :CLI:UX:
+** DONE Tags stats command                                                                  :CLI:UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-21 Sat 22:32] \\
+  Seems to have one-shot the implementation.
+:END:
 Add a new ~stats tags~ command to the CLI that allows displaying tag stats for specific tags.
 An example invocation will look like this:
 
