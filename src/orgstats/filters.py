@@ -568,3 +568,35 @@ def preprocess_gamify_categories(
         wrapped = _PropertyEnrichedOrgNode(node, {category_property: category})
         result.append(wrapped)
     return result
+
+
+def preprocess_tags_as_category(
+    nodes: list[orgparse.node.OrgNode],
+    category_property: str,
+) -> list[orgparse.node.OrgNode]:
+    """Add category property to nodes based on first tag.
+
+    For each node with tags, sets category property to the value of the first tag.
+    The first tag is determined by its position in the org file (preserves order).
+    Nodes without tags are returned unwrapped (no category property modification).
+
+    Args:
+        nodes: List of nodes to preprocess
+        category_property: Name of property to set (e.g., "CATEGORY")
+
+    Returns:
+        List of nodes with category property set (wrapped if has tags, unwrapped if not)
+    """
+    result: list[orgparse.node.OrgNode] = []
+    for node in nodes:
+        if hasattr(node, "_tags") and node._tags:
+            first_tag = node._tags[0]
+            wrapped = _PropertyEnrichedOrgNode(node, {category_property: first_tag})
+            result.append(wrapped)
+        elif node.tags:
+            first_tag = sorted(node.tags)[0]
+            wrapped = _PropertyEnrichedOrgNode(node, {category_property: first_tag})
+            result.append(wrapped)
+        else:
+            result.append(node)
+    return result

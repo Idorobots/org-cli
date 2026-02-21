@@ -152,7 +152,7 @@ def test_cli_filter_simple_sorting() -> None:
             "-m",
             "orgstats",
             "--no-color",
-            "--with-gamify",
+            "--with-gamify-category",
             "--filter-category",
             "simple",
             fixture_path,
@@ -179,7 +179,7 @@ def test_cli_filter_hard_sorting() -> None:
             "-m",
             "orgstats",
             "--no-color",
-            "--with-gamify",
+            "--with-gamify-category",
             "--filter-category",
             "hard",
             fixture_path,
@@ -307,3 +307,72 @@ def test_cli_displays_top_tasks() -> None:
     top_tasks_pos = result.stdout.index("TASKS")
     top_tags_pos = result.stdout.index("TAGS")
     assert top_tasks_pos < top_tags_pos
+
+
+def test_cli_with_tags_as_category() -> None:
+    """Test --with-tags-as-category flag."""
+    fixture_path = os.path.join(FIXTURES_DIR, "tags_category_test.org")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "orgstats",
+            "--no-color",
+            "--with-tags-as-category",
+            fixture_path,
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "bug" in result.stdout or "work" in result.stdout or "urgent" in result.stdout
+
+
+def test_cli_with_both_preprocessors() -> None:
+    """Test combining --with-gamify-category and --with-tags-as-category."""
+    fixture_path = os.path.join(FIXTURES_DIR, "tags_category_test.org")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "orgstats",
+            "--no-color",
+            "--with-gamify-category",
+            "--with-tags-as-category",
+            fixture_path,
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "urgent" in result.stdout or "work" in result.stdout
+
+
+def test_cli_filter_by_tag_category() -> None:
+    """Test filtering by tag-based categories."""
+    fixture_path = os.path.join(FIXTURES_DIR, "tags_category_test.org")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "orgstats",
+            "--no-color",
+            "--with-tags-as-category",
+            "--filter-category",
+            "work",
+            fixture_path,
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Total tasks:" in result.stdout

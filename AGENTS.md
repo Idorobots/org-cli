@@ -60,9 +60,18 @@ poetry run orgstats --max-tags 0 examples/ARCHIVE_small  # Omit Top tags section
 poetry run orgstats --max-groups 3 examples/ARCHIVE_small
 poetry run orgstats --max-groups 0 examples/ARCHIVE_small  # Omit Tag groups section entirely
 
-# Filter by task difficulty
-poetry run orgstats --filter hard examples/ARCHIVE_small
-poetry run orgstats --filter simple -n 20 examples/ARCHIVE_small
+# Filter by task difficulty (requires --with-gamify-category)
+poetry run orgstats --with-gamify-category --filter-category hard examples/ARCHIVE_small
+poetry run orgstats --with-gamify-category --filter-category simple -n 20 examples/ARCHIVE_small
+
+# Use first tag as category
+poetry run orgstats --with-tags-as-category examples/ARCHIVE_small
+
+# Combine both preprocessors (tags will override gamify)
+poetry run orgstats --with-gamify-category --with-tags-as-category examples/ARCHIVE_small
+
+# Filter by tag-based category
+poetry run orgstats --with-tags-as-category --filter-category work examples/ARCHIVE_small
 
 # Show different data categories
 poetry run orgstats --use tags examples/ARCHIVE_small       # Analyze tags (default)
@@ -92,7 +101,7 @@ poetry run orgstats --filter-heading "bug|fix" examples/ARCHIVE_small   # Headin
 poetry run orgstats --filter-body "TODO:" examples/ARCHIVE_small        # Body containing "TODO:"
 
 # Combine multiple options
-poetry run orgstats -n 25 --filter regular --exclude words.txt examples/ARCHIVE_small
+poetry run orgstats -n 25 --with-gamify-category --filter-category regular --exclude words.txt examples/ARCHIVE_small
 
 # Process multiple files
 poetry run orgstats file1.org file2.org file3.org
@@ -106,11 +115,14 @@ poetry run orgstats file1.org file2.org file3.org
 - `--max-groups N` - Maximum number of tag groups to display (default: 5, use 0 to omit section)
 - `--min-group-size N` - Minimum group size to display (default: 2)
 - `--buckets N` - Number of time buckets for timeline charts (default: 50, minimum: 20)
-- `--filter TYPE` / `-f TYPE` - Filter tasks by difficulty: simple, regular, hard, or all (default: all)
-  - `simple` - Tasks with gamify_exp < 10
-  - `regular` - Tasks with 10 ≤ gamify_exp < 20
-  - `hard` - Tasks with gamify_exp ≥ 20
-  - `all` - All tasks combined (default)
+- `--with-gamify-category` - Preprocess nodes to set category property based on gamify_exp value (disabled by default)
+- `--with-tags-as-category` - Preprocess nodes to set category property based on first tag (disabled by default)
+- `--category-property PROPERTY` - Property name for category histogram and filtering (default: CATEGORY)
+- `--filter-category VALUE` - Filter tasks by category property value (e.g., simple, regular, hard, none, or custom). Use 'all' to skip category filtering (default: all)
+  - When `--with-gamify-category` is enabled: categories are simple, regular, hard based on gamify_exp
+  - When `--with-tags-as-category` is enabled: category is the first tag on the task
+  - Without preprocessing: uses existing property values in org files (or "none" if missing)
+  - Can filter by any custom category value
 - `--use CATEGORY` - Category to display: tags, heading, or body (default: tags)
 - `--exclude FILE` - File with words to exclude (one per line, replaces default exclusion list)
 - `--mapping FILE` - JSON file containing tag mappings (dict[str, str])

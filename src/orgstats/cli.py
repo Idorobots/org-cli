@@ -37,6 +37,7 @@ from orgstats.filters import (
     filter_repeats_below,
     filter_tag,
     preprocess_gamify_categories,
+    preprocess_tags_as_category,
 )
 from orgstats.histogram import RenderConfig, render_histogram
 from orgstats.plot import render_timeline_chart
@@ -560,9 +561,15 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--with-gamify",
+        "--with-gamify-category",
         action="store_true",
         help="Preprocess nodes to set category property based on gamify_exp value",
+    )
+
+    parser.add_argument(
+        "--with-tags-as-category",
+        action="store_true",
+        help="Preprocess nodes to set category property based on first tag",
     )
 
     parser.add_argument(
@@ -1392,8 +1399,11 @@ def main() -> None:
 
     nodes, todo_keys, done_keys = load_nodes(args.files, todo_keys, done_keys, [])
 
-    if args.with_gamify:
+    if args.with_gamify_category:
         nodes = preprocess_gamify_categories(nodes, args.category_property)
+
+    if args.with_tags_as_category:
+        nodes = preprocess_tags_as_category(nodes, args.category_property)
 
     for filter_spec in filters:
         nodes = filter_spec.filter(nodes)

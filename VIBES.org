@@ -1,4 +1,5 @@
 #+TITLE: Good Vibes
+#+CATEGORY: Vibes
 #+TODO: TODO(t) | DONE(d@/!)
 #+TODO: | CANCELLED(c@/!) REWORKED(r@/!)
 
@@ -1189,7 +1190,7 @@ Update the CLI output to include the extra information. The values should be dis
 
 The computed values should follow the tag name and be indented an extra level.
 
-** REWORKED Tag slop                                                                      :Bug:Test:
+** REWORKED Tag slop                                                                     :Bug:Tests:
 :LOGBOOK:
 - State "REWORKED"  from "TODO"       [2026-02-20 Fri 18:04] \\
   Did this myself as it was pretty fubar.
@@ -1408,6 +1409,16 @@ The reasoning is that gamify_exp is optional, and by default unused by most peop
   Was going to do this myself, but ended up testing the LSP connection and AI did it.
 :END:
 Please rename the ~--show~ CLI switch to ~--use~ as it makes more sense. The logic behind it should stay unchanged.
+
+** TODO --with-tags-as-category                                                             :CLI:UX:
+Please add a new switch ~--with-tags-as-category~ that is disabled by default.
+The switch will run a preprocessing step similar to ~--with-gamify~ that assigns the category named by ~--category-property~ based on the leading tag on a task.
+That is, if set, all nodes will be preprocessed to store a category property that's value is the same as the very first tag on the node.
+If the node does not have any tags, omit the category.
+
+The switch can be combined with ~--with-gamify~ and will just overwrite the category, so whichever comes last will be the one that's used.
+
+Please rename ~--with-gamify~ to ~--with-gamify-category~.
 
 ** TODO Default FILE to *.org in cwd                                                        :UX:CLI:
 When a ~FILE~ is not provided to the CLI command  we currently return an error. I'd like to change that to search the current working directory for all *.org files and if any are found, the command will analyze them.
