@@ -122,16 +122,18 @@ class ListArgs:
     max_results: int
     details: bool
     offset: int
-    order_by: str | list[str]
+    order_by: str | list[str] | tuple[str, ...]
     with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
 
 
-def normalize_order_by(order_by: str | list[str]) -> list[str]:
+def normalize_order_by(order_by: str | list[str] | tuple[str, ...]) -> list[str]:
     """Normalize order_by values into a list."""
     if isinstance(order_by, list):
         return order_by
+    if isinstance(order_by, tuple):
+        return list(order_by)
     return [order_by]
 
 

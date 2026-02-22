@@ -209,6 +209,11 @@ def is_string_list(value: object) -> TypeGuard[list[str]]:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
+def is_string_tuple(value: object) -> TypeGuard[tuple[str, ...]]:
+    """Check if value is tuple[str, ...]."""
+    return isinstance(value, tuple) and all(isinstance(item, str) for item in value)
+
+
 def is_string_dict(value: object) -> TypeGuard[dict[str, str]]:
     """Check if value is dict[str, str]."""
     return isinstance(value, dict) and all(
@@ -291,6 +296,25 @@ def validate_str_option(key: str, value: object) -> str | None:
     return value
 
 
+def validate_order_by_option(value: object) -> str | list[str] | None:
+    """Validate order-by option value."""
+    allowed = {
+        "file-order",
+        "file-order-reverse",
+        "level",
+        "timestamp-asc",
+        "timestamp-desc",
+        "gamify-exp-asc",
+        "gamify-exp-desc",
+    }
+    if isinstance(value, str):
+        return value if value in allowed else None
+    if is_string_list(value) or is_string_tuple(value):
+        order_by_values = list(value)
+        return order_by_values if all(item in allowed for item in order_by_values) else None
+    return None
+
+
 def validate_list_option(key: str, value: object) -> list[str] | None:
     """Validate list option value."""
     if not is_string_list(value):
@@ -334,6 +358,63 @@ def apply_exclude_config(value: object, defaults: dict[str, object]) -> bool:
     return False
 
 
+def apply_int_option(
+    value: object,
+    dest: str,
+    min_value: int | None,
+    defaults: dict[str, object],
+) -> bool:
+    """Apply integer config option."""
+    int_value = validate_int_option(value, min_value)
+    if int_value is None:
+        return False
+    defaults[dest] = int_value
+    return True
+
+
+def apply_bool_option(value: object, dest: str, defaults: dict[str, object]) -> bool:
+    """Apply boolean config option."""
+    if not isinstance(value, bool):
+        return False
+    defaults[dest] = value
+    return True
+
+
+def apply_str_option(
+    key: str,
+    value: object,
+    dest: str,
+    defaults: dict[str, object],
+) -> bool:
+    """Apply string config option."""
+    if key == "--order-by":
+        order_by_value = validate_order_by_option(value)
+        if order_by_value is None:
+            return False
+        defaults[dest] = order_by_value
+        return True
+
+    str_value = validate_str_option(key, value)
+    if str_value is None:
+        return False
+    defaults[dest] = str_value
+    return True
+
+
+def apply_list_option(
+    key: str,
+    value: object,
+    dest: str,
+    append_defaults: dict[str, list[str]],
+) -> bool:
+    """Apply list config option."""
+    list_value = validate_list_option(key, value)
+    if list_value is None:
+        return False
+    append_defaults[dest] = list_value
+    return True
+
+
 def apply_config_entry_by_options(
     key: str,
     value: object,
@@ -342,34 +423,17 @@ def apply_config_entry_by_options(
     options: ConfigOptions,
 ) -> bool:
     """Apply a config entry using option metadata."""
-    valid = True
-
     if key in options.int_options:
         dest, min_value = options.int_options[key]
-        int_value = validate_int_option(value, min_value)
-        if int_value is None:
-            valid = False
-        else:
-            defaults[dest] = int_value
-    elif key in options.bool_options:
-        if not isinstance(value, bool):
-            valid = False
-        else:
-            defaults[options.bool_options[key]] = value
-    elif key in options.str_options:
-        str_value = validate_str_option(key, value)
-        if str_value is None:
-            valid = False
-        else:
-            defaults[options.str_options[key]] = str_value
-    elif key in options.list_options:
-        list_value = validate_list_option(key, value)
-        if list_value is None:
-            valid = False
-        else:
-            append_defaults[options.list_options[key]] = list_value
+        return apply_int_option(value, dest, min_value, defaults)
+    if key in options.bool_options:
+        return apply_bool_option(value, options.bool_options[key], defaults)
+    if key in options.str_options:
+        return apply_str_option(key, value, options.str_options[key], defaults)
+    if key in options.list_options:
+        return apply_list_option(key, value, options.list_options[key], append_defaults)
 
-    return valid
+    return True
 
 
 def apply_config_entry(
@@ -584,6 +648,11 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
         "buckets",
     ):
         tasks_list_defaults.pop(key, None)
+    order_by_default = tasks_list_defaults.get("order_by")
+    if isinstance(order_by_default, str):
+        tasks_list_defaults["order_by"] = [order_by_default]
+    elif is_string_tuple(order_by_default):
+        tasks_list_defaults["order_by"] = list(order_by_default)
 
     tags_defaults = dict(defaults)
     for key in ("max_tags", "max_groups", "min_group_size", "groups"):
