@@ -29,7 +29,7 @@ def test_parse_date_argument_basic_date() -> None:
     """Test parse_date_argument with basic YYYY-MM-DD format."""
     from datetime import datetime
 
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     result = parse_date_argument("2025-01-15", "--test-arg")
     assert result == datetime(2025, 1, 15, 0, 0, 0)
@@ -39,7 +39,7 @@ def test_parse_date_argument_iso_with_time() -> None:
     """Test parse_date_argument with YYYY-MM-DDThh:mm format."""
     from datetime import datetime
 
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     result = parse_date_argument("2025-01-15T14:30", "--test-arg")
     assert result == datetime(2025, 1, 15, 14, 30, 0)
@@ -49,7 +49,7 @@ def test_parse_date_argument_iso_with_seconds() -> None:
     """Test parse_date_argument with YYYY-MM-DDThh:mm:ss format."""
     from datetime import datetime
 
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     result = parse_date_argument("2025-01-15T14:30:45", "--test-arg")
     assert result == datetime(2025, 1, 15, 14, 30, 45)
@@ -59,7 +59,7 @@ def test_parse_date_argument_space_with_time() -> None:
     """Test parse_date_argument with YYYY-MM-DD hh:mm format."""
     from datetime import datetime
 
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     result = parse_date_argument("2025-01-15 14:30", "--test-arg")
     assert result == datetime(2025, 1, 15, 14, 30, 0)
@@ -69,7 +69,7 @@ def test_parse_date_argument_space_with_seconds() -> None:
     """Test parse_date_argument with YYYY-MM-DD hh:mm:ss format."""
     from datetime import datetime
 
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     result = parse_date_argument("2025-01-15 14:30:45", "--test-arg")
     assert result == datetime(2025, 1, 15, 14, 30, 45)
@@ -79,7 +79,7 @@ def test_parse_date_argument_midnight() -> None:
     """Test parse_date_argument with midnight time."""
     from datetime import datetime
 
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     result = parse_date_argument("2025-01-15T00:00:00", "--test-arg")
     assert result == datetime(2025, 1, 15, 0, 0, 0)
@@ -89,7 +89,7 @@ def test_parse_date_argument_end_of_day() -> None:
     """Test parse_date_argument with end of day time."""
     from datetime import datetime
 
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     result = parse_date_argument("2025-01-15T23:59:59", "--test-arg")
     assert result == datetime(2025, 1, 15, 23, 59, 59)
@@ -172,7 +172,7 @@ def test_parse_date_argument_partial_time() -> None:
     """Test parse_date_argument with partial time (only hour) is accepted."""
     from datetime import datetime
 
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     result = parse_date_argument("2025-01-15T14", "--test-arg")
     assert result == datetime(2025, 1, 15, 14, 0, 0)
@@ -445,7 +445,7 @@ def test_argparse_options_after_files() -> None:
 
 def test_load_exclude_list_function() -> None:
     """Test load_exclude_list helper function directly."""
-    from org.cli import load_exclude_list
+    from org.cli_common import load_exclude_list
 
     # Test with None
     result = load_exclude_list(None)

@@ -531,7 +531,7 @@ def test_cli_max_relations_shows_no_results() -> None:
     from io import StringIO
 
     from org.analyze import Tag, TimeRange
-    from org.cli import display_category
+    from org.tui import display_category
 
     tags = {
         "python": Tag(
@@ -570,7 +570,7 @@ def test_cli_max_relations_zero_skips_relations() -> None:
     from io import StringIO
 
     from org.analyze import Tag, TimeRange
-    from org.cli import display_category
+    from org.tui import display_category
 
     tags = {
         "python": Tag(

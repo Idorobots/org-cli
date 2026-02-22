@@ -1849,6 +1849,21 @@ The output generated should include only the stats for two groups:
 
 The groups should be computed anew even if they are present in the analysis results. This is an extra step to be performed after main analysis by this command alone.
 
+** DONE Refactor cli.py                                                                    :Cleanup:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 12:11]
+:END:
+I see that cli.py is a huge file now. Please refactor it splitting out all the various bits into new modules.
+
+I'd like the commands to be separate and a common CLI module to provide all the common bits. You can introduce a subpackage called ~commands~ for these. In that subpackage, another subpackage should be defined for each command (~stats~ and ~tasks~).
+The task stats, tags stats and group stats commands should be separated into their own modules and placed in ~commands.stats~ package.
+
+I'd like the configuration handling & defaults generation code to be a separete module called ~config~.
+
+I'd like the output generation to also be a separate module called ~tui~ - we will be adding more of these in the future, including Markdown, JSON and YAML output.
+
+Please make sure that the code works exactly the same. This is purely a reorganization of the modules.
+
 ** Tasks command                                                                          :CLI:CRUD:
 *** TODO Tasks *R**
 Add a new ~tasks~ command to the CLI that allows searching for specific tasks.

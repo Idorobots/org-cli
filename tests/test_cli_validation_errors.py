@@ -13,7 +13,7 @@ PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 def test_validate_and_parse_keys_empty() -> None:
     """Test that empty keys string causes sys.exit()."""
-    from org.cli import validate_and_parse_keys
+    from org.cli_common import validate_and_parse_keys
 
     with pytest.raises(SystemExit) as exc_info:
         validate_and_parse_keys("", "--test-keys")
@@ -23,7 +23,7 @@ def test_validate_and_parse_keys_empty() -> None:
 
 def test_validate_and_parse_keys_whitespace_only() -> None:
     """Test that whitespace-only keys string causes sys.exit()."""
-    from org.cli import validate_and_parse_keys
+    from org.cli_common import validate_and_parse_keys
 
     with pytest.raises(SystemExit) as exc_info:
         validate_and_parse_keys("   ", "--test-keys")
@@ -33,7 +33,7 @@ def test_validate_and_parse_keys_whitespace_only() -> None:
 
 def test_validate_and_parse_keys_empty_after_split() -> None:
     """Test that keys string with only commas causes sys.exit()."""
-    from org.cli import validate_and_parse_keys
+    from org.cli_common import validate_and_parse_keys
 
     with pytest.raises(SystemExit) as exc_info:
         validate_and_parse_keys(",,,", "--test-keys")
@@ -43,7 +43,7 @@ def test_validate_and_parse_keys_empty_after_split() -> None:
 
 def test_validate_and_parse_keys_pipe_character() -> None:
     """Test that keys containing pipe character cause sys.exit()."""
-    from org.cli import validate_and_parse_keys
+    from org.cli_common import validate_and_parse_keys
 
     with pytest.raises(SystemExit) as exc_info:
         validate_and_parse_keys("TODO,IN|PROGRESS,DONE", "--test-keys")
@@ -53,7 +53,7 @@ def test_validate_and_parse_keys_pipe_character() -> None:
 
 def test_validate_and_parse_keys_pipe_in_first_key() -> None:
     """Test that pipe in first key causes sys.exit()."""
-    from org.cli import validate_and_parse_keys
+    from org.cli_common import validate_and_parse_keys
 
     with pytest.raises(SystemExit) as exc_info:
         validate_and_parse_keys("TODO|WAITING,DONE", "--test-keys")
@@ -63,7 +63,7 @@ def test_validate_and_parse_keys_pipe_in_first_key() -> None:
 
 def test_validate_and_parse_keys_valid() -> None:
     """Test that valid keys are parsed correctly."""
-    from org.cli import validate_and_parse_keys
+    from org.cli_common import validate_and_parse_keys
 
     result = validate_and_parse_keys("TODO,WAITING,IN-PROGRESS", "--test-keys")
     assert result == ["TODO", "WAITING", "IN-PROGRESS"]
@@ -71,7 +71,7 @@ def test_validate_and_parse_keys_valid() -> None:
 
 def test_validate_and_parse_keys_with_spaces() -> None:
     """Test that keys with spaces are stripped."""
-    from org.cli import validate_and_parse_keys
+    from org.cli_common import validate_and_parse_keys
 
     result = validate_and_parse_keys("TODO , WAITING , DONE", "--test-keys")
     assert result == ["TODO", "WAITING", "DONE"]
@@ -79,7 +79,7 @@ def test_validate_and_parse_keys_with_spaces() -> None:
 
 def test_parse_date_argument_empty_string() -> None:
     """Test that empty date string causes sys.exit()."""
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     with pytest.raises(SystemExit) as exc_info:
         parse_date_argument("", "--test-date")
@@ -89,7 +89,7 @@ def test_parse_date_argument_empty_string() -> None:
 
 def test_parse_date_argument_whitespace_only() -> None:
     """Test that whitespace-only date string causes sys.exit()."""
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     with pytest.raises(SystemExit) as exc_info:
         parse_date_argument("   ", "--test-date")
@@ -101,7 +101,7 @@ def test_parse_date_argument_invalid_format_numbers_only() -> None:
     """Test that YYYYMMDD format is actually accepted by fromisoformat()."""
     from datetime import datetime
 
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     result = parse_date_argument("20250115", "--test-date")
     assert result == datetime(2025, 1, 15, 0, 0, 0)
@@ -109,7 +109,7 @@ def test_parse_date_argument_invalid_format_numbers_only() -> None:
 
 def test_parse_date_argument_invalid_format_slashes() -> None:
     """Test that date with slashes causes sys.exit()."""
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     with pytest.raises(SystemExit) as exc_info:
         parse_date_argument("2025/01/15", "--test-date")
@@ -119,7 +119,7 @@ def test_parse_date_argument_invalid_format_slashes() -> None:
 
 def test_parse_date_argument_invalid_format_dots() -> None:
     """Test that date with dots causes sys.exit()."""
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     with pytest.raises(SystemExit) as exc_info:
         parse_date_argument("2025.01.15", "--test-date")
@@ -129,7 +129,7 @@ def test_parse_date_argument_invalid_format_dots() -> None:
 
 def test_parse_date_argument_invalid_format_text() -> None:
     """Test that text date causes sys.exit()."""
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     with pytest.raises(SystemExit) as exc_info:
         parse_date_argument("January 15, 2025", "--test-date")
@@ -139,7 +139,7 @@ def test_parse_date_argument_invalid_format_text() -> None:
 
 def test_parse_date_argument_invalid_month() -> None:
     """Test that invalid month causes sys.exit()."""
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     with pytest.raises(SystemExit) as exc_info:
         parse_date_argument("2025-13-15", "--test-date")
@@ -149,7 +149,7 @@ def test_parse_date_argument_invalid_month() -> None:
 
 def test_parse_date_argument_invalid_day() -> None:
     """Test that invalid day causes sys.exit()."""
-    from org.cli import parse_date_argument
+    from org.cli_common import parse_date_argument
 
     with pytest.raises(SystemExit) as exc_info:
         parse_date_argument("2025-01-32", "--test-date")
@@ -159,7 +159,7 @@ def test_parse_date_argument_invalid_day() -> None:
 
 def test_parse_property_filter_no_equals() -> None:
     """Test that property filter without '=' causes sys.exit()."""
-    from org.cli import parse_property_filter
+    from org.cli_common import parse_property_filter
 
     with pytest.raises(SystemExit) as exc_info:
         parse_property_filter("property_name")
@@ -169,7 +169,7 @@ def test_parse_property_filter_no_equals() -> None:
 
 def test_parse_property_filter_valid() -> None:
     """Test that valid property filter is parsed correctly."""
-    from org.cli import parse_property_filter
+    from org.cli_common import parse_property_filter
 
     result = parse_property_filter("name=value")
     assert result == ("name", "value")
@@ -177,7 +177,7 @@ def test_parse_property_filter_valid() -> None:
 
 def test_parse_property_filter_with_equals_in_value() -> None:
     """Test property filter with '=' in value is parsed correctly."""
-    from org.cli import parse_property_filter
+    from org.cli_common import parse_property_filter
 
     result = parse_property_filter("name=value=with=equals")
     assert result == ("name", "value=with=equals")
@@ -185,7 +185,7 @@ def test_parse_property_filter_with_equals_in_value() -> None:
 
 def test_parse_property_filter_empty_value() -> None:
     """Test property filter with empty value."""
-    from org.cli import parse_property_filter
+    from org.cli_common import parse_property_filter
 
     result = parse_property_filter("name=")
     assert result == ("name", "")
