@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from typing import Protocol
 
@@ -13,6 +14,10 @@ class FilterSpec(Protocol):
 
     def filter(self, nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
         """Filter nodes and return the filtered list."""
+        raise NotImplementedError
+
+
+logger = logging.getLogger("org")
 
 
 def load_nodes(
@@ -44,7 +49,7 @@ def load_nodes(
     for name in filenames:
         try:
             with open(name, encoding="utf-8") as f:
-                print(f"Processing {name}...")
+                logger.info("Processing %s...", name)
 
                 contents = f.read().replace("24:00", "00:00")
 

@@ -42,6 +42,7 @@ COMMAND_OPTION_NAMES = {
     "with_tags_as_category",
     "show",
     "groups",
+    "verbose",
 }
 
 
@@ -444,6 +445,7 @@ def build_config_defaults(
     global_bool_options: dict[str, str] = {
         "--filter-completed": "filter_completed",
         "--filter-not-completed": "filter_not_completed",
+        "--verbose": "verbose",
     }
 
     stats_str_options: dict[str, str] = {

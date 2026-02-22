@@ -36,6 +36,7 @@ def test_cli_summary_multiple_files_smoke() -> None:
             sys.executable,
             "-m",
             "org",
+            "--verbose",
             "stats",
             "summary",
             "--no-color",

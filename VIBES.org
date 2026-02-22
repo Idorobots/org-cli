@@ -1962,8 +1962,11 @@ The color handling can be offloaded into a TUI function ~setup_output~ while the
 
 Please refactor all the ~stats~ commands to use this new preamble.
 
-** TODO Logging & verbose mode                                                              :CLI:UX:
-
+** DONE Logging & verbose mode                                                              :CLI:UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 15:24] \\
+  Easy
+:END:
 I'd like to add a logging facility to the application that will help with debugging in the future.
 Please add a suitable library that will perform the logging in the application code.
 
