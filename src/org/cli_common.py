@@ -327,6 +327,17 @@ def handle_date_filter(arg_name: str, args: FilterArgs) -> list[Filter]:
     return []
 
 
+def resolve_date_filters(args: FilterArgs) -> tuple[datetime | None, datetime | None]:
+    """Resolve date filter arguments into parsed datetime values."""
+    date_from = None
+    date_until = None
+    if args.filter_date_from is not None:
+        date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
+    if args.filter_date_until is not None:
+        date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
+    return date_from, date_until
+
+
 def handle_completion_filter(arg_name: str, args: FilterArgs) -> list[Filter]:
     """Handle completion status filter arguments.
 

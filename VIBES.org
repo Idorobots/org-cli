@@ -1973,6 +1973,23 @@ Please add a suitable library that will perform the logging in the application c
 I'd like there to be a global ~--verbose~ flag that enables the log display to the standard output stream. While the flag is missing (a.k.a low verbosity level) the output of the logging facility is spressed and only the command output is printed.
 
 Currently, only the "Processing <filename>..." logs should be logged by the logging facility, with extra logs to be added in the future.
+** DONE Last refactoring thingie                                                       :Cleanup:CLI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 15:33] \\
+  Cleaned up good.
+:END:
+Can you please extract the following duplicated piece of code into a helper function called ~resolve_date_filters~ and move it to the ~cli_common~ module:
+
+#+begin_src python
+    date_from = None
+    date_until = None
+    if args.filter_date_from is not None:
+        date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
+    if args.filter_date_until is not None:
+        date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
+#+end_src
+
+This piece of code is used by all ~stats~ commands currently (~stats tags~ abstracts that into a private function). It would make sense to define a helper for it and reuse that helper in the commands.
 
 ** Tasks command                                                                          :CLI:CRUD:
 *** TODO Tasks *R**

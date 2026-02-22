@@ -21,6 +21,7 @@ from org.analyze import (
 )
 from org.cli_common import (
     load_and_process_data,
+    resolve_date_filters,
     resolve_exclude_set,
     resolve_group_values,
     resolve_mapping,
@@ -33,7 +34,7 @@ from org.tui import (
     lines_to_text,
     setup_output,
 )
-from org.validation import parse_date_argument, validate_stats_arguments
+from org.validation import validate_stats_arguments
 
 
 @dataclass
@@ -144,12 +145,7 @@ def run_stats_groups(args: GroupsArgs) -> None:
 
     global_timerange = compute_global_timerange(nodes)
 
-    date_from = None
-    date_until = None
-    if args.filter_date_from is not None:
-        date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
-    if args.filter_date_until is not None:
-        date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
+    date_from, date_until = resolve_date_filters(args)
 
     group_values = resolve_group_values(args.groups, mapping, args.use)
 
