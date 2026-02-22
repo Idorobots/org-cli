@@ -33,7 +33,25 @@ def _gamify_exp_value(node: orgparse.node.OrgNode) -> int | None:
     return get_gamify_exp(node)
 
 
+def _level_value(node: orgparse.node.OrgNode) -> int | None:
+    return int(node.level)
+
+
+def _constant_value(_: orgparse.node.OrgNode) -> int:
+    return 0
+
+
 ORDER_SPECS: dict[str, OrderSpec] = {
+    "file-order": OrderSpec(
+        key=_constant_value,
+        direction=1,
+        label="file order",
+    ),
+    "file-order-reverse": OrderSpec(
+        key=_constant_value,
+        direction=1,
+        label="file order reversed",
+    ),
     "timestamp-asc": OrderSpec(
         key=_timestamp_value,
         direction=1,
@@ -53,6 +71,11 @@ ORDER_SPECS: dict[str, OrderSpec] = {
         key=_gamify_exp_value,
         direction=-1,
         label="gamify_exp descending",
+    ),
+    "level": OrderSpec(
+        key=_level_value,
+        direction=1,
+        label="level ascending",
     ),
 }
 
@@ -84,30 +107,66 @@ class ListArgs:
     color_flag: bool | None
     max_results: int
     details: bool
-    order_by: str
+    order_by: str | list[str]
     with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
 
 
+def normalize_order_by(order_by: str | list[str]) -> list[str]:
+    """Normalize order_by values into a list."""
+    if isinstance(order_by, list):
+        return order_by
+    return [order_by]
+
+
+def validate_order_by(order_by: list[str]) -> None:
+    """Validate order_by values."""
+    invalid = [value for value in order_by if value not in ORDER_SPECS]
+    if not invalid:
+        return
+
+    supported = ", ".join(ORDER_SPECS)
+    invalid_list = ", ".join(invalid)
+    print(
+        f"Error: --order-by must be one of: {supported}\nGot: {invalid_list}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
 def order_nodes(
     nodes: list[orgparse.node.OrgNode],
-    order_by: str,
+    order_by: list[str],
 ) -> list[orgparse.node.OrgNode]:
-    """Order nodes using the selected order criteria."""
-    order_spec = ORDER_SPECS.get(order_by)
-    if order_spec is None:
-        supported = ", ".join(ORDER_SPECS)
-        print(f"Error: --order-by must be one of: {supported}", file=sys.stderr)
-        sys.exit(1)
+    """Order nodes using the selected order criteria in sequence."""
+    validate_order_by(order_by)
+    ordered_nodes = list(nodes)
 
-    def sort_key(node: orgparse.node.OrgNode) -> tuple[int, float | int]:
-        value = order_spec.key(node)
-        if value is None:
-            return (1, 0)
-        return (0, order_spec.direction * value)
+    for order_value in order_by:
+        if order_value == "file-order":
+            continue
+        if order_value == "file-order-reverse":
+            ordered_nodes.reverse()
+            continue
 
-    return sorted(nodes, key=sort_key)
+        order_spec = ORDER_SPECS[order_value]
+        key_fn = order_spec.key
+        direction = order_spec.direction
+
+        def sort_key(
+            node: orgparse.node.OrgNode,
+            key_func: Callable[[orgparse.node.OrgNode], float | int | None] = key_fn,
+            direction_value: int = direction,
+        ) -> tuple[int, float | int]:
+            value = key_func(node)
+            if value is None:
+                return (1, 0)
+            return (0, direction_value * value)
+
+        ordered_nodes = sorted(ordered_nodes, key=sort_key)
+
+    return ordered_nodes
 
 
 def format_short_task_list(
@@ -145,13 +204,14 @@ def format_detailed_task_list(nodes: list[orgparse.node.OrgNode]) -> str:
 def run_tasks_list(args: ListArgs) -> None:
     """Run the tasks list command."""
     color_enabled = setup_output(args)
+    order_by = normalize_order_by(args.order_by)
     nodes, todo_keys, done_keys = load_and_process_data(args)
 
     if not nodes or args.max_results <= 0:
         print("No results")
         return
 
-    ordered_nodes = order_nodes(nodes, args.order_by)
+    ordered_nodes = order_nodes(nodes, order_by)
     limited_nodes = ordered_nodes[: args.max_results]
 
     if not limited_nodes:
@@ -306,11 +366,14 @@ def register(app: typer.Typer) -> None:
             "--details",
             help="Show full org node details",
         ),
-        order_by: str = typer.Option(
-            "timestamp-desc",
+        order_by: list[str] | None = typer.Option(  # noqa: B008
+            None,
             "--order-by",
             metavar="ORDER",
-            help=("Order tasks by: timestamp-asc, timestamp-desc, gamify-exp-asc, gamify-exp-desc"),
+            help=(
+                "Order tasks by: file-order, file-order-reverse, level, timestamp-asc, "
+                "timestamp-desc, gamify-exp-asc, gamify-exp-desc"
+            ),
         ),
         with_gamify_category: bool = typer.Option(
             False,
@@ -354,7 +417,7 @@ def register(app: typer.Typer) -> None:
             color_flag=color_flag,
             max_results=max_results,
             details=details,
-            order_by=order_by,
+            order_by=order_by if order_by is not None else "timestamp-desc",
             with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,

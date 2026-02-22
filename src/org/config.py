@@ -281,6 +281,9 @@ def validate_str_option(key: str, value: object) -> str | None:
 
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
     invalid_order_by = key == "--order-by" and value not in {
+        "file-order",
+        "file-order-reverse",
+        "level",
         "timestamp-asc",
         "timestamp-desc",
         "gamify-exp-asc",

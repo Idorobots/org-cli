@@ -165,6 +165,8 @@ def format_task_line(
     colored_filename = dim_white(f"{filename}:", config.color_enabled)
     todo_state = node.todo if node.todo else ""
     heading = node.heading if node.heading else ""
+    level = node.level
+    level_prefix = "*" * level if level > 0 else ""
 
     if todo_state:
         state_color = get_state_color(
@@ -177,9 +179,9 @@ def format_task_line(
             colored_state = f"{state_color}{todo_state}{Style.RESET_ALL}"
         else:
             colored_state = todo_state
-        line = f"{colored_filename} {colored_state} {heading}".strip()
+        line = f"{colored_filename} {level_prefix} {colored_state} {heading}".strip()
     else:
-        line = f"{colored_filename} {heading}".strip()
+        line = f"{colored_filename} {level_prefix} {heading}".strip()
 
     if indent:
         return f"{indent}{line}" if line else indent

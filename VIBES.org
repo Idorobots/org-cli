@@ -2094,11 +2094,46 @@ There might be more ordering criteria added in the future, so please make this p
 If some tasks are missing either the timestamp or the gamify_exp property, they should appear last on the list, order doesn't matter.
 
 The ordering should be applied after all processing and filtering, shortly before display.
-*** TODO Extra order
-Please add extra orde-by options to the ~tasks list~ command:
+*** DONE Level display                                                                          :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 16:57] \\
+  Easy enough.
+:END:
+Org Mode nodes have a level associated with them - it is the number of ~*~ characters in their heading line.
+I'd like to extend the display of the short-form task list to include the nodes level.
+
+Here's an example of how it should look:
+#+begin_example
+VIBES.org: *** DONE Tasks *R**
+VIBES.org: ** DONE Last refactoring thingie
+VIBES.org: ** DONE Logging & verbose mode
+VIBES.org: ** DONE Final (?) round of refactoring
+VIBES.org: ** DONE Analyze split
+VIBES.org: *** DONE TUI refactor slop fix
+#+end_example
+
+You can get the nodes level from ~node.level~ property. Please make sure that both the ~stats summary~ and ~tasks list~ display the level (effectively they should be using the same helpers for formatting of the task list display).
+
+I'd like the color of the node level to be the same as the text color.
+
+The detailed display of ~tasks list~ already shows the level, so it doesn't need any changes there.
+
+*** DONE Extra order
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 17:13] \\
+  Also easy enough.
+:END:
+Please add extra order-by options to the ~tasks list~ command:
 
 - ~file-order~ - preserves the file ordering (so no ordering applied to the node list),
-- ~file-order-reverse~ - preserves the file ordering, but returns the nodes in reverse order (effectively nodes.reverse()).
+- ~file-order-reverse~ - preserves the file ordering, but returns the nodes in reverse order (effectively nodes.reverse()),
+- ~level~ - order by tasks level attribute.
+
+Make sure that the ordering is stable, that is, it preserves the order of tasks that compare equal according to the ordering criteria.
+
+It should be possible to use the ~--order-by~ clause multiple times on the CLI resulting in multiple orderings being applied, for instance ~--order-by level --order-by gamify-exp-asc~ will first order the tasks by their level and then by their ~gamify_exp~ property value. The tasks with an equal ~gamify_exp~ property value should remain in the same ordering as returned by ~--order-by level~. It is OK if multiple orderings passed on the CLI "clash" and use the same property for the order determination.
+
+The reasoning is that the ordering and filtering can be combined to implement sophisticated search.
 
 *** Output abstraction
 We will be adding more output options, for instance JSON output, visualization output, etc.

@@ -62,8 +62,8 @@ CLOSED: [2024-01-12 Fri 09:00]
 """
     nodes = node_from_org(org_text)
 
-    desc = tasks_list.order_nodes(nodes, "timestamp-desc")
-    asc = tasks_list.order_nodes(nodes, "timestamp-asc")
+    desc = tasks_list.order_nodes(nodes, ["timestamp-desc"])
+    asc = tasks_list.order_nodes(nodes, ["timestamp-asc"])
 
     assert [node.heading for node in desc] == ["Task 2", "Task 1", "Task 3"]
     assert [node.heading for node in asc] == ["Task 1", "Task 2", "Task 3"]
@@ -85,11 +85,74 @@ def test_order_nodes_gamify_exp_sorting_missing_last() -> None:
 """
     nodes = node_from_org(org_text)
 
-    asc = tasks_list.order_nodes(nodes, "gamify-exp-asc")
-    desc = tasks_list.order_nodes(nodes, "gamify-exp-desc")
+    asc = tasks_list.order_nodes(nodes, ["gamify-exp-asc"])
+    desc = tasks_list.order_nodes(nodes, ["gamify-exp-desc"])
 
     assert [node.heading for node in asc] == ["Task 1", "Task 2", "Task 3"]
     assert [node.heading for node in desc] == ["Task 2", "Task 1", "Task 3"]
+
+
+def test_order_nodes_file_order_preserved() -> None:
+    """File order should preserve input ordering."""
+    org_text = """* DONE Task 1
+* DONE Task 2
+* DONE Task 3
+"""
+    nodes = node_from_org(org_text)
+
+    ordered = tasks_list.order_nodes(nodes, ["file-order"])
+
+    assert [node.heading for node in ordered] == ["Task 1", "Task 2", "Task 3"]
+
+
+def test_order_nodes_file_order_reverse() -> None:
+    """File order reverse should reverse input ordering."""
+    org_text = """* DONE Task 1
+* DONE Task 2
+* DONE Task 3
+"""
+    nodes = node_from_org(org_text)
+
+    ordered = tasks_list.order_nodes(nodes, ["file-order-reverse"])
+
+    assert [node.heading for node in ordered] == ["Task 3", "Task 2", "Task 1"]
+
+
+def test_order_nodes_level_sorting() -> None:
+    """Level ordering should sort by heading level."""
+    org_text = """* DONE Task 1
+** DONE Task 2
+*** DONE Task 3
+"""
+    nodes = node_from_org(org_text)
+
+    ordered = tasks_list.order_nodes(nodes, ["level"])
+
+    assert [node.heading for node in ordered] == ["Task 1", "Task 2", "Task 3"]
+
+
+def test_order_nodes_multiple_ordering_stable() -> None:
+    """Later orderings should preserve order from earlier orderings for ties."""
+    org_text = """* DONE Task A
+:PROPERTIES:
+:gamify_exp: 10
+:END:
+
+** DONE Task B
+:PROPERTIES:
+:gamify_exp: 10
+:END:
+
+** DONE Task C
+:PROPERTIES:
+:gamify_exp: 20
+:END:
+"""
+    nodes = node_from_org(org_text)
+
+    ordered = tasks_list.order_nodes(nodes, ["level", "gamify-exp-asc"])
+
+    assert [node.heading for node in ordered] == ["Task A", "Task B", "Task C"]
 
 
 def test_run_tasks_list_no_results(
@@ -133,5 +196,5 @@ def test_run_tasks_list_short_output(
     captured = capsys.readouterr().out
 
     lines = [line for line in captured.splitlines() if line.strip()]
-    assert lines[0] == f"{fixture_path}: TODO Refactor codebase"
-    assert lines[1] == f"{fixture_path}: DONE Fix bug in parser"
+    assert lines[0] == f"{fixture_path}: * TODO Refactor codebase"
+    assert lines[1] == f"{fixture_path}: * DONE Fix bug in parser"
