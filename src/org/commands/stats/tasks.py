@@ -4,21 +4,31 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Protocol
 
 import typer
 from colorama import init as colorama_init
 
 from org import config as config_module
-from org.analyze import analyze
+from org.analyze import AnalysisResult, analyze
 from org.cli_common import (
     build_filter_chain,
     load_nodes,
     resolve_input_paths,
     resolve_mapping,
 )
-from org.color import should_use_color
+from org.color import magenta, should_use_color
 from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
-from org.tui import format_task_summary
+from org.histogram import RenderConfig
+from org.tui import (
+    HistogramSectionConfig,
+    TimelineFormatConfig,
+    apply_indent,
+    format_histogram_section,
+    format_timeline_lines,
+    lines_to_text,
+)
 from org.validation import parse_date_argument, validate_global_arguments, validate_stats_arguments
 
 
@@ -57,6 +67,112 @@ class TasksArgs:
     min_group_size: int
     max_groups: int
     buckets: int
+
+
+class TaskDisplayArgs(Protocol):
+    """Protocol for display arguments used in task summary output."""
+
+    buckets: int
+
+
+def format_tasks_summary(
+    result: AnalysisResult,
+    args: TaskDisplayArgs,
+    display_config: tuple[datetime | None, datetime | None, list[str], list[str], bool],
+    indent: str = "",
+) -> str:
+    """Return formatted global task statistics without tag/group sections."""
+    date_from, date_until, done_keys, todo_keys, color_enabled = display_config
+
+    lines: list[str] = []
+    if result.timerange.earliest and result.timerange.latest and result.timerange.timeline:
+        earliest_date = date_from.date() if date_from else result.timerange.earliest.date()
+        latest_date = date_until.date() if date_until else result.timerange.latest.date()
+        lines.append("")
+        lines.extend(
+            format_timeline_lines(
+                result.timerange.timeline,
+                earliest_date,
+                latest_date,
+                TimelineFormatConfig(
+                    num_buckets=args.buckets,
+                    color_enabled=color_enabled,
+                    indent="",
+                ),
+            )
+        )
+
+    total_tasks_value = magenta(str(result.total_tasks), color_enabled)
+    lines.append(f"Total tasks: {total_tasks_value}")
+
+    if result.timerange.earliest and result.timerange.latest:
+        avg_value = magenta(f"{result.avg_tasks_per_day:.2f}", color_enabled)
+        max_single_value = magenta(str(result.max_single_day_count), color_enabled)
+        max_repeat_value = magenta(str(result.max_repeat_count), color_enabled)
+        lines.append(f"Average tasks per day: {avg_value}")
+        lines.append(f"Max tasks on a single day: {max_single_value}")
+        lines.append(f"Max repeats of a single task: {max_repeat_value}")
+
+    remaining_states = sorted(
+        set(result.task_states.values.keys()) - set(done_keys) - set(todo_keys)
+    )
+    state_order = done_keys + todo_keys + remaining_states
+    lines.extend(
+        format_histogram_section(
+            "Task states:",
+            result.task_states,
+            HistogramSectionConfig(
+                buckets=args.buckets,
+                order=state_order,
+                render_config=RenderConfig(
+                    color_enabled=color_enabled,
+                    histogram_type="task_states",
+                    done_keys=done_keys,
+                    todo_keys=todo_keys,
+                ),
+                indent="",
+            ),
+        )
+    )
+
+    category_order = sorted(result.task_categories.values.keys())
+    lines.extend(
+        format_histogram_section(
+            "Task categories:",
+            result.task_categories,
+            HistogramSectionConfig(
+                buckets=args.buckets,
+                order=category_order,
+                render_config=RenderConfig(color_enabled=color_enabled),
+                indent="",
+            ),
+        )
+    )
+
+    day_order = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+        "unknown",
+    ]
+    lines.extend(
+        format_histogram_section(
+            "Task occurrence by day of week:",
+            result.task_days,
+            HistogramSectionConfig(
+                buckets=args.buckets,
+                order=day_order,
+                render_config=RenderConfig(color_enabled=color_enabled),
+                indent="",
+            ),
+        )
+    )
+
+    return lines_to_text(apply_indent(lines, indent))
 
 
 def run_stats_tasks(args: TasksArgs) -> None:
@@ -98,7 +214,7 @@ def run_stats_tasks(args: TasksArgs) -> None:
     if args.filter_date_until is not None:
         date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
 
-    output = format_task_summary(
+    output = format_tasks_summary(
         result,
         args,
         (date_from, date_until, done_keys, todo_keys, color_enabled),

@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
+import orgparse
 import typer
 from colorama import init as colorama_init
 
 from org import config as config_module
-from org.analyze import Tag, analyze
+from org.analyze import AnalysisResult, Tag, TimeRange, analyze, clean
 from org.cli_common import (
     CATEGORY_NAMES,
     build_filter_chain,
@@ -19,13 +22,18 @@ from org.cli_common import (
     resolve_mapping,
 )
 from org.color import should_use_color
+from org.commands.stats.tasks import format_tasks_summary
 from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
 from org.tui import (
+    TagBlockConfig,
+    TimelineFormatConfig,
     TopTasksSectionConfig,
-    format_category_section,
+    apply_indent,
     format_groups_section,
-    format_task_summary,
+    format_tag_block,
     format_top_tasks_section,
+    lines_to_text,
+    section_header_lines,
 )
 from org.validation import parse_date_argument, validate_global_arguments, validate_stats_arguments
 
@@ -65,6 +73,134 @@ class SummaryArgs:
     min_group_size: int
     max_groups: int
     buckets: int
+
+
+def format_tags_section(
+    category_name: str,
+    tags: dict[str, Tag],
+    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange, int, set[str], bool],
+    order_fn: Callable[[tuple[str, Tag]], int],
+    indent: str = "",
+) -> str:
+    """Return formatted output for a single tags section."""
+    (
+        _max_results,
+        max_relations,
+        num_buckets,
+        date_from,
+        date_until,
+        global_timerange,
+        max_items,
+        exclude_set,
+        color_enabled,
+    ) = config
+
+    if max_items == 0:
+        return ""
+
+    cleaned = clean(exclude_set, tags)
+    sorted_items = sorted(cleaned.items(), key=order_fn)[0:max_items]
+
+    lines = section_header_lines(category_name.upper(), color_enabled)
+
+    if not sorted_items:
+        lines.append("  No results")
+        return lines_to_text(apply_indent(lines, indent))
+
+    for idx, (name, tag) in enumerate(sorted_items):
+        if idx > 0:
+            lines.append("")
+        lines.extend(
+            format_tag_block(
+                name,
+                tag,
+                TagBlockConfig(
+                    max_relations=max_relations,
+                    exclude_set=exclude_set,
+                    date_from=date_from,
+                    date_until=date_until,
+                    global_timerange=global_timerange,
+                    timeline=TimelineFormatConfig(
+                        num_buckets=num_buckets,
+                        color_enabled=color_enabled,
+                        indent="  ",
+                    ),
+                    name_indent="  ",
+                    stats_indent="    ",
+                ),
+            )
+        )
+
+    return lines_to_text(apply_indent(lines, indent))
+
+
+def format_stats_summary_output(
+    result: AnalysisResult,
+    nodes: list[orgparse.node.OrgNode],
+    args: SummaryArgs,
+    display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
+) -> str:
+    """Return formatted output for the stats summary command."""
+    exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled = display_config
+
+    def order_by_total(item: tuple[str, Tag]) -> int:
+        """Sort by total count (descending)."""
+        return -item[1].total_tasks
+
+    category_name = CATEGORY_NAMES[args.use]
+
+    return "".join(
+        section
+        for section in (
+            format_tasks_summary(
+                result,
+                args,
+                (date_from, date_until, done_keys, todo_keys, color_enabled),
+            ),
+            format_top_tasks_section(
+                nodes,
+                TopTasksSectionConfig(
+                    max_results=args.max_results,
+                    color_enabled=color_enabled,
+                    done_keys=done_keys,
+                    todo_keys=todo_keys,
+                    indent="",
+                ),
+            ),
+            format_tags_section(
+                category_name,
+                result.tags,
+                (
+                    args.max_results,
+                    args.max_relations,
+                    args.buckets,
+                    date_from,
+                    date_until,
+                    result.timerange,
+                    args.max_tags,
+                    exclude_set,
+                    color_enabled,
+                ),
+                order_by_total,
+                indent="  ",
+            ),
+            format_groups_section(
+                result.tag_groups,
+                exclude_set,
+                (
+                    args.min_group_size,
+                    args.buckets,
+                    date_from,
+                    date_until,
+                    result.timerange,
+                    color_enabled,
+                ),
+                args.max_groups,
+                indent="  ",
+            ),
+        )
+        if section
+    )
 
 
 def run_stats(args: SummaryArgs) -> None:
@@ -107,63 +243,11 @@ def run_stats(args: SummaryArgs) -> None:
     if args.filter_date_until is not None:
         date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
 
-    def order_by_total(item: tuple[str, Tag]) -> int:
-        """Sort by total count (descending)."""
-        return -item[1].total_tasks
-
-    category_name = CATEGORY_NAMES[args.use]
-
-    output = "".join(
-        section
-        for section in (
-            format_task_summary(
-                result,
-                args,
-                (date_from, date_until, done_keys, todo_keys, color_enabled),
-            ),
-            format_top_tasks_section(
-                nodes,
-                TopTasksSectionConfig(
-                    max_results=args.max_results,
-                    color_enabled=color_enabled,
-                    done_keys=done_keys,
-                    todo_keys=todo_keys,
-                    indent="",
-                ),
-            ),
-            format_category_section(
-                category_name,
-                result.tags,
-                (
-                    args.max_results,
-                    args.max_relations,
-                    args.buckets,
-                    date_from,
-                    date_until,
-                    result.timerange,
-                    args.max_tags,
-                    exclude_set,
-                    color_enabled,
-                ),
-                order_by_total,
-                indent="  ",
-            ),
-            format_groups_section(
-                result.tag_groups,
-                exclude_set,
-                (
-                    args.min_group_size,
-                    args.buckets,
-                    date_from,
-                    date_until,
-                    result.timerange,
-                    color_enabled,
-                ),
-                args.max_groups,
-                indent="  ",
-            ),
-        )
-        if section
+    output = format_stats_summary_output(
+        result,
+        nodes,
+        args,
+        (exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled),
     )
     if output:
         print(output, end="")

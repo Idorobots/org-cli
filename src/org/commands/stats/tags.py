@@ -10,7 +10,7 @@ import typer
 from colorama import init as colorama_init
 
 from org import config as config_module
-from org.analyze import analyze
+from org.analyze import Tag, TimeRange, analyze, clean
 from org.cli_common import (
     build_filter_chain,
     load_nodes,
@@ -21,7 +21,13 @@ from org.cli_common import (
 )
 from org.color import should_use_color
 from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
-from org.tui import format_selected_items
+from org.tui import (
+    TagBlockConfig,
+    TimelineFormatConfig,
+    apply_indent,
+    format_tag_block,
+    lines_to_text,
+)
 from org.validation import (
     parse_date_argument,
     parse_show_values,
@@ -66,6 +72,65 @@ class TagsArgs:
     min_group_size: int
     max_groups: int
     buckets: int
+
+
+def format_tags(
+    tags: dict[str, Tag],
+    show: list[str] | None,
+    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange, set[str], bool],
+    indent: str = "",
+) -> str:
+    """Return formatted output for selected tags without a section header."""
+    (
+        max_results,
+        max_relations,
+        num_buckets,
+        date_from,
+        date_until,
+        global_timerange,
+        exclude_set,
+        color_enabled,
+    ) = config
+
+    cleaned = clean(exclude_set, tags)
+
+    if show is not None:
+        selected_items = [(name, cleaned[name]) for name in show if name in cleaned]
+        selected_items = selected_items[:max_results]
+    else:
+        selected_items = sorted(cleaned.items(), key=lambda item: -item[1].total_tasks)[
+            0:max_results
+        ]
+
+    if not selected_items:
+        return lines_to_text(apply_indent(["No results"], indent))
+
+    lines: list[str] = []
+    for idx, (name, tag) in enumerate(selected_items):
+        if idx > 0:
+            lines.append("")
+        lines.extend(
+            format_tag_block(
+                name,
+                tag,
+                TagBlockConfig(
+                    max_relations=max_relations,
+                    exclude_set=exclude_set,
+                    date_from=date_from,
+                    date_until=date_until,
+                    global_timerange=global_timerange,
+                    timeline=TimelineFormatConfig(
+                        num_buckets=num_buckets,
+                        color_enabled=color_enabled,
+                        indent="",
+                    ),
+                    name_indent="",
+                    stats_indent="  ",
+                ),
+            )
+        )
+
+    return lines_to_text(apply_indent(lines, indent))
 
 
 def _resolve_date_filters(args: TagsArgs) -> tuple[datetime | None, datetime | None]:
@@ -130,7 +195,7 @@ def run_stats_tags(args: TagsArgs) -> None:
     date_from, date_until = _resolve_date_filters(args)
     show_values = _resolve_show_values(args, mapping)
 
-    output = format_selected_items(
+    output = format_tags(
         result.tags,
         show_values,
         (

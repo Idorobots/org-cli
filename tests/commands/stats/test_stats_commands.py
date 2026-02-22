@@ -7,10 +7,12 @@ import sys
 
 import pytest
 
+from org.analyze import AnalysisResult, Group, Tag, TimeRange
 from org.commands.stats import groups as stats_groups
 from org.commands.stats import summary as stats_summary
 from org.commands.stats import tags as stats_tags
 from org.commands.stats import tasks as stats_tasks
+from org.histogram import Histogram
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
@@ -311,3 +313,82 @@ def test_run_stats_summary_omits_groups_when_disabled(
     captured = capsys.readouterr().out
 
     assert "GROUPS" not in captured
+
+
+def test_format_tags_shows_requested_tags() -> None:
+    """format_tags should show selected tags only."""
+    tags = {
+        "alpha": Tag(
+            name="alpha",
+            total_tasks=3,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+            relations={},
+            time_range=TimeRange(),
+        ),
+        "beta": Tag(
+            name="beta",
+            total_tasks=1,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+            relations={},
+            time_range=TimeRange(),
+        ),
+    }
+
+    output = stats_tags.format_tags(
+        tags,
+        ["beta"],
+        (10, 0, 20, None, None, TimeRange(), set(), False),
+    )
+
+    assert "beta" in output
+    assert "alpha" not in output
+
+
+def test_format_group_list_excludes_tags() -> None:
+    """format_group_list should omit excluded tags."""
+    groups = [
+        Group(
+            tags=["alpha", "beta"],
+            time_range=TimeRange(),
+            total_tasks=2,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        )
+    ]
+
+    output = stats_groups.format_group_list(
+        groups,
+        (10, 20, None, None, TimeRange(), {"beta"}, False),
+    )
+
+    assert "alpha" in output
+    assert "beta" not in output
+
+
+def test_format_tasks_summary_renders_histograms() -> None:
+    """format_tasks_summary should include histogram sections."""
+    result = AnalysisResult(
+        total_tasks=3,
+        task_states=Histogram(values={"DONE": 2, "TODO": 1}),
+        task_categories=Histogram(values={"regular": 3}),
+        task_days=Histogram(values={"Monday": 1, "unknown": 2}),
+        timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
+        tags={},
+        tag_groups=[],
+    )
+
+    class Args:
+        buckets = 20
+
+    args = Args()
+
+    output = stats_tasks.format_tasks_summary(result, args, (None, None, ["DONE"], ["TODO"], False))
+
+    assert "Task states:" in output
+    assert "Task categories:" in output
+    assert "Task occurrence by day of week:" in output

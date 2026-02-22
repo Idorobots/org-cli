@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Protocol
 
 import orgparse
 from colorama import Style
 
-from org.analyze import AnalysisResult, Group, Tag, TimeRange, clean
+from org.analyze import Group, Tag, TimeRange
 from org.cli_common import get_top_tasks
 from org.color import bright_white, dim_white, get_state_color, magenta
 from org.histogram import Histogram, RenderConfig, render_histogram
@@ -67,19 +65,19 @@ def select_latest_date(
     return None
 
 
-def _lines_to_text(lines: list[str]) -> str:
+def lines_to_text(lines: list[str]) -> str:
     if not lines:
         return ""
     return "\n".join(lines) + "\n"
 
 
-def _apply_indent(lines: list[str], indent: str) -> list[str]:
+def apply_indent(lines: list[str], indent: str) -> list[str]:
     if not indent:
         return lines
     return [f"{indent}{line}" if line else "" for line in lines]
 
 
-def _section_header_lines(title: str, color_enabled: bool) -> list[str]:
+def section_header_lines(title: str, color_enabled: bool) -> list[str]:
     return ["", bright_white(title, color_enabled)]
 
 
@@ -139,7 +137,7 @@ class TopTasksSectionConfig:
     indent: str
 
 
-def _format_timeline_lines(
+def format_timeline_lines(
     timeline: dict[date, int],
     earliest_date: date,
     latest_date: date,
@@ -152,10 +150,10 @@ def _format_timeline_lines(
         config.num_buckets,
         config.color_enabled,
     )
-    return _apply_indent([date_line, chart_line, underline], config.indent)
+    return apply_indent([date_line, chart_line, underline], config.indent)
 
 
-def _format_tag_block(name: str, tag: Tag, config: TagBlockConfig) -> list[str]:
+def format_tag_block(name: str, tag: Tag, config: TagBlockConfig) -> list[str]:
     lines: list[str] = []
     time_range = tag.time_range
     if time_range and time_range.earliest and time_range.timeline:
@@ -163,7 +161,7 @@ def _format_tag_block(name: str, tag: Tag, config: TagBlockConfig) -> list[str]:
         latest_date = select_latest_date(config.date_until, config.global_timerange, time_range)
         if earliest_date and latest_date:
             lines.extend(
-                _format_timeline_lines(
+                format_timeline_lines(
                     time_range.timeline,
                     earliest_date,
                     latest_date,
@@ -202,7 +200,7 @@ def _format_tag_block(name: str, tag: Tag, config: TagBlockConfig) -> list[str]:
     return lines
 
 
-def _format_group_block(
+def format_group_block(
     group_tags: list[str],
     group: Group,
     config: GroupBlockConfig,
@@ -214,7 +212,7 @@ def _format_group_block(
     latest_date = select_latest_date(config.date_until, config.global_timerange, group.time_range)
     if earliest_date and latest_date:
         lines.extend(
-            _format_timeline_lines(
+            format_timeline_lines(
                 group.time_range.timeline,
                 earliest_date,
                 latest_date,
@@ -230,124 +228,6 @@ def _format_group_block(
     lines.append(f"{config.stats_indent}Average tasks per day: {avg_value}")
     lines.append(f"{config.stats_indent}Max tasks on a single day: {max_value}")
     return lines
-
-
-def format_category_section(
-    category_name: str,
-    tags: dict[str, Tag],
-    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange, int, set[str], bool],
-    order_fn: Callable[[tuple[str, Tag]], int],
-    indent: str = "",
-) -> str:
-    """Return formatted output for a single category section."""
-    (
-        _max_results,
-        max_relations,
-        num_buckets,
-        date_from,
-        date_until,
-        global_timerange,
-        max_items,
-        exclude_set,
-        color_enabled,
-    ) = config
-
-    if max_items == 0:
-        return ""
-
-    cleaned = clean(exclude_set, tags)
-    sorted_items = sorted(cleaned.items(), key=order_fn)[0:max_items]
-
-    lines = _section_header_lines(category_name.upper(), color_enabled)
-
-    if not sorted_items:
-        lines.append("  No results")
-        return _lines_to_text(_apply_indent(lines, indent))
-
-    for idx, (name, tag) in enumerate(sorted_items):
-        if idx > 0:
-            lines.append("")
-        lines.extend(
-            _format_tag_block(
-                name,
-                tag,
-                TagBlockConfig(
-                    max_relations=max_relations,
-                    exclude_set=exclude_set,
-                    date_from=date_from,
-                    date_until=date_until,
-                    global_timerange=global_timerange,
-                    timeline=TimelineFormatConfig(
-                        num_buckets=num_buckets,
-                        color_enabled=color_enabled,
-                        indent="  ",
-                    ),
-                    name_indent="  ",
-                    stats_indent="    ",
-                ),
-            )
-        )
-
-    return _lines_to_text(_apply_indent(lines, indent))
-
-
-def format_selected_items(
-    tags: dict[str, Tag],
-    show: list[str] | None,
-    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange, set[str], bool],
-    indent: str = "",
-) -> str:
-    """Return formatted output for selected tags without a section header."""
-    (
-        max_results,
-        max_relations,
-        num_buckets,
-        date_from,
-        date_until,
-        global_timerange,
-        exclude_set,
-        color_enabled,
-    ) = config
-
-    cleaned = clean(exclude_set, tags)
-
-    if show is not None:
-        selected_items = [(name, cleaned[name]) for name in show if name in cleaned]
-        selected_items = selected_items[:max_results]
-    else:
-        selected_items = sorted(cleaned.items(), key=lambda item: -item[1].total_tasks)[
-            0:max_results
-        ]
-
-    if not selected_items:
-        return _lines_to_text(_apply_indent(["No results"], indent))
-
-    lines: list[str] = []
-    for idx, (name, tag) in enumerate(selected_items):
-        if idx > 0:
-            lines.append("")
-        lines.extend(
-            _format_tag_block(
-                name,
-                tag,
-                TagBlockConfig(
-                    max_relations=max_relations,
-                    exclude_set=exclude_set,
-                    date_from=date_from,
-                    date_until=date_until,
-                    global_timerange=global_timerange,
-                    timeline=TimelineFormatConfig(
-                        num_buckets=num_buckets,
-                        color_enabled=color_enabled,
-                        indent="",
-                    ),
-                    name_indent="",
-                    stats_indent="  ",
-                ),
-            )
-        )
-
-    return _lines_to_text(_apply_indent(lines, indent))
 
 
 def format_groups_section(
@@ -372,17 +252,17 @@ def format_groups_section(
     filtered_groups.sort(key=lambda x: len(x[0]), reverse=True)
     filtered_groups = filtered_groups[:max_groups]
 
-    lines = _section_header_lines("GROUPS", color_enabled)
+    lines = section_header_lines("GROUPS", color_enabled)
 
     if not filtered_groups:
         lines.append("  No results")
-        return _lines_to_text(_apply_indent(lines, indent))
+        return lines_to_text(apply_indent(lines, indent))
 
     for idx, (group_tags, group) in enumerate(filtered_groups):
         if idx > 0:
             lines.append("")
         lines.extend(
-            _format_group_block(
+            format_group_block(
                 group_tags,
                 group,
                 GroupBlockConfig(
@@ -400,61 +280,7 @@ def format_groups_section(
             )
         )
 
-    return _lines_to_text(_apply_indent(lines, indent))
-
-
-def format_group_list(
-    groups: list[Group],
-    config: tuple[int, int, datetime | None, datetime | None, TimeRange, set[str], bool],
-    indent: str = "",
-) -> str:
-    """Return formatted output for group stats without a section header."""
-    (
-        max_results,
-        num_buckets,
-        date_from,
-        date_until,
-        global_timerange,
-        exclude_set,
-        color_enabled,
-    ) = config
-
-    exclude_lower = {value.lower() for value in exclude_set}
-    filtered_groups = []
-    for group in groups:
-        display_tags = [tag for tag in group.tags if tag.lower() not in exclude_lower]
-        if display_tags:
-            filtered_groups.append((display_tags, group))
-
-    filtered_groups = filtered_groups[:max_results]
-
-    if not filtered_groups:
-        return _lines_to_text(_apply_indent(["No results"], indent))
-
-    lines: list[str] = []
-    for idx, (group_tags, group) in enumerate(filtered_groups):
-        if idx > 0:
-            lines.append("")
-        lines.extend(
-            _format_group_block(
-                group_tags,
-                group,
-                GroupBlockConfig(
-                    date_from=date_from,
-                    date_until=date_until,
-                    global_timerange=global_timerange,
-                    timeline=TimelineFormatConfig(
-                        num_buckets=num_buckets,
-                        color_enabled=color_enabled,
-                        indent="",
-                    ),
-                    name_indent="",
-                    stats_indent="  ",
-                ),
-            )
-        )
-
-    return _lines_to_text(_apply_indent(lines, indent))
+    return lines_to_text(apply_indent(lines, indent))
 
 
 def format_top_tasks_section(
@@ -466,7 +292,7 @@ def format_top_tasks_section(
     if not top_tasks:
         return ""
 
-    lines = _section_header_lines("TASKS", config.color_enabled)
+    lines = section_header_lines("TASKS", config.color_enabled)
     for node in top_tasks:
         filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
         colored_filename = dim_white(f"{filename}:", config.color_enabled)
@@ -488,15 +314,15 @@ def format_top_tasks_section(
         else:
             lines.append(f"  {colored_filename} {heading}".strip())
 
-    return _lines_to_text(_apply_indent(lines, config.indent))
+    return lines_to_text(apply_indent(lines, config.indent))
 
 
-def _format_histogram_section(
+def format_histogram_section(
     title: str,
     histogram: Histogram,
     config: HistogramSectionConfig,
 ) -> list[str]:
-    lines = _section_header_lines(title, config.render_config.color_enabled)
+    lines = section_header_lines(title, config.render_config.color_enabled)
     histogram_lines = render_histogram(
         histogram,
         config.buckets,
@@ -504,122 +330,4 @@ def _format_histogram_section(
         config.render_config,
     )
     lines.extend([f"  {line}" for line in histogram_lines])
-    return _apply_indent(lines, config.indent)
-
-
-def format_task_summary(
-    result: AnalysisResult,
-    args: TaskDisplayArgs,
-    display_config: tuple[datetime | None, datetime | None, list[str], list[str], bool],
-    indent: str = "",
-) -> str:
-    """Return formatted global task statistics without tag/group sections."""
-    date_from, date_until, done_keys, todo_keys, color_enabled = display_config
-
-    lines: list[str] = []
-    if result.timerange.earliest and result.timerange.latest and result.timerange.timeline:
-        earliest_date = date_from.date() if date_from else result.timerange.earliest.date()
-        latest_date = date_until.date() if date_until else result.timerange.latest.date()
-        lines.append("")
-        lines.extend(
-            _format_timeline_lines(
-                result.timerange.timeline,
-                earliest_date,
-                latest_date,
-                TimelineFormatConfig(
-                    num_buckets=args.buckets,
-                    color_enabled=color_enabled,
-                    indent="",
-                ),
-            )
-        )
-
-    total_tasks_value = magenta(str(result.total_tasks), color_enabled)
-    lines.append(f"Total tasks: {total_tasks_value}")
-
-    if result.timerange.earliest and result.timerange.latest:
-        avg_value = magenta(f"{result.avg_tasks_per_day:.2f}", color_enabled)
-        max_single_value = magenta(str(result.max_single_day_count), color_enabled)
-        max_repeat_value = magenta(str(result.max_repeat_count), color_enabled)
-        lines.append(f"Average tasks per day: {avg_value}")
-        lines.append(f"Max tasks on a single day: {max_single_value}")
-        lines.append(f"Max repeats of a single task: {max_repeat_value}")
-
-    remaining_states = sorted(
-        set(result.task_states.values.keys()) - set(done_keys) - set(todo_keys)
-    )
-    state_order = done_keys + todo_keys + remaining_states
-    lines.extend(
-        _format_histogram_section(
-            "Task states:",
-            result.task_states,
-            HistogramSectionConfig(
-                buckets=args.buckets,
-                order=state_order,
-                render_config=RenderConfig(
-                    color_enabled=color_enabled,
-                    histogram_type="task_states",
-                    done_keys=done_keys,
-                    todo_keys=todo_keys,
-                ),
-                indent="",
-            ),
-        )
-    )
-
-    category_order = sorted(result.task_categories.values.keys())
-    lines.extend(
-        _format_histogram_section(
-            "Task categories:",
-            result.task_categories,
-            HistogramSectionConfig(
-                buckets=args.buckets,
-                order=category_order,
-                render_config=RenderConfig(color_enabled=color_enabled),
-                indent="",
-            ),
-        )
-    )
-
-    day_order = [
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-        "Sunday",
-        "unknown",
-    ]
-    lines.extend(
-        _format_histogram_section(
-            "Task occurrence by day of week:",
-            result.task_days,
-            HistogramSectionConfig(
-                buckets=args.buckets,
-                order=day_order,
-                render_config=RenderConfig(color_enabled=color_enabled),
-                indent="",
-            ),
-        )
-    )
-
-    return _lines_to_text(_apply_indent(lines, indent))
-
-
-class SummaryDisplayArgs(Protocol):
-    """Protocol for display arguments used in summary output."""
-
-    buckets: int
-    max_results: int
-    max_relations: int
-    max_tags: int
-    min_group_size: int
-    max_groups: int
-    use: str
-
-
-class TaskDisplayArgs(Protocol):
-    """Protocol for display arguments used in task summary output."""
-
-    buckets: int
+    return apply_indent(lines, config.indent)

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 
 import typer
 from colorama import init as colorama_init
 
 from org import config as config_module
-from org.analyze import analyze
+from org.analyze import Group, TimeRange, analyze
 from org.cli_common import (
     build_filter_chain,
     compute_explicit_groups,
@@ -21,7 +22,13 @@ from org.cli_common import (
 )
 from org.color import should_use_color
 from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
-from org.tui import format_group_list
+from org.tui import (
+    GroupBlockConfig,
+    TimelineFormatConfig,
+    apply_indent,
+    format_group_block,
+    lines_to_text,
+)
 from org.validation import parse_date_argument, validate_global_arguments, validate_stats_arguments
 
 
@@ -61,6 +68,60 @@ class GroupsArgs:
     min_group_size: int
     max_groups: int
     buckets: int
+
+
+def format_group_list(
+    groups: list[Group],
+    config: tuple[int, int, datetime | None, datetime | None, TimeRange, set[str], bool],
+    indent: str = "",
+) -> str:
+    """Return formatted output for group stats without a section header."""
+    (
+        max_results,
+        num_buckets,
+        date_from,
+        date_until,
+        global_timerange,
+        exclude_set,
+        color_enabled,
+    ) = config
+
+    exclude_lower = {value.lower() for value in exclude_set}
+    filtered_groups = []
+    for group in groups:
+        display_tags = [tag for tag in group.tags if tag.lower() not in exclude_lower]
+        if display_tags:
+            filtered_groups.append((display_tags, group))
+
+    filtered_groups = filtered_groups[:max_results]
+
+    if not filtered_groups:
+        return lines_to_text(apply_indent(["No results"], indent))
+
+    lines: list[str] = []
+    for idx, (group_tags, group) in enumerate(filtered_groups):
+        if idx > 0:
+            lines.append("")
+        lines.extend(
+            format_group_block(
+                group_tags,
+                group,
+                GroupBlockConfig(
+                    date_from=date_from,
+                    date_until=date_until,
+                    global_timerange=global_timerange,
+                    timeline=TimelineFormatConfig(
+                        num_buckets=num_buckets,
+                        color_enabled=color_enabled,
+                        indent="",
+                    ),
+                    name_indent="",
+                    stats_indent="  ",
+                ),
+            )
+        )
+
+    return lines_to_text(apply_indent(lines, indent))
 
 
 def run_stats_groups(args: GroupsArgs) -> None:

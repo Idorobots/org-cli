@@ -1902,6 +1902,38 @@ Here's an example:
 - ~stats tags~ would use a common formatter for the plot and another for the tags section, use both of them and concatenate the results to form the output of the command.
 - ~stats summary~ would use the same formatter for the plot and the same tags section formatter, but prepend all tags sections with a leading indent and combine the format slightly differently than ~stats tags~ in addition to adding the other sections.
 
+In the end, I'd like all functions in TUI to be small and reusable with the main output generation done in the commands modules themselves. I'd like the output generation in the commands modules to still produce strings and output them to the screen as the last step.
+
+Please adjust the TUI tests to use small unit tests for the common functionality and move the overall output generation tests to the per-command tests.
+
+** DONE TUI refactor slop fix                                                          :Cleanup:TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 14:20] \\
+  Worked fine.
+:END:
+Can you please refactor the TUI module again? I'd like the only functions that are concerting the formatting of output in that module to be small, reusable blocks. Move all the command-specific functions to the command modules, i.e:
+- ~format_group_list~ should be in the ~stats group~ module,
+- ~format_tasks_summary~ should be in ~stats tasks~ module,
+
+The output formatting in ~stats summary~ should be extracted into a dedicated function in that module,
+
+Please rename ~format_selected_items~ to ~format_tags~ when moving it to ~stats tags~ module and rename ~format_category_section~ to ~format_tags_section~ when moving it to ~stats summary~ module.
+
+** TODO Analyze split                                                             :Cleanup:Analysis:
+All stats commands use the ~analyze()~ function which computes the full ~AnalysisResult~ each time. That is pretty wastefull and I'd like to optimize and clean that up.
+
+Please use the ~compute_*~ functions directly in the implementations of the commands, so that we can omit the irrelevant bits of the computation:
+
+- for ~stats tasks~ it makes sense to omit computing relations, tag timeranges, tag statistics and groups.
+- for ~stats tags~ it makes sense to omit computing the groups and some of the global statistics (other than the global timerange),
+- for ~stats groups~ it makes sense to omit computing some of the global statistics and only compute the global groups when no ~--group~ parameter is supplied,
+- for ~stats summary~ it makes sense to use the ~analyze()~ function.
+
+** TODO Final (?) round of refactoring                                                     :Cleanup:
+There are some more opportunities for refactoring that I'd like to explore.
+
+** TODO Logging & verbose mode                                                              :CLI:UX:
+
 ** Tasks command                                                                          :CLI:CRUD:
 *** TODO Tasks *R**
 Add a new ~tasks~ command to the CLI that allows searching for specific tasks.
