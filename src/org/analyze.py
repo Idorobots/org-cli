@@ -689,6 +689,60 @@ def compute_groups(
     return groups
 
 
+def compute_explicit_groups(
+    nodes: list[orgparse.node.OrgNode],
+    mapping: dict[str, str],
+    category: str,
+    group_items: list[list[str]],
+    tag_time_ranges: dict[str, TimeRange],
+) -> list[Group]:
+    """Compute group statistics based on explicit tag lists.
+
+    Args:
+        nodes: List of org-mode nodes to analyze
+        mapping: Dictionary mapping items to canonical forms
+        category: Which datum to analyze - "tags", "heading", or "body"
+        group_items: Explicit group item lists to evaluate
+        tag_time_ranges: Precomputed time ranges for tags/items
+
+    Returns:
+        List of Group objects representing explicit groups
+    """
+    groups: list[Group] = []
+
+    for group in group_items:
+        present_tags = [tag for tag in group if tag in tag_time_ranges]
+        if not present_tags:
+            continue
+
+        group_set = set(present_tags)
+        total_tasks = 0
+
+        for node in nodes:
+            node_items = _extract_items(node, mapping, category)
+            if node_items & group_set:
+                total_tasks += max(1, len(node.repeated_tasks))
+
+        if total_tasks == 0:
+            continue
+
+        time_range = _combine_time_ranges(tag_time_ranges, present_tags)
+        avg_tasks_per_day = compute_avg_tasks_per_day(time_range, total_tasks)
+        max_single_day = compute_max_single_day(time_range)
+
+        groups.append(
+            Group(
+                tags=present_tags,
+                time_range=time_range,
+                total_tasks=total_tasks,
+                avg_tasks_per_day=avg_tasks_per_day,
+                max_single_day_count=max_single_day,
+            )
+        )
+
+    return groups
+
+
 def analyze(
     nodes: list[orgparse.node.OrgNode],
     mapping: dict[str, str],

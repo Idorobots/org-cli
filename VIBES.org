@@ -1521,12 +1521,16 @@ Installing ~org-cli~ should result in a command called ~org~ to be made availabl
 
 Please update the README.md and AGENTS.md with the updated names, code structure and command breakdown.
 
-** TODO Stats command                                                                 :CLI:Analysis:
+** REWORKED Stats command                                                             :CLI:Analysis:
+:LOGBOOK:
+- State "REWORKED"       from "TODO"       [2026-02-21 Sat 18:53] \\
+  No comments here, was pretty easy. Upon closer inspection it turned out that the command was implemented as a positional argument, not as a subcommand.
+:END:
 Wrap the current analysis logic into a dedicated ~stats~ command. There will be more commands to come in the future.
 An example invocation of this command follows:
 
 #+begin_src bash
-org analyze -n 5 examples/ARCHIVE_small
+org stats -n 5 examples/ARCHIVE_small
 #+end_src
 
 The functionality of this command should be exactly the same as the whole application currently.
@@ -1545,7 +1549,174 @@ Some of the CLI switches will affect all commands, some will be used only by som
 The remaining switches should be recognized by the ~stats~ command.
 Some switches will be shared and semantically the same for a subset of commands, but should be recognized only by the commands they affect.
 
-** TODO Tags command                                                                        :CLI:UX:
+** CANCELLED Tasks stats command                                                            :CLI:UX:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-02-21 Sat 19:07] \\
+  The AI went full slop and added switches that disable the display of some sections in the stats command instead of creating a proper subcommand. Same for stats.
+:END:
+Add a new ~stats tasks~ command to the CLI that allows displaying over-all stats for tasks.
+An example invocation will look like this:
+
+#+begin_src bash
+org stats tasks -n 5 path/to/file.org
+#+end_src
+
+The command should display a frequency chart of the tasks matching the filter criteria along with the global task stats, all three histograms of distributions and a list of most recent tasks contributing to the analysis results.
+
+Essentially, this is the initial part of the ~stats~ output, without the ~TASKS~, ~TAGS~ or ~GROUPS~ sections.
+This is how it's supposed to look:
+
+#+begin_example
+2026-02-07                                2026-02-21
+┊▃  ▄  ▅         ▁   ▄  █  ▄         ▁   ▁  ▇  ▄   ┊ 17 (2026-02-14)
+‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+Total tasks: 127
+Average tasks per day: 8.47
+Max tasks on a single day: 17
+Max repeats of a single task: 1
+
+Task states:
+  CANCELLED┊█████ 14
+  DELEGATED┊ 0
+  REWORKED ┊██████████████ 37
+  DONE     ┊██████████████████ 46
+  TODO     ┊█ 5
+  none     ┊█████████ 25
+
+Task categories:
+  Analysis ┊███████ 18
+  Bug      ┊█ 4
+  Build    ┊█ 4
+  UX       ┊███████ 18
+  none     ┊████████████ 33
+
+Task occurrence by day of week:
+  Monday   ┊████ 11
+  Tuesday  ┊ 0
+  Wednesday┊ 1
+  Thursday ┊██ 6
+  Friday   ┊██████████ 26
+  Saturday ┊█████████████ 34
+  Sunday   ┊███████ 19
+  unknown  ┊███████████ 30
+#+end_example
+
+The colors should be applied the exact same way as in the global ~stats~ command, including support for ~--color~ switches.
+
+The command should support all the usual switches, much like the full ~stats~ command and run the relevant analysis. The only difference is the output formatting which omits the ~TASKS~, ~TAGS~ and ~GROUPS~ sections.
+
+If there are no tasks matching the filter criteria, the command should print "No results".
+
+We will eventually refine the command output in the future.
+
+** REWORKED Refactor stats command                                                     :Cleanup:CLI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-21 Sat 19:50] \\
+  Required additional prompting since argparse turned out to be a limitation. The AI proposed to add `org stats summary` command.
+:END:
+Please refactor the ~org stats~ and ~org stats tasks~ commands to be proper subcommands of ~org~.
+I want the ~stats~ command to be a subcommand of ~org~ and ~tasks~ to be a subcommand of ~stats~.
+
+Eventually, we will have many more commands:
+#+begin_example
+org stats
+org stats tasks
+org stats tags
+org stats groups
+org tasks
+org tasks add
+...
+#+end_example
+
+The commands should be organized in subcommand trees and properly handle parsing of the arguments for each command.
+Each command should have a separate implementation function, do not pass a flag that changes how another command's implementation is supposed to display things.
+I want these to be separate commands entirely, that share some of the code for th, parsing of arguments, analysis and formatting of the results.
+
+** REWORKED Refactor the CLI commands with Typer                                       :Cleanup:CLI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-21 Sat 20:46] \\
+  See comment.
+:END:
+Refactor the CLI commands with the python Typer library.
+
+To achieve this I'd like you to refactor the cli.py module in terms of Typer commands. The logic and output should remain the same, save for the command layout, help strings, etc. Typer should make it much easier to handle many subcommands in a nicer fashion.
+
+You can define a separate Typer app per command and combine them for the wrapping commands. You might need to duplicate some parameter configs for different commands, but that is OK. Try to reuse as much of the validation/analysis/display code as possible.
+
+Please don't bother adjusting the tests just yet, focus on the functionality and usability of this solution. We'll address the tests next.
+
+*** COMMENT
+I expected this to go poorly, but the initial refactor went well. The output for the ~org~ command alone was a bit weird though, so it needed a bit of reprompting.
+
+** DONE Typer CLI switches cleanup                                                     :Cleanup:CLI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-21 Sat 21:15] \\
+  This was easy enough.
+:END:
+Some of the CLI switches don't make much sense for the new ~org stats tasks~ command, please remove them from this command alone (the ~org stats summary~ should still accept them):
+- ~--max-tags~
+- ~--max-relations~
+- ~--max-groups~
+- ~--min-group-size~
+- ~--use~
+
+I also realised that the ~--filter-category~ switch now works the same way that ~--filter-property CATEGORY=<value>~ filter is supposed to works, so we can remove ~--filter-category~ entirely.
+Please remove it.
+
+The descriptions for various CLI switches explicitly state the default value, but Typer shows the current defaults automatically. Please adjust the descriptions to omit the "(default: ...)" text and just rely on Typer for that.
+
+Please don't adjust any test cases just yet. We'll handle that next.
+
+** CANCELLED Option groups                                                                  :UX:CLI:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-02-21 Sat 21:31] \\
+  The AI wanted to do that, but it turned out click-option-group is not compatible with Typer and the resulting solution was very hacky.
+:END:
+Please use ~click-option-group~ to group the switches on both commands as follows:
+
+Common filters:
+- all ~--filter*~ switches
+
+Display options:
+- all ~--max*~ switches
+- all ~--min*~ switches
+- ~--use~
+- ~--buckets~
+
+Task categories:
+- ~--category-property~
+- ~--with-gamify-category~
+- ~--with-tags-as-category~
+
+Configuration switches:
+- ~--config~
+- ~--exclude~
+- ~--mapping~
+- ~--todo-keys~
+- ~--done-keys~
+
+Common switches:
+- ~--help~
+- ~--color~ and ~--no-color~
+- any remaining switches that didn't make it to the other groups
+
+Please preserve the same ordering of option groups in the help messages.
+It is OK if some commands don't include all the switches in those groups, or even if they omit some groups.
+
+Please don't adjust the test cases just yet, we'll handle that next.
+
+** REWORKED Typer tests                                                                      :Tests:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-21 Sat 22:06] \\
+  Needed extra prompts to get the AI to properly fix the tests & linter errors.
+:END:
+Adjust the test cases to use the new command layout based on Typer. Don't bother testing the ~org tasks~ command (yet).
+
+** DONE Tags stats command                                                                  :CLI:UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-21 Sat 22:32] \\
+  Seems to have one-shot the implementation.
+:END:
 Add a new ~stats tags~ command to the CLI that allows displaying tag stats for specific tags.
 An example invocation will look like this:
 
@@ -1611,7 +1782,11 @@ org stats tags --show Scala,Debugging,EmbeddedDevelopment path/to/file.org
 
 The output generated should include only the stats for ~Scala~, ~Debugging~ and ~EmbeddedDevelopment~.
 
-** TODO Groups command                                                                      :CLI:UX:
+** DONE Groups stats command                                                                :CLI:UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-21 Sat 23:23] \\
+  All good.
+:END:
 Add a new ~stats tags~ command to the CLI that allows displaying tag stats for specific tags.
 An example invocation will look like this:
 
@@ -1674,6 +1849,148 @@ The output generated should include only the stats for two groups:
 
 The groups should be computed anew even if they are present in the analysis results. This is an extra step to be performed after main analysis by this command alone.
 
+** DONE Refactor cli.py                                                                    :Cleanup:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 12:11]
+:END:
+I see that cli.py is a huge file now. Please refactor it splitting out all the various bits into new modules.
+
+I'd like the commands to be separate and a common CLI module to provide all the common bits. You can introduce a subpackage called ~commands~ for these. In that subpackage, another subpackage should be defined for each command (~stats~ and ~tasks~).
+The task stats, tags stats and group stats commands should be separated into their own modules and placed in ~commands.stats~ package.
+
+I'd like the configuration handling & defaults generation code to be a separete module called ~config~.
+
+I'd like the output generation to also be a separate module called ~tui~ - we will be adding more of these in the future, including Markdown, JSON and YAML output.
+
+Please make sure that the code works exactly the same. This is purely a reorganization of the modules.
+
+** DONE Test coverage after the refactor                                                 :Tests:CLI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 12:59] \\
+  It did refactor the tests fine, reduced the number of test cases from 814 to 628 and at the same time increased the overall coverage to 91%.
+:END:
+I see that the test coverage dropped well below 90%. I'd like to improve that.
+
+Please refactor the test suite to remove now obsolete and duplicated test cases and reorganize it to better match the current main code module split.
+
+Add tests that will test the functionality of the code that is missing coverage right now. Prefer unit tests that are quick to run, to broader integration tests. Do include some integration tests as a sanity check.
+
+The overall target coverage is 90% of statements. It is OK if some modules fall below that.
+** DONE More CLI refactoring                                                           :Cleanup:CLI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 13:25] \\
+  AI used Protocols for the cli arg class structural typing, which makes sense. It then still used duck typing for the config defaults application. :shrug:
+:END:
+There are some more opportunities for refactoring that I'd like to explore.
+
+The ~cli_common.py~ contains a lot of validation code that could be extracted into a separate module called ~validation~.
+
+The ~ArgsPayload~ class exists to work around the linter complaints about too many parameters passed to ~build_args_namespace~ that just maps that into a ~SimpleNamespace~. I think it makes a lot more sense to use ~ArgsPayload~ directly (albeit renamed to ~CliArgs~) and pass that to the command functions. This way we can remove ~build_args_namespace~ and just pass the args diretly to the ~run_*~ command functions.
+Ideally, each command would define it's own args class and use that, with ~config.apply_config_defaults~ setting the relevant fields if they exist on the args class. This will make it easy to test those functions.
+
+** REWORKED TUI refactoring                                                            :Cleanup:TUI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-22 Sun 13:58] \\
+  AI did it's thing and made all the display function into format functions, but then didn't refactor the way the output is built.
+:END:
+There are some more opportunities for refactoring that I'd like to explore.
+
+The TUI module now contains a lot of duplication, because the commands output is very similar, but differs in just the indent level.
+We can refactor that by making each display function return a string of text instead of printing the values immediately to the output stream. This way, smaller, common functions can be extracted (for instance for formatting group display, plots etc) that can be combined to form larger formatting functions. The goal is to have common, generic section formatting functions in TUI and move the overall command output generation to the command code.
+
+Here's an example:
+- ~stats tags~ would use a common formatter for the plot and another for the tags section, use both of them and concatenate the results to form the output of the command.
+- ~stats summary~ would use the same formatter for the plot and the same tags section formatter, but prepend all tags sections with a leading indent and combine the format slightly differently than ~stats tags~ in addition to adding the other sections.
+
+In the end, I'd like all functions in TUI to be small and reusable with the main output generation done in the commands modules themselves. I'd like the output generation in the commands modules to still produce strings and output them to the screen as the last step.
+
+Please adjust the TUI tests to use small unit tests for the common functionality and move the overall output generation tests to the per-command tests.
+
+** DONE TUI refactor slop fix                                                          :Cleanup:TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 14:20] \\
+  Worked fine.
+:END:
+Can you please refactor the TUI module again? I'd like the only functions that are concerting the formatting of output in that module to be small, reusable blocks. Move all the command-specific functions to the command modules, i.e:
+- ~format_group_list~ should be in the ~stats group~ module,
+- ~format_tasks_summary~ should be in ~stats tasks~ module,
+
+The output formatting in ~stats summary~ should be extracted into a dedicated function in that module,
+
+Please rename ~format_selected_items~ to ~format_tags~ when moving it to ~stats tags~ module and rename ~format_category_section~ to ~format_tags_section~ when moving it to ~stats summary~ module.
+
+** DONE Analyze split                                                             :Cleanup:Analysis:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 14:32] \\
+  This went really quickly.
+:END:
+All stats commands use the ~analyze()~ function which computes the full ~AnalysisResult~ each time. That is pretty wastefull and I'd like to optimize and clean that up.
+
+Please use the ~compute_*~ functions directly in the implementations of the commands, so that we can omit the irrelevant bits of the computation:
+
+- for ~stats tasks~ it makes sense to omit computing relations, tag timeranges, tag statistics and groups.
+- for ~stats tags~ it makes sense to omit computing the groups and some of the global statistics (other than the global timerange),
+- for ~stats groups~ it makes sense to omit computing some of the global statistics and only compute the global groups when no ~--group~ parameter is supplied,
+- for ~stats summary~ it makes sense to use the ~analyze()~ function.
+
+** DONE Final (?) round of refactoring                                                     :Cleanup:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 15:07] \\
+  Worked fine.
+:END:
+There are some more opportunities for refactoring that I'd like to explore.
+
+Please move the ~compute_explicit_groups~ function from ~cli_common~ module to ~analyze~, it makes more sense to be placed there.
+
+Please move the ~load_exclude_list~ and ~load_mapping~ functions from ~cli_common~ to ~config~. These are more related to the configuration than the CLI.
+
+Please extract the ~load_nodes~ function into a dedicated module called ~parse~, we will extend that in the future.
+
+All the commands ~run_*~ functions begin with a very similar preamble that checks for color configuration, validates the arguments, loads the mapping and exclusion files, loads the nodes and applies enhancements and filtering and only then proceeds to the actual computation done by the command. I would rather if this were factored out into a helper function in ~cli_common~ that performs most of this work, so that each command starts with a simpler preamble, here's an example:
+
+#+begin_src python
+tui.setup_output(args)
+validate_stats_arguments(args)
+nodes, todo_keys, done_keys = cli_common.load_and_process_data(args)
+mapping = resolve_mapping(args)
+exclude_set = resolve_exclude_set(args)
+result = analyze(...)
+...
+#+end_src
+
+The color handling can be offloaded into a TUI function ~setup_output~ while the actual data loading should be placed in ~cli_common.load_data~ function.
+
+Please refactor all the ~stats~ commands to use this new preamble.
+
+** DONE Logging & verbose mode                                                              :CLI:UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 15:24] \\
+  Easy
+:END:
+I'd like to add a logging facility to the application that will help with debugging in the future.
+Please add a suitable library that will perform the logging in the application code.
+
+I'd like there to be a global ~--verbose~ flag that enables the log display to the standard output stream. While the flag is missing (a.k.a low verbosity level) the output of the logging facility is spressed and only the command output is printed.
+
+Currently, only the "Processing <filename>..." logs should be logged by the logging facility, with extra logs to be added in the future.
+** DONE Last refactoring thingie                                                       :Cleanup:CLI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 15:33] \\
+  Cleaned up good.
+:END:
+Can you please extract the following duplicated piece of code into a helper function called ~resolve_date_filters~ and move it to the ~cli_common~ module:
+
+#+begin_src python
+    date_from = None
+    date_until = None
+    if args.filter_date_from is not None:
+        date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
+    if args.filter_date_until is not None:
+        date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
+#+end_src
+
+This piece of code is used by all ~stats~ commands currently (~stats tags~ abstracts that into a private function). It would make sense to define a helper for it and reuse that helper in the commands.
+
 ** Tasks command                                                                          :CLI:CRUD:
 *** TODO Tasks *R**
 Add a new ~tasks~ command to the CLI that allows searching for specific tasks.
@@ -1690,7 +2007,7 @@ Some examples follow.
 
 Empty result:
 #+begin_example
-org tags --filter-not-complete VIBES.org
+org tasks --filter-not-complete VIBES.org
 #+end_example
 
 #+begin_example
@@ -1699,7 +2016,7 @@ No results.
 
 Results found:
 #+begin_example
-org tags --filter-complete VIBES.org
+org tasks --filter-complete VIBES.org
 #+end_example
 
 #+begin_example
@@ -1715,7 +2032,7 @@ The detailed display will show the entire Org Node prepended by a comment naming
 
 Example:
 #+begin_example
-org tags -n 4 --details tests/fixtures/simple.org
+org tasks -n 4 --details tests/fixtures/simple.org
 #+end_example
 
 : # tests/fixtures/simple.org
