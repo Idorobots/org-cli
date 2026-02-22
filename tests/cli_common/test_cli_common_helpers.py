@@ -9,11 +9,10 @@ import pytest
 from org.cli_common import (
     dedupe_values,
     normalize_show_value,
-    parse_group_values,
-    parse_show_values,
     resolve_group_values,
     resolve_input_paths,
 )
+from org.validation import parse_group_values, parse_show_values
 
 
 def test_parse_show_values_rejects_empty(capsys: pytest.CaptureFixture[str]) -> None:

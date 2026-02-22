@@ -9,11 +9,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
+from typing import Protocol
 
 import orgparse
 
-from org import config
 from org.analyze import Group, TimeRange, normalize
 from org.filters import (
     filter_body,
@@ -30,6 +29,7 @@ from org.filters import (
     filter_tag,
 )
 from org.timestamp import extract_timestamp_any
+from org.validation import parse_date_argument, parse_group_values, parse_property_filter
 
 
 MAP: dict[str, str] = {}
@@ -125,16 +125,9 @@ class Filter:
     filter: Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]
 
 
-@dataclass
-class ArgsPayload:
-    """Payload for CLI argument values."""
+class FilterArgs(Protocol):
+    """Protocol for filter-related CLI arguments."""
 
-    files: list[str] | None
-    config: str
-    exclude: str | None
-    mapping: str | None
-    todo_keys: str
-    done_keys: str
     filter_gamify_exp_above: int | None
     filter_gamify_exp_below: int | None
     filter_repeats_above: int | None
@@ -147,19 +140,6 @@ class ArgsPayload:
     filter_bodies: list[str] | None
     filter_completed: bool
     filter_not_completed: bool
-    color_flag: bool | None
-    max_results: int
-    max_tags: int
-    use: str
-    with_gamify_category: bool
-    with_tags_as_category: bool
-    category_property: str
-    max_relations: int
-    min_group_size: int
-    max_groups: int
-    buckets: int
-    show: str | None
-    groups: list[str] | None
 
 
 def load_exclude_list(filepath: str | None) -> set[str]:
@@ -401,91 +381,6 @@ def get_top_tasks(
     return [node for node, _ in sorted_nodes[:max_results]]
 
 
-def parse_date_argument(date_str: str, arg_name: str) -> datetime:
-    """Parse and validate timestamp argument in multiple supported formats.
-
-    Supported formats:
-    - YYYY-MM-DD
-    - YYYY-MM-DDThh:mm
-    - YYYY-MM-DDThh:mm:ss
-    - YYYY-MM-DD hh:mm
-    - YYYY-MM-DD hh:mm:ss
-
-    Args:
-        date_str: Date/timestamp string to parse
-        arg_name: Argument name for error messages
-
-    Returns:
-        Parsed datetime object
-
-    Raises:
-        SystemExit: If format is invalid
-    """
-    if not date_str or not date_str.strip():
-        supported_formats = [
-            "YYYY-MM-DD",
-            "YYYY-MM-DDThh:mm",
-            "YYYY-MM-DDThh:mm:ss",
-            "YYYY-MM-DD hh:mm",
-            "YYYY-MM-DD hh:mm:ss",
-        ]
-        formats_str = ", ".join(supported_formats)
-        print(
-            f"Error: {arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    try:
-        return datetime.fromisoformat(date_str)
-    except ValueError:
-        pass
-
-    try:
-        return datetime.fromisoformat(date_str.replace(" ", "T"))
-    except ValueError:
-        pass
-
-    supported_formats = [
-        "YYYY-MM-DD",
-        "YYYY-MM-DDThh:mm",
-        "YYYY-MM-DDThh:mm:ss",
-        "YYYY-MM-DD hh:mm",
-        "YYYY-MM-DD hh:mm:ss",
-    ]
-    formats_str = ", ".join(supported_formats)
-    print(
-        f"Error: {arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-
-def parse_property_filter(property_str: str) -> tuple[str, str]:
-    """Parse property filter argument in KEY=VALUE format.
-
-    Splits on first '=' to support values containing '='.
-
-    Args:
-        property_str: Property filter string
-
-    Returns:
-        Tuple of (property_name, property_value)
-
-    Raises:
-        SystemExit: If format is invalid (no '=' found)
-    """
-    if "=" not in property_str:
-        print(
-            f"Error: --filter-property must be in KEY=VALUE format, got '{property_str}'",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    parts = property_str.split("=", 1)
-    return (parts[0], parts[1])
-
-
 def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
     """Parse command-line order of filter arguments.
 
@@ -520,7 +415,7 @@ def count_filter_values(value: list[str] | None) -> int:
     return len(value) if value else 0
 
 
-def extend_filter_order_with_defaults(filter_order: list[str], args: SimpleNamespace) -> list[str]:
+def extend_filter_order_with_defaults(filter_order: list[str], args: FilterArgs) -> list[str]:
     """Extend filter order to include config-provided filters."""
     filter_headings = getattr(args, "filter_headings", None)
     filter_bodies = getattr(args, "filter_bodies", None)
@@ -549,7 +444,7 @@ def extend_filter_order_with_defaults(filter_order: list[str], args: SimpleNames
     return full_order
 
 
-def handle_simple_filter(arg_name: str, args: SimpleNamespace) -> list[Filter]:
+def handle_simple_filter(arg_name: str, args: FilterArgs) -> list[Filter]:
     """Handle simple filter arguments (gamify_exp, repeats).
 
     Args:
@@ -578,7 +473,7 @@ def handle_simple_filter(arg_name: str, args: SimpleNamespace) -> list[Filter]:
     return []
 
 
-def handle_date_filter(arg_name: str, args: SimpleNamespace) -> list[Filter]:
+def handle_date_filter(arg_name: str, args: FilterArgs) -> list[Filter]:
     """Handle date filter arguments.
 
     Args:
@@ -599,7 +494,7 @@ def handle_date_filter(arg_name: str, args: SimpleNamespace) -> list[Filter]:
     return []
 
 
-def handle_completion_filter(arg_name: str, args: SimpleNamespace) -> list[Filter]:
+def handle_completion_filter(arg_name: str, args: FilterArgs) -> list[Filter]:
     """Handle completion status filter arguments.
 
     Args:
@@ -669,7 +564,7 @@ def handle_body_filter(pattern: str) -> list[Filter]:
 
 def handle_indexed_filter(
     arg_name: str,
-    args: SimpleNamespace,
+    args: FilterArgs,
     index_trackers: dict[str, int],
 ) -> list[Filter]:
     """Handle indexed filter arguments (property, tag, heading, body).
@@ -723,7 +618,7 @@ def handle_indexed_filter(
     return []
 
 
-def create_filter_specs_from_args(args: SimpleNamespace, filter_order: list[str]) -> list[Filter]:
+def create_filter_specs_from_args(args: FilterArgs, filter_order: list[str]) -> list[Filter]:
     """Create filter specifications from parsed arguments.
 
     Args:
@@ -754,7 +649,7 @@ def create_filter_specs_from_args(args: SimpleNamespace, filter_order: list[str]
     return filter_specs
 
 
-def build_filter_chain(args: SimpleNamespace, argv: list[str]) -> list[Filter]:
+def build_filter_chain(args: FilterArgs, argv: list[str]) -> list[Filter]:
     """Build ordered list of filter functions from CLI arguments.
 
     Processes filters in command-line order. Expands --filter presets inline
@@ -770,62 +665,6 @@ def build_filter_chain(args: SimpleNamespace, argv: list[str]) -> list[Filter]:
     filter_order = parse_filter_order_from_argv(argv)
     filter_order = extend_filter_order_with_defaults(filter_order, args)
     return create_filter_specs_from_args(args, filter_order)
-
-
-def validate_and_parse_keys(keys_str: str, option_name: str) -> list[str]:
-    """Parse and validate comma-separated keys.
-
-    Args:
-        keys_str: Comma-separated string of keys
-        option_name: Name of the option for error messages
-
-    Returns:
-        List of validated keys
-
-    Raises:
-        SystemExit: If validation fails
-    """
-    keys = [k.strip() for k in keys_str.split(",") if k.strip()]
-    if not keys:
-        print(f"Error: {option_name} cannot be empty", file=sys.stderr)
-        sys.exit(1)
-
-    for key in keys:
-        if "|" in key:
-            print(f"Error: {option_name} cannot contain pipe character: '{key}'", file=sys.stderr)
-            sys.exit(1)
-
-    return keys
-
-
-def validate_pattern(pattern: str, option_name: str, use_multiline: bool = False) -> None:
-    """Validate that a string is a valid regex pattern.
-
-    Args:
-        pattern: Regex pattern string to validate
-        option_name: Name of the option for error messages
-        use_multiline: Whether to validate with re.MULTILINE flag
-
-    Raises:
-        SystemExit: If pattern is not a valid regex
-    """
-    try:
-        if use_multiline:
-            re.compile(pattern, re.MULTILINE)
-        else:
-            re.compile(pattern)
-    except re.error as e:
-        print(f"Error: Invalid regex pattern for {option_name}: '{pattern}'\n{e}", file=sys.stderr)
-        sys.exit(1)
-
-
-def parse_show_values(value: str) -> list[str]:
-    """Parse comma-separated show values."""
-    values = [item.strip() for item in value.split(",") if item.strip()]
-    if not values:
-        print("Error: --show cannot be empty", file=sys.stderr)
-        sys.exit(1)
-    return values
 
 
 def normalize_show_value(value: str, mapping: dict[str, str]) -> str:
@@ -844,15 +683,6 @@ def dedupe_values(values: list[str]) -> list[str]:
         seen.add(value)
         deduped.append(value)
     return deduped
-
-
-def parse_group_values(value: str) -> list[str]:
-    """Parse comma-separated group values."""
-    values = [item.strip() for item in value.split(",") if item.strip()]
-    if not values:
-        print("Error: --group cannot be empty", file=sys.stderr)
-        sys.exit(1)
-    return values
 
 
 def resolve_group_values(
@@ -934,7 +764,7 @@ def load_nodes(
     return all_nodes, list(all_todo_keys), list(all_done_keys)
 
 
-def resolve_input_paths(inputs: list[str]) -> list[str]:
+def resolve_input_paths(inputs: list[str] | None) -> list[str]:
     """Resolve CLI inputs into a list of org files to process.
 
     Args:
@@ -979,113 +809,19 @@ def resolve_input_paths(inputs: list[str]) -> list[str]:
     return resolved_files
 
 
-def validate_global_arguments(args: SimpleNamespace) -> tuple[list[str], list[str]]:
-    """Validate shared command-line arguments.
-
-    Args:
-        args: Parsed command-line arguments
-
-    Returns:
-        Tuple of (todo_keys, done_keys)
-
-    Raises:
-        SystemExit: If validation fails
-    """
-    todo_keys = validate_and_parse_keys(args.todo_keys, "--todo-keys")
-    done_keys = validate_and_parse_keys(args.done_keys, "--done-keys")
-
-    if args.filter_tags:
-        for pattern in args.filter_tags:
-            validate_pattern(pattern, "--filter-tag")
-
-    if args.filter_headings:
-        for pattern in args.filter_headings:
-            validate_pattern(pattern, "--filter-heading")
-
-    if args.filter_bodies:
-        for pattern in args.filter_bodies:
-            validate_pattern(pattern, "--filter-body", use_multiline=True)
-
-    return (todo_keys, done_keys)
-
-
-def validate_stats_arguments(args: SimpleNamespace) -> None:
-    """Validate stats command arguments."""
-    if args.use not in {"tags", "heading", "body"}:
-        print("Error: --use must be one of: tags, heading, body", file=sys.stderr)
-        sys.exit(1)
-
-    if args.max_relations < 0:
-        print("Error: --max-relations must be non-negative", file=sys.stderr)
-        sys.exit(1)
-
-    if args.max_tags < 0:
-        print("Error: --max-tags must be non-negative", file=sys.stderr)
-        sys.exit(1)
-
-    if args.max_groups < 0:
-        print("Error: --max-groups must be non-negative", file=sys.stderr)
-        sys.exit(1)
-
-    if args.min_group_size < 0:
-        print("Error: --min-group-size must be non-negative", file=sys.stderr)
-        sys.exit(1)
-
-    if args.buckets < 20:
-        print("Error: --buckets must be at least 20", file=sys.stderr)
-        sys.exit(1)
-
-
-def resolve_mapping(args: SimpleNamespace) -> dict[str, str]:
+def resolve_mapping(args: object) -> dict[str, str]:
     """Resolve mapping based on inline or file-based configuration."""
     mapping_inline = getattr(args, "mapping_inline", None)
     if mapping_inline is not None:
         return mapping_inline or MAP
-    return load_mapping(args.mapping) or MAP
+    mapping_file = getattr(args, "mapping", None)
+    return load_mapping(mapping_file) or MAP
 
 
-def resolve_exclude_set(args: SimpleNamespace) -> set[str]:
+def resolve_exclude_set(args: object) -> set[str]:
     """Resolve exclude set based on inline or file-based configuration."""
     exclude_inline = getattr(args, "exclude_inline", None)
     if exclude_inline is not None:
         return normalize_exclude_values(exclude_inline) or DEFAULT_EXCLUDE
-    return load_exclude_list(args.exclude) or DEFAULT_EXCLUDE
-
-
-def build_args_namespace(payload: ArgsPayload) -> SimpleNamespace:
-    """Build a namespace matching the legacy argparse shape."""
-    args = SimpleNamespace(
-        files=list(payload.files or []),
-        config=payload.config,
-        exclude=payload.exclude,
-        mapping=payload.mapping,
-        todo_keys=payload.todo_keys,
-        done_keys=payload.done_keys,
-        filter_gamify_exp_above=payload.filter_gamify_exp_above,
-        filter_gamify_exp_below=payload.filter_gamify_exp_below,
-        filter_repeats_above=payload.filter_repeats_above,
-        filter_repeats_below=payload.filter_repeats_below,
-        filter_date_from=payload.filter_date_from,
-        filter_date_until=payload.filter_date_until,
-        filter_properties=payload.filter_properties,
-        filter_tags=payload.filter_tags,
-        filter_headings=payload.filter_headings,
-        filter_bodies=payload.filter_bodies,
-        filter_completed=payload.filter_completed,
-        filter_not_completed=payload.filter_not_completed,
-        color_flag=payload.color_flag,
-        max_results=payload.max_results,
-        max_tags=payload.max_tags,
-        use=payload.use,
-        with_gamify_category=payload.with_gamify_category,
-        with_tags_as_category=payload.with_tags_as_category,
-        category_property=payload.category_property,
-        max_relations=payload.max_relations,
-        min_group_size=payload.min_group_size,
-        max_groups=payload.max_groups,
-        buckets=payload.buckets,
-        show=payload.show,
-        groups=payload.groups,
-    )
-    config.apply_config_defaults(args)
-    return args
+    exclude_file = getattr(args, "exclude", None)
+    return load_exclude_list(exclude_file) or DEFAULT_EXCLUDE

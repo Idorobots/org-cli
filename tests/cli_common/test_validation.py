@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
-from org.cli_common import (
+from org.validation import (
+    GlobalArgs,
+    StatsArgs,
     parse_date_argument,
     parse_property_filter,
     validate_and_parse_keys,
@@ -56,7 +59,7 @@ def test_validate_global_arguments_invalid_regex() -> None:
     )
 
     with pytest.raises(SystemExit):
-        validate_global_arguments(args)
+        validate_global_arguments(cast(GlobalArgs, args))
 
 
 @pytest.mark.parametrize(
@@ -97,7 +100,7 @@ def test_validate_stats_arguments_errors(
         args.buckets = 10
 
     with pytest.raises(SystemExit):
-        validate_stats_arguments(args)
+        validate_stats_arguments(cast(StatsArgs, args))
 
     captured = capsys.readouterr().err
     assert message in captured

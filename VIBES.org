@@ -1876,6 +1876,27 @@ Please refactor the test suite to remove now obsolete and duplicated test cases 
 Add tests that will test the functionality of the code that is missing coverage right now. Prefer unit tests that are quick to run, to broader integration tests. Do include some integration tests as a sanity check.
 
 The overall target coverage is 90% of statements. It is OK if some modules fall below that.
+** DONE More CLI refactoring                                                           :Cleanup:CLI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 13:25] \\
+  AI used Protocols for the cli arg class structural typing, which makes sense. It then still used duck typing for the config defaults application. :shrug:
+:END:
+There are some more opportunities for refactoring that I'd like to explore.
+
+The ~cli_common.py~ contains a lot of validation code that could be extracted into a separate module called ~validation~.
+
+The ~ArgsPayload~ class exists to work around the linter complaints about too many parameters passed to ~build_args_namespace~ that just maps that into a ~SimpleNamespace~. I think it makes a lot more sense to use ~ArgsPayload~ directly (albeit renamed to ~CliArgs~) and pass that to the command functions. This way we can remove ~build_args_namespace~ and just pass the args diretly to the ~run_*~ command functions.
+Ideally, each command would define it's own args class and use that, with ~config.apply_config_defaults~ setting the relevant fields if they exist on the args class. This will make it easy to test those functions.
+
+** TODO TUI refactoring                                                                :Cleanup:TUI:
+There are some more opportunities for refactoring that I'd like to explore.
+
+The TUI module now contains a lot of duplication, because the commands output is very similar, but differs in just the indent level.
+We can refactor that by making each display function return a string of text instead of printing the values immediately to the output stream. This way, smaller, common functions can be extracted (for instance for formatting group display, plots etc) that can be combined to form larger formatting functions. The goal is to have common, generic section formatting functions in TUI and move the overall command output generation to the command code.
+
+Here's an example:
+- ~stats tags~ would use a common formatter for the plot and another for the tags section, use both of them and concatenate the results to form the output of the command.
+- ~stats summary~ would use the same formatter for the plot and the same tags section formatter, but prepend all tags sections with a leading indent and combine the format slightly differently than ~stats tags~ in addition to adding the other sections.
 
 ** Tasks command                                                                          :CLI:CRUD:
 *** TODO Tasks *R**

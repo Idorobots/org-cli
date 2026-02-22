@@ -229,7 +229,7 @@ def test_apply_config_defaults_applies_inline_and_append_defaults() -> None:
         config.CONFIG_APPEND_DEFAULTS["filter_tags"] = ["alpha"]
         config.CONFIG_INLINE_DEFAULTS["mapping_inline"] = {"foo": "bar"}
 
-        args = SimpleNamespace(filter_tags=None)
+        args = SimpleNamespace(filter_tags=None, mapping_inline=None, exclude_inline=None)
         config.apply_config_defaults(args)
 
         assert args.filter_tags == ["alpha"]

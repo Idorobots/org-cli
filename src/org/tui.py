@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import date, datetime
-from types import SimpleNamespace
+from typing import Protocol
 
 import orgparse
 from colorama import Style
@@ -391,7 +391,7 @@ def display_top_tasks(
 def display_results(
     result: AnalysisResult,
     nodes: list[orgparse.node.OrgNode],
-    args: SimpleNamespace,
+    args: SummaryDisplayArgs,
     display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
 ) -> None:
     """Display analysis results in formatted output.
@@ -515,7 +515,7 @@ def display_results(
 
 def display_task_summary(
     result: AnalysisResult,
-    args: SimpleNamespace,
+    args: TaskDisplayArgs,
     display_config: tuple[datetime | None, datetime | None, list[str], list[str], bool],
 ) -> None:
     """Display global task statistics without tag/group sections.
@@ -602,3 +602,21 @@ def display_task_summary(
     )
     for line in histogram_lines:
         print(f"  {line}")
+
+
+class SummaryDisplayArgs(Protocol):
+    """Protocol for display arguments used in summary output."""
+
+    buckets: int
+    max_results: int
+    max_relations: int
+    max_tags: int
+    min_group_size: int
+    max_groups: int
+    use: str
+
+
+class TaskDisplayArgs(Protocol):
+    """Protocol for display arguments used in task summary output."""
+
+    buckets: int

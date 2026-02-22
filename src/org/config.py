@@ -8,8 +8,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
-from typing import TypeGuard
+from typing import Protocol, TypeGuard, cast
 
 
 COMMAND_OPTION_NAMES = {
@@ -69,6 +68,13 @@ class ConfigContext:
     append_defaults: dict[str, list[str]]
     global_options: ConfigOptions
     stats_options: ConfigOptions
+
+
+class ConfigDefaultsTarget(Protocol):
+    """Protocol for args that accept inline defaults."""
+
+    mapping_inline: dict[str, str] | None
+    exclude_inline: list[str] | None
 
 
 def load_config(filepath: str) -> tuple[dict[str, object], bool]:
@@ -503,13 +509,19 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     }
 
 
-def apply_config_defaults(args: SimpleNamespace) -> None:
+def apply_config_defaults(args: object) -> None:
     """Apply config-provided defaults for append and inline values."""
     for dest, values in CONFIG_APPEND_DEFAULTS.items():
+        if not hasattr(args, dest):
+            continue
         if getattr(args, dest, None) is None:
             setattr(args, dest, values)
 
-    mapping_inline = CONFIG_INLINE_DEFAULTS.get("mapping_inline")
-    exclude_inline = CONFIG_INLINE_DEFAULTS.get("exclude_inline")
-    args.mapping_inline = mapping_inline if mapping_inline is not None else None
-    args.exclude_inline = exclude_inline if exclude_inline is not None else None
+    mapping_inline = cast(dict[str, str] | None, CONFIG_INLINE_DEFAULTS.get("mapping_inline"))
+    exclude_inline = cast(list[str] | None, CONFIG_INLINE_DEFAULTS.get("exclude_inline"))
+    if hasattr(args, "mapping_inline"):
+        target = cast(ConfigDefaultsTarget, args)
+        target.mapping_inline = mapping_inline if mapping_inline is not None else None
+    if hasattr(args, "exclude_inline"):
+        target = cast(ConfigDefaultsTarget, args)
+        target.exclude_inline = exclude_inline if exclude_inline is not None else None

@@ -3,32 +3,71 @@
 from __future__ import annotations
 
 import sys
-from types import SimpleNamespace
+from dataclasses import dataclass
 
 import typer
 from colorama import init as colorama_init
 
+from org import config as config_module
 from org.analyze import analyze
 from org.cli_common import (
-    ArgsPayload,
-    build_args_namespace,
     build_filter_chain,
     load_nodes,
     normalize_show_value,
-    parse_date_argument,
-    parse_show_values,
     resolve_exclude_set,
     resolve_input_paths,
     resolve_mapping,
-    validate_global_arguments,
-    validate_stats_arguments,
 )
 from org.color import should_use_color
 from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
 from org.tui import display_selected_items
+from org.validation import (
+    parse_date_argument,
+    parse_show_values,
+    validate_global_arguments,
+    validate_stats_arguments,
+)
 
 
-def run_stats_tags(args: SimpleNamespace) -> None:
+@dataclass
+class TagsArgs:
+    """Arguments for the stats tags command."""
+
+    files: list[str] | None
+    config: str
+    exclude: str | None
+    mapping: str | None
+    mapping_inline: dict[str, str] | None
+    exclude_inline: list[str] | None
+    todo_keys: str
+    done_keys: str
+    filter_gamify_exp_above: int | None
+    filter_gamify_exp_below: int | None
+    filter_repeats_above: int | None
+    filter_repeats_below: int | None
+    filter_date_from: str | None
+    filter_date_until: str | None
+    filter_properties: list[str] | None
+    filter_tags: list[str] | None
+    filter_headings: list[str] | None
+    filter_bodies: list[str] | None
+    filter_completed: bool
+    filter_not_completed: bool
+    color_flag: bool | None
+    max_results: int
+    max_tags: int
+    use: str
+    show: str | None
+    with_gamify_category: bool
+    with_tags_as_category: bool
+    category_property: str
+    max_relations: int
+    min_group_size: int
+    max_groups: int
+    buckets: int
+
+
+def run_stats_tags(args: TagsArgs) -> None:
     """Run the stats tags command."""
     color_enabled = should_use_color(args.color_flag)
 
@@ -266,39 +305,39 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Show tag stats for selected tags or top results."""
-        args = build_args_namespace(
-            ArgsPayload(
-                files=files,
-                config=config,
-                exclude=exclude,
-                mapping=mapping,
-                todo_keys=todo_keys,
-                done_keys=done_keys,
-                filter_gamify_exp_above=filter_gamify_exp_above,
-                filter_gamify_exp_below=filter_gamify_exp_below,
-                filter_repeats_above=filter_repeats_above,
-                filter_repeats_below=filter_repeats_below,
-                filter_date_from=filter_date_from,
-                filter_date_until=filter_date_until,
-                filter_properties=filter_properties,
-                filter_tags=filter_tags,
-                filter_headings=filter_headings,
-                filter_bodies=filter_bodies,
-                filter_completed=filter_completed,
-                filter_not_completed=filter_not_completed,
-                color_flag=color_flag,
-                max_results=max_results,
-                max_tags=0,
-                use=use,
-                with_gamify_category=with_gamify_category,
-                with_tags_as_category=with_tags_as_category,
-                category_property=category_property,
-                max_relations=max_relations,
-                min_group_size=2,
-                max_groups=0,
-                buckets=buckets,
-                show=show,
-                groups=None,
-            )
+        args = TagsArgs(
+            files=files,
+            config=config,
+            exclude=exclude,
+            mapping=mapping,
+            mapping_inline=None,
+            exclude_inline=None,
+            todo_keys=todo_keys,
+            done_keys=done_keys,
+            filter_gamify_exp_above=filter_gamify_exp_above,
+            filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_repeats_above=filter_repeats_above,
+            filter_repeats_below=filter_repeats_below,
+            filter_date_from=filter_date_from,
+            filter_date_until=filter_date_until,
+            filter_properties=filter_properties,
+            filter_tags=filter_tags,
+            filter_headings=filter_headings,
+            filter_bodies=filter_bodies,
+            filter_completed=filter_completed,
+            filter_not_completed=filter_not_completed,
+            color_flag=color_flag,
+            max_results=max_results,
+            max_tags=0,
+            use=use,
+            show=show,
+            with_gamify_category=with_gamify_category,
+            with_tags_as_category=with_tags_as_category,
+            category_property=category_property,
+            max_relations=max_relations,
+            min_group_size=2,
+            max_groups=0,
+            buckets=buckets,
         )
+        config_module.apply_config_defaults(args)
         run_stats_tags(args)
