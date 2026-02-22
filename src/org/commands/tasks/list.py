@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import cast
 
 import orgparse
 import typer
@@ -34,7 +35,10 @@ def _gamify_exp_value(node: orgparse.node.OrgNode) -> int | None:
 
 
 def _level_value(node: orgparse.node.OrgNode) -> int | None:
-    return int(node.level)
+    level = node.level
+    if level is None:
+        return None
+    return cast(int, level)
 
 
 def _constant_value(_: orgparse.node.OrgNode) -> int:
@@ -107,6 +111,7 @@ class ListArgs:
     color_flag: bool | None
     max_results: int
     details: bool
+    offset: int
     order_by: str | list[str]
     with_gamify_category: bool
     with_tags_as_category: bool
@@ -205,6 +210,9 @@ def run_tasks_list(args: ListArgs) -> None:
     """Run the tasks list command."""
     color_enabled = setup_output(args)
     order_by = normalize_order_by(args.order_by)
+    if args.offset < 0:
+        print("Error: --offset must be non-negative", file=sys.stderr)
+        sys.exit(1)
     nodes, todo_keys, done_keys = load_and_process_data(args)
 
     if not nodes or args.max_results <= 0:
@@ -212,7 +220,8 @@ def run_tasks_list(args: ListArgs) -> None:
         return
 
     ordered_nodes = order_nodes(nodes, order_by)
-    limited_nodes = ordered_nodes[: args.max_results]
+    offset_nodes = ordered_nodes[args.offset :]
+    limited_nodes = offset_nodes[: args.max_results]
 
     if not limited_nodes:
         print("No results")
@@ -361,6 +370,12 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Maximum number of results to display",
         ),
+        offset: int = typer.Option(
+            0,
+            "--offset",
+            metavar="N",
+            help="Number of results to skip before displaying",
+        ),
         details: bool = typer.Option(
             False,
             "--details",
@@ -417,6 +432,7 @@ def register(app: typer.Typer) -> None:
             color_flag=color_flag,
             max_results=max_results,
             details=details,
+            offset=offset,
             order_by=order_by if order_by is not None else "timestamp-desc",
             with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,

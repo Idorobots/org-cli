@@ -2135,6 +2135,17 @@ It should be possible to use the ~--order-by~ clause multiple times on the CLI r
 
 The reasoning is that the ordering and filtering can be combined to implement sophisticated search.
 
+*** REWORKED Results offset                                                                     :UX:
+:LOGBOOK:
+- State "REWORKED"       from "TODO"       [2026-02-22 Sun 17:24] \\
+  The AI introduced a bit of slop.
+:END:
+Please add a new CLI switch for the ~task list~ command called ~--offset~ that will take an integer value >= 0 with a default of 0.
+
+The offset will be applied before the data is displayed, but after filtering, analysis and ordering, esentially an ~--offset 10~ means that the initial 10 results will be skipped, and ~--max-results~ from the remaining list will be displayed.
+
+If there are no more results, then "No results" should be shown.
+
 *** Output abstraction
 We will be adding more output options, for instance JSON output, visualization output, etc.
 

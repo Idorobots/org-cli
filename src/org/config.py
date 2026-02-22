@@ -37,6 +37,7 @@ COMMAND_OPTION_NAMES = {
     "max_results",
     "max_tags",
     "min_group_size",
+    "offset",
     "order_by",
     "todo_keys",
     "use",
@@ -446,6 +447,7 @@ def build_config_defaults(
         "--filter-gamify-exp-below": ("filter_gamify_exp_below", None),
         "--filter-repeats-above": ("filter_repeats_above", None),
         "--filter-repeats-below": ("filter_repeats_below", None),
+        "--offset": ("offset", 0),
     }
 
     stats_bool_options: dict[str, str] = {

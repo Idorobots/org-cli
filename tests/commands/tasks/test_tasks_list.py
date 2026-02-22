@@ -40,6 +40,7 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         color_flag=False,
         max_results=10,
         details=False,
+        offset=0,
         order_by="timestamp-desc",
         with_gamify_category=False,
         with_tags_as_category=False,
@@ -198,3 +199,32 @@ def test_run_tasks_list_short_output(
     lines = [line for line in captured.splitlines() if line.strip()]
     assert lines[0] == f"{fixture_path}: * TODO Refactor codebase"
     assert lines[1] == f"{fixture_path}: * DONE Fix bug in parser"
+
+
+def test_run_tasks_list_offset_applied(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tasks list should apply offset before max results."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], max_results=1, offset=1)
+
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--offset", "1"])
+    tasks_list.run_tasks_list(args)
+    captured = capsys.readouterr().out
+
+    lines = [line for line in captured.splitlines() if line.strip()]
+    assert lines == [f"{fixture_path}: * DONE Fix bug in parser"]
+
+
+def test_run_tasks_list_offset_no_results(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tasks list should report no results after offset."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], max_results=10, offset=10)
+
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--offset", "10"])
+    tasks_list.run_tasks_list(args)
+    captured = capsys.readouterr().out
+
+    assert captured.strip() == "No results"
