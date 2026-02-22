@@ -1,14 +1,8 @@
 """Tests for CLI filter construction and display logic."""
 
-import os
-import subprocess
 import sys
 from io import StringIO
 from types import SimpleNamespace
-
-
-FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
-PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 
 def test_handle_simple_filter_gamify_exp_above() -> None:
@@ -787,107 +781,6 @@ def test_display_results_no_tag_groups() -> None:
         sys.stdout = original_stdout
 
 
-def test_main_no_results_after_filtering() -> None:
-    """Test that main prints 'No results' when all nodes filtered out."""
-    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--filter-gamify-exp-above",
-            "1000",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "No results" in result.stdout
-    assert "Total tasks:" not in result.stdout
-
-
-def test_main_no_results_with_impossible_filter() -> None:
-    """Test 'No results' with filter that excludes everything."""
-    fixture_path = os.path.join(FIXTURES_DIR, "gamify_exp_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--filter-gamify-exp-above",
-            "1000",
-            "--filter-gamify-exp-below",
-            "1",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "No results" in result.stdout
-
-
-def test_main_with_tag_groups() -> None:
-    """Test main displays tag groups when present."""
-    fixture_path = os.path.join(FIXTURES_DIR, "tag_groups_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--no-color",
-            "--min-group-size",
-            "2",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "GROUPS" in result.stdout
-
-
-def test_main_with_tag_groups_high_min_size() -> None:
-    """Test main with min_group_size that filters out all groups."""
-    fixture_path = os.path.join(FIXTURES_DIR, "tag_groups_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "summary",
-            "--no-color",
-            "--min-group-size",
-            "100",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "GROUPS" in result.stdout
-
-
 def test_parse_filter_order_from_argv() -> None:
     """Test parse_filter_order_from_argv extracts filter args."""
     from org.cli_common import parse_filter_order_from_argv
@@ -937,28 +830,6 @@ def test_parse_filter_order_from_argv_multiple_properties() -> None:
     result = parse_filter_order_from_argv(argv)
 
     assert result == ["--filter-property", "--filter-property"]
-
-
-def test_main_entry_point() -> None:
-    """Test that __main__ entry point calls main()."""
-    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            (
-                "from org.cli import main; import sys; "
-                f"sys.argv = ['cli', 'stats', 'summary', '{fixture_path}']; main()"
-            ),
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Total tasks:" in result.stdout
 
 
 def test_display_groups_with_max_groups_zero() -> None:

@@ -1864,6 +1864,19 @@ I'd like the output generation to also be a separate module called ~tui~ - we wi
 
 Please make sure that the code works exactly the same. This is purely a reorganization of the modules.
 
+** DONE Test coverage after the refactor                                                 :Tests:CLI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 12:59] \\
+  It did refactor the tests fine, reduced the number of test cases from 814 to 628 and at the same time increased the overall coverage to 91%.
+:END:
+I see that the test coverage dropped well below 90%. I'd like to improve that.
+
+Please refactor the test suite to remove now obsolete and duplicated test cases and reorganize it to better match the current main code module split.
+
+Add tests that will test the functionality of the code that is missing coverage right now. Prefer unit tests that are quick to run, to broader integration tests. Do include some integration tests as a sanity check.
+
+The overall target coverage is 90% of statements. It is OK if some modules fall below that.
+
 ** Tasks command                                                                          :CLI:CRUD:
 *** TODO Tasks *R**
 Add a new ~tasks~ command to the CLI that allows searching for specific tasks.
