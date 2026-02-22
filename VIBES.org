@@ -1992,12 +1992,17 @@ Can you please extract the following duplicated piece of code into a helper func
 This piece of code is used by all ~stats~ commands currently (~stats tags~ abstracts that into a private function). It would make sense to define a helper for it and reuse that helper in the commands.
 
 ** Tasks command                                                                          :CLI:CRUD:
-*** TODO Tasks *R**
-Add a new ~tasks~ command to the CLI that allows searching for specific tasks.
-An example invocation will look like this:
+*** DONE Tasks *R**
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 16:18] \\
+  This was done rather well.
+:END:
+Add a new ~tasks list~ command to the CLI that allows searching for specific tasks. It should be a subcommand to ~tasks~, as there will be more subcommands following the ~list~. Please adjust the description of ~tasks~ to better represent what it is - a command for searching & updating tasks in the archive.
+
+An example invocation of ~tasks list~ will look like this:
 
 #+begin_src bash
-org tasks --filter-completed --filter-category simple path/to/file.org
+org tasks list --filter-completed --filter-property "CATEGORY=simple" path/to/file.org
 #+end_src
 
 The command should display a list of tasks that match the search criteria (any tasks remaining after the filtering). The list should be presented in task timestamp order, with most recent tasks comming first. The command should respect any additional filters passed by the ~--filter*~ flags.
@@ -2007,7 +2012,7 @@ Some examples follow.
 
 Empty result:
 #+begin_example
-org tasks --filter-not-complete VIBES.org
+org tasks list --filter-not-complete VIBES.org
 #+end_example
 
 #+begin_example
@@ -2016,7 +2021,7 @@ No results.
 
 Results found:
 #+begin_example
-org tasks --filter-complete VIBES.org
+org tasks list --filter-complete VIBES.org
 #+end_example
 
 #+begin_example
@@ -2029,12 +2034,12 @@ VIBES.org: CANCELLED Test redundancy cleanup
 
 The command should support a detailed display of each task enabled by a CLI switch called ~--details~ (disabled by default).
 The detailed display will show the entire Org Node prepended by a comment naming the file where it can be found. The Org Node levels, properties, tags, etc should be preserved. You can use the ~orgparse~-built-in ~__str__~ representation of nodes.
+In detailed view, the tasks should be separated by an empty line.
 
 Example:
 #+begin_example
-org tasks -n 4 --details tests/fixtures/simple.org
+org tasks list -n 4 --details tests/fixtures/simple.org
 #+end_example
-
 : # tests/fixtures/simple.org
 : * TODO Another incomplete :tag3:tag6:
 : :PROPERTIES:
@@ -2076,7 +2081,24 @@ org tasks -n 4 --details tests/fixtures/simple.org
 : 
 : Task with exactly 2 repeats.
 
-The output colors for the short display should match what is currently done for the ~stats~ command's "TASKS" section. The full detailed output can return just white results. Colors should be controled with the ~--color~ CLI switch.
+The output colors for the short display should match what is currently done for the ~stats summary~ command's "TASKS" section. Colors should be controled with the ~--color~ CLI switch. The full detailed output can return just white results, we will address that in the future.
+
+The ~list~ command should support a new CLI switch called ~--order-by~ that accepts these values: ~timestamp-asc~, ~timestamp-desc~ (the default), ~gamify-exp-asc~, ~gamify-exp-desc~. That switch will determine the ordering of the tasks on the displayed list:
+- ~timestamp-asc~ - order list by most recent timestamp ascending,
+- ~timestamp-desc~ - order list by most recent timestamp descending (most recent tasks first).
+- ~gamify-exp-asc~ - order list by the value of the ~gamify_exp~ property ascending,
+- ~gamify-exp-desc~ - order list by the value of the ~gamify_exp~ property descending.
+
+There might be more ordering criteria added in the future, so please make this part of the code generic enough.
+
+If some tasks are missing either the timestamp or the gamify_exp property, they should appear last on the list, order doesn't matter.
+
+The ordering should be applied after all processing and filtering, shortly before display.
+*** TODO Extra order
+Please add extra orde-by options to the ~tasks list~ command:
+
+- ~file-order~ - preserves the file ordering (so no ordering applied to the node list),
+- ~file-order-reverse~ - preserves the file ordering, but returns the nodes in reverse order (effectively nodes.reverse()).
 
 *** Output abstraction
 We will be adding more output options, for instance JSON output, visualization output, etc.

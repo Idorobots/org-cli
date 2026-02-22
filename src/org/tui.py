@@ -146,6 +146,46 @@ class TopTasksSectionConfig:
     indent: str
 
 
+@dataclass(frozen=True)
+class TaskLineConfig:
+    """Configuration for rendering a single task line."""
+
+    color_enabled: bool
+    done_keys: list[str]
+    todo_keys: list[str]
+
+
+def format_task_line(
+    node: orgparse.node.OrgNode,
+    config: TaskLineConfig,
+    indent: str = "",
+) -> str:
+    """Return formatted task line for list output."""
+    filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
+    colored_filename = dim_white(f"{filename}:", config.color_enabled)
+    todo_state = node.todo if node.todo else ""
+    heading = node.heading if node.heading else ""
+
+    if todo_state:
+        state_color = get_state_color(
+            todo_state,
+            config.done_keys,
+            config.todo_keys,
+            config.color_enabled,
+        )
+        if config.color_enabled and state_color:
+            colored_state = f"{state_color}{todo_state}{Style.RESET_ALL}"
+        else:
+            colored_state = todo_state
+        line = f"{colored_filename} {colored_state} {heading}".strip()
+    else:
+        line = f"{colored_filename} {heading}".strip()
+
+    if indent:
+        return f"{indent}{line}" if line else indent
+    return line
+
+
 def format_timeline_lines(
     timeline: dict[date, int],
     earliest_date: date,
@@ -303,25 +343,17 @@ def format_top_tasks_section(
 
     lines = section_header_lines("TASKS", config.color_enabled)
     for node in top_tasks:
-        filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
-        colored_filename = dim_white(f"{filename}:", config.color_enabled)
-        todo_state = node.todo if node.todo else ""
-        heading = node.heading if node.heading else ""
-
-        if todo_state:
-            state_color = get_state_color(
-                todo_state,
-                config.done_keys,
-                config.todo_keys,
-                config.color_enabled,
+        lines.append(
+            format_task_line(
+                node,
+                TaskLineConfig(
+                    color_enabled=config.color_enabled,
+                    done_keys=config.done_keys,
+                    todo_keys=config.todo_keys,
+                ),
+                indent="  ",
             )
-            if config.color_enabled and state_color:
-                colored_state = f"{state_color}{todo_state}{Style.RESET_ALL}"
-            else:
-                colored_state = todo_state
-            lines.append(f"  {colored_filename} {colored_state} {heading}".strip())
-        else:
-            lines.append(f"  {colored_filename} {heading}".strip())
+        )
 
     return lines_to_text(apply_indent(lines, config.indent))
 

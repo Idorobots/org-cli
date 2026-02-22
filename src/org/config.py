@@ -16,6 +16,7 @@ COMMAND_OPTION_NAMES = {
     "category_property",
     "color_flag",
     "config",
+    "details",
     "done_keys",
     "exclude",
     "filter_bodies",
@@ -36,6 +37,7 @@ COMMAND_OPTION_NAMES = {
     "max_results",
     "max_tags",
     "min_group_size",
+    "order_by",
     "todo_keys",
     "use",
     "with_gamify_category",
@@ -278,12 +280,18 @@ def validate_str_option(key: str, value: object) -> str | None:
         return None
 
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
+    invalid_order_by = key == "--order-by" and value not in {
+        "timestamp-asc",
+        "timestamp-desc",
+        "gamify-exp-asc",
+        "gamify-exp-desc",
+    }
     invalid_keys = key in ("--todo-keys", "--done-keys") and not is_valid_keys_string(value)
     invalid_dates = key in (
         "--filter-date-from",
         "--filter-date-until",
     ) and not is_valid_date_argument(value)
-    if invalid_use or invalid_keys or invalid_dates:
+    if invalid_use or invalid_order_by or invalid_keys or invalid_dates:
         return None
     return value
 
@@ -443,6 +451,7 @@ def build_config_defaults(
     }
 
     global_bool_options: dict[str, str] = {
+        "--details": "details",
         "--filter-completed": "filter_completed",
         "--filter-not-completed": "filter_not_completed",
         "--verbose": "verbose",
@@ -459,6 +468,7 @@ def build_config_defaults(
         "--done-keys": "done_keys",
         "--filter-date-from": "filter_date_from",
         "--filter-date-until": "filter_date_until",
+        "--order-by": "order_by",
         "--config": "config",
     }
 
@@ -556,7 +566,7 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     summary_defaults.pop("show", None)
     summary_defaults.pop("groups", None)
 
-    tasks_defaults = dict(defaults)
+    stats_tasks_defaults = dict(defaults)
     for key in (
         "max_tags",
         "max_relations",
@@ -566,7 +576,20 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
         "show",
         "groups",
     ):
-        tasks_defaults.pop(key, None)
+        stats_tasks_defaults.pop(key, None)
+
+    tasks_list_defaults = dict(defaults)
+    for key in (
+        "max_tags",
+        "max_relations",
+        "max_groups",
+        "min_group_size",
+        "use",
+        "show",
+        "groups",
+        "buckets",
+    ):
+        tasks_list_defaults.pop(key, None)
 
     tags_defaults = dict(defaults)
     for key in ("max_tags", "max_groups", "min_group_size", "groups"):
@@ -579,10 +602,11 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     return {
         "stats": {
             "summary": summary_defaults,
-            "tasks": tasks_defaults,
+            "tasks": stats_tasks_defaults,
             "tags": tags_defaults,
             "groups": groups_defaults,
-        }
+        },
+        "tasks": {"list": tasks_list_defaults},
     }
 
 
