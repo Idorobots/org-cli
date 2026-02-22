@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
@@ -133,11 +132,7 @@ def validate_order_by(order_by: list[str]) -> None:
 
     supported = ", ".join(ORDER_SPECS)
     invalid_list = ", ".join(invalid)
-    print(
-        f"Error: --order-by must be one of: {supported}\nGot: {invalid_list}",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+    raise typer.BadParameter(f"--order-by must be one of: {supported}\nGot: {invalid_list}")
 
 
 def order_nodes(
@@ -211,8 +206,7 @@ def run_tasks_list(args: ListArgs) -> None:
     color_enabled = setup_output(args)
     order_by = normalize_order_by(args.order_by)
     if args.offset < 0:
-        print("Error: --offset must be non-negative", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter("--offset must be non-negative")
     nodes, todo_keys, done_keys = load_and_process_data(args)
 
     if not nodes or args.max_results <= 0:

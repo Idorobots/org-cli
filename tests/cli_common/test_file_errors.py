@@ -4,19 +4,18 @@ import os
 from pathlib import Path
 
 import pytest
+import typer
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 
 
 def test_load_exclude_list_file_not_found() -> None:
-    """Test that loading non-existent exclude list causes sys.exit()."""
+    """Test that loading non-existent exclude list raises error."""
     from org.config import load_exclude_list
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(typer.BadParameter, match="Exclude list file"):
         load_exclude_list("/nonexistent/path/to/exclude.txt")
-
-    assert exc_info.value.code == 1
 
 
 def test_load_exclude_list_none() -> None:
@@ -61,13 +60,11 @@ def test_load_exclude_list_with_whitespace(tmp_path: Path) -> None:
 
 
 def test_load_mapping_file_not_found() -> None:
-    """Test that loading non-existent mapping file causes sys.exit()."""
+    """Test that loading non-existent mapping file raises error."""
     from org.config import load_mapping
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(typer.BadParameter, match="Mapping file"):
         load_mapping("/nonexistent/path/to/mapping.json")
-
-    assert exc_info.value.code == 1
 
 
 def test_load_mapping_none() -> None:
@@ -101,55 +98,47 @@ def test_load_mapping_empty_dict(tmp_path: Path) -> None:
 
 
 def test_load_mapping_invalid_json(tmp_path: Path) -> None:
-    """Test that invalid JSON causes sys.exit()."""
+    """Test that invalid JSON raises error."""
     from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('{"test": "testing",')
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(typer.BadParameter, match="Invalid JSON"):
         load_mapping(str(mapping_file))
-
-    assert exc_info.value.code == 1
 
 
 def test_load_mapping_non_dict_json_array(tmp_path: Path) -> None:
-    """Test that JSON array causes sys.exit()."""
+    """Test that JSON array raises error."""
     from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('["test", "testing"]')
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(typer.BadParameter, match="must contain a JSON object"):
         load_mapping(str(mapping_file))
-
-    assert exc_info.value.code == 1
 
 
 def test_load_mapping_non_dict_json_string(tmp_path: Path) -> None:
-    """Test that JSON string causes sys.exit()."""
+    """Test that JSON string raises error."""
     from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('"test string"')
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(typer.BadParameter, match="must contain a JSON object"):
         load_mapping(str(mapping_file))
-
-    assert exc_info.value.code == 1
 
 
 def test_load_mapping_non_dict_json_number(tmp_path: Path) -> None:
-    """Test that JSON number causes sys.exit()."""
+    """Test that JSON number raises error."""
     from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text("42")
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(typer.BadParameter, match="must contain a JSON object"):
         load_mapping(str(mapping_file))
-
-    assert exc_info.value.code == 1
 
 
 def test_load_mapping_non_string_keys(tmp_path: Path) -> None:
@@ -165,39 +154,33 @@ def test_load_mapping_non_string_keys(tmp_path: Path) -> None:
 
 
 def test_load_mapping_non_string_values(tmp_path: Path) -> None:
-    """Test that mapping with non-string values causes sys.exit()."""
+    """Test that mapping with non-string values raises error."""
     from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('{"test": 123}')
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(typer.BadParameter, match="must be strings"):
         load_mapping(str(mapping_file))
-
-    assert exc_info.value.code == 1
 
 
 def test_load_mapping_mixed_non_string_types(tmp_path: Path) -> None:
-    """Test that mapping with mixed non-string types causes sys.exit()."""
+    """Test that mapping with mixed non-string types raises error."""
     from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('{"test": "testing", "another": ["array"]}')
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(typer.BadParameter, match="must be strings"):
         load_mapping(str(mapping_file))
-
-    assert exc_info.value.code == 1
 
 
 def test_load_nodes_not_found() -> None:
-    """Test that loading non-existent org file causes sys.exit()."""
+    """Test that loading non-existent org file raises error."""
     from org.parse import load_nodes
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(typer.BadParameter, match="not found"):
         load_nodes(["/nonexistent/file.org"], ["TODO"], ["DONE"], [])
-
-    assert exc_info.value.code == 1
 
 
 def test_load_nodes_valid() -> None:

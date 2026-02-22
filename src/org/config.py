@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol, TypeGuard, cast
+
+import typer
 
 
 COMMAND_OPTION_NAMES = {
@@ -68,7 +69,7 @@ def load_exclude_list(filepath: str | None) -> set[str]:
         Set of excluded tags (lowercased, stripped)
 
     Raises:
-        SystemExit: If file cannot be read
+        typer.BadParameter: If file cannot be read
     """
     if filepath is None:
         return set()
@@ -76,12 +77,10 @@ def load_exclude_list(filepath: str | None) -> set[str]:
     try:
         with open(filepath, encoding="utf-8") as f:
             return normalize_exclude_values(list(f))
-    except FileNotFoundError:
-        print(f"Error: Exclude list file '{filepath}' not found", file=sys.stderr)
-        sys.exit(1)
-    except PermissionError:
-        print(f"Error: Permission denied for '{filepath}'", file=sys.stderr)
-        sys.exit(1)
+    except FileNotFoundError as err:
+        raise typer.BadParameter(f"Exclude list file '{filepath}' not found") from err
+    except PermissionError as err:
+        raise typer.BadParameter(f"Permission denied for '{filepath}'") from err
 
 
 def load_mapping(filepath: str | None) -> dict[str, str]:
@@ -94,7 +93,7 @@ def load_mapping(filepath: str | None) -> dict[str, str]:
         Dictionary mapping tags to canonical forms
 
     Raises:
-        SystemExit: If file cannot be read or JSON is invalid
+        typer.BadParameter: If file cannot be read or JSON is invalid
     """
     if filepath is None:
         return {}
@@ -104,28 +103,20 @@ def load_mapping(filepath: str | None) -> dict[str, str]:
             mapping = json.load(f)
 
         if not isinstance(mapping, dict):
-            print(f"Error: Mapping file '{filepath}' must contain a JSON object", file=sys.stderr)
-            sys.exit(1)
+            raise typer.BadParameter(f"Mapping file '{filepath}' must contain a JSON object")
 
         for key, value in mapping.items():
             if not isinstance(key, str) or not isinstance(value, str):
-                print(
-                    f"Error: All keys and values in '{filepath}' must be strings",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
+                raise typer.BadParameter(f"All keys and values in '{filepath}' must be strings")
 
         return mapping
 
-    except FileNotFoundError:
-        print(f"Error: Mapping file '{filepath}' not found", file=sys.stderr)
-        sys.exit(1)
-    except PermissionError:
-        print(f"Error: Permission denied for '{filepath}'", file=sys.stderr)
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON in '{filepath}': {e}", file=sys.stderr)
-        sys.exit(1)
+    except FileNotFoundError as err:
+        raise typer.BadParameter(f"Mapping file '{filepath}' not found") from err
+    except PermissionError as err:
+        raise typer.BadParameter(f"Permission denied for '{filepath}'") from err
+    except json.JSONDecodeError as err:
+        raise typer.BadParameter(f"Invalid JSON in '{filepath}': {err}") from err
 
 
 @dataclass
@@ -542,13 +533,11 @@ def load_cli_config(
     config, load_error = load_config(str(config_path))
 
     if load_error:
-        print("Malformed config", file=sys.stderr)
-        return ({}, {}, {})
+        raise typer.BadParameter("Malformed config")
 
     config_defaults = build_config_defaults(config)
     if config_defaults is None:
-        print("Malformed config", file=sys.stderr)
-        return ({}, {}, {})
+        raise typer.BadParameter("Malformed config")
 
     defaults, stats_defaults, append_defaults = config_defaults
 

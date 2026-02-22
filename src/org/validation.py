@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
-import sys
 from datetime import datetime
 from typing import Protocol
+
+import typer
 
 
 class GlobalArgs(Protocol):
@@ -47,7 +48,7 @@ def parse_date_argument(date_str: str, arg_name: str) -> datetime:
         Parsed datetime object
 
     Raises:
-        SystemExit: If format is invalid
+        typer.BadParameter: If format is invalid
     """
     if not date_str or not date_str.strip():
         supported_formats = [
@@ -58,11 +59,9 @@ def parse_date_argument(date_str: str, arg_name: str) -> datetime:
             "YYYY-MM-DD hh:mm:ss",
         ]
         formats_str = ", ".join(supported_formats)
-        print(
-            f"Error: {arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'",
-            file=sys.stderr,
+        raise typer.BadParameter(
+            f"{arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'"
         )
-        sys.exit(1)
 
     try:
         return datetime.fromisoformat(date_str)
@@ -82,11 +81,9 @@ def parse_date_argument(date_str: str, arg_name: str) -> datetime:
         "YYYY-MM-DD hh:mm:ss",
     ]
     formats_str = ", ".join(supported_formats)
-    print(
-        f"Error: {arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'",
-        file=sys.stderr,
+    raise typer.BadParameter(
+        f"{arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'"
     )
-    sys.exit(1)
 
 
 def parse_property_filter(property_str: str) -> tuple[str, str]:
@@ -101,14 +98,12 @@ def parse_property_filter(property_str: str) -> tuple[str, str]:
         Tuple of (property_name, property_value)
 
     Raises:
-        SystemExit: If format is invalid (no '=' found)
+        typer.BadParameter: If format is invalid (no '=' found)
     """
     if "=" not in property_str:
-        print(
-            f"Error: --filter-property must be in KEY=VALUE format, got '{property_str}'",
-            file=sys.stderr,
+        raise typer.BadParameter(
+            f"--filter-property must be in KEY=VALUE format, got '{property_str}'"
         )
-        sys.exit(1)
 
     parts = property_str.split("=", 1)
     return (parts[0], parts[1])
@@ -125,17 +120,15 @@ def validate_and_parse_keys(keys_str: str, option_name: str) -> list[str]:
         List of validated keys
 
     Raises:
-        SystemExit: If validation fails
+        typer.BadParameter: If validation fails
     """
     keys = [k.strip() for k in keys_str.split(",") if k.strip()]
     if not keys:
-        print(f"Error: {option_name} cannot be empty", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter(f"{option_name} cannot be empty")
 
     for key in keys:
         if "|" in key:
-            print(f"Error: {option_name} cannot contain pipe character: '{key}'", file=sys.stderr)
-            sys.exit(1)
+            raise typer.BadParameter(f"{option_name} cannot contain pipe character: '{key}'")
 
     return keys
 
@@ -149,24 +142,24 @@ def validate_pattern(pattern: str, option_name: str, use_multiline: bool = False
         use_multiline: Whether to validate with re.MULTILINE flag
 
     Raises:
-        SystemExit: If pattern is not a valid regex
+        typer.BadParameter: If pattern is not a valid regex
     """
     try:
         if use_multiline:
             re.compile(pattern, re.MULTILINE)
         else:
             re.compile(pattern)
-    except re.error as e:
-        print(f"Error: Invalid regex pattern for {option_name}: '{pattern}'\n{e}", file=sys.stderr)
-        sys.exit(1)
+    except re.error as err:
+        raise typer.BadParameter(
+            f"Invalid regex pattern for {option_name}: '{pattern}'\n{err}"
+        ) from err
 
 
 def parse_show_values(value: str) -> list[str]:
     """Parse comma-separated show values."""
     values = [item.strip() for item in value.split(",") if item.strip()]
     if not values:
-        print("Error: --show cannot be empty", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter("--show cannot be empty")
     return values
 
 
@@ -174,8 +167,7 @@ def parse_group_values(value: str) -> list[str]:
     """Parse comma-separated group values."""
     values = [item.strip() for item in value.split(",") if item.strip()]
     if not values:
-        print("Error: --group cannot be empty", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter("--group cannot be empty")
     return values
 
 
@@ -189,7 +181,7 @@ def validate_global_arguments(args: GlobalArgs) -> tuple[list[str], list[str]]:
         Tuple of (todo_keys, done_keys)
 
     Raises:
-        SystemExit: If validation fails
+        typer.BadParameter: If validation fails
     """
     todo_keys = validate_and_parse_keys(args.todo_keys, "--todo-keys")
     done_keys = validate_and_parse_keys(args.done_keys, "--done-keys")
@@ -212,25 +204,19 @@ def validate_global_arguments(args: GlobalArgs) -> tuple[list[str], list[str]]:
 def validate_stats_arguments(args: StatsArgs) -> None:
     """Validate stats command arguments."""
     if args.use not in {"tags", "heading", "body"}:
-        print("Error: --use must be one of: tags, heading, body", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter("--use must be one of: tags, heading, body")
 
     if args.max_relations < 0:
-        print("Error: --max-relations must be non-negative", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter("--max-relations must be non-negative")
 
     if args.max_tags < 0:
-        print("Error: --max-tags must be non-negative", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter("--max-tags must be non-negative")
 
     if args.max_groups < 0:
-        print("Error: --max-groups must be non-negative", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter("--max-groups must be non-negative")
 
     if args.min_group_size < 0:
-        print("Error: --min-group-size must be non-negative", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter("--min-group-size must be non-negative")
 
     if args.buckets < 20:
-        print("Error: --buckets must be at least 20", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter("--buckets must be at least 20")

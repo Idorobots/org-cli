@@ -2146,6 +2146,24 @@ The offset will be applied before the data is displayed, but after filtering, an
 
 If there are no more results, then "No results" should be shown.
 
+*** DONE Better validation messages                                                             :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 18:17] \\
+  Got it right.
+:END:
+I'd like the CLI commands to produce better, more Typer-consistent error messages. Currently, when a validation of a parameter value fails it is printed to ~sys.stderr~. Instead, please raise an exception of type ~typer.BadParameter~ and let Typer handle the pretty display.
+
+Please update all places that currently print directly to standard error stream and replace these with Typer exceptions. While at it, please strip the "Error: " prefix from some of the messages, since Typer already adds its own prefix.
+
+*** TODO Rich text support                                                                     :TUI:
+Use Pythons Rich library to support extra nice TUI features.
+
+Replace the explicit ~colorama~ color handling with Rich's ~console.print()~ with markup. Please preserve the same color scheme as with Colorama.
+
+Add "spinner" (the dots style from Rich) when computing loading the files and computing the output. I'd like the spinner to be white and it should say "Processing...". Once the output is computed the spinner should disappear. The spinner should not be shown when ~--no-color~ switch is present. You can use `console.status("Processing...", spinner="dots")` for that.
+
+Add syntax highlighting on the detailed display of org nodes in the ~tasks list~ command output.
+
 *** Output abstraction
 We will be adding more output options, for instance JSON output, visualization output, etc.
 
@@ -2168,6 +2186,10 @@ We will be adding more output options, for instance JSON output, visualization o
 - Setting properties
 - Modifying the heading
 - Modifying the body
+
+** TODO More Rich support
+- columnar display on the stats summary - tasks section should be to the side of the histograms
+- scroll through task list
 
 ** Workflow command
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import typer
 
 from org import config
 
@@ -119,21 +120,14 @@ def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.Monk
     assert inline_defaults == {}
 
 
-def test_load_cli_config_malformed_json(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Malformed config should emit warning and return empty defaults."""
+def test_load_cli_config_malformed_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Malformed config should raise a BadParameter error."""
     config_path = tmp_path / ".org-cli.json"
     config_path.write_text("{bad json", encoding="utf-8")
 
     monkeypatch.chdir(config_path.parent)
-    defaults, append_defaults, inline_defaults = config.load_cli_config(["org"])
-
-    captured = capsys.readouterr().err
-    assert "Malformed config" in captured
-    assert defaults == {}
-    assert append_defaults == {}
-    assert inline_defaults == {}
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
 
 
 def test_validate_helpers() -> None:
