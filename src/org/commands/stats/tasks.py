@@ -11,13 +11,17 @@ import typer
 from colorama import init as colorama_init
 
 from org import config as config_module
-from org.analyze import AnalysisResult, analyze
-from org.cli_common import (
-    build_filter_chain,
-    load_nodes,
-    resolve_input_paths,
-    resolve_mapping,
+from org.analyze import (
+    AnalysisResult,
+    compute_avg_tasks_per_day,
+    compute_category_histogram,
+    compute_day_of_week_histogram,
+    compute_global_timerange,
+    compute_max_single_day,
+    compute_task_state_histogram,
+    compute_task_stats,
 )
+from org.cli_common import build_filter_chain, load_nodes, resolve_input_paths
 from org.color import magenta, should_use_color
 from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
 from org.histogram import RenderConfig
@@ -185,8 +189,6 @@ def run_stats_tasks(args: TasksArgs) -> None:
     todo_keys, done_keys = validate_global_arguments(args)
     validate_stats_arguments(args)
 
-    mapping = resolve_mapping(args)
-
     filters = build_filter_chain(args, sys.argv)
 
     filenames = resolve_input_paths(args.files)
@@ -205,7 +207,23 @@ def run_stats_tasks(args: TasksArgs) -> None:
         print("No results")
         return
 
-    result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
+    global_timerange = compute_global_timerange(nodes)
+    total_tasks, max_repeat_count = compute_task_stats(nodes)
+    max_single_day = compute_max_single_day(global_timerange)
+    avg_tasks_per_day = compute_avg_tasks_per_day(global_timerange, total_tasks)
+
+    result = AnalysisResult(
+        total_tasks=total_tasks,
+        task_states=compute_task_state_histogram(nodes),
+        task_categories=compute_category_histogram(nodes, args.category_property),
+        task_days=compute_day_of_week_histogram(nodes),
+        timerange=global_timerange,
+        avg_tasks_per_day=avg_tasks_per_day,
+        max_single_day_count=max_single_day,
+        max_repeat_count=max_repeat_count,
+        tags={},
+        tag_groups=[],
+    )
 
     date_from = None
     date_until = None

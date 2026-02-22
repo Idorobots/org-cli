@@ -10,7 +10,16 @@ import typer
 from colorama import init as colorama_init
 
 from org import config as config_module
-from org.analyze import Tag, TimeRange, analyze, clean
+from org.analyze import (
+    Tag,
+    TimeRange,
+    clean,
+    compute_frequencies,
+    compute_global_timerange,
+    compute_per_tag_statistics,
+    compute_relations,
+    compute_time_ranges,
+)
 from org.cli_common import (
     build_filter_chain,
     load_nodes,
@@ -190,13 +199,17 @@ def run_stats_tags(args: TagsArgs) -> None:
         print("No results")
         return
 
-    result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
+    frequencies = compute_frequencies(nodes, mapping, args.use)
+    time_ranges = compute_time_ranges(nodes, mapping, args.use)
+    relations = compute_relations(nodes, mapping, args.use) if args.max_relations > 0 else {}
+    tags = compute_per_tag_statistics(frequencies, relations, time_ranges)
+    global_timerange = compute_global_timerange(nodes)
 
     date_from, date_until = _resolve_date_filters(args)
     show_values = _resolve_show_values(args, mapping)
 
     output = format_tags(
-        result.tags,
+        tags,
         show_values,
         (
             args.max_results,
@@ -204,7 +217,7 @@ def run_stats_tags(args: TagsArgs) -> None:
             args.buckets,
             date_from,
             date_until,
-            result.timerange,
+            global_timerange,
             exclude_set,
             color_enabled,
         ),

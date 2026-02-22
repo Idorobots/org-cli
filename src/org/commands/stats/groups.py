@@ -10,7 +10,16 @@ import typer
 from colorama import init as colorama_init
 
 from org import config as config_module
-from org.analyze import Group, TimeRange, analyze
+from org.analyze import (
+    Group,
+    TimeRange,
+    compute_frequencies,
+    compute_global_timerange,
+    compute_groups,
+    compute_per_tag_statistics,
+    compute_relations,
+    compute_time_ranges,
+)
 from org.cli_common import (
     build_filter_chain,
     compute_explicit_groups,
@@ -155,7 +164,7 @@ def run_stats_groups(args: GroupsArgs) -> None:
         print("No results")
         return
 
-    result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
+    global_timerange = compute_global_timerange(nodes)
 
     date_from = None
     date_until = None
@@ -167,10 +176,18 @@ def run_stats_groups(args: GroupsArgs) -> None:
     group_values = resolve_group_values(args.groups, mapping, args.use)
 
     if group_values is not None:
-        tag_time_ranges = {tag_name: tag.time_range for tag_name, tag in result.tags.items()}
+        tag_time_ranges = compute_time_ranges(nodes, mapping, args.use)
         groups = compute_explicit_groups(nodes, mapping, args.use, group_values, tag_time_ranges)
     else:
-        groups = sorted(result.tag_groups, key=lambda group: len(group.tags), reverse=True)
+        frequencies = compute_frequencies(nodes, mapping, args.use)
+        time_ranges = compute_time_ranges(nodes, mapping, args.use)
+        relations = compute_relations(nodes, mapping, args.use) if args.max_relations > 0 else {}
+        tags = compute_per_tag_statistics(frequencies, relations, time_ranges)
+        groups = sorted(
+            compute_groups(tags, args.max_relations, nodes, mapping, args.use),
+            key=lambda group: len(group.tags),
+            reverse=True,
+        )
 
     output = format_group_list(
         groups,
@@ -179,7 +196,7 @@ def run_stats_groups(args: GroupsArgs) -> None:
             args.buckets,
             date_from,
             date_until,
-            result.timerange,
+            global_timerange,
             exclude_set,
             color_enabled,
         ),

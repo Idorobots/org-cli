@@ -1919,7 +1919,11 @@ The output formatting in ~stats summary~ should be extracted into a dedicated fu
 
 Please rename ~format_selected_items~ to ~format_tags~ when moving it to ~stats tags~ module and rename ~format_category_section~ to ~format_tags_section~ when moving it to ~stats summary~ module.
 
-** TODO Analyze split                                                             :Cleanup:Analysis:
+** DONE Analyze split                                                             :Cleanup:Analysis:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 14:32] \\
+  This went really quickly.
+:END:
 All stats commands use the ~analyze()~ function which computes the full ~AnalysisResult~ each time. That is pretty wastefull and I'd like to optimize and clean that up.
 
 Please use the ~compute_*~ functions directly in the implementations of the commands, so that we can omit the irrelevant bits of the computation:
