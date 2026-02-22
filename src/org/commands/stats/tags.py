@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 
 import typer
 from colorama import init as colorama_init
@@ -20,7 +21,7 @@ from org.cli_common import (
 )
 from org.color import should_use_color
 from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
-from org.tui import display_selected_items
+from org.tui import format_selected_items
 from org.validation import (
     parse_date_argument,
     parse_show_values,
@@ -67,6 +68,32 @@ class TagsArgs:
     buckets: int
 
 
+def _resolve_date_filters(args: TagsArgs) -> tuple[datetime | None, datetime | None]:
+    date_from = None
+    date_until = None
+    if args.filter_date_from is not None:
+        date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
+    if args.filter_date_until is not None:
+        date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
+    return date_from, date_until
+
+
+def _resolve_show_values(args: TagsArgs, mapping: dict[str, str]) -> list[str] | None:
+    if args.show is None:
+        return None
+
+    raw_values = parse_show_values(args.show)
+    if args.use == "tags":
+        return [mapping.get(value.strip(), value.strip()) for value in raw_values]
+
+    show_values: list[str] = []
+    for value in raw_values:
+        normalized_value = normalize_show_value(value, mapping)
+        if normalized_value:
+            show_values.append(normalized_value)
+    return show_values
+
+
 def run_stats_tags(args: TagsArgs) -> None:
     """Run the stats tags command."""
     color_enabled = should_use_color(args.color_flag)
@@ -100,26 +127,10 @@ def run_stats_tags(args: TagsArgs) -> None:
 
     result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
 
-    date_from = None
-    date_until = None
-    if args.filter_date_from is not None:
-        date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
-    if args.filter_date_until is not None:
-        date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
+    date_from, date_until = _resolve_date_filters(args)
+    show_values = _resolve_show_values(args, mapping)
 
-    show_values = None
-    if args.show is not None:
-        raw_values = parse_show_values(args.show)
-        if args.use == "tags":
-            show_values = [mapping.get(value.strip(), value.strip()) for value in raw_values]
-        else:
-            show_values = []
-            for value in raw_values:
-                normalized_value = normalize_show_value(value, mapping)
-                if normalized_value:
-                    show_values.append(normalized_value)
-
-    display_selected_items(
+    output = format_selected_items(
         result.tags,
         show_values,
         (
@@ -133,6 +144,8 @@ def run_stats_tags(args: TagsArgs) -> None:
             color_enabled,
         ),
     )
+    if output:
+        print(output, end="")
 
 
 def register(app: typer.Typer) -> None:

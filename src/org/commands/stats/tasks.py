@@ -18,7 +18,7 @@ from org.cli_common import (
 )
 from org.color import should_use_color
 from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
-from org.tui import display_task_summary
+from org.tui import format_task_summary
 from org.validation import parse_date_argument, validate_global_arguments, validate_stats_arguments
 
 
@@ -98,11 +98,13 @@ def run_stats_tasks(args: TasksArgs) -> None:
     if args.filter_date_until is not None:
         date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
 
-    display_task_summary(
+    output = format_task_summary(
         result,
         args,
         (date_from, date_until, done_keys, todo_keys, color_enabled),
     )
+    if output:
+        print(output, end="")
 
 
 def register(app: typer.Typer) -> None:

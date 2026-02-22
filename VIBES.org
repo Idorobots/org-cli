@@ -1888,7 +1888,11 @@ The ~cli_common.py~ contains a lot of validation code that could be extracted in
 The ~ArgsPayload~ class exists to work around the linter complaints about too many parameters passed to ~build_args_namespace~ that just maps that into a ~SimpleNamespace~. I think it makes a lot more sense to use ~ArgsPayload~ directly (albeit renamed to ~CliArgs~) and pass that to the command functions. This way we can remove ~build_args_namespace~ and just pass the args diretly to the ~run_*~ command functions.
 Ideally, each command would define it's own args class and use that, with ~config.apply_config_defaults~ setting the relevant fields if they exist on the args class. This will make it easy to test those functions.
 
-** TODO TUI refactoring                                                                :Cleanup:TUI:
+** REWORKED TUI refactoring                                                            :Cleanup:TUI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-22 Sun 13:58] \\
+  AI did it's thing and made all the display function into format functions, but then didn't refactor the way the output is built.
+:END:
 There are some more opportunities for refactoring that I'd like to explore.
 
 The TUI module now contains a lot of duplication, because the commands output is very similar, but differs in just the indent level.

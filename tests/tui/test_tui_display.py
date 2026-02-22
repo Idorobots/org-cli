@@ -2,23 +2,21 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-import pytest
-
 from org.analyze import AnalysisResult, Group, Tag, TimeRange
 from org.histogram import Histogram
 from org.tui import (
-    display_group_list,
-    display_selected_items,
-    display_task_summary,
-    display_top_tasks,
+    TopTasksSectionConfig,
+    format_group_list,
+    format_groups_section,
+    format_selected_items,
+    format_task_summary,
+    format_top_tasks_section,
 )
 from tests.conftest import node_from_org
 
 
-def test_display_top_tasks_shows_filename(capsys: pytest.CaptureFixture[str]) -> None:
-    """display_top_tasks should print a TASKS section when timestamps exist."""
+def test_format_top_tasks_section_shows_filename() -> None:
+    """format_top_tasks_section should include a TASKS section."""
     nodes = node_from_org(
         """
 * DONE First task
@@ -29,17 +27,23 @@ CLOSED: [2025-01-02 Thu 11:00]
 """
     )
 
-    display_top_tasks(
-        nodes, max_results=1, color_enabled=False, done_keys=["DONE"], todo_keys=["TODO"]
+    output = format_top_tasks_section(
+        nodes,
+        TopTasksSectionConfig(
+            max_results=1,
+            color_enabled=False,
+            done_keys=["DONE"],
+            todo_keys=["TODO"],
+            indent="",
+        ),
     )
-    captured = capsys.readouterr().out
 
-    assert "TASKS" in captured
-    assert "<string>" in captured
+    assert "TASKS" in output
+    assert "<string>" in output
 
 
-def test_display_selected_items_shows_requested_tags(capsys: pytest.CaptureFixture[str]) -> None:
-    """display_selected_items should show selected tags only."""
+def test_format_selected_items_shows_requested_tags() -> None:
+    """format_selected_items should show selected tags only."""
     tags = {
         "alpha": Tag(
             name="alpha",
@@ -59,19 +63,18 @@ def test_display_selected_items_shows_requested_tags(capsys: pytest.CaptureFixtu
         ),
     }
 
-    display_selected_items(
+    output = format_selected_items(
         tags,
         ["beta"],
         (10, 0, 20, None, None, TimeRange(), set(), False),
     )
-    captured = capsys.readouterr().out
 
-    assert "beta" in captured
-    assert "alpha" not in captured
+    assert "beta" in output
+    assert "alpha" not in output
 
 
-def test_display_group_list_excludes_tags(capsys: pytest.CaptureFixture[str]) -> None:
-    """display_group_list should omit excluded tags."""
+def test_format_group_list_excludes_tags() -> None:
+    """format_group_list should omit excluded tags."""
     groups = [
         Group(
             tags=["alpha", "beta"],
@@ -82,18 +85,39 @@ def test_display_group_list_excludes_tags(capsys: pytest.CaptureFixture[str]) ->
         )
     ]
 
-    display_group_list(
+    output = format_group_list(
         groups,
         (10, 20, None, None, TimeRange(), {"beta"}, False),
     )
-    captured = capsys.readouterr().out
 
-    assert "alpha" in captured
-    assert "beta" not in captured
+    assert "alpha" in output
+    assert "beta" not in output
 
 
-def test_display_task_summary_renders_histograms(capsys: pytest.CaptureFixture[str]) -> None:
-    """display_task_summary should print histogram sections."""
+def test_format_groups_section_max_groups_zero_returns_empty() -> None:
+    """format_groups_section should omit output when max_groups is zero."""
+    groups = [
+        Group(
+            tags=["alpha", "beta"],
+            time_range=TimeRange(),
+            total_tasks=2,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        )
+    ]
+
+    output = format_groups_section(
+        groups,
+        set(),
+        (2, 20, None, None, TimeRange(), False),
+        0,
+    )
+
+    assert output == ""
+
+
+def test_format_task_summary_renders_histograms() -> None:
+    """format_task_summary should include histogram sections."""
     result = AnalysisResult(
         total_tasks=3,
         task_states=Histogram(values={"DONE": 2, "TODO": 1}),
@@ -106,11 +130,14 @@ def test_display_task_summary_renders_histograms(capsys: pytest.CaptureFixture[s
         tags={},
         tag_groups=[],
     )
-    args = SimpleNamespace(buckets=20)
 
-    display_task_summary(result, args, (None, None, ["DONE"], ["TODO"], False))
-    captured = capsys.readouterr().out
+    class Args:
+        buckets = 20
 
-    assert "Task states:" in captured
-    assert "Task categories:" in captured
-    assert "Task occurrence by day of week:" in captured
+    args = Args()
+
+    output = format_task_summary(result, args, (None, None, ["DONE"], ["TODO"], False))
+
+    assert "Task states:" in output
+    assert "Task categories:" in output
+    assert "Task occurrence by day of week:" in output

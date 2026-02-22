@@ -9,8 +9,9 @@ import typer
 from colorama import init as colorama_init
 
 from org import config as config_module
-from org.analyze import analyze
+from org.analyze import Tag, analyze
 from org.cli_common import (
+    CATEGORY_NAMES,
     build_filter_chain,
     load_nodes,
     resolve_exclude_set,
@@ -19,7 +20,13 @@ from org.cli_common import (
 )
 from org.color import should_use_color
 from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
-from org.tui import display_results
+from org.tui import (
+    TopTasksSectionConfig,
+    format_category_section,
+    format_groups_section,
+    format_task_summary,
+    format_top_tasks_section,
+)
 from org.validation import parse_date_argument, validate_global_arguments, validate_stats_arguments
 
 
@@ -100,12 +107,66 @@ def run_stats(args: SummaryArgs) -> None:
     if args.filter_date_until is not None:
         date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
 
-    display_results(
-        result,
-        nodes,
-        args,
-        (exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled),
+    def order_by_total(item: tuple[str, Tag]) -> int:
+        """Sort by total count (descending)."""
+        return -item[1].total_tasks
+
+    category_name = CATEGORY_NAMES[args.use]
+
+    output = "".join(
+        section
+        for section in (
+            format_task_summary(
+                result,
+                args,
+                (date_from, date_until, done_keys, todo_keys, color_enabled),
+            ),
+            format_top_tasks_section(
+                nodes,
+                TopTasksSectionConfig(
+                    max_results=args.max_results,
+                    color_enabled=color_enabled,
+                    done_keys=done_keys,
+                    todo_keys=todo_keys,
+                    indent="",
+                ),
+            ),
+            format_category_section(
+                category_name,
+                result.tags,
+                (
+                    args.max_results,
+                    args.max_relations,
+                    args.buckets,
+                    date_from,
+                    date_until,
+                    result.timerange,
+                    args.max_tags,
+                    exclude_set,
+                    color_enabled,
+                ),
+                order_by_total,
+                indent="  ",
+            ),
+            format_groups_section(
+                result.tag_groups,
+                exclude_set,
+                (
+                    args.min_group_size,
+                    args.buckets,
+                    date_from,
+                    date_until,
+                    result.timerange,
+                    color_enabled,
+                ),
+                args.max_groups,
+                indent="  ",
+            ),
+        )
+        if section
     )
+    if output:
+        print(output, end="")
 
 
 def register(app: typer.Typer) -> None:

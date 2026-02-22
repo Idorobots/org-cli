@@ -21,7 +21,7 @@ from org.cli_common import (
 )
 from org.color import should_use_color
 from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
-from org.tui import display_group_list
+from org.tui import format_group_list
 from org.validation import parse_date_argument, validate_global_arguments, validate_stats_arguments
 
 
@@ -111,7 +111,7 @@ def run_stats_groups(args: GroupsArgs) -> None:
     else:
         groups = sorted(result.tag_groups, key=lambda group: len(group.tags), reverse=True)
 
-    display_group_list(
+    output = format_group_list(
         groups,
         (
             args.max_results,
@@ -123,6 +123,8 @@ def run_stats_groups(args: GroupsArgs) -> None:
             color_enabled,
         ),
     )
+    if output:
+        print(output, end="")
 
 
 def register(app: typer.Typer) -> None:

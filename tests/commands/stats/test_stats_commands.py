@@ -297,3 +297,17 @@ def test_run_stats_summary_preprocessors(
     captured = capsys.readouterr().out
 
     assert "Task categories:" in captured
+
+
+def test_run_stats_summary_omits_groups_when_disabled(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Summary command should omit groups when max_groups is zero."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_summary_args([fixture_path], max_groups=0)
+
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary"])
+    stats_summary.run_stats(args)
+    captured = capsys.readouterr().out
+
+    assert "GROUPS" not in captured
