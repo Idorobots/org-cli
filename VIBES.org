@@ -1933,10 +1933,43 @@ Please use the ~compute_*~ functions directly in the implementations of the comm
 - for ~stats groups~ it makes sense to omit computing some of the global statistics and only compute the global groups when no ~--group~ parameter is supplied,
 - for ~stats summary~ it makes sense to use the ~analyze()~ function.
 
-** TODO Final (?) round of refactoring                                                     :Cleanup:
+** DONE Final (?) round of refactoring                                                     :Cleanup:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 15:07] \\
+  Worked fine.
+:END:
 There are some more opportunities for refactoring that I'd like to explore.
 
+Please move the ~compute_explicit_groups~ function from ~cli_common~ module to ~analyze~, it makes more sense to be placed there.
+
+Please move the ~load_exclude_list~ and ~load_mapping~ functions from ~cli_common~ to ~config~. These are more related to the configuration than the CLI.
+
+Please extract the ~load_nodes~ function into a dedicated module called ~parse~, we will extend that in the future.
+
+All the commands ~run_*~ functions begin with a very similar preamble that checks for color configuration, validates the arguments, loads the mapping and exclusion files, loads the nodes and applies enhancements and filtering and only then proceeds to the actual computation done by the command. I would rather if this were factored out into a helper function in ~cli_common~ that performs most of this work, so that each command starts with a simpler preamble, here's an example:
+
+#+begin_src python
+tui.setup_output(args)
+validate_stats_arguments(args)
+nodes, todo_keys, done_keys = cli_common.load_and_process_data(args)
+mapping = resolve_mapping(args)
+exclude_set = resolve_exclude_set(args)
+result = analyze(...)
+...
+#+end_src
+
+The color handling can be offloaded into a TUI function ~setup_output~ while the actual data loading should be placed in ~cli_common.load_data~ function.
+
+Please refactor all the ~stats~ commands to use this new preamble.
+
 ** TODO Logging & verbose mode                                                              :CLI:UX:
+
+I'd like to add a logging facility to the application that will help with debugging in the future.
+Please add a suitable library that will perform the logging in the application code.
+
+I'd like there to be a global ~--verbose~ flag that enables the log display to the standard output stream. While the flag is missing (a.k.a low verbosity level) the output of the logging facility is spressed and only the command output is printed.
+
+Currently, only the "Processing <filename>..." logs should be logged by the logging facility, with extra logs to be added in the future.
 
 ** Tasks command                                                                          :CLI:CRUD:
 *** TODO Tasks *R**

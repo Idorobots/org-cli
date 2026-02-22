@@ -49,6 +49,81 @@ CONFIG_APPEND_DEFAULTS: dict[str, list[str]] = {}
 CONFIG_INLINE_DEFAULTS: dict[str, object] = {}
 
 
+def normalize_exclude_values(values: list[str]) -> set[str]:
+    """Normalize exclude values to match file-based behavior."""
+    return {line.strip() for line in values if line.strip()}
+
+
+def load_exclude_list(filepath: str | None) -> set[str]:
+    """Load exclude list from a file (one word per line).
+
+    Args:
+        filepath: Path to exclude list file, or None for empty set
+
+    Returns:
+        Set of excluded tags (lowercased, stripped)
+
+    Raises:
+        SystemExit: If file cannot be read
+    """
+    if filepath is None:
+        return set()
+
+    try:
+        with open(filepath, encoding="utf-8") as f:
+            return normalize_exclude_values(list(f))
+    except FileNotFoundError:
+        print(f"Error: Exclude list file '{filepath}' not found", file=sys.stderr)
+        sys.exit(1)
+    except PermissionError:
+        print(f"Error: Permission denied for '{filepath}'", file=sys.stderr)
+        sys.exit(1)
+
+
+def load_mapping(filepath: str | None) -> dict[str, str]:
+    """Load tag mapping from a JSON file.
+
+    Args:
+        filepath: Path to JSON mapping file, or None for empty dict
+
+    Returns:
+        Dictionary mapping tags to canonical forms
+
+    Raises:
+        SystemExit: If file cannot be read or JSON is invalid
+    """
+    if filepath is None:
+        return {}
+
+    try:
+        with open(filepath, encoding="utf-8") as f:
+            mapping = json.load(f)
+
+        if not isinstance(mapping, dict):
+            print(f"Error: Mapping file '{filepath}' must contain a JSON object", file=sys.stderr)
+            sys.exit(1)
+
+        for key, value in mapping.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                print(
+                    f"Error: All keys and values in '{filepath}' must be strings",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+        return mapping
+
+    except FileNotFoundError:
+        print(f"Error: Mapping file '{filepath}' not found", file=sys.stderr)
+        sys.exit(1)
+    except PermissionError:
+        print(f"Error: Permission denied for '{filepath}'", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in '{filepath}': {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 @dataclass
 class ConfigOptions:
     """Config option mapping metadata."""

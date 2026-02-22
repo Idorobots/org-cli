@@ -2,28 +2,22 @@
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
 import orgparse
 import typer
-from colorama import init as colorama_init
 
 from org import config as config_module
 from org.analyze import AnalysisResult, Tag, TimeRange, analyze, clean
 from org.cli_common import (
     CATEGORY_NAMES,
-    build_filter_chain,
-    load_nodes,
+    load_and_process_data,
     resolve_exclude_set,
-    resolve_input_paths,
     resolve_mapping,
 )
-from org.color import should_use_color
 from org.commands.stats.tasks import format_tasks_summary
-from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
 from org.tui import (
     TagBlockConfig,
     TimelineFormatConfig,
@@ -34,8 +28,9 @@ from org.tui import (
     format_top_tasks_section,
     lines_to_text,
     section_header_lines,
+    setup_output,
 )
-from org.validation import parse_date_argument, validate_global_arguments, validate_stats_arguments
+from org.validation import parse_date_argument, validate_stats_arguments
 
 
 @dataclass
@@ -205,30 +200,13 @@ def format_stats_summary_output(
 
 def run_stats(args: SummaryArgs) -> None:
     """Run the stats command."""
-    color_enabled = should_use_color(args.color_flag)
-
-    if color_enabled:
-        colorama_init(autoreset=True, strip=False)
-
-    todo_keys, done_keys = validate_global_arguments(args)
+    color_enabled = setup_output(args)
     validate_stats_arguments(args)
 
     mapping = resolve_mapping(args)
     exclude_set = resolve_exclude_set(args)
 
-    filters = build_filter_chain(args, sys.argv)
-
-    filenames = resolve_input_paths(args.files)
-    nodes, todo_keys, done_keys = load_nodes(filenames, todo_keys, done_keys, [])
-
-    if args.with_gamify_category:
-        nodes = preprocess_gamify_categories(nodes, args.category_property)
-
-    if args.with_tags_as_category:
-        nodes = preprocess_tags_as_category(nodes, args.category_property)
-
-    for filter_spec in filters:
-        nodes = filter_spec.filter(nodes)
+    nodes, todo_keys, done_keys = load_and_process_data(args)
 
     if not nodes:
         print("No results")

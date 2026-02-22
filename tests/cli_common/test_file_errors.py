@@ -11,7 +11,7 @@ FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 
 def test_load_exclude_list_file_not_found() -> None:
     """Test that loading non-existent exclude list causes sys.exit()."""
-    from org.cli_common import load_exclude_list
+    from org.config import load_exclude_list
 
     with pytest.raises(SystemExit) as exc_info:
         load_exclude_list("/nonexistent/path/to/exclude.txt")
@@ -21,7 +21,7 @@ def test_load_exclude_list_file_not_found() -> None:
 
 def test_load_exclude_list_none() -> None:
     """Test that None filepath returns empty set."""
-    from org.cli_common import load_exclude_list
+    from org.config import load_exclude_list
 
     result = load_exclude_list(None)
     assert result == set()
@@ -29,7 +29,7 @@ def test_load_exclude_list_none() -> None:
 
 def test_load_exclude_list_valid(tmp_path: Path) -> None:
     """Test loading valid exclude list."""
-    from org.cli_common import load_exclude_list
+    from org.config import load_exclude_list
 
     exclude_file = tmp_path / "exclude.txt"
     exclude_file.write_text("word1\nword2\nWORD3\n")
@@ -40,7 +40,7 @@ def test_load_exclude_list_valid(tmp_path: Path) -> None:
 
 def test_load_exclude_list_with_empty_lines(tmp_path: Path) -> None:
     """Test loading exclude list with empty lines."""
-    from org.cli_common import load_exclude_list
+    from org.config import load_exclude_list
 
     exclude_file = tmp_path / "exclude.txt"
     exclude_file.write_text("word1\n\nword2\n\n\nword3\n")
@@ -51,7 +51,7 @@ def test_load_exclude_list_with_empty_lines(tmp_path: Path) -> None:
 
 def test_load_exclude_list_with_whitespace(tmp_path: Path) -> None:
     """Test loading exclude list with whitespace."""
-    from org.cli_common import load_exclude_list
+    from org.config import load_exclude_list
 
     exclude_file = tmp_path / "exclude.txt"
     exclude_file.write_text("  word1  \n\t word2\t\nword3   ")
@@ -62,7 +62,7 @@ def test_load_exclude_list_with_whitespace(tmp_path: Path) -> None:
 
 def test_load_mapping_file_not_found() -> None:
     """Test that loading non-existent mapping file causes sys.exit()."""
-    from org.cli_common import load_mapping
+    from org.config import load_mapping
 
     with pytest.raises(SystemExit) as exc_info:
         load_mapping("/nonexistent/path/to/mapping.json")
@@ -72,7 +72,7 @@ def test_load_mapping_file_not_found() -> None:
 
 def test_load_mapping_none() -> None:
     """Test that None filepath returns empty dict."""
-    from org.cli_common import load_mapping
+    from org.config import load_mapping
 
     result = load_mapping(None)
     assert result == {}
@@ -80,7 +80,7 @@ def test_load_mapping_none() -> None:
 
 def test_load_mapping_valid(tmp_path: Path) -> None:
     """Test loading valid mapping file."""
-    from org.cli_common import load_mapping
+    from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('{"test": "testing", "webdev": "frontend"}')
@@ -91,7 +91,7 @@ def test_load_mapping_valid(tmp_path: Path) -> None:
 
 def test_load_mapping_empty_dict(tmp_path: Path) -> None:
     """Test loading empty mapping dict."""
-    from org.cli_common import load_mapping
+    from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text("{}")
@@ -102,7 +102,7 @@ def test_load_mapping_empty_dict(tmp_path: Path) -> None:
 
 def test_load_mapping_invalid_json(tmp_path: Path) -> None:
     """Test that invalid JSON causes sys.exit()."""
-    from org.cli_common import load_mapping
+    from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('{"test": "testing",')
@@ -115,7 +115,7 @@ def test_load_mapping_invalid_json(tmp_path: Path) -> None:
 
 def test_load_mapping_non_dict_json_array(tmp_path: Path) -> None:
     """Test that JSON array causes sys.exit()."""
-    from org.cli_common import load_mapping
+    from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('["test", "testing"]')
@@ -128,7 +128,7 @@ def test_load_mapping_non_dict_json_array(tmp_path: Path) -> None:
 
 def test_load_mapping_non_dict_json_string(tmp_path: Path) -> None:
     """Test that JSON string causes sys.exit()."""
-    from org.cli_common import load_mapping
+    from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('"test string"')
@@ -141,7 +141,7 @@ def test_load_mapping_non_dict_json_string(tmp_path: Path) -> None:
 
 def test_load_mapping_non_dict_json_number(tmp_path: Path) -> None:
     """Test that JSON number causes sys.exit()."""
-    from org.cli_common import load_mapping
+    from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text("42")
@@ -154,7 +154,7 @@ def test_load_mapping_non_dict_json_number(tmp_path: Path) -> None:
 
 def test_load_mapping_non_string_keys(tmp_path: Path) -> None:
     """Test that mapping with valid string keys works (JSON converts int keys to strings)."""
-    from org.cli_common import load_mapping
+    from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('{"123": "testing"}')
@@ -166,7 +166,7 @@ def test_load_mapping_non_string_keys(tmp_path: Path) -> None:
 
 def test_load_mapping_non_string_values(tmp_path: Path) -> None:
     """Test that mapping with non-string values causes sys.exit()."""
-    from org.cli_common import load_mapping
+    from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('{"test": 123}')
@@ -179,7 +179,7 @@ def test_load_mapping_non_string_values(tmp_path: Path) -> None:
 
 def test_load_mapping_mixed_non_string_types(tmp_path: Path) -> None:
     """Test that mapping with mixed non-string types causes sys.exit()."""
-    from org.cli_common import load_mapping
+    from org.config import load_mapping
 
     mapping_file = tmp_path / "mapping.json"
     mapping_file.write_text('{"test": "testing", "another": ["array"]}')
@@ -192,7 +192,7 @@ def test_load_mapping_mixed_non_string_types(tmp_path: Path) -> None:
 
 def test_load_nodes_not_found() -> None:
     """Test that loading non-existent org file causes sys.exit()."""
-    from org.cli_common import load_nodes
+    from org.parse import load_nodes
 
     with pytest.raises(SystemExit) as exc_info:
         load_nodes(["/nonexistent/file.org"], ["TODO"], ["DONE"], [])
@@ -202,7 +202,7 @@ def test_load_nodes_not_found() -> None:
 
 def test_load_nodes_valid() -> None:
     """Test loading valid org files."""
-    from org.cli_common import load_nodes
+    from org.parse import load_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
     nodes, _, _ = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
@@ -213,7 +213,7 @@ def test_load_nodes_valid() -> None:
 
 def test_load_nodes_todo_keys() -> None:
     """Test loading valid org files."""
-    from org.cli_common import load_nodes
+    from org.parse import load_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "todo_keys.org")
     nodes, todo_keys, done_keys = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
@@ -225,7 +225,7 @@ def test_load_nodes_todo_keys() -> None:
 
 def test_load_nodes_multiple() -> None:
     """Test loading multiple org files."""
-    from org.cli_common import load_nodes
+    from org.parse import load_nodes
 
     fixture1 = os.path.join(FIXTURES_DIR, "simple.org")
     fixture2 = os.path.join(FIXTURES_DIR, "single_task.org")
@@ -237,7 +237,7 @@ def test_load_nodes_multiple() -> None:
 
 def test_load_nodes_with_24_00_time() -> None:
     """Test that 24:00 time format is normalized."""
-    from org.cli_common import load_nodes
+    from org.parse import load_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
     nodes, _, _ = load_nodes([fixture_path], ["TODO"], ["DONE"], [])

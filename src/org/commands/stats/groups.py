@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 
 import typer
-from colorama import init as colorama_init
 
 from org import config as config_module
 from org.analyze import (
     Group,
     TimeRange,
+    compute_explicit_groups,
     compute_frequencies,
     compute_global_timerange,
     compute_groups,
@@ -21,24 +20,20 @@ from org.analyze import (
     compute_time_ranges,
 )
 from org.cli_common import (
-    build_filter_chain,
-    compute_explicit_groups,
-    load_nodes,
+    load_and_process_data,
     resolve_exclude_set,
     resolve_group_values,
-    resolve_input_paths,
     resolve_mapping,
 )
-from org.color import should_use_color
-from org.filters import preprocess_gamify_categories, preprocess_tags_as_category
 from org.tui import (
     GroupBlockConfig,
     TimelineFormatConfig,
     apply_indent,
     format_group_block,
     lines_to_text,
+    setup_output,
 )
-from org.validation import parse_date_argument, validate_global_arguments, validate_stats_arguments
+from org.validation import parse_date_argument, validate_stats_arguments
 
 
 @dataclass
@@ -135,30 +130,13 @@ def format_group_list(
 
 def run_stats_groups(args: GroupsArgs) -> None:
     """Run the stats groups command."""
-    color_enabled = should_use_color(args.color_flag)
-
-    if color_enabled:
-        colorama_init(autoreset=True, strip=False)
-
-    todo_keys, done_keys = validate_global_arguments(args)
+    color_enabled = setup_output(args)
     validate_stats_arguments(args)
 
     mapping = resolve_mapping(args)
     exclude_set = resolve_exclude_set(args)
 
-    filters = build_filter_chain(args, sys.argv)
-
-    filenames = resolve_input_paths(args.files)
-    nodes, todo_keys, done_keys = load_nodes(filenames, todo_keys, done_keys, [])
-
-    if args.with_gamify_category:
-        nodes = preprocess_gamify_categories(nodes, args.category_property)
-
-    if args.with_tags_as_category:
-        nodes = preprocess_tags_as_category(nodes, args.category_property)
-
-    for filter_spec in filters:
-        nodes = filter_spec.filter(nodes)
+    nodes, _, _ = load_and_process_data(args)
 
     if not nodes:
         print("No results")

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import sys
 from collections.abc import Callable
@@ -13,7 +12,8 @@ from typing import Protocol
 
 import orgparse
 
-from org.analyze import Group, TimeRange, normalize
+from org import config as config_module
+from org.analyze import TimeRange, normalize
 from org.filters import (
     filter_body,
     filter_completed,
@@ -27,9 +27,17 @@ from org.filters import (
     filter_repeats_above,
     filter_repeats_below,
     filter_tag,
+    preprocess_gamify_categories,
+    preprocess_tags_as_category,
 )
+from org.parse import load_nodes
 from org.timestamp import extract_timestamp_any
-from org.validation import parse_date_argument, parse_group_values, parse_property_filter
+from org.validation import (
+    parse_date_argument,
+    parse_group_values,
+    parse_property_filter,
+    validate_global_arguments,
+)
 
 
 MAP: dict[str, str] = {}
@@ -142,81 +150,6 @@ class FilterArgs(Protocol):
     filter_not_completed: bool
 
 
-def load_exclude_list(filepath: str | None) -> set[str]:
-    """Load exclude list from a file (one word per line).
-
-    Args:
-        filepath: Path to exclude list file, or None for empty set
-
-    Returns:
-        Set of excluded tags (lowercased, stripped)
-
-    Raises:
-        SystemExit: If file cannot be read
-    """
-    if filepath is None:
-        return set()
-
-    try:
-        with open(filepath, encoding="utf-8") as f:
-            return normalize_exclude_values(list(f))
-    except FileNotFoundError:
-        print(f"Error: Exclude list file '{filepath}' not found", file=sys.stderr)
-        sys.exit(1)
-    except PermissionError:
-        print(f"Error: Permission denied for '{filepath}'", file=sys.stderr)
-        sys.exit(1)
-
-
-def load_mapping(filepath: str | None) -> dict[str, str]:
-    """Load tag mapping from a JSON file.
-
-    Args:
-        filepath: Path to JSON mapping file, or None for empty dict
-
-    Returns:
-        Dictionary mapping tags to canonical forms
-
-    Raises:
-        SystemExit: If file cannot be read or JSON is invalid
-    """
-    if filepath is None:
-        return {}
-
-    try:
-        with open(filepath, encoding="utf-8") as f:
-            mapping = json.load(f)
-
-        if not isinstance(mapping, dict):
-            print(f"Error: Mapping file '{filepath}' must contain a JSON object", file=sys.stderr)
-            sys.exit(1)
-
-        for key, value in mapping.items():
-            if not isinstance(key, str) or not isinstance(value, str):
-                print(
-                    f"Error: All keys and values in '{filepath}' must be strings",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-
-        return mapping
-
-    except FileNotFoundError:
-        print(f"Error: Mapping file '{filepath}' not found", file=sys.stderr)
-        sys.exit(1)
-    except PermissionError:
-        print(f"Error: Permission denied for '{filepath}'", file=sys.stderr)
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON in '{filepath}': {e}", file=sys.stderr)
-        sys.exit(1)
-
-
-def normalize_exclude_values(values: list[str]) -> set[str]:
-    """Normalize exclude values to match file-based behavior."""
-    return {line.strip() for line in values if line.strip()}
-
-
 def is_valid_regex(pattern: str, use_multiline: bool = False) -> bool:
     """Check if a string is a valid regex pattern."""
     try:
@@ -243,106 +176,6 @@ def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
     max_count = max(time_range.timeline.values())
     top_day = min(d for d, count in time_range.timeline.items() if count == max_count)
     return (top_day.isoformat(), max_count)
-
-
-def extract_items_for_category(
-    node: orgparse.node.OrgNode, mapping: dict[str, str], category: str
-) -> set[str]:
-    """Extract normalized items from a node based on category."""
-    if category == "tags":
-        stripped_tags = {t.strip() for t in node.tags}
-        return {mapping.get(t, t) for t in stripped_tags}
-    if category == "heading":
-        return normalize(set(node.heading.split()), mapping)
-    return normalize(set(node.body.split()), mapping)
-
-
-def combine_time_ranges(tag_time_ranges: dict[str, TimeRange], tags: list[str]) -> TimeRange:
-    """Combine time ranges from multiple tags into a single TimeRange."""
-    combined = TimeRange()
-
-    for tag in tags:
-        if tag not in tag_time_ranges:
-            continue
-
-        time_range = tag_time_ranges[tag]
-
-        if time_range.earliest is not None and (
-            combined.earliest is None or time_range.earliest < combined.earliest
-        ):
-            combined.earliest = time_range.earliest
-
-        if time_range.latest is not None and (
-            combined.latest is None or time_range.latest > combined.latest
-        ):
-            combined.latest = time_range.latest
-
-        for date_key, count in time_range.timeline.items():
-            combined.timeline[date_key] = combined.timeline.get(date_key, 0) + count
-
-    return combined
-
-
-def compute_max_single_day(timerange: TimeRange) -> int:
-    """Get the maximum number of tasks completed on a single day."""
-    if not timerange.timeline:
-        return 0
-    return max(timerange.timeline.values())
-
-
-def compute_avg_tasks_per_day(timerange: TimeRange, total_count: int) -> float:
-    """Compute average tasks per day for a timerange."""
-    if timerange.earliest is None or timerange.latest is None:
-        return 0.0
-
-    days_spanned = (timerange.latest.date() - timerange.earliest.date()).days + 1
-    if days_spanned <= 0:
-        return 0.0
-
-    return total_count / days_spanned
-
-
-def compute_explicit_groups(
-    nodes: list[orgparse.node.OrgNode],
-    mapping: dict[str, str],
-    category: str,
-    group_items: list[list[str]],
-    tag_time_ranges: dict[str, TimeRange],
-) -> list[Group]:
-    """Compute group statistics based on explicit tag lists."""
-    groups: list[Group] = []
-
-    for group in group_items:
-        present_tags = [tag for tag in group if tag in tag_time_ranges]
-        if not present_tags:
-            continue
-
-        group_set = set(present_tags)
-        total_tasks = 0
-
-        for node in nodes:
-            node_items = extract_items_for_category(node, mapping, category)
-            if node_items & group_set:
-                total_tasks += max(1, len(node.repeated_tasks))
-
-        if total_tasks == 0:
-            continue
-
-        time_range = combine_time_ranges(tag_time_ranges, present_tags)
-        avg_tasks_per_day = compute_avg_tasks_per_day(time_range, total_tasks)
-        max_single_day = compute_max_single_day(time_range)
-
-        groups.append(
-            Group(
-                tags=present_tags,
-                time_range=time_range,
-                total_tasks=total_tasks,
-                avg_tasks_per_day=avg_tasks_per_day,
-                max_single_day_count=max_single_day,
-            )
-        )
-
-    return groups
 
 
 def get_most_recent_timestamp(node: orgparse.node.OrgNode) -> datetime | None:
@@ -710,60 +543,6 @@ def resolve_group_values(
     return resolved_groups
 
 
-def load_nodes(
-    filenames: list[str], todo_keys: list[str], done_keys: list[str], filters: list[Filter]
-) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
-    """Load, parse, and filter org-mode files.
-
-    Processes each file separately: preprocess -> parse -> filter -> extract keys -> combine.
-
-    Args:
-        filenames: List of file paths to load
-        todo_keys: List of TODO state keywords to prepend to files
-        done_keys: List of DONE state keywords to prepend to files
-        filters: List of filter specs to apply to nodes from each file
-
-    Returns:
-        Tuple of (filtered nodes, all todo keys, all done keys)
-
-    Raises:
-        SystemExit: If file cannot be read
-    """
-    all_nodes: list[orgparse.node.OrgNode] = []
-    all_todo_keys: set[str] = set(todo_keys)
-    all_done_keys: set[str] = set(done_keys)
-
-    for name in filenames:
-        try:
-            with open(name, encoding="utf-8") as f:
-                print(f"Processing {name}...")
-
-                contents = f.read().replace("24:00", "00:00")
-
-                todo_config = f"#+TODO: {' '.join(todo_keys)} | {' '.join(done_keys)}\n\n"
-                contents = todo_config + contents
-
-                ns = orgparse.loads(contents, filename=name)
-                if ns is not None:
-                    all_todo_keys = all_todo_keys.union(set(ns.env.todo_keys))
-                    all_done_keys = all_done_keys.union(set(ns.env.done_keys))
-
-                    file_nodes = list(ns[1:])
-
-                    for filter_spec in filters:
-                        file_nodes = filter_spec.filter(file_nodes)
-
-                    all_nodes = all_nodes + file_nodes
-        except FileNotFoundError:
-            print(f"Error: File '{name}' not found", file=sys.stderr)
-            sys.exit(1)
-        except PermissionError:
-            print(f"Error: Permission denied for '{name}'", file=sys.stderr)
-            sys.exit(1)
-
-    return all_nodes, list(all_todo_keys), list(all_done_keys)
-
-
 def resolve_input_paths(inputs: list[str] | None) -> list[str]:
     """Resolve CLI inputs into a list of org files to process.
 
@@ -815,13 +594,45 @@ def resolve_mapping(args: object) -> dict[str, str]:
     if mapping_inline is not None:
         return mapping_inline or MAP
     mapping_file = getattr(args, "mapping", None)
-    return load_mapping(mapping_file) or MAP
+    return config_module.load_mapping(mapping_file) or MAP
 
 
 def resolve_exclude_set(args: object) -> set[str]:
     """Resolve exclude set based on inline or file-based configuration."""
     exclude_inline = getattr(args, "exclude_inline", None)
     if exclude_inline is not None:
-        return normalize_exclude_values(exclude_inline) or DEFAULT_EXCLUDE
+        return config_module.normalize_exclude_values(exclude_inline) or DEFAULT_EXCLUDE
     exclude_file = getattr(args, "exclude", None)
-    return load_exclude_list(exclude_file) or DEFAULT_EXCLUDE
+    return config_module.load_exclude_list(exclude_file) or DEFAULT_EXCLUDE
+
+
+class DataLoadArgs(FilterArgs, Protocol):
+    """Protocol for loading and preprocessing data."""
+
+    files: list[str] | None
+    todo_keys: str
+    done_keys: str
+    with_gamify_category: bool
+    with_tags_as_category: bool
+    category_property: str
+
+
+def load_and_process_data(
+    args: DataLoadArgs,
+) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
+    """Load nodes, preprocess, and apply filters in command order."""
+    todo_keys, done_keys = validate_global_arguments(args)
+    filters = build_filter_chain(args, sys.argv)
+    filenames = resolve_input_paths(args.files)
+    nodes, todo_keys, done_keys = load_nodes(filenames, todo_keys, done_keys, [])
+
+    if args.with_gamify_category:
+        nodes = preprocess_gamify_categories(nodes, args.category_property)
+
+    if args.with_tags_as_category:
+        nodes = preprocess_tags_as_category(nodes, args.category_property)
+
+    for filter_spec in filters:
+        nodes = filter_spec.filter(nodes)
+
+    return nodes, todo_keys, done_keys

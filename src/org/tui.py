@@ -7,10 +7,11 @@ from datetime import date, datetime
 
 import orgparse
 from colorama import Style
+from colorama import init as colorama_init
 
 from org.analyze import Group, Tag, TimeRange
 from org.cli_common import get_top_tasks
-from org.color import bright_white, dim_white, get_state_color, magenta
+from org.color import bright_white, dim_white, get_state_color, magenta, should_use_color
 from org.histogram import Histogram, RenderConfig, render_histogram
 from org.plot import render_timeline_chart
 
@@ -69,6 +70,14 @@ def lines_to_text(lines: list[str]) -> str:
     if not lines:
         return ""
     return "\n".join(lines) + "\n"
+
+
+def setup_output(args: object) -> bool:
+    """Configure output settings and return color preference."""
+    color_enabled = should_use_color(getattr(args, "color_flag", None))
+    if color_enabled:
+        colorama_init(autoreset=True, strip=False)
+    return color_enabled
 
 
 def apply_indent(lines: list[str], indent: str) -> list[str]:
