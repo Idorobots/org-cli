@@ -2155,14 +2155,18 @@ I'd like the CLI commands to produce better, more Typer-consistent error message
 
 Please update all places that currently print directly to standard error stream and replace these with Typer exceptions. While at it, please strip the "Error: " prefix from some of the messages, since Typer already adds its own prefix.
 
-*** TODO Rich text support                                                                     :TUI:
+*** DONE Rich text support                                                                     :TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-22 Sun 18:51] \\
+  Worked pretty well.
+:END:
 Use Pythons Rich library to support extra nice TUI features.
 
-Replace the explicit ~colorama~ color handling with Rich's ~console.print()~ with markup. Please preserve the same color scheme as with Colorama.
+Replace the explicit ~colorama~ color handling with Rich's ~console.print()~ with markup. Please preserve the same color scheme as with Colorama. Once done, it should be possible to remove colorama entirely from the project dependencies.
 
-Add "spinner" (the dots style from Rich) when computing loading the files and computing the output. I'd like the spinner to be white and it should say "Processing...". Once the output is computed the spinner should disappear. The spinner should not be shown when ~--no-color~ switch is present. You can use `console.status("Processing...", spinner="dots")` for that.
+Add "spinner" (the dots style from Rich) when computing loading the files and computing the output. I'd like the spinner to be white and it should say "Processing...". Once the output is computed the spinner should disappear. The spinner should not be shown when ~--no-color~ switch is present. You can use ~console.status("Processing...", spinner="dots")~ for that.
 
-Add syntax highlighting on the detailed display of org nodes in the ~tasks list~ command output.
+Add syntax highlighting on the detailed display of org nodes in the ~tasks list~ command output. Do not show any line numbers.
 
 *** Output abstraction
 We will be adding more output options, for instance JSON output, visualization output, etc.

@@ -1,11 +1,10 @@
 """Histogram data structure and rendering functions."""
 
-import re
 from dataclasses import dataclass, field
 
-from colorama import Style
+from rich.text import Text
 
-from org.color import bright_blue, dim_white, get_state_color
+from org.color import bright_blue, colorize, dim_white, get_state_color
 
 
 @dataclass
@@ -28,21 +27,8 @@ class Histogram:
         self.values[key] = self.values.get(key, 0) + amount
 
 
-def _strip_ansi(text: str) -> str:
-    """Remove ANSI escape codes from text.
-
-    Args:
-        text: Text that may contain ANSI codes
-
-    Returns:
-        Text with ANSI codes removed
-    """
-    ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
-    return ansi_escape.sub("", text)
-
-
 def _visual_len(text: str) -> int:
-    """Get visual length of text (excluding ANSI codes).
+    """Get visual length of text (excluding Rich markup).
 
     Args:
         text: Text that may contain ANSI codes
@@ -50,7 +36,7 @@ def _visual_len(text: str) -> int:
     Returns:
         Visual length of the text
     """
-    return len(_strip_ansi(text))
+    return len(Text.from_markup(text).plain)
 
 
 @dataclass
@@ -100,14 +86,14 @@ def render_histogram(
         bars = "█" * bar_length
 
         if render_config.histogram_type == "task_states":
-            state_color = get_state_color(
+            state_style = get_state_color(
                 category,
                 render_config.done_keys,
                 render_config.todo_keys,
                 render_config.color_enabled,
             )
-            if render_config.color_enabled and state_color:
-                colored_name = f"{state_color}{display_name}{Style.RESET_ALL}"
+            if render_config.color_enabled and state_style:
+                colored_name = colorize(display_name, state_style, render_config.color_enabled)
             else:
                 colored_name = display_name
             colored_bars = bright_blue(bars, render_config.color_enabled)

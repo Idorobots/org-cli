@@ -30,8 +30,11 @@ from org.tui import (
     GroupBlockConfig,
     TimelineFormatConfig,
     apply_indent,
+    build_console,
     format_group_block,
     lines_to_text,
+    print_output,
+    processing_status,
     setup_output,
 )
 from org.validation import validate_stats_arguments
@@ -132,51 +135,58 @@ def format_group_list(
 def run_stats_groups(args: GroupsArgs) -> None:
     """Run the stats groups command."""
     color_enabled = setup_output(args)
+    console = build_console(color_enabled)
     validate_stats_arguments(args)
 
     mapping = resolve_mapping(args)
     exclude_set = resolve_exclude_set(args)
 
-    nodes, _, _ = load_and_process_data(args)
+    with processing_status(console, color_enabled):
+        nodes, _, _ = load_and_process_data(args)
+
+        if not nodes:
+            output = None
+        else:
+            global_timerange = compute_global_timerange(nodes)
+            date_from, date_until = resolve_date_filters(args)
+            group_values = resolve_group_values(args.groups, mapping, args.use)
+
+            if group_values is not None:
+                tag_time_ranges = compute_time_ranges(nodes, mapping, args.use)
+                groups = compute_explicit_groups(
+                    nodes, mapping, args.use, group_values, tag_time_ranges
+                )
+            else:
+                frequencies = compute_frequencies(nodes, mapping, args.use)
+                time_ranges = compute_time_ranges(nodes, mapping, args.use)
+                relations = (
+                    compute_relations(nodes, mapping, args.use) if args.max_relations > 0 else {}
+                )
+                tags = compute_per_tag_statistics(frequencies, relations, time_ranges)
+                groups = sorted(
+                    compute_groups(tags, args.max_relations, nodes, mapping, args.use),
+                    key=lambda group: len(group.tags),
+                    reverse=True,
+                )
+
+            output = format_group_list(
+                groups,
+                (
+                    args.max_results,
+                    args.buckets,
+                    date_from,
+                    date_until,
+                    global_timerange,
+                    exclude_set,
+                    color_enabled,
+                ),
+            )
 
     if not nodes:
-        print("No results")
+        console.print("No results", markup=False)
         return
-
-    global_timerange = compute_global_timerange(nodes)
-
-    date_from, date_until = resolve_date_filters(args)
-
-    group_values = resolve_group_values(args.groups, mapping, args.use)
-
-    if group_values is not None:
-        tag_time_ranges = compute_time_ranges(nodes, mapping, args.use)
-        groups = compute_explicit_groups(nodes, mapping, args.use, group_values, tag_time_ranges)
-    else:
-        frequencies = compute_frequencies(nodes, mapping, args.use)
-        time_ranges = compute_time_ranges(nodes, mapping, args.use)
-        relations = compute_relations(nodes, mapping, args.use) if args.max_relations > 0 else {}
-        tags = compute_per_tag_statistics(frequencies, relations, time_ranges)
-        groups = sorted(
-            compute_groups(tags, args.max_relations, nodes, mapping, args.use),
-            key=lambda group: len(group.tags),
-            reverse=True,
-        )
-
-    output = format_group_list(
-        groups,
-        (
-            args.max_results,
-            args.buckets,
-            date_from,
-            date_until,
-            global_timerange,
-            exclude_set,
-            color_enabled,
-        ),
-    )
     if output:
-        print(output, end="")
+        print_output(console, output, color_enabled, end="")
 
 
 def register(app: typer.Typer) -> None:

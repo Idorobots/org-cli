@@ -26,9 +26,12 @@ from org.tui import (
     HistogramSectionConfig,
     TimelineFormatConfig,
     apply_indent,
+    build_console,
     format_histogram_section,
     format_timeline_lines,
     lines_to_text,
+    print_output,
+    processing_status,
     setup_output,
 )
 from org.validation import validate_stats_arguments
@@ -180,41 +183,45 @@ def format_tasks_summary(
 def run_stats_tasks(args: TasksArgs) -> None:
     """Run the stats tasks command."""
     color_enabled = setup_output(args)
+    console = build_console(color_enabled)
     validate_stats_arguments(args)
+    with processing_status(console, color_enabled):
+        nodes, todo_keys, done_keys = load_and_process_data(args)
 
-    nodes, todo_keys, done_keys = load_and_process_data(args)
+        if not nodes:
+            output = None
+        else:
+            global_timerange = compute_global_timerange(nodes)
+            total_tasks, max_repeat_count = compute_task_stats(nodes)
+            max_single_day = compute_max_single_day(global_timerange)
+            avg_tasks_per_day = compute_avg_tasks_per_day(global_timerange, total_tasks)
+
+            result = AnalysisResult(
+                total_tasks=total_tasks,
+                task_states=compute_task_state_histogram(nodes),
+                task_categories=compute_category_histogram(nodes, args.category_property),
+                task_days=compute_day_of_week_histogram(nodes),
+                timerange=global_timerange,
+                avg_tasks_per_day=avg_tasks_per_day,
+                max_single_day_count=max_single_day,
+                max_repeat_count=max_repeat_count,
+                tags={},
+                tag_groups=[],
+            )
+
+            date_from, date_until = resolve_date_filters(args)
+
+            output = format_tasks_summary(
+                result,
+                args,
+                (date_from, date_until, done_keys, todo_keys, color_enabled),
+            )
 
     if not nodes:
-        print("No results")
+        console.print("No results", markup=False)
         return
-
-    global_timerange = compute_global_timerange(nodes)
-    total_tasks, max_repeat_count = compute_task_stats(nodes)
-    max_single_day = compute_max_single_day(global_timerange)
-    avg_tasks_per_day = compute_avg_tasks_per_day(global_timerange, total_tasks)
-
-    result = AnalysisResult(
-        total_tasks=total_tasks,
-        task_states=compute_task_state_histogram(nodes),
-        task_categories=compute_category_histogram(nodes, args.category_property),
-        task_days=compute_day_of_week_histogram(nodes),
-        timerange=global_timerange,
-        avg_tasks_per_day=avg_tasks_per_day,
-        max_single_day_count=max_single_day,
-        max_repeat_count=max_repeat_count,
-        tags={},
-        tag_groups=[],
-    )
-
-    date_from, date_until = resolve_date_filters(args)
-
-    output = format_tasks_summary(
-        result,
-        args,
-        (date_from, date_until, done_keys, todo_keys, color_enabled),
-    )
     if output:
-        print(output, end="")
+        print_output(console, output, color_enabled, end="")
 
 
 def register(app: typer.Typer) -> None:

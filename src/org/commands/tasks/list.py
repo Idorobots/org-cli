@@ -8,11 +8,22 @@ from typing import cast
 
 import orgparse
 import typer
+from rich.console import Console
+from rich.syntax import Syntax
+from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import get_most_recent_timestamp, load_and_process_data
 from org.filters import get_gamify_exp
-from org.tui import TaskLineConfig, format_task_line, lines_to_text, setup_output
+from org.tui import (
+    TaskLineConfig,
+    build_console,
+    format_task_line,
+    lines_to_text,
+    print_output,
+    processing_status,
+    setup_output,
+)
 
 
 @dataclass(frozen=True)
@@ -190,50 +201,56 @@ def format_short_task_list(
     return lines_to_text(lines)
 
 
-def format_detailed_task_list(nodes: list[orgparse.node.OrgNode]) -> str:
-    """Return formatted detailed list of tasks."""
-    blocks: list[str] = []
-    for node in nodes:
+def render_detailed_task_list(
+    nodes: list[orgparse.node.OrgNode],
+    console: Console,
+) -> None:
+    """Render detailed list of tasks with syntax highlighting."""
+    for idx, node in enumerate(nodes):
+        if idx > 0:
+            console.print()
         filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
         node_text = str(node).rstrip()
-        blocks.append(f"# {filename}\n{node_text}")
-
-    return "\n\n".join(blocks)
+        header = Text(f"# {filename}")
+        header.no_wrap = True
+        header.overflow = "ignore"
+        console.print(header, markup=False)
+        console.print(Syntax(node_text, "org", line_numbers=False, word_wrap=False))
 
 
 def run_tasks_list(args: ListArgs) -> None:
     """Run the tasks list command."""
     color_enabled = setup_output(args)
+    console = build_console(color_enabled)
     order_by = normalize_order_by(args.order_by)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
-    nodes, todo_keys, done_keys = load_and_process_data(args)
+    with processing_status(console, color_enabled):
+        nodes, todo_keys, done_keys = load_and_process_data(args)
+        if not nodes or args.max_results <= 0:
+            limited_nodes = []
+            output = None
+        else:
+            ordered_nodes = order_nodes(nodes, order_by)
+            offset_nodes = ordered_nodes[args.offset :]
+            limited_nodes = offset_nodes[: args.max_results]
+            if args.details:
+                output = None
+            else:
+                output = format_short_task_list(limited_nodes, done_keys, todo_keys, color_enabled)
 
-    if not nodes or args.max_results <= 0:
-        print("No results")
-        return
-
-    ordered_nodes = order_nodes(nodes, order_by)
-    offset_nodes = ordered_nodes[args.offset :]
-    limited_nodes = offset_nodes[: args.max_results]
-
-    if not limited_nodes:
-        print("No results")
+    if not nodes or not limited_nodes:
+        console.print("No results", markup=False)
         return
 
     if args.details:
-        output = format_detailed_task_list(limited_nodes)
-        if output:
-            print(output)
-        else:
-            print("No results")
+        render_detailed_task_list(limited_nodes, console)
         return
 
-    output = format_short_task_list(limited_nodes, done_keys, todo_keys, color_enabled)
     if output:
-        print(output, end="")
+        print_output(console, output, color_enabled, end="")
     else:
-        print("No results")
+        console.print("No results", markup=False)
 
 
 def register(app: typer.Typer) -> None:

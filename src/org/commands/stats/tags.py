@@ -29,8 +29,11 @@ from org.tui import (
     TagBlockConfig,
     TimelineFormatConfig,
     apply_indent,
+    build_console,
     format_tag_block,
     lines_to_text,
+    print_output,
+    processing_status,
     setup_output,
 )
 from org.validation import parse_show_values, validate_stats_arguments
@@ -152,42 +155,48 @@ def _resolve_show_values(args: TagsArgs, mapping: dict[str, str]) -> list[str] |
 def run_stats_tags(args: TagsArgs) -> None:
     """Run the stats tags command."""
     color_enabled = setup_output(args)
+    console = build_console(color_enabled)
     validate_stats_arguments(args)
 
     mapping = resolve_mapping(args)
     exclude_set = resolve_exclude_set(args)
+    with processing_status(console, color_enabled):
+        nodes, _, _ = load_and_process_data(args)
 
-    nodes, _, _ = load_and_process_data(args)
+        if not nodes:
+            output = None
+        else:
+            frequencies = compute_frequencies(nodes, mapping, args.use)
+            time_ranges = compute_time_ranges(nodes, mapping, args.use)
+            relations = (
+                compute_relations(nodes, mapping, args.use) if args.max_relations > 0 else {}
+            )
+            tags = compute_per_tag_statistics(frequencies, relations, time_ranges)
+            global_timerange = compute_global_timerange(nodes)
+
+            date_from, date_until = resolve_date_filters(args)
+            show_values = _resolve_show_values(args, mapping)
+
+            output = format_tags(
+                tags,
+                show_values,
+                (
+                    args.max_results,
+                    args.max_relations,
+                    args.buckets,
+                    date_from,
+                    date_until,
+                    global_timerange,
+                    exclude_set,
+                    color_enabled,
+                ),
+            )
 
     if not nodes:
-        print("No results")
+        console.print("No results", markup=False)
         return
-
-    frequencies = compute_frequencies(nodes, mapping, args.use)
-    time_ranges = compute_time_ranges(nodes, mapping, args.use)
-    relations = compute_relations(nodes, mapping, args.use) if args.max_relations > 0 else {}
-    tags = compute_per_tag_statistics(frequencies, relations, time_ranges)
-    global_timerange = compute_global_timerange(nodes)
-
-    date_from, date_until = resolve_date_filters(args)
-    show_values = _resolve_show_values(args, mapping)
-
-    output = format_tags(
-        tags,
-        show_values,
-        (
-            args.max_results,
-            args.max_relations,
-            args.buckets,
-            date_from,
-            date_until,
-            global_timerange,
-            exclude_set,
-            color_enabled,
-        ),
-    )
     if output:
-        print(output, end="")
+        print_output(console, output, color_enabled, end="")
 
 
 def register(app: typer.Typer) -> None:
