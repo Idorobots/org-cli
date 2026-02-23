@@ -2244,6 +2244,10 @@ The command should also accept the same filters & ordering clauses that the ~tas
 Please don't worry about the logic behind the command just yet, we will explore that in the next steps. You can make it print "No results" for now.
 
 *** TODO Query language
+:PROPERTIES:
+:slop: [[file:plans/query-language.md]]
+:plan: [[file:plans/query-language1.md]]
+:END:
 I'd like to add a query language similar to ~jq~ or ~yq~, but dedicated to selecting specific Org nodes and their properties.
 To do that, I'd like to extend the ~query~ command with a query parser & executor that will leverage the query language for node processing.
 
@@ -2255,7 +2259,7 @@ org query '.[] | select(.todo == "DONE")' # select all nodes in DONE state
 org query '.[$offset : $limit] | .env.filename, .level, .todo, .heading' # select filename, level, todo and heading from $ limit nodes starting at $offset
 #+end_src
 
-The command will parse the query, compile it into a node processing function and execute the function on the input nodes producing results. The results will be then printed to the console, item by item on separate lines.
+The command will parse the query, compile the parse tree into function accepting nodes and execute the function on the input nodes producing results. The results will be then printed to the console, item by item on separate lines.
 
 The query language should recognize the following forms:
 - ~.~ - Identity, returns input unchanged
@@ -2290,7 +2294,7 @@ The query language should support the following operators:
 
 Type mismatches in operator invocations should be raised as exeptions.
 
-Please implement a parser that will take the value passed into the command and build a query execution function that can be applied to a list of nodes. The parser should validate that the query is well-formed and raise an exception otherwise. Don't be very deffensive, we might be changing the query language a lot initially, so let's delegate proper strict validation to another time.
+Please implement a parser that will take the value passed into the command and build a query execution function that can be applied to a list of nodes. The parser should validate that the query is well-formed and raise an exception otherwise. Don't be very deffensive, we might be changing the query language a lot initially, so let's delegate proper strict validation to another time. What is really important is making the query performant as it'll be applied on a large set of nodes.
 
 Please add unit tests for this parser & the implementation of forms, functions and operators, but just enough for a sanity check. This language might change in the future, so let's keeps the test suite lean. We will address that in the future.
 
@@ -2298,6 +2302,9 @@ The ~query~ command should be updated to parse the query passed to it, load the 
 The results can be either a collection of values or a single value. If it is a collection of values, the command should print each value on a separate line. If it is a singular value, it should be printed alone.
 
 Please don't add tests to the ~query~ command just yet, we will me expanding its functionality soon.
+
+**** COMMENT
+I asked Claude to write down a plan of implementation and store it in a file for another model to execute, but the plan turned out to be so sloppy that I decided to save it for posterity and link it to this task. It was 1033 lines long and full of implementation snippets. I also updated the prompt to focus on performance of the query. I then rerun the same prompt (with additions) on Codex and saved it to another plan file. This time the plan was barely there, just 86 lines, very high level. No details.
 
 *** Query language filters/ordering
 
