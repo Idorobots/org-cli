@@ -16,6 +16,8 @@ def test_analysis_result_initialization() -> None:
     )
 
     result = AnalysisResult(
+        unique_tasks=0,
+        task_priorities=Histogram(values={}),
         total_tasks=10,
         task_states=Histogram(values={"DONE": 5, "TODO": 5}),
         task_categories=Histogram(values={}),
@@ -44,6 +46,8 @@ def test_analysis_result_initialization() -> None:
 def test_analysis_result_empty_initialization() -> None:
     """Test AnalysisResult with empty data."""
     result = AnalysisResult(
+        unique_tasks=0,
+        task_priorities=Histogram(values={}),
         total_tasks=0,
         task_states=Histogram(values={"DONE": 0, "TODO": 0}),
         task_categories=Histogram(values={}),
@@ -71,6 +75,8 @@ def test_analysis_result_empty_initialization() -> None:
 def test_analysis_result_attributes() -> None:
     """Test that AnalysisResult has all expected attributes."""
     result = AnalysisResult(
+        unique_tasks=0,
+        task_priorities=Histogram(values={}),
         total_tasks=1,
         task_states=Histogram(values={"DONE": 1, "TODO": 0}),
         task_categories=Histogram(values={}),
@@ -113,6 +119,8 @@ def test_analysis_result_repr() -> None:
     )
 
     result = AnalysisResult(
+        unique_tasks=0,
+        task_priorities=Histogram(values={}),
         total_tasks=2,
         task_states=Histogram(values={"DONE": 1, "TODO": 1}),
         task_categories=Histogram(values={}),
@@ -143,6 +151,8 @@ def test_analysis_result_equality() -> None:
     )
 
     result1 = AnalysisResult(
+        unique_tasks=0,
+        task_priorities=Histogram(values={}),
         total_tasks=5,
         task_states=Histogram(values={"DONE": 3, "TODO": 2}),
         task_categories=Histogram(values={}),
@@ -156,6 +166,8 @@ def test_analysis_result_equality() -> None:
     )
 
     result2 = AnalysisResult(
+        unique_tasks=0,
+        task_priorities=Histogram(values={}),
         total_tasks=5,
         task_states=Histogram(values={"DONE": 3, "TODO": 2}),
         task_categories=Histogram(values={}),
@@ -169,6 +181,8 @@ def test_analysis_result_equality() -> None:
     )
 
     result3 = AnalysisResult(
+        unique_tasks=0,
+        task_priorities=Histogram(values={}),
         total_tasks=10,
         task_states=Histogram(values={"DONE": 5, "TODO": 5}),
         task_categories=Histogram(values={}),
@@ -192,6 +206,8 @@ def test_analysis_result_mutable_fields() -> None:
     from org.analyze import Group
 
     result = AnalysisResult(
+        unique_tasks=0,
+        task_priorities=Histogram(values={}),
         total_tasks=0,
         task_states=Histogram(values={"DONE": 0, "TODO": 0}),
         task_categories=Histogram(values={}),
@@ -263,6 +279,8 @@ def test_analysis_result_dict_operations() -> None:
     )
 
     result = AnalysisResult(
+        unique_tasks=0,
+        task_priorities=Histogram(values={}),
         total_tasks=3,
         task_states=Histogram(values={"DONE": 2, "TODO": 1}),
         task_categories=Histogram(values={}),

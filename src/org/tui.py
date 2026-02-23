@@ -14,6 +14,7 @@ from rich.text import Text
 from org.analyze import Group, Tag, TimeRange
 from org.cli_common import get_top_tasks
 from org.color import (
+    bright_blue,
     bright_white,
     colorize,
     dim_white,
@@ -22,7 +23,7 @@ from org.color import (
     magenta,
     should_use_color,
 )
-from org.histogram import Histogram, RenderConfig, render_histogram
+from org.histogram import Histogram, RenderConfig, render_histogram, visual_len
 from org.plot import render_timeline_chart
 
 
@@ -179,6 +180,7 @@ class TopTasksSectionConfig:
     color_enabled: bool
     done_keys: list[str]
     todo_keys: list[str]
+    buckets: int
     indent: str
 
 
@@ -189,23 +191,38 @@ class TaskLineConfig:
     color_enabled: bool
     done_keys: list[str]
     todo_keys: list[str]
+    buckets: int = 0
 
 
-def format_task_line(
-    node: orgparse.node.OrgNode,
-    config: TaskLineConfig,
-    indent: str = "",
-) -> str:
-    """Return formatted task line for list output."""
+@dataclass(frozen=True)
+class _TaskLineParts:
+    """Internal data structure for task line components."""
+
+    colored_filename: str
+    level_prefix: str
+    colored_state: str
+    priority_text: str
+    heading: str
+
+
+def _build_task_line_parts(node: orgparse.node.OrgNode, config: TaskLineConfig) -> _TaskLineParts:
+    """Extract and format task line components."""
     filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
     colored_filename = dim_white(f"{filename}:", config.color_enabled)
     todo_state = node.todo if node.todo else ""
     heading = node.heading if node.heading else ""
     level = node.level if node.level is not None else 0
     level_prefix = "*" * level if level > 0 else ""
+
+    priority_text = ""
+    if node.priority:
+        priority_display = f"[#{node.priority}]"
+        priority_text = f" {bright_blue(priority_display, config.color_enabled)}"
+
     if config.color_enabled:
         heading = escape_text(heading, config.color_enabled)
 
+    colored_state = ""
     if todo_state:
         state_style = get_state_color(
             todo_state,
@@ -217,9 +234,64 @@ def format_task_line(
             colored_state = colorize(todo_state, state_style, config.color_enabled)
         else:
             colored_state = todo_state
-        line = f"{colored_filename} {level_prefix} {colored_state} {heading}".strip()
-    else:
-        line = f"{colored_filename} {level_prefix} {heading}".strip()
+
+    return _TaskLineParts(colored_filename, level_prefix, colored_state, priority_text, heading)
+
+
+def _format_line_with_parts(parts: _TaskLineParts) -> str:
+    """Build formatted line from components."""
+    if parts.colored_state:
+        return f"{parts.colored_filename} {parts.level_prefix} {parts.colored_state}{parts.priority_text} {parts.heading}".strip()
+    if parts.priority_text:
+        return f"{parts.colored_filename} {parts.level_prefix}{parts.priority_text} {parts.heading}".strip()
+    return f"{parts.colored_filename} {parts.level_prefix} {parts.heading}".strip()
+
+
+def _add_tags_to_line(
+    line: str, node: orgparse.node.OrgNode, parts: _TaskLineParts, config: TaskLineConfig
+) -> str:
+    """Add tags to line with alignment and heading truncation."""
+    sorted_tags = sorted(node.tags)
+    tags_text = f":{':'.join(sorted_tags)}:"
+    colored_tags = dim_white(tags_text, config.color_enabled)
+
+    line_visual_len = visual_len(line)
+    tags_visual_len = len(tags_text)
+    available_space = config.buckets - tags_visual_len
+
+    if line_visual_len > available_space:
+        target_heading_len = len(parts.heading) - (line_visual_len - available_space)
+        if target_heading_len > 0:
+            truncated_heading = parts.heading[:target_heading_len]
+            if config.color_enabled:
+                truncated_heading = escape_text(truncated_heading, config.color_enabled)
+            truncated_parts = _TaskLineParts(
+                parts.colored_filename,
+                parts.level_prefix,
+                parts.colored_state,
+                parts.priority_text,
+                truncated_heading,
+            )
+            line = _format_line_with_parts(truncated_parts)
+
+    line_visual_len = visual_len(line)
+    if line_visual_len < config.buckets:
+        padding = " " * (config.buckets - line_visual_len - tags_visual_len)
+        return f"{line}{padding}{colored_tags}"
+    return f"{line} {colored_tags}"
+
+
+def format_task_line(
+    node: orgparse.node.OrgNode,
+    config: TaskLineConfig,
+    indent: str = "",
+) -> str:
+    """Return formatted task line for list output."""
+    parts = _build_task_line_parts(node, config)
+    line = _format_line_with_parts(parts)
+
+    if node.tags and config.buckets > 0:
+        line = _add_tags_to_line(line, node, parts, config)
 
     if indent:
         return f"{indent}{line}" if line else indent
@@ -394,6 +466,7 @@ def format_top_tasks_section(
                     color_enabled=config.color_enabled,
                     done_keys=config.done_keys,
                     todo_keys=config.todo_keys,
+                    buckets=config.buckets,
                 ),
                 indent="  ",
             )

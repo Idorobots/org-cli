@@ -126,6 +126,7 @@ class ListArgs:
     with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
+    buckets: int
 
 
 def normalize_order_by(order_by: str | list[str] | tuple[str, ...]) -> list[str]:
@@ -187,6 +188,7 @@ def format_short_task_list(
     done_keys: list[str],
     todo_keys: list[str],
     color_enabled: bool,
+    buckets: int,
 ) -> str:
     """Return formatted short list of tasks."""
     lines = [
@@ -196,6 +198,7 @@ def format_short_task_list(
                 color_enabled=color_enabled,
                 done_keys=done_keys,
                 todo_keys=todo_keys,
+                buckets=buckets,
             ),
         )
         for node in nodes
@@ -239,7 +242,9 @@ def run_tasks_list(args: ListArgs) -> None:
             if args.details:
                 output = None
             else:
-                output = format_short_task_list(limited_nodes, done_keys, todo_keys, color_enabled)
+                output = format_short_task_list(
+                    limited_nodes, done_keys, todo_keys, color_enabled, args.buckets
+                )
 
     if not nodes or not limited_nodes:
         console.print("No results", markup=False)
@@ -419,6 +424,12 @@ def register(app: typer.Typer) -> None:
             metavar="PROPERTY",
             help="Property name to use for category histogram and filtering",
         ),
+        buckets: int = typer.Option(
+            50,
+            "--buckets",
+            metavar="N",
+            help="Number of time buckets for timeline charts and tag alignment column",
+        ),
     ) -> None:
         """List tasks matching filters."""
         args = ListArgs(
@@ -450,6 +461,7 @@ def register(app: typer.Typer) -> None:
             with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
+            buckets=buckets,
         )
         config_module.apply_config_defaults(args)
         run_tasks_list(args)

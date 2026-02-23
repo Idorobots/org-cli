@@ -16,6 +16,7 @@ from org.analyze import (
     compute_day_of_week_histogram,
     compute_global_timerange,
     compute_max_single_day,
+    compute_priority_histogram,
     compute_task_state_histogram,
     compute_task_stats,
 )
@@ -110,6 +111,9 @@ def format_tasks_summary(
     total_tasks_value = magenta(str(result.total_tasks), color_enabled)
     lines.append(f"Total tasks: {total_tasks_value}")
 
+    unique_tasks_value = magenta(str(result.unique_tasks), color_enabled)
+    lines.append(f"Unique tasks: {unique_tasks_value}")
+
     if result.timerange.earliest and result.timerange.latest:
         avg_value = magenta(f"{result.avg_tasks_per_day:.2f}", color_enabled)
         max_single_value = magenta(str(result.max_single_day_count), color_enabled)
@@ -135,6 +139,20 @@ def format_tasks_summary(
                     done_keys=done_keys,
                     todo_keys=todo_keys,
                 ),
+                indent="",
+            ),
+        )
+    )
+
+    priority_order = sorted(result.task_priorities.values.keys())
+    lines.extend(
+        format_histogram_section(
+            "Task priorities:",
+            result.task_priorities,
+            HistogramSectionConfig(
+                buckets=args.buckets,
+                order=priority_order,
+                render_config=RenderConfig(color_enabled=color_enabled),
                 indent="",
             ),
         )
@@ -193,13 +211,16 @@ def run_stats_tasks(args: TasksArgs) -> None:
         else:
             global_timerange = compute_global_timerange(nodes)
             total_tasks, max_repeat_count = compute_task_stats(nodes)
+            unique_tasks = len(nodes)
             max_single_day = compute_max_single_day(global_timerange)
             avg_tasks_per_day = compute_avg_tasks_per_day(global_timerange, total_tasks)
 
             result = AnalysisResult(
                 total_tasks=total_tasks,
+                unique_tasks=unique_tasks,
                 task_states=compute_task_state_histogram(nodes),
                 task_categories=compute_category_histogram(nodes, args.category_property),
+                task_priorities=compute_priority_histogram(nodes),
                 task_days=compute_day_of_week_histogram(nodes),
                 timerange=global_timerange,
                 avg_tasks_per_day=avg_tasks_per_day,

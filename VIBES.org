@@ -2191,7 +2191,38 @@ We will be adding more output options, for instance JSON output, visualization o
 - Modifying the heading
 - Modifying the body
 
-** TODO More Rich support
+** REWORKED [#B] More stats                                                            :UX:Analysis:
+:LOGBOOK:
+- State "REWORKED"       from "TODO"       [2026-02-23 Mon 22:16] \\
+  Worked fine, but forgot to update orgparse in the devcontainer. Turns out it did introduce some slop. Seems to be commond for Anthropic models.
+:END:
+I'd like to expand the analysis module & ~stats~ commands with extra statistics:
+
+- Individual node count - displayed as "Unique tasks: <int>", represents the number of ~OrgNodes~ without their repeats, so ~len(nodes)~. Please update the ~stats summary~ and ~stats tasks~ command outputs to show the unique tasks count.
+
+- Priority histogram - a histogram of values computed based on the node's ~node.priority~ properties. The histogram should be computed by analysis and displayed after the task state histogram with a headline of "Task priorities:". The color scheme should be the same as the task categories histogram. Please update the ~stats summary~ and ~stats tasks~ command to show the new histogram.
+
+- Priority display in short-form task list - display the ~node.priority~ after the todo state on the list if a node has a priority value. It should look something like this:
+
+#+begin_example
+  VIBES.org: *** DONE [#B] Rich text support
+  VIBES.org: *** DONE [#A] Better validation messages
+  VIBES.org: *** REWORKED Results off
+#+end_example
+
+The priority value should be shown in light blue color (same as histogram bars). Please update the ~stats summary~ and ~tasks list~ commands to show the priorities.
+
+- Tags display in short-form task list - display the node's tags aligned to the right at ~--buckets~ column on short-form task list display. If a node doesn't have any tags, omit them. It should look something like this:
+
+#+begin_example
+  VIBES.org: *** DONE Rich text support                :CLI:Query:
+  VIBES.org: *** DONE Better validation messages         :TUI:CLI:
+  VIBES.org: *** REWORKED Results off
+#+end_example
+
+The tags should be colored dim white, same as the filename.
+
+** More Rich support
 - columnar display on the stats summary - tasks section should be to the side of the histograms
 - scroll through task list
 

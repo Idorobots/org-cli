@@ -157,8 +157,10 @@ class AnalysisResult:
 
     Attributes:
         total_tasks: Total number of tasks analyzed (including repeats)
+        unique_tasks: Number of unique nodes (without repeats)
         task_states: Histogram of task states (TODO, DONE, DELEGATED, CANCELLED, SUSPENDED, other)
         task_categories: Histogram of task categories by gamify_exp (simple, regular, hard)
+        task_priorities: Histogram of task priorities (A, B, C, etc.)
         task_days: Histogram of tasks by day of week
         timerange: Global time range for all tasks
         avg_tasks_per_day: Average tasks per day (total tasks / days spanned)
@@ -172,8 +174,10 @@ class AnalysisResult:
     """
 
     total_tasks: int
+    unique_tasks: int
     task_states: Histogram
     task_categories: Histogram
+    task_priorities: Histogram
     task_days: Histogram
     timerange: TimeRange
     avg_tasks_per_day: float
@@ -388,6 +392,29 @@ def compute_category_histogram(
         task_categories.update(category, count)
 
     return task_categories
+
+
+def compute_priority_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogram:
+    """Compute histogram of task priorities across all nodes.
+
+    Counts priorities from all tasks (including repeats).
+    Tasks without priority are counted as "none".
+
+    Args:
+        nodes: List of org-mode nodes
+
+    Returns:
+        Histogram with counts for each priority value
+    """
+    task_priorities = Histogram(values={})
+
+    for node in nodes:
+        count = max(1, len(node.repeated_tasks))
+        priority = node.priority
+        priority_key = "none" if priority is None or str(priority) == "" else str(priority)
+        task_priorities.update(priority_key, count)
+
+    return task_priorities
 
 
 def compute_global_timerange(nodes: list[orgparse.node.OrgNode]) -> TimeRange:
@@ -769,16 +796,20 @@ def analyze(
     tag_groups = compute_groups(tags, max_relations, nodes, mapping, category)
     task_states = compute_task_state_histogram(nodes)
     task_categories = compute_category_histogram(nodes, category_property)
+    task_priorities = compute_priority_histogram(nodes)
     task_days = compute_day_of_week_histogram(nodes)
     global_timerange = compute_global_timerange(nodes)
     total, max_repeat_count = compute_task_stats(nodes)
+    unique = len(nodes)
     max_single_day = compute_max_single_day(global_timerange)
     avg_tasks_per_day = compute_avg_tasks_per_day(global_timerange, total)
 
     return AnalysisResult(
         total_tasks=total,
+        unique_tasks=unique,
         task_states=task_states,
         task_categories=task_categories,
+        task_priorities=task_priorities,
         task_days=task_days,
         timerange=global_timerange,
         avg_tasks_per_day=avg_tasks_per_day,

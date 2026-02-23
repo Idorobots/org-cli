@@ -370,10 +370,12 @@ def test_format_group_list_excludes_tags() -> None:
 def test_format_tasks_summary_renders_histograms() -> None:
     """format_tasks_summary should include histogram sections."""
     result = AnalysisResult(
-        total_tasks=3,
-        task_states=Histogram(values={"DONE": 2, "TODO": 1}),
-        task_categories=Histogram(values={"regular": 3}),
-        task_days=Histogram(values={"Monday": 1, "unknown": 2}),
+        total_tasks=2,
+        unique_tasks=2,
+        task_states=Histogram(values={"DONE": 1, "TODO": 1}),
+        task_categories=Histogram(values={"none": 2}),
+        task_priorities=Histogram(values={"none": 2}),
+        task_days=Histogram(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
