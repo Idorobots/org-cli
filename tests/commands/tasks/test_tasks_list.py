@@ -8,6 +8,7 @@ import sys
 import pytest
 
 from org.commands.tasks import list as tasks_list
+from org.order import order_nodes
 from tests.conftest import node_from_org
 
 
@@ -64,8 +65,8 @@ CLOSED: [2024-01-12 Fri 09:00]
 """
     nodes = node_from_org(org_text)
 
-    desc = tasks_list.order_nodes(nodes, ["timestamp-desc"])
-    asc = tasks_list.order_nodes(nodes, ["timestamp-asc"])
+    desc = order_nodes(nodes, ["timestamp-desc"])
+    asc = order_nodes(nodes, ["timestamp-asc"])
 
     assert [node.heading for node in desc] == ["Task 2", "Task 1", "Task 3"]
     assert [node.heading for node in asc] == ["Task 1", "Task 2", "Task 3"]
@@ -87,8 +88,8 @@ def test_order_nodes_gamify_exp_sorting_missing_last() -> None:
 """
     nodes = node_from_org(org_text)
 
-    asc = tasks_list.order_nodes(nodes, ["gamify-exp-asc"])
-    desc = tasks_list.order_nodes(nodes, ["gamify-exp-desc"])
+    asc = order_nodes(nodes, ["gamify-exp-asc"])
+    desc = order_nodes(nodes, ["gamify-exp-desc"])
 
     assert [node.heading for node in asc] == ["Task 1", "Task 2", "Task 3"]
     assert [node.heading for node in desc] == ["Task 2", "Task 1", "Task 3"]
@@ -102,7 +103,7 @@ def test_order_nodes_file_order_preserved() -> None:
 """
     nodes = node_from_org(org_text)
 
-    ordered = tasks_list.order_nodes(nodes, ["file-order"])
+    ordered = order_nodes(nodes, ["file-order"])
 
     assert [node.heading for node in ordered] == ["Task 1", "Task 2", "Task 3"]
 
@@ -115,7 +116,7 @@ def test_order_nodes_file_order_reverse() -> None:
 """
     nodes = node_from_org(org_text)
 
-    ordered = tasks_list.order_nodes(nodes, ["file-order-reverse"])
+    ordered = order_nodes(nodes, ["file-order-reverse"])
 
     assert [node.heading for node in ordered] == ["Task 3", "Task 2", "Task 1"]
 
@@ -128,7 +129,7 @@ def test_order_nodes_level_sorting() -> None:
 """
     nodes = node_from_org(org_text)
 
-    ordered = tasks_list.order_nodes(nodes, ["level"])
+    ordered = order_nodes(nodes, ["level"])
 
     assert [node.heading for node in ordered] == ["Task 1", "Task 2", "Task 3"]
 
@@ -152,7 +153,7 @@ def test_order_nodes_multiple_ordering_stable() -> None:
 """
     nodes = node_from_org(org_text)
 
-    ordered = tasks_list.order_nodes(nodes, ["level", "gamify-exp-asc"])
+    ordered = order_nodes(nodes, ["level", "gamify-exp-asc"])
 
     assert [node.heading for node in ordered] == ["Task A", "Task B", "Task C"]
 

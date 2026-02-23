@@ -1,4 +1,4 @@
-"""Tasks list command."""
+"""Query command for jq-style data queries."""
 
 from __future__ import annotations
 
@@ -13,21 +13,14 @@ from rich.text import Text
 from org import config as config_module
 from org.cli_common import load_and_process_data
 from org.order import normalize_order_by, order_nodes
-from org.tui import (
-    TaskLineConfig,
-    build_console,
-    format_task_line,
-    lines_to_text,
-    print_output,
-    processing_status,
-    setup_output,
-)
+from org.tui import build_console, processing_status, setup_output
 
 
 @dataclass
-class ListArgs:
-    """Arguments for the tasks list command."""
+class QueryArgs:
+    """Arguments for the query command."""
 
+    query: str
     files: list[str] | None
     config: str
     exclude: str | None
@@ -50,43 +43,19 @@ class ListArgs:
     filter_not_completed: bool
     color_flag: bool | None
     max_results: int
-    details: bool
     offset: int
-    order_by: str | list[str] | tuple[str, ...]
+    order_by: str | list[str] | tuple[str, ...] | None
     with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
     buckets: int
 
 
-def format_short_task_list(
-    nodes: list[orgparse.node.OrgNode],
-    done_keys: list[str],
-    todo_keys: list[str],
-    color_enabled: bool,
-    buckets: int,
-) -> str:
-    """Return formatted short list of tasks."""
-    lines = [
-        format_task_line(
-            node,
-            TaskLineConfig(
-                color_enabled=color_enabled,
-                done_keys=done_keys,
-                todo_keys=todo_keys,
-                buckets=buckets,
-            ),
-        )
-        for node in nodes
-    ]
-    return lines_to_text(lines)
-
-
-def render_detailed_task_list(
+def render_query_results(
     nodes: list[orgparse.node.OrgNode],
     console: Console,
 ) -> None:
-    """Render detailed list of tasks with syntax highlighting."""
+    """Render query results with full node details."""
     for idx, node in enumerate(nodes):
         if idx > 0:
             console.print()
@@ -99,48 +68,27 @@ def render_detailed_task_list(
         console.print(Syntax(node_text, "org", line_numbers=False, word_wrap=False))
 
 
-def run_tasks_list(args: ListArgs) -> None:
-    """Run the tasks list command."""
+def run_query(args: QueryArgs) -> None:
+    """Run the query command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled)
     order_by = normalize_order_by(args.order_by)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
     with processing_status(console, color_enabled):
-        nodes, todo_keys, done_keys = load_and_process_data(args)
-        if not nodes or args.max_results <= 0:
-            limited_nodes = []
-            output = None
-        else:
-            ordered_nodes = order_nodes(nodes, order_by)
-            offset_nodes = ordered_nodes[args.offset :]
-            limited_nodes = offset_nodes[: args.max_results]
-            if args.details:
-                output = None
-            else:
-                output = format_short_task_list(
-                    limited_nodes, done_keys, todo_keys, color_enabled, args.buckets
-                )
+        nodes, _todo_keys, _done_keys = load_and_process_data(args)
+        if order_by and nodes:
+            nodes = order_nodes(nodes, order_by)
 
-    if not nodes or not limited_nodes:
-        console.print("No results", markup=False)
-        return
-
-    if args.details:
-        render_detailed_task_list(limited_nodes, console)
-        return
-
-    if output:
-        print_output(console, output, color_enabled, end="")
-    else:
-        console.print("No results", markup=False)
+    console.print("No results", markup=False)
 
 
 def register(app: typer.Typer) -> None:
-    """Register the tasks list command."""
+    """Register the query command."""
 
-    @app.command("list")
-    def tasks_list(  # noqa: PLR0913
+    @app.command("query")
+    def query_command(  # noqa: PLR0913
+        query: str = typer.Argument(..., metavar="QUERY", help="jq-style query expression"),
         files: list[str] | None = typer.Argument(  # noqa: B008
             None, metavar="FILE", help="Org-mode archive files or directories to analyze"
         ),
@@ -270,11 +218,6 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Number of results to skip before displaying",
         ),
-        details: bool = typer.Option(
-            False,
-            "--details",
-            help="Show full org node details",
-        ),
         order_by: list[str] | None = typer.Option(  # noqa: B008
             None,
             "--order-by",
@@ -307,8 +250,9 @@ def register(app: typer.Typer) -> None:
             help="Number of time buckets for timeline charts and tag alignment column",
         ),
     ) -> None:
-        """List tasks matching filters."""
-        args = ListArgs(
+        """Query tasks using jq-style expressions."""
+        args = QueryArgs(
+            query=query,
             files=files,
             config=config,
             exclude=exclude,
@@ -331,13 +275,12 @@ def register(app: typer.Typer) -> None:
             filter_not_completed=filter_not_completed,
             color_flag=color_flag,
             max_results=max_results,
-            details=details,
             offset=offset,
-            order_by=order_by if order_by is not None else "timestamp-desc",
+            order_by=order_by,
             with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
             buckets=buckets,
         )
         config_module.apply_config_defaults(args)
-        run_tasks_list(args)
+        run_query(args)

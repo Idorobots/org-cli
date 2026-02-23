@@ -2222,6 +2222,127 @@ The priority value should be shown in light blue color (same as histogram bars).
 
 The tags should be colored dim white, same as the filename.
 
+** TODO Query command                                                                    :CLI:Query:
+*** DONE Query command
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-23 Mon 23:08] \\
+  Implemented together with node loading.
+:END:
+I'd like to add a new command for qurying the task database. The command will be called ~query~ and won't have any subcommands.
+An example invocation is:
+
+#+begin_src bash
+org query '.[].repeated_tasks[]' # get all repeated tasks of all nodes
+org query '.[] | select(.todo == "DONE")' # select all nodes in DONE state
+org query '.[$offset : $limit] | .env.filename, .level, .todo, .heading' # select filename, level, todo and heading from $ limit nodes starting at $offset
+#+end_src
+
+Please add the boilerplate for such a command that will accept an additional positional argument (other than the files). The positional argument, called ~query~ should come first before the files. It is a mandatory argument for this command.
+
+The command should also accept the same filters & ordering clauses that the ~tasks list~ command accepts in addition to the common switches such as ~--color~, ~--verbose~ etc.
+
+Please don't worry about the logic behind the command just yet, we will explore that in the next steps. You can make it print "No results" for now.
+
+*** TODO Query language
+I'd like to add a query language similar to ~jq~ or ~yq~, but dedicated to selecting specific Org nodes and their properties.
+To do that, I'd like to extend the ~query~ command with a query parser & executor that will leverage the query language for node processing.
+
+An example invocation will look like this:
+
+#+begin_src bash
+org query '.[].repeated_tasks[]' # get all repeated tasks of all nodes
+org query '.[] | select(.todo == "DONE")' # select all nodes in DONE state
+org query '.[$offset : $limit] | .env.filename, .level, .todo, .heading' # select filename, level, todo and heading from $ limit nodes starting at $offset
+#+end_src
+
+The command will parse the query, compile it into a node processing function and execute the function on the input nodes producing results. The results will be then printed to the console, item by item on separate lines.
+
+The query language should recognize the following forms:
+- ~.~ - Identity, returns input unchanged
+- ~.field~ - Access a field
+- ~.["field"]~ - Access a field
+- ~.[]~ - Iterate over a collection of values
+- ~.[N]~ - N-th element of a collection
+- ~.[2:5]~ - collection slice (indices 2, 3, 4)
+- ~,~ - Combine filters into one stream (produces a tuple of results)
+- ~|~ - Pipe output to another filter
+- ~select(...)~ - Select elements by condition
+- ~sort_by(...)~ - Sort collection by value selected by the inner query
+
+The field access form should support accessing any fields of the ~OrgNode~, ~OrgDate~ and any intermediate collections, string, numbers. If a field does not exist on an object, an exception must be raised and handled by typer (ideally in a nicely formatted fashion).
+
+Forms can be combined into more complex invocations, for example ~.children[0].todo~ should return a todo state of the first child of a node. Multiple forms can be piped together to form a sequential filter, for example ~.children[0] | .todo~ should return a todo state of the first child of a node.
+
+The query language should recognize the following functions:
+- ~reverse~ - reverses a collection of values
+- ~unique~ - removes duplicate values
+
+The functions can be used as filter stages to process the results, for example ~.children | reverse | .[0]~ returns the last child of a node.
+
+The query language should support the following operators:
+- ~>~ - compares numeric values as ~a > b~
+- ~<~ - compares numeric values as ~a < b~
+- ~>=~ - compares numeric values as ~a >= b~
+- ~<=~ - compares numeric values as ~a <= b~
+- ~==~ - compares any values as equal (structural equality)
+- ~!=~ - compares any values as not equal (structural equality)
+- ~matches~ - regex matches string, ~a matches b~ should be equivalent to  ~re.combile(b).match(a)~
+
+Type mismatches in operator invocations should be raised as exeptions.
+
+Please implement a parser that will take the value passed into the command and build a query execution function that can be applied to a list of nodes. The parser should validate that the query is well-formed and raise an exception otherwise. Don't be very deffensive, we might be changing the query language a lot initially, so let's delegate proper strict validation to another time.
+
+Please add unit tests for this parser & the implementation of forms, functions and operators, but just enough for a sanity check. This language might change in the future, so let's keeps the test suite lean. We will address that in the future.
+
+The ~query~ command should be updated to parse the query passed to it, load the list of nodes according to the usual semantics (same as in the other commands), order the nodes by the ordering clauses, and then pipe the filtered & ordered nodes through the newly added query execution function to produce a result.
+The results can be either a collection of values or a single value. If it is a collection of values, the command should print each value on a separate line. If it is a singular value, it should be printed alone.
+
+Please don't add tests to the ~query~ command just yet, we will me expanding its functionality soon.
+
+*** Query language filters/ordering
+
+Redo all the filters & orderings in terms of the query language
+
+- ~--filter-gamify-exp-above X~ - 'select(.properties["gamify_exp"] > X)'
+- ~--filter-gamify-exp-below X~ - 'select(.properties["gamify_exp"] < X)'
+- ~--filter-repeats-above X~ - 'select()'
+- ~--filter-repeats-below X~ - 'select()'
+- ~--filter-date-from X~ - 'select(.latest_timestamp >= X)'
+- ~--filter-date-until X~ - 'select(.latest_timestamp <= X)'
+- ~--filter-property P=V~ - 'select(.properties[P] == V)'
+- ~--filter-level L~ - 'select(.level == L)'
+- ~--filter-tag REGEX~ - 'select(.tags[] matches REGEX)'
+- ~--filter-heading REGEX~ - 'select(.heading matches REGEX)'
+- ~--filter-body REGEX~ - 'select(.body matches REGEX)'
+- ~--filter-completed~ - 'select(.todo in $done_keys)'
+- ~--filter-not-completed~ - 'select(.todo in $todo_keys)'
+
+- ~--order-by file-order~ - '.[]'
+- ~--order-by file-order-reversed~ - '.[] | reverse'
+- ~--order-by level~ - 'sortby(.level)'
+- ~--order-by timestamp-asc~ - 'sortby(.latest_timestamp)'
+- ~--order-by timestamp-desc~ - 'sortby(.latest_timestamp) | reverse'
+- ~--order-by gamify-exp-asc~ - 'sortby(.properties["gamify_exp"])'
+- ~--order-by gamify-exp-desc~ - 'sortby(.properties["gamify_exp"]) | reverse'
+
+*** More query language filters/ordering
+
+Redo all the filters & orderings in terms of the query language
+
+- ~--filter-priority P~ - 'select(.priority == P)'
+
+- ~--filter-children ID~ - 'select(.heading == ID, .properties[$id] == ID) | .children'
+- ~--filter-sibling ID~ - 'select(.heading == ID, .properties[$id] == ID) | .siblings'
+- ~--filter-parent ID~ - 'select(.heading == ID, .properties[$id] == ID) | .parent'
+- ~--filter-dependencies ID~ - 'select(.heading == ID, .properties[$id] == ID) | .dependencies'
+- ~--filter-dependants ID~ - 'select(.heading == ID, .properties[$id] == ID) | .dependants'
+
+- ~--filter-not-blocked~ - 'select(.todo in $todo_keys) | select(.heading == ID, .properties[$id] == ID) | select((.depndencies[] | length) == 0)'
+- ~--filter-blocked~ - 'select(.todo in $todo_keys) | select(.heading == ID, .properties[$id] == ID) | select((.depndencies[] | length) != 0)'
+
+- ~--order-by priority~ - 'sortby(.priority)'
+
+*** Query tests
 ** More Rich support
 - columnar display on the stats summary - tasks section should be to the side of the histograms
 - scroll through task list
