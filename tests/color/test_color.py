@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 
 import pytest
-from colorama import Fore, Style
 
 from org import color
 
@@ -27,15 +26,12 @@ def test_should_use_color_uses_tty(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_colorize_noop_when_disabled() -> None:
     """colorize should return original text when disabled."""
-    assert color.colorize("hello", Fore.GREEN, False) == "hello"
+    assert color.colorize("hello", "green", False) == "hello"
 
 
 def test_colorize_wraps_when_enabled() -> None:
     """colorize should wrap text with color codes when enabled."""
-    result = color.colorize("hello", Fore.GREEN, True)
-
-    assert result.startswith(Fore.GREEN)
-    assert result.endswith(Style.RESET_ALL)
+    assert color.colorize("hello", "green", True) == "[green]hello[/]"
 
 
 def test_get_state_color_done_and_cancelled() -> None:
@@ -43,12 +39,8 @@ def test_get_state_color_done_and_cancelled() -> None:
     done_keys = ["DONE", "CANCELLED"]
     todo_keys = ["TODO"]
 
-    assert color.get_state_color("DONE", done_keys, todo_keys, True) == str(
-        Style.BRIGHT + Fore.GREEN
-    )
-    assert color.get_state_color("CANCELLED", done_keys, todo_keys, True) == str(
-        Style.BRIGHT + Fore.RED
-    )
+    assert color.get_state_color("DONE", done_keys, todo_keys, True) == "bold green"
+    assert color.get_state_color("CANCELLED", done_keys, todo_keys, True) == "bold red"
 
 
 def test_get_state_color_todo_and_unknown() -> None:
@@ -56,11 +48,9 @@ def test_get_state_color_todo_and_unknown() -> None:
     done_keys = ["DONE"]
     todo_keys = ["TODO"]
 
-    assert color.get_state_color("TODO", done_keys, todo_keys, True) == str(Style.DIM + Fore.WHITE)
-    assert color.get_state_color("", done_keys, todo_keys, True) == str(Style.DIM + Fore.WHITE)
-    assert color.get_state_color("BLOCKED", done_keys, todo_keys, True) == str(
-        Style.BRIGHT + Fore.YELLOW
-    )
+    assert color.get_state_color("TODO", done_keys, todo_keys, True) == "dim white"
+    assert color.get_state_color("", done_keys, todo_keys, True) == "dim white"
+    assert color.get_state_color("BLOCKED", done_keys, todo_keys, True) == "bold yellow"
 
 
 def test_get_state_color_disabled_returns_empty() -> None:

@@ -1,8 +1,8 @@
-"""Color support for CLI output using colorama."""
+"""Color support for CLI output using Rich markup."""
 
 import sys
 
-from colorama import Fore, Style
+from rich.markup import escape
 
 
 def should_use_color(color_flag: bool | None) -> bool:
@@ -19,20 +19,35 @@ def should_use_color(color_flag: bool | None) -> bool:
     return color_flag
 
 
-def colorize(text: str, color_code: str, enabled: bool) -> str:
-    """Apply color to text if enabled.
+def escape_text(text: str, enabled: bool) -> str:
+    """Escape markup characters when color output is enabled.
 
     Args:
-        text: Text to colorize
-        color_code: Colorama color code (e.g., Fore.GREEN, Style.BRIGHT)
+        text: Text to escape
         enabled: Whether coloring is enabled
 
     Returns:
-        Colored text if enabled, original text otherwise
+        Escaped text when enabled, original text otherwise
     """
     if not enabled:
         return text
-    return f"{color_code}{text}{Style.RESET_ALL}"
+    return escape(text)
+
+
+def colorize(text: str, style: str, enabled: bool) -> str:
+    """Apply Rich markup style to text if enabled.
+
+    Args:
+        text: Text to colorize
+        style: Rich style string (e.g., "green", "bold white")
+        enabled: Whether coloring is enabled
+
+    Returns:
+        Styled text if enabled, original text otherwise
+    """
+    if not enabled:
+        return text
+    return f"[{style}]{escape(text)}[/]"
 
 
 def bright_white(text: str, enabled: bool) -> str:
@@ -45,7 +60,7 @@ def bright_white(text: str, enabled: bool) -> str:
     Returns:
         Colored text if enabled, original text otherwise
     """
-    return colorize(text, Style.BRIGHT + Fore.WHITE, enabled)
+    return colorize(text, "bold white", enabled)
 
 
 def white(text: str, enabled: bool) -> str:
@@ -58,7 +73,7 @@ def white(text: str, enabled: bool) -> str:
     Returns:
         Colored text if enabled, original text otherwise
     """
-    return colorize(text, Fore.WHITE, enabled)
+    return colorize(text, "white", enabled)
 
 
 def dim_white(text: str, enabled: bool) -> str:
@@ -71,7 +86,7 @@ def dim_white(text: str, enabled: bool) -> str:
     Returns:
         Colored text if enabled, original text otherwise
     """
-    return colorize(text, Style.DIM + Fore.WHITE, enabled)
+    return colorize(text, "dim white", enabled)
 
 
 def magenta(text: str, enabled: bool) -> str:
@@ -84,7 +99,7 @@ def magenta(text: str, enabled: bool) -> str:
     Returns:
         Colored text if enabled, original text otherwise
     """
-    return colorize(text, Fore.MAGENTA, enabled)
+    return colorize(text, "magenta", enabled)
 
 
 def green(text: str, enabled: bool) -> str:
@@ -97,7 +112,7 @@ def green(text: str, enabled: bool) -> str:
     Returns:
         Colored text if enabled, original text otherwise
     """
-    return colorize(text, Fore.GREEN, enabled)
+    return colorize(text, "green", enabled)
 
 
 def bright_green(text: str, enabled: bool) -> str:
@@ -110,7 +125,7 @@ def bright_green(text: str, enabled: bool) -> str:
     Returns:
         Colored text if enabled, original text otherwise
     """
-    return colorize(text, Style.BRIGHT + Fore.GREEN, enabled)
+    return colorize(text, "bold green", enabled)
 
 
 def bright_red(text: str, enabled: bool) -> str:
@@ -123,7 +138,7 @@ def bright_red(text: str, enabled: bool) -> str:
     Returns:
         Colored text if enabled, original text otherwise
     """
-    return colorize(text, Style.BRIGHT + Fore.RED, enabled)
+    return colorize(text, "bold red", enabled)
 
 
 def bright_yellow(text: str, enabled: bool) -> str:
@@ -136,7 +151,7 @@ def bright_yellow(text: str, enabled: bool) -> str:
     Returns:
         Colored text if enabled, original text otherwise
     """
-    return colorize(text, Style.BRIGHT + Fore.YELLOW, enabled)
+    return colorize(text, "bold yellow", enabled)
 
 
 def bright_blue(text: str, enabled: bool) -> str:
@@ -149,11 +164,11 @@ def bright_blue(text: str, enabled: bool) -> str:
     Returns:
         Colored text if enabled, original text otherwise
     """
-    return colorize(text, Style.BRIGHT + Fore.BLUE, enabled)
+    return colorize(text, "bold blue", enabled)
 
 
 def get_state_color(state: str, done_keys: list[str], todo_keys: list[str], enabled: bool) -> str:
-    """Get appropriate color for a task state.
+    """Get appropriate style for a task state.
 
     Args:
         state: Task state (e.g., "DONE", "TODO", "CANCELLED")
@@ -162,17 +177,17 @@ def get_state_color(state: str, done_keys: list[str], todo_keys: list[str], enab
         enabled: Whether coloring is enabled
 
     Returns:
-        Color code for the state
+        Rich style string for the state
     """
     if not enabled:
         return ""
 
     if state in done_keys:
         if state == "CANCELLED":
-            return str(Style.BRIGHT + Fore.RED)
-        return str(Style.BRIGHT + Fore.GREEN)
+            return "bold red"
+        return "bold green"
 
     if state in todo_keys or state == "" or state.lower() == "none":
-        return str(Style.DIM + Fore.WHITE)
+        return "dim white"
 
-    return str(Style.BRIGHT + Fore.YELLOW)
+    return "bold yellow"

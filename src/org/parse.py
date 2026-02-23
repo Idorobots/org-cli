@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import logging
-import sys
 from typing import Protocol
 
 import orgparse
+import typer
 
 
 class FilterSpec(Protocol):
@@ -40,7 +40,7 @@ def load_nodes(
         Tuple of (filtered nodes, all todo keys, all done keys)
 
     Raises:
-        SystemExit: If file cannot be read
+        typer.BadParameter: If file cannot be read
     """
     all_nodes: list[orgparse.node.OrgNode] = []
     all_todo_keys: set[str] = set(todo_keys)
@@ -67,11 +67,9 @@ def load_nodes(
                         file_nodes = filter_spec.filter(file_nodes)
 
                     all_nodes = all_nodes + file_nodes
-        except FileNotFoundError:
-            print(f"Error: File '{name}' not found", file=sys.stderr)
-            sys.exit(1)
-        except PermissionError:
-            print(f"Error: Permission denied for '{name}'", file=sys.stderr)
-            sys.exit(1)
+        except FileNotFoundError as err:
+            raise typer.BadParameter(f"File '{name}' not found") from err
+        except PermissionError as err:
+            raise typer.BadParameter(f"Permission denied for '{name}'") from err
 
     return all_nodes, list(all_todo_keys), list(all_done_keys)

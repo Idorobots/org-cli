@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import typer
 
 from org.cli_common import (
     dedupe_values,
@@ -15,13 +16,10 @@ from org.cli_common import (
 from org.validation import parse_group_values, parse_show_values
 
 
-def test_parse_show_values_rejects_empty(capsys: pytest.CaptureFixture[str]) -> None:
+def test_parse_show_values_rejects_empty() -> None:
     """Empty show values should exit with error."""
-    with pytest.raises(SystemExit):
+    with pytest.raises(typer.BadParameter, match="--show cannot be empty"):
         parse_show_values("  , ")
-
-    captured = capsys.readouterr().err
-    assert "--show cannot be empty" in captured
 
 
 def test_normalize_show_value_applies_mapping() -> None:
@@ -36,13 +34,10 @@ def test_dedupe_values_preserves_order() -> None:
     assert dedupe_values(["a", "b", "a", "c", "b"]) == ["a", "b", "c"]
 
 
-def test_parse_group_values_rejects_empty(capsys: pytest.CaptureFixture[str]) -> None:
+def test_parse_group_values_rejects_empty() -> None:
     """Empty group values should exit with error."""
-    with pytest.raises(SystemExit):
+    with pytest.raises(typer.BadParameter, match="--group cannot be empty"):
         parse_group_values(" ")
-
-    captured = capsys.readouterr().err
-    assert "--group cannot be empty" in captured
 
 
 def test_resolve_group_values_maps_and_dedupes() -> None:
@@ -65,11 +60,8 @@ def test_resolve_input_paths_from_directory(tmp_path: Path) -> None:
     assert resolved == [str(one), str(two)]
 
 
-def test_resolve_input_paths_missing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_resolve_input_paths_missing(tmp_path: Path) -> None:
     """Missing paths should error."""
     missing = tmp_path / "missing"
-    with pytest.raises(SystemExit):
+    with pytest.raises(typer.BadParameter, match="not found"):
         resolve_input_paths([str(missing)])
-
-    captured = capsys.readouterr().err
-    assert "not found" in captured

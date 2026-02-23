@@ -1,48 +1,102 @@
-"""Stats groups command."""
+"""Tasks list command."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from typing import cast
 
+import orgparse
 import typer
+from rich.console import Console
+from rich.syntax import Syntax
+from rich.text import Text
 
 from org import config as config_module
-from org.analyze import (
-    Group,
-    TimeRange,
-    compute_explicit_groups,
-    compute_frequencies,
-    compute_global_timerange,
-    compute_groups,
-    compute_per_tag_statistics,
-    compute_relations,
-    compute_time_ranges,
-)
-from org.cli_common import (
-    load_and_process_data,
-    resolve_date_filters,
-    resolve_exclude_set,
-    resolve_group_values,
-    resolve_mapping,
-)
+from org.cli_common import get_most_recent_timestamp, load_and_process_data
+from org.filters import get_gamify_exp
 from org.tui import (
-    GroupBlockConfig,
-    TimelineFormatConfig,
-    apply_indent,
+    TaskLineConfig,
     build_console,
-    format_group_block,
+    format_task_line,
     lines_to_text,
     print_output,
     processing_status,
     setup_output,
 )
-from org.validation import validate_stats_arguments
+
+
+@dataclass(frozen=True)
+class OrderSpec:
+    """Ordering specification for task lists."""
+
+    key: Callable[[orgparse.node.OrgNode], float | int | None]
+    direction: int
+    label: str
+
+
+def _timestamp_value(node: orgparse.node.OrgNode) -> float | None:
+    timestamp = get_most_recent_timestamp(node)
+    return timestamp.timestamp() if timestamp else None
+
+
+def _gamify_exp_value(node: orgparse.node.OrgNode) -> int | None:
+    return get_gamify_exp(node)
+
+
+def _level_value(node: orgparse.node.OrgNode) -> int | None:
+    level = node.level
+    if level is None:
+        return None
+    return cast(int, level)
+
+
+def _constant_value(_: orgparse.node.OrgNode) -> int:
+    return 0
+
+
+ORDER_SPECS: dict[str, OrderSpec] = {
+    "file-order": OrderSpec(
+        key=_constant_value,
+        direction=1,
+        label="file order",
+    ),
+    "file-order-reverse": OrderSpec(
+        key=_constant_value,
+        direction=1,
+        label="file order reversed",
+    ),
+    "timestamp-asc": OrderSpec(
+        key=_timestamp_value,
+        direction=1,
+        label="most recent timestamp ascending",
+    ),
+    "timestamp-desc": OrderSpec(
+        key=_timestamp_value,
+        direction=-1,
+        label="most recent timestamp descending",
+    ),
+    "gamify-exp-asc": OrderSpec(
+        key=_gamify_exp_value,
+        direction=1,
+        label="gamify_exp ascending",
+    ),
+    "gamify-exp-desc": OrderSpec(
+        key=_gamify_exp_value,
+        direction=-1,
+        label="gamify_exp descending",
+    ),
+    "level": OrderSpec(
+        key=_level_value,
+        direction=1,
+        label="level ascending",
+    ),
+}
 
 
 @dataclass
-class GroupsArgs:
-    """Arguments for the stats groups command."""
+class ListArgs:
+    """Arguments for the tasks list command."""
 
     files: list[str] | None
     config: str
@@ -66,134 +120,146 @@ class GroupsArgs:
     filter_not_completed: bool
     color_flag: bool | None
     max_results: int
-    max_tags: int
-    use: str
-    groups: list[str] | None
+    details: bool
+    offset: int
+    order_by: str | list[str] | tuple[str, ...]
     with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
-    max_relations: int
-    min_group_size: int
-    max_groups: int
-    buckets: int
 
 
-def format_group_list(
-    groups: list[Group],
-    config: tuple[int, int, datetime | None, datetime | None, TimeRange, set[str], bool],
-    indent: str = "",
+def normalize_order_by(order_by: str | list[str] | tuple[str, ...]) -> list[str]:
+    """Normalize order_by values into a list."""
+    if isinstance(order_by, list):
+        return order_by
+    if isinstance(order_by, tuple):
+        return list(order_by)
+    return [order_by]
+
+
+def validate_order_by(order_by: list[str]) -> None:
+    """Validate order_by values."""
+    invalid = [value for value in order_by if value not in ORDER_SPECS]
+    if not invalid:
+        return
+
+    supported = ", ".join(ORDER_SPECS)
+    invalid_list = ", ".join(invalid)
+    raise typer.BadParameter(f"--order-by must be one of: {supported}\nGot: {invalid_list}")
+
+
+def order_nodes(
+    nodes: list[orgparse.node.OrgNode],
+    order_by: list[str],
+) -> list[orgparse.node.OrgNode]:
+    """Order nodes using the selected order criteria in sequence."""
+    validate_order_by(order_by)
+    ordered_nodes = list(nodes)
+
+    for order_value in order_by:
+        if order_value == "file-order":
+            continue
+        if order_value == "file-order-reverse":
+            ordered_nodes.reverse()
+            continue
+
+        order_spec = ORDER_SPECS[order_value]
+        key_fn = order_spec.key
+        direction = order_spec.direction
+
+        def sort_key(
+            node: orgparse.node.OrgNode,
+            key_func: Callable[[orgparse.node.OrgNode], float | int | None] = key_fn,
+            direction_value: int = direction,
+        ) -> tuple[int, float | int]:
+            value = key_func(node)
+            if value is None:
+                return (1, 0)
+            return (0, direction_value * value)
+
+        ordered_nodes = sorted(ordered_nodes, key=sort_key)
+
+    return ordered_nodes
+
+
+def format_short_task_list(
+    nodes: list[orgparse.node.OrgNode],
+    done_keys: list[str],
+    todo_keys: list[str],
+    color_enabled: bool,
 ) -> str:
-    """Return formatted output for group stats without a section header."""
-    (
-        max_results,
-        num_buckets,
-        date_from,
-        date_until,
-        global_timerange,
-        exclude_set,
-        color_enabled,
-    ) = config
-
-    exclude_lower = {value.lower() for value in exclude_set}
-    filtered_groups = []
-    for group in groups:
-        display_tags = [tag for tag in group.tags if tag.lower() not in exclude_lower]
-        if display_tags:
-            filtered_groups.append((display_tags, group))
-
-    filtered_groups = filtered_groups[:max_results]
-
-    if not filtered_groups:
-        return lines_to_text(apply_indent(["No results"], indent))
-
-    lines: list[str] = []
-    for idx, (group_tags, group) in enumerate(filtered_groups):
-        if idx > 0:
-            lines.append("")
-        lines.extend(
-            format_group_block(
-                group_tags,
-                group,
-                GroupBlockConfig(
-                    date_from=date_from,
-                    date_until=date_until,
-                    global_timerange=global_timerange,
-                    timeline=TimelineFormatConfig(
-                        num_buckets=num_buckets,
-                        color_enabled=color_enabled,
-                        indent="",
-                    ),
-                    name_indent="",
-                    stats_indent="  ",
-                ),
-            )
+    """Return formatted short list of tasks."""
+    lines = [
+        format_task_line(
+            node,
+            TaskLineConfig(
+                color_enabled=color_enabled,
+                done_keys=done_keys,
+                todo_keys=todo_keys,
+            ),
         )
+        for node in nodes
+    ]
+    return lines_to_text(lines)
 
-    return lines_to_text(apply_indent(lines, indent))
+
+def render_detailed_task_list(
+    nodes: list[orgparse.node.OrgNode],
+    console: Console,
+) -> None:
+    """Render detailed list of tasks with syntax highlighting."""
+    for idx, node in enumerate(nodes):
+        if idx > 0:
+            console.print()
+        filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
+        node_text = str(node).rstrip()
+        header = Text(f"# {filename}")
+        header.no_wrap = True
+        header.overflow = "ignore"
+        console.print(header, markup=False)
+        console.print(Syntax(node_text, "org", line_numbers=False, word_wrap=False))
 
 
-def run_stats_groups(args: GroupsArgs) -> None:
-    """Run the stats groups command."""
+def run_tasks_list(args: ListArgs) -> None:
+    """Run the tasks list command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled)
-    validate_stats_arguments(args)
-
-    mapping = resolve_mapping(args)
-    exclude_set = resolve_exclude_set(args)
-
+    order_by = normalize_order_by(args.order_by)
+    if args.offset < 0:
+        raise typer.BadParameter("--offset must be non-negative")
     with processing_status(console, color_enabled):
-        nodes, _, _ = load_and_process_data(args)
-
-        if not nodes:
+        nodes, todo_keys, done_keys = load_and_process_data(args)
+        if not nodes or args.max_results <= 0:
+            limited_nodes = []
             output = None
         else:
-            global_timerange = compute_global_timerange(nodes)
-            date_from, date_until = resolve_date_filters(args)
-            group_values = resolve_group_values(args.groups, mapping, args.use)
-
-            if group_values is not None:
-                tag_time_ranges = compute_time_ranges(nodes, mapping, args.use)
-                groups = compute_explicit_groups(
-                    nodes, mapping, args.use, group_values, tag_time_ranges
-                )
+            ordered_nodes = order_nodes(nodes, order_by)
+            offset_nodes = ordered_nodes[args.offset :]
+            limited_nodes = offset_nodes[: args.max_results]
+            if args.details:
+                output = None
             else:
-                frequencies = compute_frequencies(nodes, mapping, args.use)
-                time_ranges = compute_time_ranges(nodes, mapping, args.use)
-                relations = (
-                    compute_relations(nodes, mapping, args.use) if args.max_relations > 0 else {}
-                )
-                tags = compute_per_tag_statistics(frequencies, relations, time_ranges)
-                groups = sorted(
-                    compute_groups(tags, args.max_relations, nodes, mapping, args.use),
-                    key=lambda group: len(group.tags),
-                    reverse=True,
-                )
+                output = format_short_task_list(limited_nodes, done_keys, todo_keys, color_enabled)
 
-            output = format_group_list(
-                groups,
-                (
-                    args.max_results,
-                    args.buckets,
-                    date_from,
-                    date_until,
-                    global_timerange,
-                    exclude_set,
-                    color_enabled,
-                ),
-            )
-
-    if not nodes:
+    if not nodes or not limited_nodes:
         console.print("No results", markup=False)
         return
+
+    if args.details:
+        render_detailed_task_list(limited_nodes, console)
+        return
+
     if output:
         print_output(console, output, color_enabled, end="")
+    else:
+        console.print("No results", markup=False)
 
 
 def register(app: typer.Typer) -> None:
-    """Register the stats groups command."""
+    """Register the tasks list command."""
 
-    @app.command("groups")
-    def stats_groups(  # noqa: PLR0913
+    @app.command("list")
+    def tasks_list(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None, metavar="FILE", help="Org-mode archive files or directories to analyze"
         ),
@@ -317,17 +383,25 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Maximum number of results to display",
         ),
-        use: str = typer.Option(
-            "tags",
-            "--use",
-            metavar="CATEGORY",
-            help="Category to display: tags, heading, or body",
+        offset: int = typer.Option(
+            0,
+            "--offset",
+            metavar="N",
+            help="Number of results to skip before displaying",
         ),
-        groups: list[str] | None = typer.Option(  # noqa: B008
+        details: bool = typer.Option(
+            False,
+            "--details",
+            help="Show full org node details",
+        ),
+        order_by: list[str] | None = typer.Option(  # noqa: B008
             None,
-            "--group",
-            metavar="TAGS",
-            help="Comma-separated list of tags to group (can specify multiple)",
+            "--order-by",
+            metavar="ORDER",
+            help=(
+                "Order tasks by: file-order, file-order-reverse, level, timestamp-asc, "
+                "timestamp-desc, gamify-exp-asc, gamify-exp-desc"
+            ),
         ),
         with_gamify_category: bool = typer.Option(
             False,
@@ -345,21 +419,9 @@ def register(app: typer.Typer) -> None:
             metavar="PROPERTY",
             help="Property name to use for category histogram and filtering",
         ),
-        max_relations: int = typer.Option(
-            5,
-            "--max-relations",
-            metavar="N",
-            help="Maximum number of relations to consider per item (use 0 to omit sections)",
-        ),
-        buckets: int = typer.Option(
-            50,
-            "--buckets",
-            metavar="N",
-            help="Number of time buckets for timeline charts (minimum: 20)",
-        ),
     ) -> None:
-        """Show tag groups for selected groups or top results."""
-        args = GroupsArgs(
+        """List tasks matching filters."""
+        args = ListArgs(
             files=files,
             config=config,
             exclude=exclude,
@@ -382,16 +444,12 @@ def register(app: typer.Typer) -> None:
             filter_not_completed=filter_not_completed,
             color_flag=color_flag,
             max_results=max_results,
-            max_tags=0,
-            use=use,
-            groups=groups,
+            details=details,
+            offset=offset,
+            order_by=order_by if order_by is not None else "timestamp-desc",
             with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
-            max_relations=max_relations,
-            min_group_size=0,
-            max_groups=0,
-            buckets=buckets,
         )
         config_module.apply_config_defaults(args)
-        run_stats_groups(args)
+        run_tasks_list(args)

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Protocol
 
 import orgparse
+import typer
 
 from org import config as config_module
 from org.analyze import TimeRange, normalize
@@ -564,7 +565,7 @@ def resolve_input_paths(inputs: list[str] | None) -> list[str]:
         List of file paths to process
 
     Raises:
-        SystemExit: If a path does not exist or no org files are found
+        typer.BadParameter: If a path does not exist or no org files are found
     """
     resolved_files: list[str] = []
     searched_dirs: list[Path] = []
@@ -573,8 +574,7 @@ def resolve_input_paths(inputs: list[str] | None) -> list[str]:
     for raw_path in targets:
         path = Path(raw_path)
         if not path.exists():
-            print(f"Error: Path '{raw_path}' not found", file=sys.stderr)
-            sys.exit(1)
+            raise typer.BadParameter(f"Path '{raw_path}' not found")
 
         if path.is_dir():
             searched_dirs.append(path)
@@ -585,16 +585,13 @@ def resolve_input_paths(inputs: list[str] | None) -> list[str]:
             resolved_files.append(str(path))
             continue
 
-        print(f"Error: Path '{raw_path}' is not a file or directory", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter(f"Path '{raw_path}' is not a file or directory")
 
     if not resolved_files:
         if searched_dirs:
             searched_list = ", ".join(str(path) for path in searched_dirs)
-            print(f"Error: No .org files found in: {searched_list}", file=sys.stderr)
-        else:
-            print("Error: No .org files found", file=sys.stderr)
-        sys.exit(1)
+            raise typer.BadParameter(f"No .org files found in: {searched_list}")
+        raise typer.BadParameter("No .org files found")
 
     return resolved_files
 

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol, TypeGuard, cast
+
+import typer
 
 
 COMMAND_OPTION_NAMES = {
@@ -16,6 +17,7 @@ COMMAND_OPTION_NAMES = {
     "category_property",
     "color_flag",
     "config",
+    "details",
     "done_keys",
     "exclude",
     "filter_bodies",
@@ -36,6 +38,8 @@ COMMAND_OPTION_NAMES = {
     "max_results",
     "max_tags",
     "min_group_size",
+    "offset",
+    "order_by",
     "todo_keys",
     "use",
     "with_gamify_category",
@@ -65,7 +69,7 @@ def load_exclude_list(filepath: str | None) -> set[str]:
         Set of excluded tags (lowercased, stripped)
 
     Raises:
-        SystemExit: If file cannot be read
+        typer.BadParameter: If file cannot be read
     """
     if filepath is None:
         return set()
@@ -73,12 +77,10 @@ def load_exclude_list(filepath: str | None) -> set[str]:
     try:
         with open(filepath, encoding="utf-8") as f:
             return normalize_exclude_values(list(f))
-    except FileNotFoundError:
-        print(f"Error: Exclude list file '{filepath}' not found", file=sys.stderr)
-        sys.exit(1)
-    except PermissionError:
-        print(f"Error: Permission denied for '{filepath}'", file=sys.stderr)
-        sys.exit(1)
+    except FileNotFoundError as err:
+        raise typer.BadParameter(f"Exclude list file '{filepath}' not found") from err
+    except PermissionError as err:
+        raise typer.BadParameter(f"Permission denied for '{filepath}'") from err
 
 
 def load_mapping(filepath: str | None) -> dict[str, str]:
@@ -91,7 +93,7 @@ def load_mapping(filepath: str | None) -> dict[str, str]:
         Dictionary mapping tags to canonical forms
 
     Raises:
-        SystemExit: If file cannot be read or JSON is invalid
+        typer.BadParameter: If file cannot be read or JSON is invalid
     """
     if filepath is None:
         return {}
@@ -101,28 +103,20 @@ def load_mapping(filepath: str | None) -> dict[str, str]:
             mapping = json.load(f)
 
         if not isinstance(mapping, dict):
-            print(f"Error: Mapping file '{filepath}' must contain a JSON object", file=sys.stderr)
-            sys.exit(1)
+            raise typer.BadParameter(f"Mapping file '{filepath}' must contain a JSON object")
 
         for key, value in mapping.items():
             if not isinstance(key, str) or not isinstance(value, str):
-                print(
-                    f"Error: All keys and values in '{filepath}' must be strings",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
+                raise typer.BadParameter(f"All keys and values in '{filepath}' must be strings")
 
         return mapping
 
-    except FileNotFoundError:
-        print(f"Error: Mapping file '{filepath}' not found", file=sys.stderr)
-        sys.exit(1)
-    except PermissionError:
-        print(f"Error: Permission denied for '{filepath}'", file=sys.stderr)
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON in '{filepath}': {e}", file=sys.stderr)
-        sys.exit(1)
+    except FileNotFoundError as err:
+        raise typer.BadParameter(f"Mapping file '{filepath}' not found") from err
+    except PermissionError as err:
+        raise typer.BadParameter(f"Permission denied for '{filepath}'") from err
+    except json.JSONDecodeError as err:
+        raise typer.BadParameter(f"Invalid JSON in '{filepath}': {err}") from err
 
 
 @dataclass
@@ -215,6 +209,11 @@ def is_string_list(value: object) -> TypeGuard[list[str]]:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
+def is_string_tuple(value: object) -> TypeGuard[tuple[str, ...]]:
+    """Check if value is tuple[str, ...]."""
+    return isinstance(value, tuple) and all(isinstance(item, str) for item in value)
+
+
 def is_string_dict(value: object) -> TypeGuard[dict[str, str]]:
     """Check if value is dict[str, str]."""
     return isinstance(value, dict) and all(
@@ -278,14 +277,42 @@ def validate_str_option(key: str, value: object) -> str | None:
         return None
 
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
+    invalid_order_by = key == "--order-by" and value not in {
+        "file-order",
+        "file-order-reverse",
+        "level",
+        "timestamp-asc",
+        "timestamp-desc",
+        "gamify-exp-asc",
+        "gamify-exp-desc",
+    }
     invalid_keys = key in ("--todo-keys", "--done-keys") and not is_valid_keys_string(value)
     invalid_dates = key in (
         "--filter-date-from",
         "--filter-date-until",
     ) and not is_valid_date_argument(value)
-    if invalid_use or invalid_keys or invalid_dates:
+    if invalid_use or invalid_order_by or invalid_keys or invalid_dates:
         return None
     return value
+
+
+def validate_order_by_option(value: object) -> str | list[str] | None:
+    """Validate order-by option value."""
+    allowed = {
+        "file-order",
+        "file-order-reverse",
+        "level",
+        "timestamp-asc",
+        "timestamp-desc",
+        "gamify-exp-asc",
+        "gamify-exp-desc",
+    }
+    if isinstance(value, str):
+        return value if value in allowed else None
+    if is_string_list(value) or is_string_tuple(value):
+        order_by_values = list(value)
+        return order_by_values if all(item in allowed for item in order_by_values) else None
+    return None
 
 
 def validate_list_option(key: str, value: object) -> list[str] | None:
@@ -331,6 +358,63 @@ def apply_exclude_config(value: object, defaults: dict[str, object]) -> bool:
     return False
 
 
+def apply_int_option(
+    value: object,
+    dest: str,
+    min_value: int | None,
+    defaults: dict[str, object],
+) -> bool:
+    """Apply integer config option."""
+    int_value = validate_int_option(value, min_value)
+    if int_value is None:
+        return False
+    defaults[dest] = int_value
+    return True
+
+
+def apply_bool_option(value: object, dest: str, defaults: dict[str, object]) -> bool:
+    """Apply boolean config option."""
+    if not isinstance(value, bool):
+        return False
+    defaults[dest] = value
+    return True
+
+
+def apply_str_option(
+    key: str,
+    value: object,
+    dest: str,
+    defaults: dict[str, object],
+) -> bool:
+    """Apply string config option."""
+    if key == "--order-by":
+        order_by_value = validate_order_by_option(value)
+        if order_by_value is None:
+            return False
+        defaults[dest] = order_by_value
+        return True
+
+    str_value = validate_str_option(key, value)
+    if str_value is None:
+        return False
+    defaults[dest] = str_value
+    return True
+
+
+def apply_list_option(
+    key: str,
+    value: object,
+    dest: str,
+    append_defaults: dict[str, list[str]],
+) -> bool:
+    """Apply list config option."""
+    list_value = validate_list_option(key, value)
+    if list_value is None:
+        return False
+    append_defaults[dest] = list_value
+    return True
+
+
 def apply_config_entry_by_options(
     key: str,
     value: object,
@@ -339,34 +423,17 @@ def apply_config_entry_by_options(
     options: ConfigOptions,
 ) -> bool:
     """Apply a config entry using option metadata."""
-    valid = True
-
     if key in options.int_options:
         dest, min_value = options.int_options[key]
-        int_value = validate_int_option(value, min_value)
-        if int_value is None:
-            valid = False
-        else:
-            defaults[dest] = int_value
-    elif key in options.bool_options:
-        if not isinstance(value, bool):
-            valid = False
-        else:
-            defaults[options.bool_options[key]] = value
-    elif key in options.str_options:
-        str_value = validate_str_option(key, value)
-        if str_value is None:
-            valid = False
-        else:
-            defaults[options.str_options[key]] = str_value
-    elif key in options.list_options:
-        list_value = validate_list_option(key, value)
-        if list_value is None:
-            valid = False
-        else:
-            append_defaults[options.list_options[key]] = list_value
+        return apply_int_option(value, dest, min_value, defaults)
+    if key in options.bool_options:
+        return apply_bool_option(value, options.bool_options[key], defaults)
+    if key in options.str_options:
+        return apply_str_option(key, value, options.str_options[key], defaults)
+    if key in options.list_options:
+        return apply_list_option(key, value, options.list_options[key], append_defaults)
 
-    return valid
+    return True
 
 
 def apply_config_entry(
@@ -435,6 +502,7 @@ def build_config_defaults(
         "--filter-gamify-exp-below": ("filter_gamify_exp_below", None),
         "--filter-repeats-above": ("filter_repeats_above", None),
         "--filter-repeats-below": ("filter_repeats_below", None),
+        "--offset": ("offset", 0),
     }
 
     stats_bool_options: dict[str, str] = {
@@ -443,6 +511,7 @@ def build_config_defaults(
     }
 
     global_bool_options: dict[str, str] = {
+        "--details": "details",
         "--filter-completed": "filter_completed",
         "--filter-not-completed": "filter_not_completed",
         "--verbose": "verbose",
@@ -459,6 +528,7 @@ def build_config_defaults(
         "--done-keys": "done_keys",
         "--filter-date-from": "filter_date_from",
         "--filter-date-until": "filter_date_until",
+        "--order-by": "order_by",
         "--config": "config",
     }
 
@@ -527,13 +597,11 @@ def load_cli_config(
     config, load_error = load_config(str(config_path))
 
     if load_error:
-        print("Malformed config", file=sys.stderr)
-        return ({}, {}, {})
+        raise typer.BadParameter("Malformed config")
 
     config_defaults = build_config_defaults(config)
     if config_defaults is None:
-        print("Malformed config", file=sys.stderr)
-        return ({}, {}, {})
+        raise typer.BadParameter("Malformed config")
 
     defaults, stats_defaults, append_defaults = config_defaults
 
@@ -556,7 +624,7 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     summary_defaults.pop("show", None)
     summary_defaults.pop("groups", None)
 
-    tasks_defaults = dict(defaults)
+    stats_tasks_defaults = dict(defaults)
     for key in (
         "max_tags",
         "max_relations",
@@ -566,7 +634,25 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
         "show",
         "groups",
     ):
-        tasks_defaults.pop(key, None)
+        stats_tasks_defaults.pop(key, None)
+
+    tasks_list_defaults = dict(defaults)
+    for key in (
+        "max_tags",
+        "max_relations",
+        "max_groups",
+        "min_group_size",
+        "use",
+        "show",
+        "groups",
+        "buckets",
+    ):
+        tasks_list_defaults.pop(key, None)
+    order_by_default = tasks_list_defaults.get("order_by")
+    if isinstance(order_by_default, str):
+        tasks_list_defaults["order_by"] = [order_by_default]
+    elif is_string_tuple(order_by_default):
+        tasks_list_defaults["order_by"] = list(order_by_default)
 
     tags_defaults = dict(defaults)
     for key in ("max_tags", "max_groups", "min_group_size", "groups"):
@@ -579,10 +665,11 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     return {
         "stats": {
             "summary": summary_defaults,
-            "tasks": tasks_defaults,
+            "tasks": stats_tasks_defaults,
             "tags": tags_defaults,
             "groups": groups_defaults,
-        }
+        },
+        "tasks": {"list": tasks_list_defaults},
     }
 
 

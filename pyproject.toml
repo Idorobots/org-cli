@@ -14,9 +14,8 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.dependencies]
 orgparse = "^0.4.20251020"
-colorama = "^0.4.6"
-types-colorama = "^0.4.15.20250801"
 typer = "^0.24.1"
+rich = "^14.3.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"
@@ -25,7 +24,6 @@ ruff = "^0.15.0"
 mypy = "^1.18.1"
 taskipy = "^1.14.1"
 pyright = "^1.1.408"
-types-colorama = "^0.4.15.20250801"
 
 [tool.poetry.scripts]
 org = "org.cli:main"

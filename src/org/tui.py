@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
 
 import orgparse
-from colorama import Style
-from colorama import init as colorama_init
+from rich.console import Console
+from rich.text import Text
 
 from org.analyze import Group, Tag, TimeRange
 from org.cli_common import get_top_tasks
-from org.color import bright_white, dim_white, get_state_color, magenta, should_use_color
+from org.color import (
+    bright_white,
+    colorize,
+    dim_white,
+    escape_text,
+    get_state_color,
+    magenta,
+    should_use_color,
+)
 from org.histogram import Histogram, RenderConfig, render_histogram
 from org.plot import render_timeline_chart
 
@@ -74,10 +84,36 @@ def lines_to_text(lines: list[str]) -> str:
 
 def setup_output(args: object) -> bool:
     """Configure output settings and return color preference."""
-    color_enabled = should_use_color(getattr(args, "color_flag", None))
+    return should_use_color(getattr(args, "color_flag", None))
+
+
+def build_console(color_enabled: bool) -> Console:
+    """Create a Rich console configured for colored output."""
+    return Console(no_color=not color_enabled, force_terminal=color_enabled, width=200)
+
+
+def print_output(console: Console, text: str, color_enabled: bool, *, end: str = "\n") -> None:
+    """Print output without Rich line wrapping."""
     if color_enabled:
-        colorama_init(autoreset=True, strip=False)
-    return color_enabled
+        rich_text = Text.from_markup(text)
+        rich_text.no_wrap = True
+        rich_text.overflow = "ignore"
+        console.print(rich_text, end=end)
+        return
+    plain_text = Text(text)
+    plain_text.no_wrap = True
+    plain_text.overflow = "ignore"
+    console.print(plain_text, end=end, markup=False)
+
+
+@contextmanager
+def processing_status(console: Console, color_enabled: bool) -> Iterator[None]:
+    """Show a processing spinner when color output is enabled."""
+    if color_enabled:
+        with console.status("Processing...", spinner="dots", spinner_style="white"):
+            yield
+        return
+    yield
 
 
 def apply_indent(lines: list[str], indent: str) -> list[str]:
@@ -146,6 +182,50 @@ class TopTasksSectionConfig:
     indent: str
 
 
+@dataclass(frozen=True)
+class TaskLineConfig:
+    """Configuration for rendering a single task line."""
+
+    color_enabled: bool
+    done_keys: list[str]
+    todo_keys: list[str]
+
+
+def format_task_line(
+    node: orgparse.node.OrgNode,
+    config: TaskLineConfig,
+    indent: str = "",
+) -> str:
+    """Return formatted task line for list output."""
+    filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
+    colored_filename = dim_white(f"{filename}:", config.color_enabled)
+    todo_state = node.todo if node.todo else ""
+    heading = node.heading if node.heading else ""
+    level = node.level if node.level is not None else 0
+    level_prefix = "*" * level if level > 0 else ""
+    if config.color_enabled:
+        heading = escape_text(heading, config.color_enabled)
+
+    if todo_state:
+        state_style = get_state_color(
+            todo_state,
+            config.done_keys,
+            config.todo_keys,
+            config.color_enabled,
+        )
+        if config.color_enabled and state_style:
+            colored_state = colorize(todo_state, state_style, config.color_enabled)
+        else:
+            colored_state = todo_state
+        line = f"{colored_filename} {level_prefix} {colored_state} {heading}".strip()
+    else:
+        line = f"{colored_filename} {level_prefix} {heading}".strip()
+
+    if indent:
+        return f"{indent}{line}" if line else indent
+    return line
+
+
 def format_timeline_lines(
     timeline: dict[date, int],
     earliest_date: date,
@@ -164,6 +244,7 @@ def format_timeline_lines(
 
 def format_tag_block(name: str, tag: Tag, config: TagBlockConfig) -> list[str]:
     lines: list[str] = []
+    color_enabled = config.timeline.color_enabled
     time_range = tag.time_range
     if time_range and time_range.earliest and time_range.timeline:
         earliest_date = select_earliest_date(config.date_from, config.global_timerange, time_range)
@@ -178,12 +259,13 @@ def format_tag_block(name: str, tag: Tag, config: TagBlockConfig) -> list[str]:
                 )
             )
 
-    lines.append(f"{config.name_indent}{name}")
-    total_tasks_value = magenta(str(tag.total_tasks), config.timeline.color_enabled)
+    display_name = escape_text(name, color_enabled)
+    lines.append(f"{config.name_indent}{display_name}")
+    total_tasks_value = magenta(str(tag.total_tasks), color_enabled)
     lines.append(f"{config.stats_indent}Total tasks: {total_tasks_value}")
     if tag.time_range.earliest and tag.time_range.latest:
-        avg_value = magenta(f"{tag.avg_tasks_per_day:.2f}", config.timeline.color_enabled)
-        max_value = magenta(str(tag.max_single_day_count), config.timeline.color_enabled)
+        avg_value = magenta(f"{tag.avg_tasks_per_day:.2f}", color_enabled)
+        max_value = magenta(str(tag.max_single_day_count), color_enabled)
         lines.append(f"{config.stats_indent}Average tasks per day: {avg_value}")
         lines.append(f"{config.stats_indent}Max tasks on a single day: {max_value}")
 
@@ -202,7 +284,7 @@ def format_tag_block(name: str, tag: Tag, config: TagBlockConfig) -> list[str]:
             lines.append(f"{config.stats_indent}Top relations:")
             lines.extend(
                 [
-                    f"{relation_indent}{related_name} ({count})"
+                    f"{relation_indent}{escape_text(related_name, color_enabled)} ({count})"
                     for related_name, count in sorted_relations
                 ]
             )
@@ -215,6 +297,7 @@ def format_group_block(
     config: GroupBlockConfig,
 ) -> list[str]:
     lines: list[str] = []
+    color_enabled = config.timeline.color_enabled
     earliest_date = select_earliest_date(
         config.date_from, config.global_timerange, group.time_range
     )
@@ -229,10 +312,11 @@ def format_group_block(
             )
         )
 
-    lines.append(f"{config.name_indent}{', '.join(group_tags)}")
-    total_tasks_value = magenta(str(group.total_tasks), config.timeline.color_enabled)
-    avg_value = magenta(f"{group.avg_tasks_per_day:.2f}", config.timeline.color_enabled)
-    max_value = magenta(str(group.max_single_day_count), config.timeline.color_enabled)
+    display_tags = ", ".join(escape_text(tag, color_enabled) for tag in group_tags)
+    lines.append(f"{config.name_indent}{display_tags}")
+    total_tasks_value = magenta(str(group.total_tasks), color_enabled)
+    avg_value = magenta(f"{group.avg_tasks_per_day:.2f}", color_enabled)
+    max_value = magenta(str(group.max_single_day_count), color_enabled)
     lines.append(f"{config.stats_indent}Total tasks: {total_tasks_value}")
     lines.append(f"{config.stats_indent}Average tasks per day: {avg_value}")
     lines.append(f"{config.stats_indent}Max tasks on a single day: {max_value}")
@@ -303,25 +387,17 @@ def format_top_tasks_section(
 
     lines = section_header_lines("TASKS", config.color_enabled)
     for node in top_tasks:
-        filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
-        colored_filename = dim_white(f"{filename}:", config.color_enabled)
-        todo_state = node.todo if node.todo else ""
-        heading = node.heading if node.heading else ""
-
-        if todo_state:
-            state_color = get_state_color(
-                todo_state,
-                config.done_keys,
-                config.todo_keys,
-                config.color_enabled,
+        lines.append(
+            format_task_line(
+                node,
+                TaskLineConfig(
+                    color_enabled=config.color_enabled,
+                    done_keys=config.done_keys,
+                    todo_keys=config.todo_keys,
+                ),
+                indent="  ",
             )
-            if config.color_enabled and state_color:
-                colored_state = f"{state_color}{todo_state}{Style.RESET_ALL}"
-            else:
-                colored_state = todo_state
-            lines.append(f"  {colored_filename} {colored_state} {heading}".strip())
-        else:
-            lines.append(f"  {colored_filename} {heading}".strip())
+        )
 
     return lines_to_text(apply_indent(lines, config.indent))
 

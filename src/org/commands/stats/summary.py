@@ -24,10 +24,13 @@ from org.tui import (
     TimelineFormatConfig,
     TopTasksSectionConfig,
     apply_indent,
+    build_console,
     format_groups_section,
     format_tag_block,
     format_top_tasks_section,
     lines_to_text,
+    print_output,
+    processing_status,
     section_header_lines,
     setup_output,
 )
@@ -202,29 +205,30 @@ def format_stats_summary_output(
 def run_stats(args: SummaryArgs) -> None:
     """Run the stats command."""
     color_enabled = setup_output(args)
+    console = build_console(color_enabled)
     validate_stats_arguments(args)
 
     mapping = resolve_mapping(args)
     exclude_set = resolve_exclude_set(args)
-
-    nodes, todo_keys, done_keys = load_and_process_data(args)
+    with processing_status(console, color_enabled):
+        nodes, todo_keys, done_keys = load_and_process_data(args)
+        if not nodes:
+            output = None
+        else:
+            result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
+            date_from, date_until = resolve_date_filters(args)
+            output = format_stats_summary_output(
+                result,
+                nodes,
+                args,
+                (exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled),
+            )
 
     if not nodes:
-        print("No results")
+        console.print("No results", markup=False)
         return
-
-    result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
-
-    date_from, date_until = resolve_date_filters(args)
-
-    output = format_stats_summary_output(
-        result,
-        nodes,
-        args,
-        (exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled),
-    )
     if output:
-        print(output, end="")
+        print_output(console, output, color_enabled, end="")
 
 
 def register(app: typer.Typer) -> None:
