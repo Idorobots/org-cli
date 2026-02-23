@@ -2,8 +2,21 @@
 
 from dataclasses import dataclass, field
 
+from rich.text import Text
+
 from org.color import bright_blue, colorize, dim_white, get_state_color
-from org.text_utils import visual_len
+
+
+def visual_len(text: str) -> int:
+    """Get visual length of text (excluding Rich markup).
+
+    Args:
+        text: Text that may contain Rich markup or ANSI codes
+
+    Returns:
+        Visual length of the text
+    """
+    return len(Text.from_markup(text).plain)
 
 
 @dataclass

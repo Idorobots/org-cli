@@ -23,9 +23,8 @@ from org.color import (
     magenta,
     should_use_color,
 )
-from org.histogram import Histogram, RenderConfig, render_histogram
+from org.histogram import Histogram, RenderConfig, render_histogram, visual_len
 from org.plot import render_timeline_chart
-from org.text_utils import visual_len
 
 
 def select_earliest_date(

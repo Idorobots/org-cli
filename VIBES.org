@@ -2191,10 +2191,10 @@ We will be adding more output options, for instance JSON output, visualization o
 - Modifying the heading
 - Modifying the body
 
-** DONE [#B] More stats                                                                :UX:Analysis:
+** REWORKED [#B] More stats                                                            :UX:Analysis:
 :LOGBOOK:
-- State "DONE"       from "TODO"       [2026-02-23 Mon 22:16] \\
-  Worked fine, but forgot to update orgparse in the devcontainer.
+- State "REWORKED"       from "TODO"       [2026-02-23 Mon 22:16] \\
+  Worked fine, but forgot to update orgparse in the devcontainer. Turns out it did introduce some slop. Seems to be commond for Anthropic models.
 :END:
 I'd like to expand the analysis module & ~stats~ commands with extra statistics:
 
