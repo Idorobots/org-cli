@@ -45,6 +45,7 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         with_gamify_category=False,
         with_tags_as_category=False,
         category_property="CATEGORY",
+        buckets=50,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -190,7 +191,7 @@ def test_run_tasks_list_short_output(
 ) -> None:
     """Tasks list should render short output lines in order."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_list_args([fixture_path], max_results=2)
+    args = make_list_args([fixture_path], max_results=2, buckets=0)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list"])
     tasks_list.run_tasks_list(args)
@@ -206,7 +207,7 @@ def test_run_tasks_list_offset_applied(
 ) -> None:
     """Tasks list should apply offset before max results."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_list_args([fixture_path], max_results=1, offset=1)
+    args = make_list_args([fixture_path], max_results=1, offset=1, buckets=0)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--offset", "1"])
     tasks_list.run_tasks_list(args)

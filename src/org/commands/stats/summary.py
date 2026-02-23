@@ -163,6 +163,7 @@ def format_stats_summary_output(
                     color_enabled=color_enabled,
                     done_keys=done_keys,
                     todo_keys=todo_keys,
+                    buckets=args.buckets,
                     indent="",
                 ),
             ),

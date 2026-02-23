@@ -30,6 +30,7 @@ CLOSED: [2025-01-02 Thu 11:00]
             color_enabled=False,
             done_keys=["DONE"],
             todo_keys=["TODO"],
+            buckets=50,
             indent="",
         ),
     )

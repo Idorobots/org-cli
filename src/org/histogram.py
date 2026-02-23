@@ -2,9 +2,8 @@
 
 from dataclasses import dataclass, field
 
-from rich.text import Text
-
 from org.color import bright_blue, colorize, dim_white, get_state_color
+from org.text_utils import visual_len
 
 
 @dataclass
@@ -25,18 +24,6 @@ class Histogram:
             amount: The amount to add
         """
         self.values[key] = self.values.get(key, 0) + amount
-
-
-def _visual_len(text: str) -> int:
-    """Get visual length of text (excluding Rich markup).
-
-    Args:
-        text: Text that may contain ANSI codes
-
-    Returns:
-        Visual length of the text
-    """
-    return len(Text.from_markup(text).plain)
 
 
 @dataclass
@@ -104,7 +91,7 @@ def render_histogram(
         delimiter = dim_white("┊", render_config.color_enabled)
 
         if render_config.color_enabled:
-            visual_width = _visual_len(colored_name)
+            visual_width = visual_len(colored_name)
             padding = " " * (9 - visual_width)
             line = f"{colored_name}{padding}{delimiter}{colored_bars} {value}"
         else:
