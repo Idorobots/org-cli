@@ -16,6 +16,7 @@ build-backend = "poetry.core.masonry.api"
 orgparse = "^0.4.20251020"
 typer = "^0.24.1"
 rich = "^14.3.3"
+parsy = "^2.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"
@@ -124,3 +125,7 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = "orgparse"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "org.query_language.parser"
+ignore_errors = true

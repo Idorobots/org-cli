@@ -6,13 +6,11 @@ from dataclasses import dataclass
 
 import orgparse
 import typer
-from rich.console import Console
-from rich.syntax import Syntax
-from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
 from org.order import normalize_order_by, order_nodes
+from org.query_language import EvalContext, QueryParseError, QueryRuntimeError, compile_query_text
 from org.tui import build_console, processing_status, setup_output
 
 
@@ -51,21 +49,23 @@ class QueryArgs:
     buckets: int
 
 
-def render_query_results(
-    nodes: list[orgparse.node.OrgNode],
-    console: Console,
-) -> None:
-    """Render query results with full node details."""
-    for idx, node in enumerate(nodes):
-        if idx > 0:
-            console.print()
-        filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
-        node_text = str(node).rstrip()
-        header = Text(f"# {filename}")
-        header.no_wrap = True
-        header.overflow = "ignore"
-        console.print(header, markup=False)
-        console.print(Syntax(node_text, "org", line_numbers=False, word_wrap=False))
+def _format_query_value(value: object) -> str:
+    """Format one query result value for output."""
+    if isinstance(value, orgparse.node.OrgNode):
+        return str(value).rstrip()
+    if value is None:
+        return "none"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _to_output_lines(results: list[object]) -> list[str]:
+    """Convert query results into printable lines."""
+    if len(results) == 1 and isinstance(results[0], (list, tuple, set)):
+        collection = list(results[0])
+        return [_format_query_value(value) for value in collection]
+    return [_format_query_value(value) for value in results]
 
 
 def run_query(args: QueryArgs) -> None:
@@ -75,12 +75,38 @@ def run_query(args: QueryArgs) -> None:
     order_by = normalize_order_by(args.order_by)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
+
+    try:
+        compiled_query = compile_query_text(args.query)
+    except QueryParseError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
     with processing_status(console, color_enabled):
-        nodes, _todo_keys, _done_keys = load_and_process_data(args)
+        nodes, todo_keys, done_keys = load_and_process_data(args)
         if order_by and nodes:
             nodes = order_nodes(nodes, order_by)
 
-    console.print("No results", markup=False)
+    context = EvalContext(
+        {
+            "offset": args.offset,
+            "limit": args.max_results,
+            "todo_keys": todo_keys,
+            "done_keys": done_keys,
+        }
+    )
+    try:
+        stream_nodes: list[object] = [nodes]
+        results = compiled_query(stream_nodes, context)
+    except QueryRuntimeError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    lines = _to_output_lines(results)
+    if not lines:
+        console.print("No results", markup=False)
+        return
+
+    for line in lines:
+        console.print(line, markup=False)
 
 
 def register(app: typer.Typer) -> None:
