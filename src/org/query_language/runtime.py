@@ -5,14 +5,19 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from itertools import product
+from math import trunc
 from typing import cast
 
+from orgparse.node import OrgRootNode
+
 from org.query_language.ast import (
+    AsBinding,
     BinaryOp,
     BoolLiteral,
     BracketFieldAccess,
     Expr,
     FieldAccess,
+    Fold,
     FunctionCall,
     Group,
     Identity,
@@ -68,26 +73,59 @@ def _evaluate_atomic(expr: Expr, stream: Stream, context: EvalContext) -> Stream
         result = [expr.value]
     elif isinstance(expr, NoneLiteral):
         result = [None]
+    elif isinstance(expr, AsBinding):
+        result = _evaluate_as_binding(expr, stream, context)
     return result
 
 
 def _evaluate_operator_expr(expr: Expr, stream: Stream, context: EvalContext) -> Stream:
     """Evaluate operator-based expressions."""
+    result: Stream | None = None
     if isinstance(expr, FieldAccess):
         base = evaluate_expr(expr.base, stream, context)
-        return [_resolve_field(value, expr.field) for value in base]
-    if isinstance(expr, BracketFieldAccess):
-        return _evaluate_bracket_field_access(expr, stream, context)
-    if isinstance(expr, Iterate):
+        result = [_resolve_field(value, expr.field) for value in base]
+    elif isinstance(expr, BracketFieldAccess):
+        result = _evaluate_bracket_field_access(expr, stream, context)
+    elif isinstance(expr, Iterate):
         base = evaluate_expr(expr.base, stream, context)
-        return _evaluate_iterate(base)
-    if isinstance(expr, Index):
-        return _evaluate_index(expr, stream, context)
-    if isinstance(expr, Slice):
-        return _evaluate_slice(expr, stream, context)
-    if isinstance(expr, BinaryOp):
-        return _evaluate_binary_op(expr, stream, context)
+        result = _evaluate_iterate(base)
+    elif isinstance(expr, Index):
+        result = _evaluate_index(expr, stream, context)
+    elif isinstance(expr, Slice):
+        result = _evaluate_slice(expr, stream, context)
+    elif isinstance(expr, BinaryOp):
+        result = _evaluate_binary_op(expr, stream, context)
+    elif isinstance(expr, Fold):
+        result = _evaluate_fold(expr, stream, context)
+    if result is not None:
+        return result
     raise QueryRuntimeError("Unsupported expression type")
+
+
+def _evaluate_as_binding(expr: AsBinding, stream: Stream, context: EvalContext) -> Stream:
+    """Evaluate variable binding and pass through bound values."""
+    bound_values = evaluate_expr(expr.source, stream, context)
+    bound_value = bound_values[0] if len(bound_values) == 1 else bound_values
+    context.variables[expr.name] = bound_value
+    return bound_values
+
+
+def _evaluate_fold(expr: Fold, stream: Stream, context: EvalContext) -> Stream:
+    """Fold subquery stream into one list per input stream item."""
+    if expr.expr is None:
+        return [[] for _item in stream]
+
+    output: Stream = []
+    for item in stream:
+        folded_values = evaluate_expr(expr.expr, [item], context)
+        folded: list[object] = []
+        for value in folded_values:
+            if isinstance(value, tuple):
+                folded.extend(list(value))
+                continue
+            folded.append(value)
+        output.append(folded)
+    return output
 
 
 def _resolve_field(value: object, field: str) -> object:
@@ -141,6 +179,9 @@ def _evaluate_iterate(base: Stream) -> Stream:
     for value in base:
         if value is None:
             continue
+        if isinstance(value, OrgRootNode):
+            output.extend(list(value[1:]))
+            continue
         if isinstance(value, (list, tuple, set)):
             output.extend(list(value))
             continue
@@ -164,6 +205,11 @@ def _index_one(base_value: object, index_value: object) -> object:
     """Apply one index operation."""
     if not isinstance(index_value, int):
         raise QueryRuntimeError("Index expression must evaluate to an integer")
+    if isinstance(base_value, OrgRootNode):
+        nodes = list(base_value[1:])
+        if -len(nodes) <= index_value < len(nodes):
+            return nodes[index_value]
+        return None
     if isinstance(base_value, (list, tuple, str)):
         if -len(base_value) <= index_value < len(base_value):
             return base_value[index_value]
@@ -200,6 +246,9 @@ def _slice_one(base_value: object, start_value: object, end_value: object) -> ob
         raise QueryRuntimeError("Slice start must be an integer or none")
     if end_value is not None and not isinstance(end_value, int):
         raise QueryRuntimeError("Slice end must be an integer or none")
+    if isinstance(base_value, OrgRootNode):
+        nodes = list(base_value[1:])
+        return nodes[start_value:end_value]
     if isinstance(base_value, (list, tuple, str)):
         start_index = start_value
         end_index = end_value
@@ -229,7 +278,53 @@ def _apply_binary_operator(operator: str, left: object, right: object) -> object
         return _apply_boolean(operator, left, right)
     if operator == "in":
         return _apply_in_operator(left, right)
+    if operator in {"**", "*", "/", "+", "-", "mod", "rem", "quot"}:
+        return _apply_numeric_operator(operator, left, right)
     raise QueryRuntimeError(f"Unsupported operator: {operator}")
+
+
+def _apply_numeric_operator(operator: str, left: object, right: object) -> object:
+    """Apply numeric operators with arithmetic semantics."""
+    if not isinstance(left, (int, float)) or not isinstance(right, (int, float)):
+        raise QueryRuntimeError(f"{operator} operator requires numeric operands")
+    left_num = left
+    right_num = right
+
+    if operator in {"**", "*", "+", "-"}:
+        return _apply_simple_numeric_operator(operator, left_num, right_num)
+
+    if operator == "/":
+        _guard_non_zero(right_num, "Division by zero")
+        return left_num / right_num
+
+    if operator == "mod":
+        _guard_non_zero(right_num, "Modulo by zero")
+        modulus = abs(right_num)
+        return ((left_num % modulus) + modulus) % modulus
+
+    if operator in {"quot", "rem"}:
+        _guard_non_zero(right_num, f"{'Quotient' if operator == 'quot' else 'Remainder'} by zero")
+        quotient = trunc(left_num / right_num)
+        return quotient if operator == "quot" else left_num - (right_num * quotient)
+
+    raise QueryRuntimeError(f"Unsupported numeric operator: {operator}")
+
+
+def _apply_simple_numeric_operator(operator: str, left: int | float, right: int | float) -> object:
+    """Apply non-dividing numeric operators."""
+    operations: dict[str, object] = {
+        "**": left**right,
+        "*": left * right,
+        "+": left + right,
+        "-": left - right,
+    }
+    return operations[operator]
+
+
+def _guard_non_zero(value: int | float, message: str) -> None:
+    """Raise runtime error when value is zero."""
+    if value == 0:
+        raise QueryRuntimeError(message)
 
 
 def _apply_in_operator(left: object, right: object) -> bool:
@@ -318,26 +413,29 @@ def _evaluate_tuple_expr(expr: TupleExpr, stream: Stream, context: EvalContext) 
 
 def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext) -> Stream:
     """Evaluate built-in function call expression."""
-    if expr.name == "reverse":
+    no_arg_functions = {
+        "reverse": _func_reverse,
+        "unique": _func_unique,
+        "length": _func_length,
+        "sum": _func_sum,
+    }
+    arg_functions = {
+        "select": _func_select,
+        "sort_by": _func_sort_by,
+        "join": _func_join,
+        "map": _func_map,
+    }
+
+    if expr.name in no_arg_functions:
         if expr.argument is not None:
-            raise QueryRuntimeError("reverse does not accept an argument")
-        return _func_reverse(stream)
-    if expr.name == "unique":
-        if expr.argument is not None:
-            raise QueryRuntimeError("unique does not accept an argument")
-        return _func_unique(stream)
-    if expr.name == "length":
-        if expr.argument is not None:
-            raise QueryRuntimeError("length does not accept an argument")
-        return _func_length(stream)
-    if expr.name == "select":
+            raise QueryRuntimeError(f"{expr.name} does not accept an argument")
+        return no_arg_functions[expr.name](stream)
+
+    if expr.name in arg_functions:
         if expr.argument is None:
-            raise QueryRuntimeError("select requires an argument")
-        return _func_select(stream, expr.argument, context)
-    if expr.name == "sort_by":
-        if expr.argument is None:
-            raise QueryRuntimeError("sort_by requires an argument")
-        return _func_sort_by(stream, expr.argument, context)
+            raise QueryRuntimeError(f"{expr.name} requires an argument")
+        return arg_functions[expr.name](stream, expr.argument, context)
+
     raise QueryRuntimeError(f"Unsupported function: {expr.name}")
 
 
@@ -368,10 +466,22 @@ def _func_length(stream: Stream) -> Stream:
     """Return length for each stream value."""
     output: Stream = []
     for value in stream:
+        if isinstance(value, OrgRootNode):
+            output.append(len(list(value[1:])))
+            continue
         if isinstance(value, (list, tuple, dict, set, str)):
             output.append(len(value))
             continue
         output.append(None)
+    return output
+
+
+def _func_sum(stream: Stream) -> Stream:
+    """Return sum for each collection value in stream."""
+    output: Stream = []
+    for value in stream:
+        values = _extract_numeric_collection(value)
+        output.append(sum(values))
     return output
 
 
@@ -400,6 +510,48 @@ def _func_sort_by(stream: Stream, key_expr: Expr, context: EvalContext) -> Strea
 
     ordered = sorted(decorated, key=sort_key, reverse=True)
     return [item for _idx, _key, item in ordered]
+
+
+def _func_join(stream: Stream, separator_expr: Expr, context: EvalContext) -> Stream:
+    """Join collection values into strings using dynamic separator expression."""
+    output: Stream = []
+    for item in stream:
+        separator_values = evaluate_expr(separator_expr, [item], context)
+        separator = separator_values[0] if separator_values else ""
+        if not isinstance(separator, str):
+            raise QueryRuntimeError("join separator must evaluate to a string")
+        collection = _extract_collection(item)
+        output.append(separator.join(str(value) for value in collection))
+    return output
+
+
+def _func_map(stream: Stream, subquery: Expr, context: EvalContext) -> Stream:
+    """Map each collection value using a subquery."""
+    output: Stream = []
+    for item in stream:
+        collection = _extract_collection(item)
+        mapped: list[object] = []
+        for value in collection:
+            mapped.extend(evaluate_expr(subquery, [value], context))
+        output.append(mapped)
+    return output
+
+
+def _extract_collection(value: object) -> list[object]:
+    """Extract a value as a query collection list."""
+    if isinstance(value, OrgRootNode):
+        return list(value[1:])
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    raise QueryRuntimeError("Operation requires a collection")
+
+
+def _extract_numeric_collection(value: object) -> list[int | float]:
+    """Extract numeric collection values."""
+    collection = _extract_collection(value)
+    if not all(isinstance(item, (int, float)) for item in collection):
+        raise QueryRuntimeError("sum requires a numeric collection")
+    return cast(list[int | float], collection)
 
 
 def _broadcast(left: Stream, right: Stream) -> list[tuple[object, object]]:

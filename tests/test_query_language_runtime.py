@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import orgparse
 import pytest
+from orgparse.node import OrgRootNode
 
 from org.query_language import EvalContext, QueryRuntimeError, compile_query_text
 from tests.conftest import node_from_org
@@ -10,7 +12,7 @@ from tests.conftest import node_from_org
 
 def _execute(
     query: str,
-    nodes: list[object],
+    nodes: object,
     variables: dict[str, object] | None,
 ) -> list[object]:
     compiled = compile_query_text(query)
@@ -27,6 +29,18 @@ def _sample_nodes() -> list[object]:
 * TODO Second
 """
     return [*node_from_org(org_text)]
+
+
+def _sample_root() -> object:
+    org_text = """* DONE Parent
+** TODO Alpha child
+** DONE Zeta child
+
+* TODO Second
+"""
+    root = orgparse.loads(org_text)
+    assert root is not None
+    return root
 
 
 def test_runtime_select_done_nodes() -> None:
@@ -96,3 +110,74 @@ def test_runtime_type_mismatch_raises_exception() -> None:
     nodes = _sample_nodes()
     with pytest.raises(QueryRuntimeError):
         _execute(".[] | select(.heading > 1)", nodes, None)
+
+
+def test_runtime_root_node_is_iterable_indexable_and_sliceable() -> None:
+    """OrgRootNode should behave like a collection in query operators."""
+    root = _sample_root()
+    result_iterate = _execute(".[0][] | .heading", [root], None)
+    result_index = _execute(".[0][0].heading", [root], None)
+    result_slice = _execute(".[0][0:2] | .[] | .heading", [root], None)
+
+    assert result_iterate == ["Parent", "Alpha child", "Zeta child", "Second"]
+    assert result_index == ["Parent"]
+    assert result_slice == ["Parent", "Alpha child"]
+
+
+def test_runtime_sum_function() -> None:
+    """sum() should aggregate numeric collections."""
+    result = _execute("sum", [1, 2, 3], None)
+    assert result == [6]
+
+
+def test_runtime_join_function() -> None:
+    """join() should join collection values with separator expression."""
+    result = _execute('join(",")', ["a", "b", "c"], None)
+    assert result == ["a,b,c"]
+
+
+def test_runtime_join_scalar_raises() -> None:
+    """join() should fail on scalar input."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('join(",")', 1, None)
+
+
+def test_runtime_map_function() -> None:
+    """map() should transform each collection item using subquery."""
+    result = _execute("map(. * 2)", [1, 2, 3], None)
+    assert result == [[2, 4, 6]]
+
+
+def test_runtime_numeric_operators_and_slice_expression() -> None:
+    """Arithmetic operators and dynamic slice bounds should work."""
+    numeric = _execute("2 ** 3, 8 / 2, 7 mod 3, -7 rem 3, -7 quot 3", [None], None)
+    sliced = _execute(
+        ".[ $offset : $offset + $limit ]", [10, 20, 30, 40], {"offset": 1, "limit": 2}
+    )
+
+    assert numeric == [(8, 4.0, 1, -1, -2)]
+    assert sliced == [[20, 30]]
+
+
+def test_runtime_as_binding_visible_in_pipeline() -> None:
+    """as-binding should define variables for downstream pipe stages."""
+    root = _sample_root()
+    typed_root = root if isinstance(root, OrgRootNode) else None
+    assert typed_root is not None
+    result = _execute(". as $root | $root[], ($root[] | .children | length)", [typed_root], None)
+
+    assert result == [(typed_root, 2)]
+
+
+def test_runtime_fold_operator() -> None:
+    """Fold operator should collect subquery streams into lists."""
+    nodes = _sample_nodes()
+    folded = _execute('[ .[] | select(.todo == "DONE") | .heading ]', nodes, None)
+    tuple_fold = _execute("[1, 2, 3]", [None], None)
+    scalar_fold = _execute(".[] | [ .heading ]", nodes, None)
+    empty_fold = _execute("[]", [None], None)
+
+    assert folded == [["Parent", "Zeta child"]]
+    assert tuple_fold == [[1, 2, 3]]
+    assert scalar_fold == [["Parent"], ["Alpha child"], ["Zeta child"], ["Second"]]
+    assert empty_fold == [[]]

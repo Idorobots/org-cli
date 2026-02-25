@@ -125,3 +125,18 @@ class Pipe(Expr):
 
     left: Expr
     right: Expr
+
+
+@dataclass(frozen=True, slots=True)
+class AsBinding(Expr):
+    """Variable binding expression `<expr> as $name`."""
+
+    source: Expr
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class Fold(Expr):
+    """Fold subquery stream into a collection per input item."""
+
+    expr: Expr | None

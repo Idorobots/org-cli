@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from org.query_language import parse_query
-from org.query_language.ast import BinaryOp, FieldAccess, FunctionCall, Pipe, Slice
+from org.query_language.ast import AsBinding, BinaryOp, FieldAccess, Fold, FunctionCall, Pipe, Slice
 from org.query_language.errors import QueryParseError
 
 
@@ -25,6 +25,14 @@ from org.query_language.errors import QueryParseError
         "select(.heading == ID, .properties[$id] == ID) | .children",
         ".children[] | sort_by(.level) | reverse | .[0:10]",
         "select((.depndencies[] | length) == 0)",
+        ".[1:1 + $limit]",
+        "sum",
+        'join(",")',
+        "map(. * 2)",
+        ". as $root | $root[]",
+        '[ .[] | select(.todo == "DONE") ] | .[10:20]',
+        "[]",
+        "[1, 2, 3]",
     ],
 )
 def test_parse_query_examples(query: str) -> None:
@@ -55,7 +63,30 @@ def test_parse_pipe_with_function_shape() -> None:
     assert expr.right.name == "reverse"
 
 
-@pytest.mark.parametrize("query", [".[", "select(.todo ==", ".[] | | .todo"])
+def test_parse_as_binding_shape() -> None:
+    """Parser should parse as-binding nodes."""
+    expr = parse_query(". as $root | $root[]")
+    assert isinstance(expr, Pipe)
+    assert isinstance(expr.left, AsBinding)
+    assert expr.left.name == "root"
+
+
+def test_parse_fold_shape() -> None:
+    """Parser should parse fold expressions."""
+    expr = parse_query("[ .[] | .heading ]")
+    assert isinstance(expr, Fold)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        ".[",
+        "select(.todo ==",
+        ".[] | | .todo",
+        "a +",
+        ". as root",
+    ],
+)
 def test_parse_invalid_queries(query: str) -> None:
     """Parser should reject malformed query text."""
     with pytest.raises(QueryParseError):
