@@ -31,12 +31,13 @@ from org.filters import (
     preprocess_gamify_categories,
     preprocess_tags_as_category,
 )
-from org.parse import load_nodes
+from org.parse import load_root_nodes
 from org.timestamp import extract_timestamp_any
 from org.validation import (
     parse_date_argument,
     parse_group_values,
     parse_property_filter,
+    validate_and_parse_keys,
     validate_global_arguments,
 )
 
@@ -625,14 +626,46 @@ class DataLoadArgs(FilterArgs, Protocol):
     category_property: str
 
 
+class RootDataLoadArgs(Protocol):
+    """Protocol for loading root nodes without filters or enrichment."""
+
+    files: list[str] | None
+    todo_keys: str
+    done_keys: str
+
+
+def _resolve_and_load_roots(
+    args: RootDataLoadArgs,
+) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+    """Resolve inputs and load org roots after validating todo/done keys."""
+    todo_keys = validate_and_parse_keys(args.todo_keys, "--todo-keys")
+    done_keys = validate_and_parse_keys(args.done_keys, "--done-keys")
+    return _load_roots_for_inputs(args.files, todo_keys, done_keys)
+
+
+def _load_roots_for_inputs(
+    files: list[str] | None, todo_keys: list[str], done_keys: list[str]
+) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+    """Resolve file inputs and load all org root nodes."""
+    filenames = resolve_input_paths(files)
+    return load_root_nodes(filenames, todo_keys, done_keys)
+
+
+def load_root_data(
+    args: RootDataLoadArgs,
+) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+    """Load org root nodes without filters, enrichment, or ordering."""
+    return _resolve_and_load_roots(args)
+
+
 def load_and_process_data(
     args: DataLoadArgs,
 ) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
     """Load nodes, preprocess, and apply filters in command order."""
     todo_keys, done_keys = validate_global_arguments(args)
     filters = build_filter_chain(args, sys.argv)
-    filenames = resolve_input_paths(args.files)
-    nodes, todo_keys, done_keys = load_nodes(filenames, todo_keys, done_keys, [])
+    roots, todo_keys, done_keys = _load_roots_for_inputs(args.files, todo_keys, done_keys)
+    nodes = [node for root in roots for node in root[1:]]
 
     if args.with_gamify_category:
         nodes = preprocess_gamify_categories(nodes, args.category_property)

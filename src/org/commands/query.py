@@ -6,10 +6,13 @@ from dataclasses import dataclass
 
 import orgparse
 import typer
+from orgparse.date import OrgDate
+from rich.console import Console
+from rich.syntax import Syntax
+from rich.text import Text
 
 from org import config as config_module
-from org.cli_common import load_and_process_data
-from org.order import normalize_order_by, order_nodes
+from org.cli_common import load_root_data
 from org.query_language import EvalContext, QueryParseError, QueryRuntimeError, compile_query_text
 from org.tui import build_console, processing_status, setup_output
 
@@ -27,26 +30,38 @@ class QueryArgs:
     exclude_inline: list[str] | None
     todo_keys: str
     done_keys: str
-    filter_gamify_exp_above: int | None
-    filter_gamify_exp_below: int | None
-    filter_repeats_above: int | None
-    filter_repeats_below: int | None
-    filter_date_from: str | None
-    filter_date_until: str | None
-    filter_properties: list[str] | None
-    filter_tags: list[str] | None
-    filter_headings: list[str] | None
-    filter_bodies: list[str] | None
-    filter_completed: bool
-    filter_not_completed: bool
     color_flag: bool | None
     max_results: int
     offset: int
-    order_by: str | list[str] | tuple[str, ...] | None
-    with_gamify_category: bool
-    with_tags_as_category: bool
-    category_property: str
-    buckets: int
+
+
+def _is_org_object(value: object) -> bool:
+    """Return whether value is an org node or org date object."""
+    return isinstance(value, orgparse.node.OrgNode | OrgDate)
+
+
+def _flatten_result_stream(results: list[object]) -> list[object]:
+    """Flatten top-level collection result into output stream."""
+    if len(results) == 1 and isinstance(results[0], (list, tuple, set)):
+        return list(results[0])
+    return results
+
+
+def _render_org_values(values: list[object], console: Console) -> None:
+    """Render org values using org-mode syntax highlighting."""
+    for idx, value in enumerate(values):
+        if idx > 0:
+            console.print()
+        if isinstance(value, orgparse.node.OrgNode):
+            filename = value.env.filename if value.env.filename else "unknown"
+            header = Text(f"# {filename}")
+            header.no_wrap = True
+            header.overflow = "ignore"
+            console.print(header, markup=False)
+            node_text = str(value).rstrip()
+            console.print(Syntax(node_text, "org", line_numbers=False, word_wrap=False))
+            continue
+        console.print(Syntax(str(value), "org", line_numbers=False, word_wrap=False))
 
 
 def _format_query_value(value: object) -> str:
@@ -60,19 +75,10 @@ def _format_query_value(value: object) -> str:
     return str(value)
 
 
-def _to_output_lines(results: list[object]) -> list[str]:
-    """Convert query results into printable lines."""
-    if len(results) == 1 and isinstance(results[0], (list, tuple, set)):
-        collection = list(results[0])
-        return [_format_query_value(value) for value in collection]
-    return [_format_query_value(value) for value in results]
-
-
 def run_query(args: QueryArgs) -> None:
     """Run the query command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled)
-    order_by = normalize_order_by(args.order_by)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
 
@@ -82,9 +88,7 @@ def run_query(args: QueryArgs) -> None:
         raise typer.BadParameter(str(exc)) from exc
 
     with processing_status(console, color_enabled):
-        nodes, todo_keys, done_keys = load_and_process_data(args)
-        if order_by and nodes:
-            nodes = order_nodes(nodes, order_by)
+        roots, todo_keys, done_keys = load_root_data(args)
 
     context = EvalContext(
         {
@@ -95,15 +99,21 @@ def run_query(args: QueryArgs) -> None:
         }
     )
     try:
-        stream_nodes: list[object] = [nodes]
+        stream_nodes: list[object] = [roots]
         results = compiled_query(stream_nodes, context)
     except QueryRuntimeError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
-    lines = _to_output_lines(results)
-    if not lines:
+    output_values = _flatten_result_stream(results)
+    if not output_values:
         console.print("No results", markup=False)
         return
+
+    if all(_is_org_object(value) for value in output_values):
+        _render_org_values(output_values, console)
+        return
+
+    lines = [_format_query_value(value) for value in output_values]
 
     for line in lines:
         console.print(line, markup=False)
@@ -148,84 +158,6 @@ def register(app: typer.Typer) -> None:
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
-        filter_gamify_exp_above: int | None = typer.Option(
-            None,
-            "--filter-gamify-exp-above",
-            metavar="N",
-            help="Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)",
-        ),
-        filter_gamify_exp_below: int | None = typer.Option(
-            None,
-            "--filter-gamify-exp-below",
-            metavar="N",
-            help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
-        ),
-        filter_repeats_above: int | None = typer.Option(
-            None,
-            "--filter-repeats-above",
-            metavar="N",
-            help="Filter tasks where repeat count > N (non-inclusive)",
-        ),
-        filter_repeats_below: int | None = typer.Option(
-            None,
-            "--filter-repeats-below",
-            metavar="N",
-            help="Filter tasks where repeat count < N (non-inclusive)",
-        ),
-        filter_date_from: str | None = typer.Option(
-            None,
-            "--filter-date-from",
-            metavar="TIMESTAMP",
-            help=(
-                "Filter tasks with timestamps after date (inclusive). "
-                "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
-                "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
-            ),
-        ),
-        filter_date_until: str | None = typer.Option(
-            None,
-            "--filter-date-until",
-            metavar="TIMESTAMP",
-            help=(
-                "Filter tasks with timestamps before date (inclusive). "
-                "Formats: YYYY-MM-DD, YYYY-MM-DDThh:mm, YYYY-MM-DDThh:mm:ss, "
-                "YYYY-MM-DD hh:mm, YYYY-MM-DD hh:mm:ss"
-            ),
-        ),
-        filter_properties: list[str] | None = typer.Option(  # noqa: B008
-            None,
-            "--filter-property",
-            metavar="KEY=VALUE",
-            help="Filter tasks with exact property match (case-sensitive, can specify multiple)",
-        ),
-        filter_tags: list[str] | None = typer.Option(  # noqa: B008
-            None,
-            "--filter-tag",
-            metavar="REGEX",
-            help="Filter tasks where any tag matches regex (case-sensitive, can specify multiple)",
-        ),
-        filter_headings: list[str] | None = typer.Option(  # noqa: B008
-            None,
-            "--filter-heading",
-            metavar="REGEX",
-            help="Filter tasks where heading matches regex (case-sensitive, can specify multiple)",
-        ),
-        filter_bodies: list[str] | None = typer.Option(  # noqa: B008
-            None,
-            "--filter-body",
-            metavar="REGEX",
-            help="Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)",
-        ),
-        filter_completed: bool = typer.Option(
-            False,
-            "--filter-completed",
-            help="Filter tasks with todo state in done keys",
-        ),
-        filter_not_completed: bool = typer.Option(
-            False,
-            "--filter-not-completed",
-            help="Filter tasks with todo state in todo keys or without a todo state",
-        ),
         color_flag: bool | None = typer.Option(
             None,
             "--color/--no-color",
@@ -244,37 +176,6 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Number of results to skip before displaying",
         ),
-        order_by: list[str] | None = typer.Option(  # noqa: B008
-            None,
-            "--order-by",
-            metavar="ORDER",
-            help=(
-                "Order tasks by: file-order, file-order-reverse, level, timestamp-asc, "
-                "timestamp-desc, gamify-exp-asc, gamify-exp-desc"
-            ),
-        ),
-        with_gamify_category: bool = typer.Option(
-            False,
-            "--with-gamify-category",
-            help="Preprocess nodes to set category property based on gamify_exp value",
-        ),
-        with_tags_as_category: bool = typer.Option(
-            False,
-            "--with-tags-as-category",
-            help="Preprocess nodes to set category property based on first tag",
-        ),
-        category_property: str = typer.Option(
-            "CATEGORY",
-            "--category-property",
-            metavar="PROPERTY",
-            help="Property name to use for category histogram and filtering",
-        ),
-        buckets: int = typer.Option(
-            50,
-            "--buckets",
-            metavar="N",
-            help="Number of time buckets for timeline charts and tag alignment column",
-        ),
     ) -> None:
         """Query tasks using jq-style expressions."""
         args = QueryArgs(
@@ -287,26 +188,9 @@ def register(app: typer.Typer) -> None:
             exclude_inline=None,
             todo_keys=todo_keys,
             done_keys=done_keys,
-            filter_gamify_exp_above=filter_gamify_exp_above,
-            filter_gamify_exp_below=filter_gamify_exp_below,
-            filter_repeats_above=filter_repeats_above,
-            filter_repeats_below=filter_repeats_below,
-            filter_date_from=filter_date_from,
-            filter_date_until=filter_date_until,
-            filter_properties=filter_properties,
-            filter_tags=filter_tags,
-            filter_headings=filter_headings,
-            filter_bodies=filter_bodies,
-            filter_completed=filter_completed,
-            filter_not_completed=filter_not_completed,
             color_flag=color_flag,
             max_results=max_results,
             offset=offset,
-            order_by=order_by,
-            with_gamify_category=with_gamify_category,
-            with_tags_as_category=with_tags_as_category,
-            category_property=category_property,
-            buckets=buckets,
         )
         config_module.apply_config_defaults(args)
         run_query(args)

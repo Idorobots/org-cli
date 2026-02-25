@@ -2400,17 +2400,60 @@ I asked Claude to write down a plan of implementation and store it in a file for
 
 Third time the implementation was actually pretty good, working mostly as expected (with the exception of ~none~ comparisons). The code is basically a parse tree and a separate tree-walking interpreter, with the "compiler" being a lambda that wraps the interpreter. Not exactly what I had in mind, but it seems to be performant enough.
 
-*** Query language improvements
-- none handling
-- display results in org mode syntax highlighting
-- sort_by should orderd top to bottom
-- initial nodes stream handling (root vs list of nodes)
-- stream folding into an array syntax ~[<subquery>]~ - must not be preceeded by a subquery or an identity
-- sum function
-- ~as $variable~ syntax for defining variables
-- ~a = b~ assignment operator
+**** REWORKED Query tweaks                                                                      :UX:
+:LOGBOOK:
+- State "REWORKED"   from              [2026-02-25 Wed 11:47] \\
+  Needed additional prompting to get the output right.
+:END:
+I'd like to tweak the query command's ouput & UX. I identified a few areas that could use an improvement:
 
-*** Query language filters/ordering
+- Display results in org mode syntax highlighting - when the query results in a stream of org objects (nodes or dates), it makes sense to display them using the Org Mode syntax highlighting (same as =tasks list --details= output).
+  Please update the =query= command to check the result type and format as Org Mode syntax if the result is an org object or a stream/collection of org objecs.
+
+- The =sort_by= query language function currently sorts the results in an ascending order, I'd like that order to be descending (results considered "highest" at the top).
+
+- The =load_and_process_data= function returns a list of all nodes of any level in the file, that then becomes a stream. That's an inconvenient starting point for the query language and instead I'd like this command to use all the =OrgRootNode='s loaded from all files.
+   Please create an additional data loading function that will load all the root nodes and return them verbatim. The function should share as much code with =load_and_process_data= as possible, it should run the argument validation, path resolving and data loading with preprocessing, but omit the filtering, enrichment & ordering. The result should be a list of root nodes & todo & done keys.
+   To achieve this, you will have to refactor the parse module and extract some helper functions to create an alternate data loading function (the current =load_data= function can use the new one and "flatten" its resulting set of root nodes to include all the nodes for each of the roots).
+   Please remove the filters & ordering CLI arguments handling from the =query= command, all of these filters & orderings can be expressed in the query language itself (we will do so in the future for the other commands).
+
+**** More display tweaks
+Please make sure that the root node is also displayed using the org syntax highlighting.
+Please make sure that the filename comment is also displayed using the org syntax highlighitng (treat it as part of the node output).
+These output considerations should also be reflected in the =tasks list --details= output.
+
+**** Query language extensions
+I'd like to extend the query language a little bit. Please implement the following features:
+
+- Please treat the =OrgRootNode= as a collection, i.e. it should be subscriptable via the =.[N]= operator, iterable via the =.[]= operator and sliceable via the =.[N:M]= operator.
+
+- Add a =sum= query language function that will sum all the elements in a collection. It's similar in spirit to =length= that it works on collections and returns a single numeric value.
+
+- Add a =join(<subquery>)= query language function that will "join" all elements in a collection, treating them as strings producing a single string in result, for instance: given this data =["a", "b", "c"]= a filter =. | join(",")= should produce a single string ="a,b,c"=. The join function should accept a subquery that evaluates to a string. It should convert all the values in the input array as strings. If passed a scalar value, the function should raise an exception.
+
+- Add numeric operation operators with the usual semantics & operator precedence:
+  - =a ** b= - power
+  - =a * b= - multiplication
+  - =a / b= - division
+  - =a + b= - addition
+  - =a - b= - subtraction
+  - =a mod b= - modulo
+  - =a rem b= - remainder
+  - =a quot b= - quotient
+  These will become useful for instance for the =map()= function or for the collection slicing =.[$offset : $offset + $limit]=. Please update the slicing operator to support subqueries for the start and end of a slice (they must evaluate to a numeric value).
+
+- Add a =map(<subquery>)= query language function that will map each value in a sequence according to a subquery. The result should be a sequence of mapped values, For example: given =[1, 2, 3]= sequence, the filter =map(. * 2)= should result in the following value: =[2, 4, 6]=.
+
+- Add a way to dynamically define new variables via the ~<subquery> as $variable~ syntax. A variable defined this way, should be accessible further down the processing pipeline, i.e. the =|= operator encountering a new variable definition on the left side, should bake it available on the right side. For example: =. as $root | $root[], ($root.children | length)= results in a steam of tuples of the root node along with its children.
+
+
+- stream folding into an array syntax ~[<subquery>]~ - must not be preceeded by a subquery or an identity
+
+**** Query language bugfixes                                                                   :Bug:
+- none handling
+
+**** Query language tests
+**** Query language filters/ordering
 
 Redo all the filters & orderings in terms of the query language
 
@@ -2436,24 +2479,12 @@ Redo all the filters & orderings in terms of the query language
 - ~--order-by gamify-exp-asc~ - 'sortby(.properties["gamify_exp"])'
 - ~--order-by gamify-exp-desc~ - 'sortby(.properties["gamify_exp"]) | reverse'
 
-*** More query language filters/ordering
+**** Query language mutation
+- ~a = b~ assignment operator
 
-Redo all the filters & orderings in terms of the query language
-
-- ~--filter-priority P~ - 'select(.priority == P)'
-
-- ~--filter-children ID~ - 'select(.heading == ID, .properties[$id] == ID) | .children'
-- ~--filter-sibling ID~ - 'select(.heading == ID, .properties[$id] == ID) | .siblings'
-- ~--filter-parent ID~ - 'select(.heading == ID, .properties[$id] == ID) | .parent'
-- ~--filter-dependencies ID~ - 'select(.heading == ID, .properties[$id] == ID) | .dependencies'
-- ~--filter-dependants ID~ - 'select(.heading == ID, .properties[$id] == ID) | .dependants'
-
-- ~--filter-not-blocked~ - 'select(.todo in $todo_keys) | select(.heading == ID, .properties[$id] == ID) | select((.depndencies[] | length) == 0)'
-- ~--filter-blocked~ - 'select(.todo in $todo_keys) | select(.heading == ID, .properties[$id] == ID) | select((.depndencies[] | length) != 0)'
-
-- ~--order-by priority~ - 'sortby(.priority)'
-
+**** Query language documentation
 *** Query tests
+*** Command docs
 ** More Rich support
 - columnar display on the stats summary - tasks section should be to the side of the histograms
 - scroll through task list

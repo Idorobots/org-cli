@@ -228,14 +228,23 @@ def _apply_binary_operator(operator: str, left: object, right: object) -> object
     if operator in {"and", "or"}:
         return _apply_boolean(operator, left, right)
     if operator == "in":
-        if not isinstance(right, (list, tuple, set, dict, str)):
-            raise QueryRuntimeError("in operator requires a collection on the right")
-        right_collection = cast(
-            list[object] | tuple[object, ...] | set[object] | dict[object, object] | str,
-            right,
-        )
-        return left in right_collection
+        return _apply_in_operator(left, right)
     raise QueryRuntimeError(f"Unsupported operator: {operator}")
+
+
+def _apply_in_operator(left: object, right: object) -> bool:
+    """Apply membership operator."""
+    if not isinstance(right, (list, tuple, set, dict, str)):
+        raise QueryRuntimeError("in operator requires a collection on the right")
+    if isinstance(right, str):
+        if not isinstance(left, str):
+            return False
+        return left in right
+    right_collection = cast(
+        list[object] | tuple[object, ...] | set[object] | dict[object, object],
+        right,
+    )
+    return left in right_collection
 
 
 def _apply_equality(operator: str, left: object, right: object) -> bool:
@@ -377,7 +386,7 @@ def _func_select(stream: Stream, condition: Expr, context: EvalContext) -> Strea
 
 
 def _func_sort_by(stream: Stream, key_expr: Expr, context: EvalContext) -> Stream:
-    """Sort stream by key expression evaluated per item."""
+    """Sort stream by key expression evaluated per item in descending order."""
     decorated: list[tuple[int, object, object]] = []
     for index, item in enumerate(stream):
         key_values = evaluate_expr(key_expr, [item], context)
@@ -389,7 +398,7 @@ def _func_sort_by(stream: Stream, key_expr: Expr, context: EvalContext) -> Strea
         comparable = "" if key is None else str(key)
         return (key is None, comparable, original_index)
 
-    ordered = sorted(decorated, key=sort_key)
+    ordered = sorted(decorated, key=sort_key, reverse=True)
     return [item for _idx, _key, item in ordered]
 
 

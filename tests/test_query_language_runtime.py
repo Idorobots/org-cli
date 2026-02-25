@@ -43,11 +43,11 @@ def test_runtime_reverse_and_index() -> None:
     assert result == ["Zeta child"]
 
 
-def test_runtime_sort_by_heading_then_reverse() -> None:
-    """sort_by with reverse should order by heading descending."""
+def test_runtime_sort_by_heading_descending() -> None:
+    """sort_by should order by heading descending."""
     nodes = _sample_nodes()
-    result = _execute(".[0].children | sort_by(.heading) | reverse | .[0].heading", nodes, None)
-    assert result == ["Zeta child"]
+    result = _execute(".[0].children | .[] | sort_by(.heading) | .heading", nodes, None)
+    assert result == ["Zeta child", "Alpha child"]
 
 
 def test_runtime_missing_field_returns_none() -> None:

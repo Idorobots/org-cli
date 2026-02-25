@@ -226,3 +226,26 @@ def test_load_nodes_with_24_00_time() -> None:
     nodes, _, _ = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
 
     assert len(nodes) > 0
+
+
+def test_load_root_nodes_valid() -> None:
+    """Test loading valid org files as root nodes."""
+    from org.parse import load_root_nodes
+
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+    roots, _, _ = load_root_nodes([fixture_path], ["TODO"], ["DONE"])
+
+    assert len(roots) == 1
+    assert len(list(roots[0][1:])) > 0
+
+
+def test_load_root_nodes_todo_keys() -> None:
+    """Test loading todo keys from root nodes."""
+    from org.parse import load_root_nodes
+
+    fixture_path = os.path.join(FIXTURES_DIR, "todo_keys.org")
+    roots, todo_keys, done_keys = load_root_nodes([fixture_path], ["TODO"], ["DONE"])
+
+    assert len(roots) == 1
+    assert set(todo_keys) == {"TODO", "STARTED"}
+    assert set(done_keys) == {"DONE", "CANCELLED"}

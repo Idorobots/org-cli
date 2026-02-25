@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Protocol
+from typing import Protocol, cast
 
 import orgparse
 import typer
@@ -18,6 +18,45 @@ class FilterSpec(Protocol):
 
 
 logger = logging.getLogger("org")
+
+
+def _read_org_file(name: str) -> str:
+    """Read one org file and normalize unsupported time values."""
+    try:
+        with open(name, encoding="utf-8") as f:
+            logger.info("Processing %s...", name)
+            return f.read().replace("24:00", "00:00")
+    except FileNotFoundError as err:
+        raise typer.BadParameter(f"File '{name}' not found") from err
+    except PermissionError as err:
+        raise typer.BadParameter(f"Permission denied for '{name}'") from err
+
+
+def _prepend_todo_config(contents: str, todo_keys: list[str], done_keys: list[str]) -> str:
+    """Prepend TODO keyword configuration to file contents."""
+    todo_config = f"#+TODO: {' '.join(todo_keys)} | {' '.join(done_keys)}\n\n"
+    return todo_config + contents
+
+
+def load_root_nodes(
+    filenames: list[str],
+    todo_keys: list[str],
+    done_keys: list[str],
+) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+    """Load org-mode files and return root nodes with merged todo/done keys."""
+    roots: list[orgparse.node.OrgRootNode] = []
+    all_todo_keys: set[str] = set(todo_keys)
+    all_done_keys: set[str] = set(done_keys)
+
+    for name in filenames:
+        contents = _read_org_file(name)
+        contents = _prepend_todo_config(contents, todo_keys, done_keys)
+        root = cast(orgparse.node.OrgRootNode, orgparse.loads(contents, filename=name))
+        all_todo_keys = all_todo_keys.union(set(root.env.todo_keys))
+        all_done_keys = all_done_keys.union(set(root.env.done_keys))
+        roots.append(root)
+
+    return roots, list(all_todo_keys), list(all_done_keys)
 
 
 def load_nodes(
@@ -42,34 +81,13 @@ def load_nodes(
     Raises:
         typer.BadParameter: If file cannot be read
     """
+    roots, all_todo_keys, all_done_keys = load_root_nodes(filenames, todo_keys, done_keys)
+
     all_nodes: list[orgparse.node.OrgNode] = []
-    all_todo_keys: set[str] = set(todo_keys)
-    all_done_keys: set[str] = set(done_keys)
+    for root in roots:
+        file_nodes = list(root[1:])
+        for filter_spec in filters:
+            file_nodes = filter_spec.filter(file_nodes)
+        all_nodes = all_nodes + file_nodes
 
-    for name in filenames:
-        try:
-            with open(name, encoding="utf-8") as f:
-                logger.info("Processing %s...", name)
-
-                contents = f.read().replace("24:00", "00:00")
-
-                todo_config = f"#+TODO: {' '.join(todo_keys)} | {' '.join(done_keys)}\n\n"
-                contents = todo_config + contents
-
-                ns = orgparse.loads(contents, filename=name)
-                if ns is not None:
-                    all_todo_keys = all_todo_keys.union(set(ns.env.todo_keys))
-                    all_done_keys = all_done_keys.union(set(ns.env.done_keys))
-
-                    file_nodes = list(ns[1:])
-
-                    for filter_spec in filters:
-                        file_nodes = filter_spec.filter(file_nodes)
-
-                    all_nodes = all_nodes + file_nodes
-        except FileNotFoundError as err:
-            raise typer.BadParameter(f"File '{name}' not found") from err
-        except PermissionError as err:
-            raise typer.BadParameter(f"Permission denied for '{name}'") from err
-
-    return all_nodes, list(all_todo_keys), list(all_done_keys)
+    return all_nodes, all_todo_keys, all_done_keys
