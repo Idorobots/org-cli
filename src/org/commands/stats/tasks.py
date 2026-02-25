@@ -52,6 +52,7 @@ class TasksArgs:
     done_keys: str
     filter_gamify_exp_above: int | None
     filter_gamify_exp_below: int | None
+    filter_level: int | None
     filter_repeats_above: int | None
     filter_repeats_below: int | None
     filter_date_from: str | None
@@ -295,6 +296,12 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
         ),
+        filter_level: int | None = typer.Option(
+            None,
+            "--filter-level",
+            metavar="N",
+            help="Filter tasks where heading level equals N",
+        ),
         filter_repeats_above: int | None = typer.Option(
             None,
             "--filter-repeats-above",
@@ -408,6 +415,7 @@ def register(app: typer.Typer) -> None:
             done_keys=done_keys,
             filter_gamify_exp_above=filter_gamify_exp_above,
             filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
             filter_repeats_below=filter_repeats_below,
             filter_date_from=filter_date_from,

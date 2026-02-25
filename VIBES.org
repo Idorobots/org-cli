@@ -2593,17 +2593,31 @@ Comparisons should be supported between any =OrgDate= subclasses, including, spe
 
 Comparison operators should be able to compare any value to =none=
 
-**** TODO Query language filters/ordering
+**** REWORKED Query language filters/ordering
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-25 Wed 21:10] \\
+  It introduced some bugs and left the old filters implementation "for posterity". Needs some cleanup.
+:END:
 
-Reimplement all the filters & orderings in terms of the query language
+Reimplement all the filters & orderings in terms of the query language.
+Filters and ordering passed via the command line should be piped together in the order they appear on the command line, with filtering applied first, followed by the orderings: =<filter1> | <filter2> | ... | <order1> | <order2> | ...=.
 
+The full query string that would run a configured filtering/ordering pipeline should be:
+
+#+begin_example
+[ .[] | <filters and orderings> ][$offset:($offset + $limit))]
+#+end_example
+
+That is, the pipeline iterates though all the nodes on the list, applies the filtering pipeline, constructs a collection of the results and extracts the required number of results for display.
+
+Here's how to treat each filter & ordering switch:
 - ~--filter-gamify-exp-above X~ becomes =select(.properties["gamify_exp"] > X)=
 - ~--filter-gamify-exp-below X~ becomes =select(.properties["gamify_exp"] < X)=
 - ~--filter-repeats-above X~ becomes =select(.repeated_tasks | length > X)=
 - ~--filter-repeats-below X~ becomes =select(.repeated_tasks | length < X)=
 - ~--filter-property P=V~ becomes =select(.properties[P] == V)=
 - ~--filter-level L~ becomes =select(.level == L)=
-- ~--filter-tag REGEX~ becomes =select(.tags[] matches REGEX)=
+- ~--filter-tag REGEX~ becomes =select(select(.tags[] matches REGEX))=
 - ~--filter-heading REGEX~ becomes =select(.heading matches REGEX)=
 - ~--filter-body REGEX~ becomes =select(.body matches REGEX)=
 - ~--filter-completed~ becomes =select(.todo in $done_keys)=
@@ -2620,16 +2634,6 @@ Reimplement all the filters & orderings in terms of the query language
 
 - ~--order-by timestamp-asc~ becomes =sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) | reverse=
 - ~--order-by timestamp-desc~ becomes =sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)=
-
-Filters and ordering passed via the command line should be piped together in the order they appear on the command line, with filtering applied first, followed by the orderings: =<filter1> | <filter2> | ... | <order1> | <order2> | ...=.
-
-The full query string that would run a configured filtering/ordering pipeline should be:
-
-#+begin_example
-[ .[] | <filters and orderings> ][$offset:($offset + $limit))]
-#+end_example
-
-That is, the pipeline iterates though all the nodes on the list, applies the filtering pipeline, constructs a collection of the results and extracts the required number of results for display.
 
 The =build_filter_chain= function should construct the query string and compile that to a query that can be used for node processing. You can rename that function to =build_query=.
 The =load_and_process_data= function should be updated to apply the query to the input nodes stream.

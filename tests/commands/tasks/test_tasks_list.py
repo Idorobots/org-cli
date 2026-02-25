@@ -28,6 +28,7 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         done_keys="DONE",
         filter_gamify_exp_above=None,
         filter_gamify_exp_below=None,
+        filter_level=None,
         filter_repeats_above=None,
         filter_repeats_below=None,
         filter_date_from=None,

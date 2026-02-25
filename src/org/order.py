@@ -53,6 +53,11 @@ ORDER_SPECS: dict[str, OrderSpec] = {
         direction=1,
         label="file order reversed",
     ),
+    "file-order-reversed": OrderSpec(
+        key=_constant_value,
+        direction=1,
+        label="file order reversed",
+    ),
     "timestamp-asc": OrderSpec(
         key=_timestamp_value,
         direction=1,
@@ -114,7 +119,7 @@ def order_nodes(
     for order_value in order_by:
         if order_value == "file-order":
             continue
-        if order_value == "file-order-reverse":
+        if order_value in {"file-order-reverse", "file-order-reversed"}:
             ordered_nodes.reverse()
             continue
 

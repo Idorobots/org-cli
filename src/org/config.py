@@ -26,6 +26,7 @@ COMMAND_OPTION_NAMES = {
     "filter_date_until",
     "filter_gamify_exp_above",
     "filter_gamify_exp_below",
+    "filter_level",
     "filter_headings",
     "filter_not_completed",
     "filter_properties",
@@ -280,6 +281,7 @@ def validate_str_option(key: str, value: object) -> str | None:
     invalid_order_by = key == "--order-by" and value not in {
         "file-order",
         "file-order-reverse",
+        "file-order-reversed",
         "level",
         "timestamp-asc",
         "timestamp-desc",
@@ -301,6 +303,7 @@ def validate_order_by_option(value: object) -> str | list[str] | None:
     allowed = {
         "file-order",
         "file-order-reverse",
+        "file-order-reversed",
         "level",
         "timestamp-asc",
         "timestamp-desc",
@@ -500,6 +503,7 @@ def build_config_defaults(
     global_int_options: dict[str, tuple[str, int | None]] = {
         "--filter-gamify-exp-above": ("filter_gamify_exp_above", None),
         "--filter-gamify-exp-below": ("filter_gamify_exp_below", None),
+        "--filter-level": ("filter_level", None),
         "--filter-repeats-above": ("filter_repeats_above", None),
         "--filter-repeats-below": ("filter_repeats_below", None),
         "--offset": ("offset", 0),

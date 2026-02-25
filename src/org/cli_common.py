@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
-from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 import orgparse
 import typer
@@ -16,22 +15,18 @@ import typer
 from org import config as config_module
 from org.analyze import TimeRange, normalize
 from org.filters import (
-    filter_body,
-    filter_completed,
-    filter_date_from,
-    filter_date_until,
-    filter_gamify_exp_above,
-    filter_gamify_exp_below,
-    filter_heading,
-    filter_not_completed,
-    filter_property,
-    filter_repeats_above,
-    filter_repeats_below,
-    filter_tag,
     preprocess_gamify_categories,
     preprocess_tags_as_category,
 )
 from org.parse import load_root_nodes
+from org.query_language import (
+    EvalContext,
+    QueryParseError,
+    QueryRuntimeError,
+    Stream,
+    compile_query_text,
+)
+from org.query_language.compiler import CompiledQuery
 from org.timestamp import extract_timestamp_any
 from org.validation import (
     parse_date_argument,
@@ -128,18 +123,12 @@ DEFAULT_EXCLUDE = TAGS.union(HEADING).union(
 CATEGORY_NAMES = {"tags": "tags", "heading": "heading words", "body": "body words"}
 
 
-@dataclass
-class Filter:
-    """Specification for a single filter operation."""
-
-    filter: Callable[[list[orgparse.node.OrgNode]], list[orgparse.node.OrgNode]]
-
-
 class FilterArgs(Protocol):
     """Protocol for filter-related CLI arguments."""
 
     filter_gamify_exp_above: int | None
     filter_gamify_exp_below: int | None
+    filter_level: int | None
     filter_repeats_above: int | None
     filter_repeats_below: int | None
     filter_date_from: str | None
@@ -216,33 +205,83 @@ def get_top_tasks(
     return [node for node, _ in sorted_nodes[:max_results]]
 
 
+FILTER_OPTIONS_WITH_VALUE = {
+    "--filter-gamify-exp-above",
+    "--filter-gamify-exp-below",
+    "--filter-level",
+    "--filter-repeats-above",
+    "--filter-repeats-below",
+    "--filter-date-from",
+    "--filter-date-until",
+    "--filter-property",
+    "--filter-tag",
+    "--filter-heading",
+    "--filter-body",
+}
+
+FILTER_OPTIONS_FLAGS = {
+    "--filter-completed",
+    "--filter-not-completed",
+}
+
+ORDER_BY_OPTION = "--order-by"
+
+ORDER_BY_VALUES = {
+    "file-order",
+    "file-order-reverse",
+    "file-order-reversed",
+    "level",
+    "timestamp-asc",
+    "timestamp-desc",
+    "gamify-exp-asc",
+    "gamify-exp-desc",
+}
+
+
+def _parse_option_order_from_argv(argv: list[str], option_name: str) -> list[str]:
+    """Extract option values in command-line order."""
+    values: list[str] = []
+    for index, token in enumerate(argv):
+        if token == option_name and index + 1 < len(argv):
+            values.append(argv[index + 1])
+        elif token.startswith(f"{option_name}="):
+            values.append(token.split("=", 1)[1])
+    return values
+
+
 def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
-    """Parse command-line order of filter arguments.
+    """Parse filter option order from command-line arguments."""
+    filter_order: list[str] = []
+    for token in argv:
+        if token in FILTER_OPTIONS_WITH_VALUE or token in FILTER_OPTIONS_FLAGS:
+            filter_order.append(token)
+            continue
+        for option_name in FILTER_OPTIONS_WITH_VALUE:
+            if token.startswith(f"{option_name}="):
+                filter_order.append(option_name)
+                break
+    return filter_order
 
-    Returns list of (arg_name, position) tuples in command-line order.
 
-    Args:
-        argv: sys.argv (command-line arguments)
+def normalize_order_by_values(order_by: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    """Normalize order-by values into a list."""
+    if order_by is None:
+        return []
+    if isinstance(order_by, list):
+        return order_by
+    if isinstance(order_by, tuple):
+        return list(order_by)
+    return [order_by]
 
-    Returns:
-        List of filter arguments
-    """
-    filter_args = [
-        "--filter-gamify-exp-above",
-        "--filter-gamify-exp-below",
-        "--filter-repeats-above",
-        "--filter-repeats-below",
-        "--filter-date-from",
-        "--filter-date-until",
-        "--filter-property",
-        "--filter-tag",
-        "--filter-heading",
-        "--filter-body",
-        "--filter-completed",
-        "--filter-not-completed",
-    ]
 
-    return [arg for arg in argv if arg in filter_args]
+def validate_order_by_values(order_by: list[str]) -> None:
+    """Validate order-by values."""
+    invalid = [value for value in order_by if value not in ORDER_BY_VALUES]
+    if not invalid:
+        return
+    supported = ", ".join(sorted(ORDER_BY_VALUES))
+    invalid_list = ", ".join(invalid)
+    raise typer.BadParameter(f"--order-by must be one of: {supported}\nGot: {invalid_list}")
 
 
 def count_filter_values(value: list[str] | None) -> int:
@@ -257,6 +296,7 @@ def extend_filter_order_with_defaults(filter_order: list[str], args: FilterArgs)
     expected_counts = {
         "--filter-gamify-exp-above": 1 if args.filter_gamify_exp_above is not None else 0,
         "--filter-gamify-exp-below": 1 if args.filter_gamify_exp_below is not None else 0,
+        "--filter-level": 1 if args.filter_level is not None else 0,
         "--filter-repeats-above": 1 if args.filter_repeats_above is not None else 0,
         "--filter-repeats-below": 1 if args.filter_repeats_below is not None else 0,
         "--filter-date-from": 1 if args.filter_date_from is not None else 0,
@@ -279,56 +319,6 @@ def extend_filter_order_with_defaults(filter_order: list[str], args: FilterArgs)
     return full_order
 
 
-def handle_simple_filter(arg_name: str, args: FilterArgs) -> list[Filter]:
-    """Handle simple filter arguments (gamify_exp, repeats).
-
-    Args:
-        arg_name: Argument name
-        args: Parsed arguments
-
-    Returns:
-        List of Filter objects (0 or 1 item)
-    """
-    if arg_name == "--filter-gamify-exp-above" and args.filter_gamify_exp_above is not None:
-        threshold = args.filter_gamify_exp_above
-        return [Filter(lambda nodes: filter_gamify_exp_above(nodes, threshold))]
-
-    if arg_name == "--filter-gamify-exp-below" and args.filter_gamify_exp_below is not None:
-        threshold = args.filter_gamify_exp_below
-        return [Filter(lambda nodes: filter_gamify_exp_below(nodes, threshold))]
-
-    if arg_name == "--filter-repeats-above" and args.filter_repeats_above is not None:
-        threshold = args.filter_repeats_above
-        return [Filter(lambda nodes: filter_repeats_above(nodes, threshold))]
-
-    if arg_name == "--filter-repeats-below" and args.filter_repeats_below is not None:
-        threshold = args.filter_repeats_below
-        return [Filter(lambda nodes: filter_repeats_below(nodes, threshold))]
-
-    return []
-
-
-def handle_date_filter(arg_name: str, args: FilterArgs) -> list[Filter]:
-    """Handle date filter arguments.
-
-    Args:
-        arg_name: Argument name
-        args: Parsed arguments
-
-    Returns:
-        List of Filter objects (0 or 1 item)
-    """
-    if arg_name == "--filter-date-from" and args.filter_date_from is not None:
-        date_from = parse_date_argument(args.filter_date_from, "--filter-date-from")
-        return [Filter(lambda nodes: filter_date_from(nodes, date_from))]
-
-    if arg_name == "--filter-date-until" and args.filter_date_until is not None:
-        date_until = parse_date_argument(args.filter_date_until, "--filter-date-until")
-        return [Filter(lambda nodes: filter_date_until(nodes, date_until))]
-
-    return []
-
-
 def resolve_date_filters(args: FilterArgs) -> tuple[datetime | None, datetime | None]:
     """Resolve date filter arguments into parsed datetime values."""
     date_from = None
@@ -340,177 +330,187 @@ def resolve_date_filters(args: FilterArgs) -> tuple[datetime | None, datetime | 
     return date_from, date_until
 
 
-def handle_completion_filter(arg_name: str, args: FilterArgs) -> list[Filter]:
-    """Handle completion status filter arguments.
-
-    Args:
-        arg_name: Argument name
-        args: Parsed arguments
-
-    Returns:
-        List of Filter objects (0 or 1 item)
-    """
-    if arg_name == "--filter-completed" and args.filter_completed:
-        return [Filter(filter_completed)]
-
-    if arg_name == "--filter-not-completed" and args.filter_not_completed:
-        return [Filter(filter_not_completed)]
-
-    return []
+def _quote_string(value: str) -> str:
+    """Quote a value as query-language string literal."""
+    return json.dumps(value)
 
 
-def handle_property_filter(name: str, value: str) -> list[Filter]:
-    """Handle property filter arguments.
-
-    Args:
-        name: Property name
-        value: Property value
-
-    Returns:
-        List of Filter objects (1 item)
-    """
-    return [Filter(lambda nodes: filter_property(nodes, name, value))]
-
-
-def handle_tag_filter(pattern: str) -> list[Filter]:
-    """Handle tag filter arguments.
-
-    Args:
-        pattern: Regex pattern to match tags
-
-    Returns:
-        List of Filter objects (1 item)
-    """
-    return [Filter(lambda nodes: filter_tag(nodes, pattern))]
-
-
-def handle_heading_filter(pattern: str) -> list[Filter]:
-    """Handle heading filter arguments.
-
-    Args:
-        pattern: Regex pattern to match headings
-
-    Returns:
-        List of Filter objects (1 item)
-    """
-    return [Filter(lambda nodes: filter_heading(nodes, pattern))]
-
-
-def handle_body_filter(pattern: str) -> list[Filter]:
-    """Handle body filter arguments.
-
-    Args:
-        pattern: Regex pattern to match body text
-
-    Returns:
-        List of Filter objects (1 item)
-    """
-    return [Filter(lambda nodes: filter_body(nodes, pattern))]
+def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
+    """Build query stage for non-indexed filter options."""
+    stage: str | None = None
+    if arg_name == "--filter-gamify-exp-above" and args.filter_gamify_exp_above is not None:
+        threshold = args.filter_gamify_exp_above
+        stage = f'select(.properties["gamify_exp"] > {threshold})'
+    elif arg_name == "--filter-gamify-exp-below" and args.filter_gamify_exp_below is not None:
+        threshold = args.filter_gamify_exp_below
+        stage = f'select(.properties["gamify_exp"] < {threshold})'
+    elif arg_name == "--filter-level" and args.filter_level is not None:
+        stage = f"select(.level == {args.filter_level})"
+    elif arg_name == "--filter-repeats-above" and args.filter_repeats_above is not None:
+        threshold = args.filter_repeats_above
+        stage = f"select(.repeated_tasks | length > {threshold})"
+    elif arg_name == "--filter-repeats-below" and args.filter_repeats_below is not None:
+        threshold = args.filter_repeats_below
+        stage = f"select(.repeated_tasks | length < {threshold})"
+    elif arg_name == "--filter-date-from" and args.filter_date_from is not None:
+        timestamp_value = _quote_string(args.filter_date_from)
+        stage = (
+            "select(.repeated_tasks + .deadline + .closed + .scheduled "
+            f"| max >= timestamp({timestamp_value}))"
+        )
+    elif arg_name == "--filter-date-until" and args.filter_date_until is not None:
+        timestamp_value = _quote_string(args.filter_date_until)
+        stage = (
+            "select(.repeated_tasks + .deadline + .closed + .scheduled "
+            f"| max <= timestamp({timestamp_value}))"
+        )
+    elif arg_name == "--filter-completed" and args.filter_completed:
+        stage = "select(.todo in $done_keys)"
+    elif arg_name == "--filter-not-completed" and args.filter_not_completed:
+        stage = "select(.todo in $todo_keys)"
+    return stage
 
 
-def handle_indexed_filter(
-    arg_name: str,
-    args: FilterArgs,
-    index_trackers: dict[str, int],
-) -> list[Filter]:
-    """Handle indexed filter arguments (property, tag, heading, body).
-
-    Args:
-        arg_name: Filter argument name
-        args: Parsed arguments
-        index_trackers: Dictionary tracking current index for each filter type
-
-    Returns:
-        List of Filter objects (0 or 1 item)
-    """
+def _indexed_filter_stage(
+    arg_name: str, args: FilterArgs, index_trackers: dict[str, int]
+) -> str | None:
+    """Build query stage for indexed multi-value filter options."""
     if (
         arg_name == "--filter-property"
         and args.filter_properties
         and index_trackers["property"] < len(args.filter_properties)
     ):
-        prop_name, prop_value = parse_property_filter(
+        property_name, property_value = parse_property_filter(
             args.filter_properties[index_trackers["property"]]
         )
         index_trackers["property"] += 1
-        return handle_property_filter(prop_name, prop_value)
+        return (
+            "select(.properties["
+            f"{_quote_string(property_name)}"
+            f"] == {_quote_string(property_value)})"
+        )
 
     if (
         arg_name == "--filter-tag"
         and args.filter_tags
         and index_trackers["tag"] < len(args.filter_tags)
     ):
-        tag_pattern = args.filter_tags[index_trackers["tag"]]
+        pattern = args.filter_tags[index_trackers["tag"]]
         index_trackers["tag"] += 1
-        return handle_tag_filter(tag_pattern)
+        return f"select(.tags[] matches {_quote_string(pattern)})"
 
     if (
         arg_name == "--filter-heading"
         and args.filter_headings
         and index_trackers["heading"] < len(args.filter_headings)
     ):
-        heading_pattern = args.filter_headings[index_trackers["heading"]]
+        pattern = args.filter_headings[index_trackers["heading"]]
         index_trackers["heading"] += 1
-        return handle_heading_filter(heading_pattern)
+        return f"select(.heading matches {_quote_string(pattern)})"
 
     if (
         arg_name == "--filter-body"
         and args.filter_bodies
         and index_trackers["body"] < len(args.filter_bodies)
     ):
-        body_pattern = args.filter_bodies[index_trackers["body"]]
+        pattern = f"(?m){args.filter_bodies[index_trackers['body']]}"
         index_trackers["body"] += 1
-        return handle_body_filter(body_pattern)
+        return f"select(.body matches {_quote_string(pattern)})"
 
-    return []
+    return None
 
 
-def create_filter_specs_from_args(args: FilterArgs, filter_order: list[str]) -> list[Filter]:
-    """Create filter specifications from parsed arguments.
+def _filter_stage(arg_name: str, args: FilterArgs, index_trackers: dict[str, int]) -> str | None:
+    """Build one query stage for a filter option occurrence."""
+    simple_stage = _simple_filter_stage(arg_name, args)
+    if simple_stage is not None:
+        return simple_stage
+    return _indexed_filter_stage(arg_name, args, index_trackers)
 
-    Args:
-        args: Parsed command-line arguments
-        filter_order: List of arg_name tuples
 
-    Returns:
-        List of Filter objects in command-line order
-    """
-    filter_specs: list[Filter] = []
+def build_filter_stages(args: FilterArgs, filter_order: list[str]) -> list[str]:
+    """Build query stages for filter pipeline."""
+    filter_stages: list[str] = []
     index_trackers = {"property": 0, "tag": 0, "heading": 0, "body": 0}
-
     for arg_name in filter_order:
-        if arg_name in (
-            "--filter-gamify-exp-above",
-            "--filter-gamify-exp-below",
-            "--filter-repeats-above",
-            "--filter-repeats-below",
-        ):
-            filter_specs.extend(handle_simple_filter(arg_name, args))
-        elif arg_name in ("--filter-date-from", "--filter-date-until"):
-            filter_specs.extend(handle_date_filter(arg_name, args))
-        elif arg_name in ("--filter-property", "--filter-tag", "--filter-heading", "--filter-body"):
-            filter_specs.extend(handle_indexed_filter(arg_name, args, index_trackers))
-        elif arg_name in ("--filter-completed", "--filter-not-completed"):
-            filter_specs.extend(handle_completion_filter(arg_name, args))
-
-    return filter_specs
+        stage = _filter_stage(arg_name, args, index_trackers)
+        if stage is not None:
+            filter_stages.append(stage)
+    return filter_stages
 
 
-def build_filter_chain(args: FilterArgs, argv: list[str]) -> list[Filter]:
-    """Build ordered list of filter functions from CLI arguments.
+def extend_order_values_with_defaults(order_values: list[str], args: object) -> list[str]:
+    """Append config-provided orderings not present in argv order."""
+    desired = normalize_order_by_values(getattr(args, "order_by", None))
+    if not desired:
+        return order_values
 
-    Processes filters in command-line order. Expands --filter presets inline
-    at their position.
+    full_order = list(order_values)
+    for value in desired:
+        if full_order.count(value) < desired.count(value):
+            full_order.append(value)
+    return full_order
 
-    Args:
-        args: Parsed command-line arguments
-        argv: Raw sys.argv to determine ordering
 
-    Returns:
-        List of filter specs to apply sequentially
-    """
+def build_order_stages(args: object, argv: list[str]) -> list[str]:
+    """Build query stages for ordering pipeline."""
+    order_values = _parse_option_order_from_argv(argv, ORDER_BY_OPTION)
+    order_values = extend_order_values_with_defaults(order_values, args)
+    validate_order_by_values(order_values)
+
+    order_stages: list[str] = []
+    for value in order_values:
+        if value == "file-order":
+            order_stages.append(".")
+        elif value in {"file-order-reverse", "file-order-reversed"}:
+            order_stages.append("reverse")
+        elif value == "level":
+            order_stages.append("sort_by(.level)")
+        elif value == "gamify-exp-asc":
+            order_stages.append('sort_by(.properties["gamify_exp"])')
+            order_stages.append("reverse")
+        elif value == "gamify-exp-desc":
+            order_stages.append('sort_by(.properties["gamify_exp"])')
+        elif value == "timestamp-asc":
+            order_stages.append("sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)")
+            order_stages.append("reverse")
+        elif value == "timestamp-desc":
+            order_stages.append("sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)")
+    return order_stages
+
+
+def build_query_text(
+    args: FilterArgs,
+    argv: list[str],
+    include_ordering: bool,
+    include_slice: bool,
+) -> str:
+    """Build query text for the configured filter/ordering pipeline."""
     filter_order = parse_filter_order_from_argv(argv)
     filter_order = extend_filter_order_with_defaults(filter_order, args)
-    return create_filter_specs_from_args(args, filter_order)
+    filter_stages = build_filter_stages(args, filter_order)
+
+    stages = [*filter_stages]
+    if include_ordering:
+        stages.extend(build_order_stages(args, argv))
+
+    pipeline_body = " | ".join(stages)
+    base_query = f"[ .[] | {pipeline_body} ]" if pipeline_body else "[ .[] ]"
+
+    if include_slice:
+        return f"{base_query}[$offset:($offset + $limit)]"
+    return base_query
+
+
+def build_query(
+    args: FilterArgs,
+    argv: list[str],
+    include_ordering: bool,
+    include_slice: bool,
+) -> CompiledQuery:
+    """Compile query for configured filter/ordering pipeline."""
+    query_text = build_query_text(args, argv, include_ordering, include_slice)
+    return compile_query_text(query_text)
 
 
 def normalize_show_value(value: str, mapping: dict[str, str]) -> str:
@@ -626,6 +626,13 @@ class DataLoadArgs(FilterArgs, Protocol):
     category_property: str
 
 
+class SlicedDataLoadArgs(Protocol):
+    """Protocol for args that support query slicing."""
+
+    offset: int
+    max_results: int
+
+
 class RootDataLoadArgs(Protocol):
     """Protocol for loading root nodes without filters or enrichment."""
 
@@ -661,9 +668,8 @@ def load_root_data(
 def load_and_process_data(
     args: DataLoadArgs,
 ) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
-    """Load nodes, preprocess, and apply filters in command order."""
+    """Load nodes, preprocess, and apply query-based filters/ordering."""
     todo_keys, done_keys = validate_global_arguments(args)
-    filters = build_filter_chain(args, sys.argv)
     roots, todo_keys, done_keys = _load_roots_for_inputs(args.files, todo_keys, done_keys)
     nodes = [node for root in roots for node in root[1:]]
 
@@ -673,7 +679,31 @@ def load_and_process_data(
     if args.with_tags_as_category:
         nodes = preprocess_tags_as_category(nodes, args.category_property)
 
-    for filter_spec in filters:
-        nodes = filter_spec.filter(nodes)
+    include_ordering = hasattr(args, "order_by")
+    include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
+    query = build_query(
+        args, sys.argv, include_ordering=include_ordering, include_slice=include_slice
+    )
+
+    context_vars: dict[str, object] = {
+        "todo_keys": todo_keys,
+        "done_keys": done_keys,
+    }
+    if include_slice:
+        sliced_args = cast(SlicedDataLoadArgs, args)
+        context_vars["offset"] = sliced_args.offset
+        context_vars["limit"] = sliced_args.max_results
+
+    try:
+        results = query(Stream([nodes]), EvalContext(context_vars))
+    except (QueryParseError, QueryRuntimeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    flattened: list[object]
+    if len(results) == 1 and isinstance(results[0], list):
+        flattened = cast(list[object], results[0])
+    else:
+        flattened = list(results)
+    nodes = [value for value in flattened if isinstance(value, orgparse.node.OrgNode)]
 
     return nodes, todo_keys, done_keys

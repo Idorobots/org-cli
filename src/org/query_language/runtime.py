@@ -293,7 +293,7 @@ def _apply_binary_operator(operator: str, left: object, right: object) -> object
     if operator == "matches":
         if not isinstance(left, str) or not isinstance(right, str):
             raise QueryRuntimeError("matches operator requires two strings")
-        return bool(re.compile(right).match(left))
+        return bool(re.compile(right).search(left))
     if operator in {"and", "or"}:
         return _apply_boolean(operator, left, right)
     if operator == "in":

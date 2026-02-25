@@ -11,7 +11,6 @@ from rich.syntax import Syntax
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
-from org.order import normalize_order_by, order_nodes
 from org.tui import (
     TaskLineConfig,
     build_console,
@@ -37,6 +36,7 @@ class ListArgs:
     done_keys: str
     filter_gamify_exp_above: int | None
     filter_gamify_exp_below: int | None
+    filter_level: int | None
     filter_repeats_above: int | None
     filter_repeats_below: int | None
     filter_date_from: str | None
@@ -99,31 +99,31 @@ def run_tasks_list(args: ListArgs) -> None:
     """Run the tasks list command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled)
-    order_by = normalize_order_by(args.order_by)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
+    if args.max_results <= 0:
+        console.print("No results", markup=False)
+        return
     with processing_status(console, color_enabled):
         nodes, todo_keys, done_keys = load_and_process_data(args)
-        if not nodes or args.max_results <= 0:
-            limited_nodes = []
+        if not nodes:
+            display_nodes = []
+            output = None
+        elif args.details:
+            display_nodes = nodes
             output = None
         else:
-            ordered_nodes = order_nodes(nodes, order_by)
-            offset_nodes = ordered_nodes[args.offset :]
-            limited_nodes = offset_nodes[: args.max_results]
-            if args.details:
-                output = None
-            else:
-                output = format_short_task_list(
-                    limited_nodes, done_keys, todo_keys, color_enabled, args.buckets
-                )
+            display_nodes = nodes
+            output = format_short_task_list(
+                display_nodes, done_keys, todo_keys, color_enabled, args.buckets
+            )
 
-    if not nodes or not limited_nodes:
+    if not nodes or not display_nodes:
         console.print("No results", markup=False)
         return
 
     if args.details:
-        render_detailed_task_list(limited_nodes, console)
+        render_detailed_task_list(display_nodes, console)
         return
 
     if output:
@@ -181,6 +181,12 @@ def register(app: typer.Typer) -> None:
             "--filter-gamify-exp-below",
             metavar="N",
             help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
+        ),
+        filter_level: int | None = typer.Option(
+            None,
+            "--filter-level",
+            metavar="N",
+            help="Filter tasks where heading level equals N",
         ),
         filter_repeats_above: int | None = typer.Option(
             None,
@@ -315,6 +321,7 @@ def register(app: typer.Typer) -> None:
             done_keys=done_keys,
             filter_gamify_exp_above=filter_gamify_exp_above,
             filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
             filter_repeats_below=filter_repeats_below,
             filter_date_from=filter_date_from,
