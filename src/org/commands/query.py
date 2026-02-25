@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import click
 import orgparse
 import typer
 from orgparse.date import OrgDate
@@ -52,6 +53,8 @@ def _format_org_block(value: object) -> str:
         filename = value.env.filename if value.env.filename else "unknown"
         node_text = str(value).rstrip()
         return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
+    if isinstance(value, OrgDate) and not bool(value):
+        return "none"
     return str(value)
 
 
@@ -93,7 +96,7 @@ def run_query(args: QueryArgs) -> None:
     try:
         compiled_query = compile_query_text(args.query)
     except QueryParseError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+        raise click.UsageError(str(exc)) from exc
 
     with processing_status(console, color_enabled):
         roots, todo_keys, done_keys = load_root_data(args)
@@ -110,7 +113,7 @@ def run_query(args: QueryArgs) -> None:
         stream_nodes = Stream([roots])
         results = compiled_query(stream_nodes, context)
     except QueryRuntimeError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+        raise click.UsageError(str(exc)) from exc
 
     output_values = _flatten_result_stream(results)
     if not output_values:

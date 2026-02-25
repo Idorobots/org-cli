@@ -38,9 +38,38 @@ KNOWN_FUNCTIONS = {
     "sort_by",
     "length",
     "sum",
+    "max",
+    "min",
     "join",
     "map",
+    "type",
+    "timestamp",
+    "clock",
+    "repeated_task",
+    "not",
 }
+
+
+def _parse_line_and_column(line_info: str) -> tuple[int, int]:
+    """Parse line and column from parsy line info string."""
+    line_text, sep, column_text = line_info.partition(":")
+    if sep == "":
+        return (0, 0)
+    if not line_text.isdigit() or not column_text.isdigit():
+        return (0, 0)
+    return (int(line_text), int(column_text))
+
+
+def _format_parse_error(query: str, exc: ParseError) -> str:
+    """Build rich parse error message with query pointer."""
+    line_number, column_number = _parse_line_and_column(exc.line_info())
+    query_lines = query.splitlines()
+    if not query_lines:
+        query_lines = [query]
+
+    error_line = query_lines[line_number] if 0 <= line_number < len(query_lines) else query
+    pointer = " " * max(column_number, 0) + "^"
+    return f"Invalid query syntax: {exc}\n\n{error_line}\n{pointer}"
 
 
 def _decode_string(token_value: str) -> str:
@@ -414,7 +443,7 @@ def parse_query(query: str) -> Expr:
     try:
         result = QUERY_PARSER.parse(query)
     except ParseError as exc:
-        raise QueryParseError(f"Invalid query syntax: {exc}") from exc
+        raise QueryParseError(_format_parse_error(query, exc)) from exc
     if isinstance(result, Expr):
         return result
     raise QueryParseError("Parser did not produce an expression")

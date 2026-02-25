@@ -2467,8 +2467,39 @@ The =none= value handling seems a bit off, it is for instance, impossible to fil
 
 Please make the =Stream= type a full class extending =list=, as to avoid accidental confusion between streams and lists of items in larger queries.
 
-**** TODO Further extensions
-Please add a =not= function for negating conditions: =not(<subquery>)= results in =true= value if subquery is falsy and =false= if it is truthy.
+**** REWORKED Further extensions
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-25 Wed 15:56] \\
+  See comment.
+:END:
+I'd like to make some further improvements to the query language:
+
+Add a =type= query language function that returns a string representation of the type of an object passed to it, example: =.[][0].repeated_tasks[0] | type= would return the string =OrgDateRepeatedTask= or =None=.
+
+Add a =timestamp(...)= query language function that will create Org timestamps via the query language, according to the following rules:
+- =timestamp(<subquery>)= - evaluates the subquery and turns it into an =OrgDate= value if it is a string value that can be parsed,
+- =timestamp(<start_subquery>, <end_subquery>)= - evaluates both subqueries and turns it into an =OrgDate= with a start and end property, the end subquery can evaluate to a =none= value,
+- =timestamp(<start_subquery>, <end_subquery>, <active_subquery>)= - evaluates all subqueries and turns it into an =OrgDate= value with a start, end and active properties set. Either end subquery and active subquery can evaluate to a =none= value.
+
+Add a =clock()= query language function that will create clock entries according to the following rules:
+- =clock(<start_subquery>, <end_subquery>)= - creates an =OrgDateClock= object with a start and end timestamps, the duration property should be computed from the start and end values.
+- =clock(<start_subquery>, <end_subquery>, <active_subquery>)= - creates an =OrgDateClock= object with a start, end and an active state. The duration property should be computed from the start and end values.
+
+Add a =repeated_task(...)= query language function that will create a repeated tasks entry according to the following rules:
+- =repeated_task(<start_subquery>, <before_subquery>, <after_subquery>)= - evaluates all subqueries and constructs an =OrgDateRepeatedTask= object with a start timestamp, before and after states. Either of or all of before, after can be =none=.
+- =repeated_task(<start_subquery>, <before_subquery>, <after_subquery>, <active_subquery>)= - evaluates all subqueries and constructs an =OrgDateRepeatedTask= object with a start timestamp, before and after states and an active state. Either of or all of before, after and active can be =none=.
+
+Add a =not(...)= operator for negating conditions: =not(<subquery>)= results in =true= value if subquery is falsy and =false= if it is truthy.
+
+Make some of the numeric operators work with strings:
+- ="foo" * 2= should be =foofoo= (string duplication)
+- =2 * "foo"= should result in an error
+- ="foo" + "bar"= should be =foobar= (string concatenation)
+
+Make some of the numeric operators work with collections:
+- =[1, 2, 3] + 4]= should be =[1, 2, 3, 4]= (append item to a collection)
+- =[1, 2, 3] - 3= should be =[1, 2]= (remove item from a collection)
+- =[1, 2, 3] - [2, 3]= should be =[1]= (set difference preserwing collection type & ordering)
 
 Better syntax error display - add the query and a pointer to the offset at which the error is occuring. Additionally, please omit the =Invalid value:= prefix in the error message.
 
@@ -2482,47 +2513,135 @@ Expected result:
 Usage: org query [OPTIONS] QUERY [FILE]
 Try 'org query --help' for help.
 ╭─ Error ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ Invalid query syntax: expected one of '!=', ')', '*', '**', '+', ',', '-', '.', '/', '<', '<=', '==', '>', '>=', '[', 'and(?![A-Za-z0-9_])', 'as(?![A-Za-z0-9_])', 'in(?![A-Za-z0-9_])',                        │
-│ 'matches(?![A-Za-z0-9_])', 'mod(?![A-Za-z0-9_])', 'or(?![A-Za-z0-9_])', 'quot(?![A-Za-z0-9_])', 'rem(?![A-Za-z0-9_])', '|' at 0:18                                                                              │
+│ Invalid query syntax: expected one of '!=', ')', '*', '**', '+', ',', '-', '.', '/', '<', '<=', '==', '>', '>=', '[', 'and', 'as', 'in', 'matches', 'mod', 'or', 'quot', 'rem', '|' at 0:18                     │
 │                                                                                                                                                                                                                 │
 │ .[][] | select(not(.todo in $done_keys)) | .todo                                                                                                                                                                │
 │                   ^                                                                                                                                                                                             │
 ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 #+end_example
+***** COMMENT
+Agent got stuck several times when investigating due to network connection issues, not recovering when the connection was restored. Needed manual interruption and asking it to continue. One time it got completely stuck and needed an entirely new session to be established.
 
-**** Query language tests
+**** DONE Collection append & collection max & min functions & booleans
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-25 Wed 17:12]
+:END:
+I'd like to make some extra additions to the query language:
+
+Add a way to append collections:
+- =[1, 2, 3] + [4]= should be =[1, 2, 3, 4]= (concatenate collections)
+
+Concatenation should apply to all collections, preserving the type of the LHS collection.
+
+Add the following functions that allow selecting values from a collection:
+- =max= - returns the "biggest" value in a collection (sort and then select the top element).
+- =min= - returns the "smallest" value in a collection (sort and then select the bottom element).
+
+This should work for collections of comparable values (numeric, string, dates). For mixed-type collections if they are not comparable then there should be an exception raised. Both =max= and =min= functions should return =none= for empty collections.
+
+Adjust the semantics of =or= and =and= operators to accept any value on each side:
+- =a or b= - if a is falsy, return b, otherwise return a, example: ="foo" or "x"= returns "foo".
+- =a and b= - if both values are truthy, return =true=, otherwise return =false=, ="x" and none= returns "false".
+
+**** DONE None & other shenanigans
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-25 Wed 17:33]
+:END:
+The =type= function should print the =none= type for a =none= value, not the capitalised one.
+
+There is a bug in the code, I managed to simplify it to a small reproduction:
+
+Running the following command results in an error. Please analyze the code and fix the cause of this error.
+#+begin_src bash
+poetry run org query '.[][].scheduled' tests/fixtures/simple.org
+#+end_src
+
+It seems that =sort_by()= does not work with dates, running the following command I expect to receive the results ordered by the "latest" timestamp of a node, if present:
+
+#+begin_src bash
+poetry run org query '.[][] | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | [ .[] | select(.) ] | max) | select(.) | .heading'
+#+end_src
+
+The command returns all results instead. Please verify if this is the case and make =sort_by= work with dates.
+
+All of =min=, =max= and =sort_by= should handle =none= values gracefully:
+- =min= should ignore any none values,
+- =max= should ignore any none values,
+- =sort_by= should place any none-corresponding values at the end, order doesn't matter.
+
+**** TODO Query language tests
+
+The query language is now pretty much complete, I don't expect vary many changes. Please add extra tests for the runtime of those queries to improve the coverage over-all. The coverage goal is above 90% over-all, and close to 100% for query language modules.
+
+**** TODO Query language documentation
+
+I'd like to document the query language features in docs/query_language.md. Please create a comprehensive documentation that outlines:
+- how the query language works (high level operation semantics, i.e. streaming data via a pipeline of filters),
+- query construction (high level syntax description, i.e. what constritutes a query and what classes of syntax objects it is comprised of),
+- detailed descriptions of all the syntax rules of the query language with slim, minimal examples (can be contrived but should be syntactically valid)
+- detailed descriptions of all the available operators & functions with examples of usage and the output they produce (can be contrived, but should be syntactically valid)
+- detailed description of values accepted by the language with examples of usage.
+
+The examples should be short and to-the-point, make sure they use each of the features they're meant to document.
+
+Features should be documented briefly in a readable form, this file will be a de-facto reference manual for the query language.
+
+Please point the AGENTS.md file to this documentation directory, but don't modify the README.md file just yet, we will address that separately.
+
 **** Query language filters/ordering
 
-Redo all the filters & orderings in terms of the query language
+Reimplement all the filters & orderings in terms of the query language
 
-- ~--filter-gamify-exp-above X~ - 'select(.properties["gamify_exp"] > X)'
-- ~--filter-gamify-exp-below X~ - 'select(.properties["gamify_exp"] < X)'
-- ~--filter-repeats-above X~ - 'select()'
-- ~--filter-repeats-below X~ - 'select()'
-- ~--filter-date-from X~ - 'select(.latest_timestamp >= X)'
-- ~--filter-date-until X~ - 'select(.latest_timestamp <= X)'
-- ~--filter-property P=V~ - 'select(.properties[P] == V)'
-- ~--filter-level L~ - 'select(.level == L)'
-- ~--filter-tag REGEX~ - 'select(.tags[] matches REGEX)'
-- ~--filter-heading REGEX~ - 'select(.heading matches REGEX)'
-- ~--filter-body REGEX~ - 'select(.body matches REGEX)'
-- ~--filter-completed~ - 'select(.todo in $done_keys)'
-- ~--filter-not-completed~ - 'select(.todo in $todo_keys)'
+- ~--filter-gamify-exp-above X~ becomes =select(.properties["gamify_exp"] > X)=
+- ~--filter-gamify-exp-below X~ becomes =select(.properties["gamify_exp"] < X)=
+- ~--filter-repeats-above X~ becomes =select(.repeated_tasks | length > X)=
+- ~--filter-repeats-below X~ becomes =select(.repeated_tasks | length < X)=
+- ~--filter-date-from X~ becomes ~select(.latest_timestamp >= X)~
+- ~--filter-date-until X~ becomes ~select(.latest_timestamp <= X)~
+- ~--filter-property P=V~ becomes =select(.properties[P] == V)=
+- ~--filter-level L~ becomes =select(.level == L)=
+- ~--filter-tag REGEX~ becomes =select(.tags[] matches REGEX)=
+- ~--filter-heading REGEX~ becomes =select(.heading matches REGEX)=
+- ~--filter-body REGEX~ becomes =select(.body matches REGEX)=
+- ~--filter-completed~ becomes =select(.todo in $done_keys)=
+- ~--filter-not-completed~ becomes =select(.todo in $todo_keys)=
 
-- ~--order-by file-order~ - '.[]'
-- ~--order-by file-order-reversed~ - '.[] | reverse'
-- ~--order-by level~ - 'sortby(.level)'
-- ~--order-by timestamp-asc~ - 'sortby(.latest_timestamp)'
-- ~--order-by timestamp-desc~ - 'sortby(.latest_timestamp) | reverse'
-- ~--order-by gamify-exp-asc~ - 'sortby(.properties["gamify_exp"])'
-- ~--order-by gamify-exp-desc~ - 'sortby(.properties["gamify_exp"]) | reverse'
+- ~--order-by file-order~ becomes ~.~
+- ~--order-by file-order-reversed~ becomes =reverse=
+- ~--order-by level~ becomes =sort_by(.level)=
+- ~--order-by gamify-exp-asc~ becomes =sort_by(.properties["gamify_exp"]) | reverse=
+- ~--order-by gamify-exp-desc~ becomes =sort_by(.properties["gamify_exp"])=
+
+- ~--order-by timestamp-asc~ becomes =sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) | reverse=
+- ~--order-by timestamp-desc~ becomes =sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)=
+
+Filters and ordering passed via the command line should be piped together in the order they appear on the command line, with filtering applied first, followed by the orderings: =<filter1> | <filter2> | ... | <order1> | <order2> | ...=.
+
+The full query string that would run a configured filtering/ordering pipeline should be:
+
+#+begin_example
+[ .[] | <filters and orderings> ][$offset:($offset + $limit))]
+#+end_example
+
+That is, the pipeline iterates though all the nodes on the list, applies the filtering pipeline, constructs a collection of the results and extracts the required number of results for display.
+
+The =build_filter_chain= function should construct the query string and compile that to a query that can be used for node processing. You can rename that function to =build_query=.
+The =load_and_process_data= function should be updated to apply the query to the input nodes stream.
+
+All commands should be updated to use this new way of handling filters and ordering.
+
+Ideally, tests that use filters should remain working unchanged.
 
 **** Query language mutation
 - ~a = b~ assignment operator
+- ~+=~ append
+- ~-=~ remove
+- ~properties.foo = none~ set/delete property
 
-**** Query language documentation
 *** Query tests
 *** Command docs
+
+*** Readme improvements
 ** More Rich support
 - columnar display on the stats summary - tasks section should be to the side of the histograms
 - scroll through task list

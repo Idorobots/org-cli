@@ -36,8 +36,15 @@ from org.query_language.errors import QueryParseError
         "select((.depndencies[] | length) == 0)",
         ".[1:1 + $limit]",
         "sum",
+        "max",
+        "min",
         'join(",")',
         "map(. * 2)",
+        "type",
+        "timestamp(.closed)",
+        "clock(.closed, .scheduled, true)",
+        'repeated_task(.closed, .todo, "DONE", none)',
+        'not(.todo == "DONE")',
         ". as $root | $root[]",
         '[ .[] | select(.todo == "DONE") ] | .[10:20]',
         "[]",
@@ -114,3 +121,15 @@ def test_parse_error_does_not_include_keyword_boundary_regex() -> None:
     with pytest.raises(QueryParseError) as exc_info:
         parse_query("select(.todo ==")
     assert "(?![A-Za-z0-9_])" not in str(exc_info.value)
+
+
+def test_parse_error_includes_query_pointer() -> None:
+    """Syntax errors should include query text and pointer."""
+    query = ".[][] | select(not(.todo in $done_keys) | .todo"
+    with pytest.raises(QueryParseError) as exc_info:
+        parse_query(query)
+
+    message = str(exc_info.value)
+    assert "Invalid query syntax:" in message
+    assert query in message
+    assert "^" in message

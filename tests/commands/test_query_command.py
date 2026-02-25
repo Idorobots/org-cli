@@ -88,3 +88,31 @@ def test_query_removed_cli_options_are_rejected(removed_option: str) -> None:
 
     assert result.exit_code != 0
     assert "No such option" in (result.output or result.stderr)
+
+
+def test_query_syntax_error_shows_pointer_without_invalid_value_prefix() -> None:
+    """Query syntax errors should include pointer and omit Invalid value prefix."""
+    runner = CliRunner()
+    fixture_path = str(os.path.join(FIXTURES_DIR, "multiple_tags.org"))
+
+    result = runner.invoke(
+        app,
+        ["query", ".[][] | select(not(.todo in $done_keys) | .todo", fixture_path],
+    )
+
+    assert result.exit_code != 0
+    assert "Invalid query syntax:" in result.output
+    assert "Invalid value:" not in result.output
+    assert ".[][] | select(not(.todo in $done_keys) | .todo" in result.output
+    assert "^" in result.output
+
+
+def test_query_empty_scheduled_timestamp_renders_none(capsys: pytest.CaptureFixture[str]) -> None:
+    """Querying an unset scheduled timestamp should render as none."""
+    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
+    args = _make_args([fixture_path], ".[][].scheduled")
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    assert captured.strip() == "none"
