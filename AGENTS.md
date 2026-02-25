@@ -27,10 +27,16 @@ org-cli/
 │   ├── conftest.py           # Shared test fixtures
 │   └── __init__.py
 ├── examples/                 # Sample Org-mode archive files
+├── docs/                     # Project documentation
+│   └── query_language.md     # Query language reference manual
 ├── pyproject.toml            # Poetry configuration & build settings
 ├── poetry.lock               # Poetry dependency lock file
 └── .gitignore
 ```
+
+## Documentation
+
+- Query language reference: `docs/query_language.md`
 
 ## Development Setup
 Several helpful Poetry tasks are defined in `pyproject.toml`  that automate running mundane tasks. These tasks should be used whenever possible instead of running individual commands.

@@ -1991,7 +1991,11 @@ Can you please extract the following duplicated piece of code into a helper func
 
 This piece of code is used by all ~stats~ commands currently (~stats tags~ abstracts that into a private function). It would make sense to define a helper for it and reuse that helper in the commands.
 
-** Tasks command                                                                          :CLI:CRUD:
+** DONE Tasks command                                                                     :CLI:CRUD:
+:LOGBOOK:
+- State "DONE"       from              [2026-02-25 Wed 19:11] \\
+  Mutable stuff delegated to another tim.
+:END:
 *** DONE Tasks *R**
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-02-22 Sun 16:18] \\
@@ -2168,30 +2172,6 @@ Add "spinner" (the dots style from Rich) when computing loading the files and co
 
 Add syntax highlighting on the detailed display of org nodes in the ~tasks list~ command output. Do not show any line numbers.
 
-*** Output abstraction
-We will be adding more output options, for instance JSON output, visualization output, etc.
-
-*** JSON output
-- Could be done with pandoc
-
-*** Markdown output
-- Could be done with pandoc
-
-*** Tasks C**D
-- Adding new nodes
-- Removing nodes
-- Moving nodes between headings
-
-*** Tasks **U*
-- Changing TODO state
-  + Update repeats
-  + Update completion dates
-- Setting tags
-- Setting properties
-- Modifying the heading
-- Modifying the body
-
-*** Command docs
 ** REWORKED [#B] More stats                                                            :UX:Analysis:
 :LOGBOOK:
 - State "REWORKED"       from "TODO"       [2026-02-23 Mon 22:16] \\
@@ -2577,7 +2557,11 @@ All of =min=, =max= and =sort_by= should handle =none= values gracefully:
 
 The query language is now pretty much complete, I don't expect vary many changes. Please add extra tests for the runtime of those queries to improve the coverage over-all. The coverage goal is above 90% over-all, and close to 100% for query language modules.
 
-**** TODO Query language documentation
+**** REWORKED Query language documentation
+:LOGBOOK:
+- State "REWORKED"       from "TODO"       [2026-02-25 Wed 19:31] \\
+  Needed sam manual updates.
+:END:
 
 I'd like to document the query language features in docs/query_language.md.
 
@@ -2666,6 +2650,15 @@ Please update the README.md file to briefly describe what this project it and ad
 Then, follow up with a secion for each command that is currently available, where a brief description of what can be achieved with a given command is present with a single invocation example that presents a medium-complexity use case. For the short-output commands, please include an example output. The examples should be instrumental, but easy to understand.
 
 The README file should also point to VIBES.org as the current roadmap of features.
+
+** Output format abstraction
+We will be adding more output options, for instance JSON output, visualization output, etc.
+
+*** JSON output
+- Could be done with pandoc
+
+*** Markdown output
+- Could be done with pandoc
 
 ** Mutable parse tree
 *** Use mutable orgparse
