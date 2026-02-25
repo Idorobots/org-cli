@@ -2191,6 +2191,7 @@ We will be adding more output options, for instance JSON output, visualization o
 - Modifying the heading
 - Modifying the body
 
+*** Command docs
 ** REWORKED [#B] More stats                                                            :UX:Analysis:
 :LOGBOOK:
 - State "REWORKED"       from "TODO"       [2026-02-23 Mon 22:16] \\
@@ -2569,13 +2570,18 @@ All of =min=, =max= and =sort_by= should handle =none= values gracefully:
 - =max= should ignore any none values,
 - =sort_by= should place any none-corresponding values at the end, order doesn't matter.
 
-**** TODO Query language tests
+**** DONE Query language tests
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-25 Wed 18:59]
+:END:
 
 The query language is now pretty much complete, I don't expect vary many changes. Please add extra tests for the runtime of those queries to improve the coverage over-all. The coverage goal is above 90% over-all, and close to 100% for query language modules.
 
 **** TODO Query language documentation
 
-I'd like to document the query language features in docs/query_language.md. Please create a comprehensive documentation that outlines:
+I'd like to document the query language features in docs/query_language.md.
+
+Please create a comprehensive documentation that outlines:
 - how the query language works (high level operation semantics, i.e. streaming data via a pipeline of filters),
 - query construction (high level syntax description, i.e. what constritutes a query and what classes of syntax objects it is comprised of),
 - detailed descriptions of all the syntax rules of the query language with slim, minimal examples (can be contrived but should be syntactically valid)
@@ -2588,7 +2594,7 @@ Features should be documented briefly in a readable form, this file will be a de
 
 Please point the AGENTS.md file to this documentation directory, but don't modify the README.md file just yet, we will address that separately.
 
-**** Query language filters/ordering
+**** TODO Query language filters/ordering
 
 Reimplement all the filters & orderings in terms of the query language
 
@@ -2632,16 +2638,48 @@ All commands should be updated to use this new way of handling filters and order
 
 Ideally, tests that use filters should remain working unchanged.
 
-**** Query language mutation
+*** TODO Query tests
+
+Please add integration tests for the =query= command. I'd like those tests to run various queries on the fixture files and check for expected results.
+
+** Command docs
+
+I'd like to start documenting the available commands.
+
+For this task please create a directory structure in docs/ - I would like there to be a <command_name>_command.md file for each command explaining briefly how to use the command and what its outputs are. I'd like the description to be brief and laconic, while the examples short and understandable. The exmaple outputs should be ellided to only show the basic gist of what the compand outputs, the goal is to keep the documentation short.
+
+For the =stats= commands, please exmplain how to read the frequency plots and histograms.
+
+For the =query= commands, please point to the docs/query_language.md file for documentation.
+
+Mention that various filters & orderings are available, but do not give too many examples of their usage, focus on the command-specific switches, with examples on how to set them up.
+
+Create a file called index.md that will be the entry point for the documentation, it should have a brief description of what =org-cli= is, list all the available commands and link to the other files in the documentation.
+
+The index file should contain the documentation of the configuration files and various defaults that are applied to the arguments.
+
+The index file should also link to =gamify-el= (currently linked-to by the README.md file) and describe how =gamify_exp= is used in =org-cli=. Be brief about it.
+
+Please update the AGENTS.md file to point to the documentation index. While there, please update the command usage invocations, project strucure and project toolchain (deps, etc).
+
+Please update the README.md file to briefly describe what this project it and add a prominient link to the documentation index.
+Then, follow up with a secion for each command that is currently available, where a brief description of what can be achieved with a given command is present with a single invocation example that presents a medium-complexity use case. For the short-output commands, please include an example output. The examples should be instrumental, but easy to understand.
+
+The README file should also point to VIBES.org as the current roadmap of features.
+
+** Mutable parse tree
+*** Use mutable orgparse
+- Bump the library version
+- Use it for repeated task filtering
+- Use it for property additions
+
+*** Query language mutation
 - ~a = b~ assignment operator
 - ~+=~ append
 - ~-=~ remove
 - ~properties.foo = none~ set/delete property
+- update the documentation in docs/query_language.md
 
-*** Query tests
-*** Command docs
-
-*** Readme improvements
 ** More Rich support
 - columnar display on the stats summary - tasks section should be to the side of the histograms
 - scroll through task list

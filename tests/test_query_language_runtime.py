@@ -397,3 +397,305 @@ def test_runtime_returns_stream_type() -> None:
     compiled = compile_query_text(".[] | .heading")
     result = compiled(Stream([_sample_nodes()]), EvalContext({}))
     assert isinstance(result, Stream)
+
+
+def test_runtime_iterate_requires_collection() -> None:
+    """Iteration should fail when applied to a scalar."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[]", 1, None)
+
+
+def test_runtime_index_requires_integer_expression_value() -> None:
+    """Index expression values must be integers."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[0][1.5]", [[1, 2, 3]], None)
+
+
+def test_runtime_index_requires_indexable_base() -> None:
+    """Indexing should fail for non-indexable values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[0][0]", [1], None)
+
+
+def test_runtime_slice_bounds_must_be_int_or_none() -> None:
+    """Slice bounds should reject non-integer values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[0][1.5:2]", [[1, 2, 3]], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[0][1:2.5]", [[1, 2, 3]], None)
+
+
+def test_runtime_bracket_key_must_be_string_or_integer() -> None:
+    """Bracket access should reject unsupported key types."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[0][none]", [[1, 2, 3]], None)
+
+
+def test_runtime_bracket_integer_requires_indexable_base() -> None:
+    """Integer bracket access requires list/tuple/string base values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[0][1]", [{"a": 1}], None)
+
+
+@pytest.mark.parametrize(
+    "query,error_message",
+    [
+        ("1 / 0", "Division by zero"),
+        ("1 mod 0", "Modulo by zero"),
+        ("1 rem 0", "Remainder by zero"),
+        ("1 quot 0", "Quotient by zero"),
+    ],
+)
+def test_runtime_numeric_zero_division_errors(query: str, error_message: str) -> None:
+    """Dividing operators should raise specific zero-division runtime errors."""
+    with pytest.raises(QueryRuntimeError, match=error_message):
+        _execute(query, [None], None)
+
+
+def test_runtime_in_operator_requires_collection_rhs() -> None:
+    """in operator should reject scalar right-hand values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('"a" in 1', [None], None)
+
+
+def test_runtime_in_operator_with_string_rhs_and_non_string_lhs_is_false() -> None:
+    """in against strings should return false for non-string probes."""
+    result = _execute('1 in "123"', [None], None)
+    assert result == [False]
+
+
+def test_runtime_string_comparison_operators() -> None:
+    """String comparisons should use lexical ordering."""
+    result = _execute('"b" > "a", "a" <= "a"', [None], None)
+    assert result == [(True, True)]
+
+
+def test_runtime_function_arity_validation_for_no_arg_functions() -> None:
+    """No-argument functions should reject unexpected argument expressions."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("reverse(1)", [None], None)
+
+
+@pytest.mark.parametrize("function_name", ["select", "sort_by", "join", "map", "not"])
+def test_runtime_function_arity_validation_for_arg_functions(function_name: str) -> None:
+    """Argument-requiring functions should reject missing arguments."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(function_name, [None], None)
+
+
+def test_runtime_join_separator_must_be_string() -> None:
+    """join should validate separator type."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("join(1)", ["a", "b"], None)
+
+
+def test_runtime_sum_requires_numeric_collections() -> None:
+    """sum should reject scalar and mixed-type collections."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("sum", 1, None)
+    with pytest.raises(QueryRuntimeError):
+        _execute("sum", [1, "x"], None)
+
+
+def test_runtime_map_requires_collection_input() -> None:
+    """map should reject scalar inputs."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("map(.)", 1, None)
+
+
+def test_runtime_sort_by_requires_uniform_key_type() -> None:
+    """sort_by should fail when key categories are mixed."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[0] | .[] | sort_by(.)", [[1, "a"]], None)
+
+
+def test_runtime_binary_broadcast_requires_compatible_stream_lengths() -> None:
+    """Binary operators should reject incompatible stream lengths."""
+    compiled = compile_query_text(".[] + .")
+    with pytest.raises(QueryRuntimeError):
+        compiled(Stream([[1, 2], [3]]), EvalContext({}))
+
+
+def test_runtime_tuple_expr_skips_items_when_part_yields_empty_stream() -> None:
+    """Tuple combinations should be omitted if any part is empty."""
+    result = _execute(".[] | (select(none), .)", [1, 2, 3], None)
+    assert result == []
+
+
+def test_runtime_unique_length_and_reverse_variants() -> None:
+    """Utility functions should handle mixed stream and collection inputs."""
+    unique_result = _execute(".[0][] | unique", [[1, 1, 2, 2, 3]], None)
+    reverse_collection = _execute(".[0] | reverse", [[1, 2, 3]], None)
+    reverse_stream = compile_query_text("reverse")(Stream([1, 2, 3]), EvalContext({}))
+    length_result = _execute(".[] | length", [[1], {"a": 1}, {1, 2}, "xy", 10], None)
+
+    assert unique_result == [1, 2, 3]
+    assert reverse_collection == [[3, 2, 1]]
+    assert reverse_stream == [3, 2, 1]
+    assert length_result == [1, 1, 2, 2, None]
+
+
+def test_runtime_constructor_functions_validate_supported_arities() -> None:
+    """Constructor functions should reject unsupported argument counts."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("timestamp(1, 2, 3, 4)", [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute('clock("<2025-01-02 Thu>", "<2025-01-03 Fri>", true, false)', [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute(
+            'repeated_task("<2025-01-02 Thu>", "TODO", "DONE", true, false)',
+            [None],
+            None,
+        )
+
+
+def test_runtime_bracket_field_access_variants() -> None:
+    """Bracket field access should work for dicts, nodes, and none bases."""
+    dict_value = _execute('.[0]["key"]', [{"key": 7}], None)
+    node_value = _execute('.[0]["heading"]', _sample_nodes(), None)
+    none_value = _execute('.[0]["missing"]', [None], None)
+
+    assert dict_value == [7]
+    assert node_value == ["Parent"]
+    assert none_value == [None]
+
+
+def test_runtime_iterate_skips_none_values() -> None:
+    """Iteration should ignore none values in collection streams."""
+    result = _execute(".[] | .[]", [None, [1, 2]], None)
+    assert result == [1, 2]
+
+
+def test_runtime_index_and_slice_on_org_root_variants() -> None:
+    """Root indexing/slicing should support out-of-bounds and full slices."""
+    root = _sample_root()
+    root_index = _execute(".[0][99]", [root], None)
+    root_slice = _execute(".[0][:] | length", [root], None)
+
+    assert root_index == [None]
+    assert root_slice == [4]
+
+
+def test_runtime_slice_requires_sliceable_base() -> None:
+    """Slicing should reject non-sliceable scalar values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[0][1:2]", [1], None)
+
+
+def test_runtime_matches_requires_string_operands() -> None:
+    """matches should reject non-string operands."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('1 matches "1"', [None], None)
+
+
+def test_runtime_extended_string_multiplier_requires_integer_rhs() -> None:
+    """String multiplication should validate integer multiplier."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('"foo" * 1.5', [None], None)
+
+
+def test_runtime_collection_subtraction_preserves_rhs_behavior_for_tuple_and_set() -> None:
+    """Collection subtraction should preserve tuple and set output types."""
+    tuple_result = _execute(".[0] - .[1]", [(1, 2, 3), (2,)], None)
+    set_result = _execute(".[0] - .[1]", [{1, 2, 3}, {2}], None)
+
+    assert tuple_result == [(1, 3)]
+    assert set_result == [{1, 3}]
+
+
+def test_runtime_numeric_and_string_comparison_variants() -> None:
+    """Comparison operators should handle all numeric/string directions."""
+    numeric = _execute("2 > 1, 2 >= 2, 1 < 2, 1 <= 1", [None], None)
+    string = _execute('"b" > "a", "b" >= "b", "a" < "b", "a" <= "a"', [None], None)
+
+    assert numeric == [(True, True, True, True)]
+    assert string == [(True, True, True, True)]
+
+
+def test_runtime_length_supports_org_root() -> None:
+    """length should count top-level nodes on org roots."""
+    root = _sample_root()
+    result = _execute(".[0] | length", [root], None)
+    assert result == [4]
+
+
+def test_runtime_join_supports_org_root_collection_extraction() -> None:
+    """join should accept org roots as collection values."""
+    root = _sample_root()
+    result = _execute('.[0] | map(.heading) | join(",")', [root], None)
+    assert result == ["Parent,Alpha child,Zeta child,Second"]
+
+
+def test_runtime_iter_function_arguments_skip_empty_parts() -> None:
+    """Function argument expansion should skip combinations with empty parts."""
+    result = _execute('timestamp(select(none), "<2025-01-02 Thu>")', [None], None)
+    assert result == []
+
+
+def test_runtime_parse_org_date_accepts_orgdate_values() -> None:
+    """timestamp should accept already-parsed OrgDate values."""
+    result = _execute('timestamp(timestamp("<2025-01-02 Thu>"))', [None], None)
+    assert [str(value) for value in result] == ["<2025-01-02 Thu>"]
+
+
+def test_runtime_parse_org_date_rejects_non_string_non_orgdate() -> None:
+    """timestamp should reject non-string and non-OrgDate values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("timestamp(1)", [None], None)
+
+
+def test_runtime_parse_org_date_rejects_unparseable_strings() -> None:
+    """timestamp should fail for values that cannot be parsed as OrgDate."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('timestamp("xyz")', [None], None)
+
+
+def test_runtime_constructor_functions_accept_none_for_optional_active_flag() -> None:
+    """Constructor active flags should accept none where supported."""
+    result = _execute(
+        'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 10:30>", none)',
+        [None],
+        None,
+    )
+    assert len(result) == 1
+
+
+def test_runtime_unique_skips_duplicate_stream_values() -> None:
+    """unique should remove duplicate values from stream output."""
+    result = _execute(".[] | unique", [1, 1, 2, 2], None)
+    assert result == [1, 2]
+
+
+def test_runtime_sort_by_all_none_keys_preserves_input_order() -> None:
+    """sort_by should keep original order when all keys are none."""
+    result = _execute(".[0] | .[] | sort_by(.)", [[None, None]], None)
+    assert result == [None, None]
+
+
+def test_runtime_unsupported_expression_type_raises_runtime_error() -> None:
+    """Evaluating unknown AST nodes should raise runtime error."""
+    from org.query_language.ast import Expr
+    from org.query_language.compiler import compile_expr
+
+    compiled = compile_expr(Expr())
+    with pytest.raises(QueryRuntimeError):
+        compiled(Stream([None]), EvalContext({}))
+
+
+def test_runtime_unsupported_function_name_raises_runtime_error() -> None:
+    """Unknown function names in AST should raise runtime error."""
+    from org.query_language.ast import FunctionCall
+    from org.query_language.compiler import compile_expr
+
+    compiled = compile_expr(FunctionCall("unknown", None))
+    with pytest.raises(QueryRuntimeError):
+        compiled(Stream([None]), EvalContext({}))
+
+
+def test_runtime_broadcast_with_singleton_side_variants() -> None:
+    """Binary operations should broadcast when one side has length one."""
+    left_singleton = compile_query_text("1 + .")
+    right_singleton = compile_query_text(". + 1")
+
+    assert left_singleton(Stream([2, 3]), EvalContext({})) == [3, 4]
+    assert right_singleton(Stream([2, 3]), EvalContext({})) == [3, 4]

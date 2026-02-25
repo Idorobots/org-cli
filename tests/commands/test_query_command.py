@@ -116,3 +116,14 @@ def test_query_empty_scheduled_timestamp_renders_none(capsys: pytest.CaptureFixt
     captured = capsys.readouterr().out
 
     assert captured.strip() == "none"
+
+
+def test_query_runtime_error_is_reported_as_usage_error() -> None:
+    """Runtime query failures should be shown as usage errors."""
+    runner = CliRunner()
+    fixture_path = str(os.path.join(FIXTURES_DIR, "multiple_tags.org"))
+
+    result = runner.invoke(app, ["query", "1 / 0", fixture_path])
+
+    assert result.exit_code != 0
+    assert "Division by zero" in (result.output or result.stderr)
