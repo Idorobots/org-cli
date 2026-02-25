@@ -8,7 +8,6 @@ import orgparse
 import typer
 from rich.console import Console
 from rich.syntax import Syntax
-from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
@@ -92,11 +91,8 @@ def render_detailed_task_list(
             console.print()
         filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
         node_text = str(node).rstrip()
-        header = Text(f"# {filename}")
-        header.no_wrap = True
-        header.overflow = "ignore"
-        console.print(header, markup=False)
-        console.print(Syntax(node_text, "org", line_numbers=False, word_wrap=False))
+        org_block = f"# {filename}\n{node_text}" if node_text else f"# {filename}"
+        console.print(Syntax(org_block, "org", line_numbers=False, word_wrap=False))
 
 
 def run_tasks_list(args: ListArgs) -> None:

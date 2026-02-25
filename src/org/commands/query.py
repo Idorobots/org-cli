@@ -7,9 +7,9 @@ from dataclasses import dataclass
 import orgparse
 import typer
 from orgparse.date import OrgDate
+from orgparse.node import OrgRootNode
 from rich.console import Console
 from rich.syntax import Syntax
-from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_root_data
@@ -37,7 +37,16 @@ class QueryArgs:
 
 def _is_org_object(value: object) -> bool:
     """Return whether value is an org node or org date object."""
-    return isinstance(value, orgparse.node.OrgNode | OrgDate)
+    return isinstance(value, orgparse.node.OrgNode | OrgRootNode | OrgDate)
+
+
+def _format_org_block(value: object) -> str:
+    """Build org-formatted text block for one value."""
+    if isinstance(value, orgparse.node.OrgNode | OrgRootNode):
+        filename = value.env.filename if value.env.filename else "unknown"
+        node_text = str(value).rstrip()
+        return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
+    return str(value)
 
 
 def _flatten_result_stream(results: list[object]) -> list[object]:
@@ -52,16 +61,9 @@ def _render_org_values(values: list[object], console: Console) -> None:
     for idx, value in enumerate(values):
         if idx > 0:
             console.print()
-        if isinstance(value, orgparse.node.OrgNode):
-            filename = value.env.filename if value.env.filename else "unknown"
-            header = Text(f"# {filename}")
-            header.no_wrap = True
-            header.overflow = "ignore"
-            console.print(header, markup=False)
-            node_text = str(value).rstrip()
-            console.print(Syntax(node_text, "org", line_numbers=False, word_wrap=False))
-            continue
-        console.print(Syntax(str(value), "org", line_numbers=False, word_wrap=False))
+        console.print(
+            Syntax(_format_org_block(value), "org", line_numbers=False, word_wrap=False),
+        )
 
 
 def _format_query_value(value: object) -> str:

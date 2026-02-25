@@ -2417,8 +2417,11 @@ I'd like to tweak the query command's ouput & UX. I identified a few areas that 
    To achieve this, you will have to refactor the parse module and extract some helper functions to create an alternate data loading function (the current =load_data= function can use the new one and "flatten" its resulting set of root nodes to include all the nodes for each of the roots).
    Please remove the filters & ordering CLI arguments handling from the =query= command, all of these filters & orderings can be expressed in the query language itself (we will do so in the future for the other commands).
 
-**** More display tweaks
-Please make sure that the root node is also displayed using the org syntax highlighting.
+**** DONE More display tweaks
+:LOGBOOK:
+- State "DONE"       from              [2026-02-25 Wed 12:10]
+:END:
+Please make sure that the root node is also displayed using the org syntax highlighting. Specifically, if its part of the resulting set of nodes, all nodes should be displayed with org syntax highlighting.
 Please make sure that the filename comment is also displayed using the org syntax highlighitng (treat it as part of the node output).
 These output considerations should also be reflected in the =tasks list --details= output.
 

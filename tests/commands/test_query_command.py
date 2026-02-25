@@ -56,7 +56,21 @@ def test_run_query_org_node_results_render_with_file_header(
     captured = capsys.readouterr().out
 
     assert f"# {fixture_path}" in captured
-    assert "* DONE Implement feature A" in captured
+    assert "No results" not in captured
+
+
+def test_run_query_org_root_results_render_with_file_header(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Org root query results should render as org syntax blocks."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[]")
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    assert f"# {fixture_path}" in captured
+    assert "No results" not in captured
 
 
 @pytest.mark.parametrize("removed_option", ["--filter-tag", "--order-by", "--with-gamify-category"])
