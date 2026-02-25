@@ -53,7 +53,7 @@ def _decode_string(token_value: str) -> str:
 
 def _keyword(name: str) -> Parser:
     """Build a keyword parser with identifier boundary."""
-    return regex(rf"{name}(?![A-Za-z0-9_])")
+    return regex(rf"{name}(?![A-Za-z0-9_])").desc(name)
 
 
 def _lexeme(parser: Parser) -> Parser:
@@ -261,11 +261,11 @@ def _make_parser() -> Parser:
         dot_expression
         | grouped
         | fold
-        | function_call
-        | variable
         | true_literal
         | false_literal
         | none_literal
+        | function_call
+        | variable
         | number_literal
         | string_literal
         | bare_identifier_value

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from itertools import product
 from math import trunc
@@ -34,7 +35,13 @@ from org.query_language.ast import (
 from org.query_language.errors import QueryRuntimeError
 
 
-type Stream = list[object]
+class Stream(list[object]):
+    """Typed stream container for query evaluation values."""
+
+
+def _stream(values: Iterable[object] = ()) -> Stream:
+    """Build a stream from iterable values."""
+    return Stream(values)
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,17 +69,17 @@ def _evaluate_atomic(expr: Expr, stream: Stream, context: EvalContext) -> Stream
     """Evaluate expressions that do not require operator dispatch."""
     result: Stream | None = None
     if isinstance(expr, Identity):
-        result = list(stream)
+        result = _stream(stream)
     elif isinstance(expr, Group):
         result = evaluate_expr(expr.expr, stream, context)
     elif isinstance(expr, FunctionCall):
         result = _evaluate_function(expr, stream, context)
     elif isinstance(expr, Variable):
-        result = [context.variables.get(expr.name)]
+        result = _stream([context.variables.get(expr.name)])
     elif isinstance(expr, NumberLiteral | StringLiteral | BoolLiteral):
-        result = [expr.value]
+        result = _stream([expr.value])
     elif isinstance(expr, NoneLiteral):
-        result = [None]
+        result = _stream([None])
     elif isinstance(expr, AsBinding):
         result = _evaluate_as_binding(expr, stream, context)
     return result
@@ -83,7 +90,7 @@ def _evaluate_operator_expr(expr: Expr, stream: Stream, context: EvalContext) ->
     result: Stream | None = None
     if isinstance(expr, FieldAccess):
         base = evaluate_expr(expr.base, stream, context)
-        result = [_resolve_field(value, expr.field) for value in base]
+        result = _stream([_resolve_field(value, expr.field) for value in base])
     elif isinstance(expr, BracketFieldAccess):
         result = _evaluate_bracket_field_access(expr, stream, context)
     elif isinstance(expr, Iterate):
@@ -113,11 +120,11 @@ def _evaluate_as_binding(expr: AsBinding, stream: Stream, context: EvalContext) 
 def _evaluate_fold(expr: Fold, stream: Stream, context: EvalContext) -> Stream:
     """Fold subquery stream into one list per input stream item."""
     if expr.expr is None:
-        return [[] for _item in stream]
+        return _stream([[] for _item in stream])
 
-    output: Stream = []
+    output = _stream()
     for item in stream:
-        folded_values = evaluate_expr(expr.expr, [item], context)
+        folded_values = evaluate_expr(expr.expr, _stream([item]), context)
         folded: list[object] = []
         for value in folded_values:
             if isinstance(value, tuple):
@@ -146,10 +153,10 @@ def _evaluate_bracket_field_access(
     expr: BracketFieldAccess, stream: Stream, context: EvalContext
 ) -> Stream:
     """Evaluate bracket key access for each item in stream."""
-    results: Stream = []
+    results = _stream()
     for item in stream:
-        base_values = evaluate_expr(expr.base, [item], context)
-        key_values = evaluate_expr(expr.key_expr, [item], context)
+        base_values = evaluate_expr(expr.base, _stream([item]), context)
+        key_values = evaluate_expr(expr.key_expr, _stream([item]), context)
         for base in base_values:
             for key in key_values:
                 results.append(_resolve_bracket_key(base, key))
@@ -175,7 +182,7 @@ def _resolve_bracket_key(base: object, key: object) -> object:
 
 def _evaluate_iterate(base: Stream) -> Stream:
     """Evaluate collection iteration and flatten one level."""
-    output: Stream = []
+    output = _stream()
     for value in base:
         if value is None:
             continue
@@ -191,10 +198,10 @@ def _evaluate_iterate(base: Stream) -> Stream:
 
 def _evaluate_index(expr: Index, stream: Stream, context: EvalContext) -> Stream:
     """Evaluate index access with out-of-bounds returning None."""
-    output: Stream = []
+    output = _stream()
     for item in stream:
-        base_values = evaluate_expr(expr.base, [item], context)
-        index_values = evaluate_expr(expr.index_expr, [item], context)
+        base_values = evaluate_expr(expr.base, _stream([item]), context)
+        index_values = evaluate_expr(expr.index_expr, _stream([item]), context)
         index_pairs = _broadcast(index_values, base_values)
         for index_value, base_value in index_pairs:
             output.append(_index_one(base_value, index_value))
@@ -219,22 +226,22 @@ def _index_one(base_value: object, index_value: object) -> object:
 
 def _evaluate_slice(expr: Slice, stream: Stream, context: EvalContext) -> Stream:
     """Evaluate slice access with out-of-bounds returning empty lists."""
-    output: Stream = []
+    output = _stream()
     for item in stream:
-        base_values = evaluate_expr(expr.base, [item], context)
+        base_values = evaluate_expr(expr.base, _stream([item]), context)
         start_values: Stream
         end_values: Stream
         if expr.start_expr is None:
-            start_values = [cast(object, None)]
+            start_values = _stream([cast(object, None)])
         else:
-            start_values = evaluate_expr(expr.start_expr, [item], context)
+            start_values = evaluate_expr(expr.start_expr, _stream([item]), context)
         if expr.end_expr is None:
-            end_values = [cast(object, None)]
+            end_values = _stream([cast(object, None)])
         else:
-            end_values = evaluate_expr(expr.end_expr, [item], context)
+            end_values = evaluate_expr(expr.end_expr, _stream([item]), context)
         base_start_pairs = _broadcast(start_values, base_values)
         for start_value, base_value in base_start_pairs:
-            end_pairs = _broadcast(end_values, [base_value])
+            end_pairs = _broadcast(end_values, _stream([base_value]))
             for end_value, base_value_for_end in end_pairs:
                 output.append(_slice_one(base_value_for_end, start_value, end_value))
     return output
@@ -261,7 +268,7 @@ def _evaluate_binary_op(expr: BinaryOp, stream: Stream, context: EvalContext) ->
     left_values = evaluate_expr(expr.left, stream, context)
     right_values = evaluate_expr(expr.right, stream, context)
     pairs = _broadcast(left_values, right_values)
-    return [_apply_binary_operator(expr.operator, left, right) for left, right in pairs]
+    return _stream([_apply_binary_operator(expr.operator, left, right) for left, right in pairs])
 
 
 def _apply_binary_operator(operator: str, left: object, right: object) -> object:
@@ -401,9 +408,9 @@ def _compare_string(operator: str, left: str, right: str) -> bool:
 
 def _evaluate_tuple_expr(expr: TupleExpr, stream: Stream, context: EvalContext) -> Stream:
     """Evaluate comma-separated expressions into tuple values."""
-    output: Stream = []
+    output = _stream()
     for item in stream:
-        parts = [evaluate_expr(item_expr, [item], context) for item_expr in expr.items]
+        parts = [evaluate_expr(item_expr, _stream([item]), context) for item_expr in expr.items]
         if any(len(part) == 0 for part in parts):
             continue
         for combo in product(*parts):
@@ -443,8 +450,8 @@ def _func_reverse(stream: Stream) -> Stream:
     """Reverse stream or first collection element."""
     if len(stream) == 1 and isinstance(stream[0], (list, tuple)):
         collection = cast(list[object] | tuple[object, ...], stream[0])
-        return [list(reversed(collection))]
-    reversed_stream = list(stream)
+        return _stream([list(reversed(collection))])
+    reversed_stream = _stream(stream)
     reversed_stream.reverse()
     return reversed_stream
 
@@ -452,7 +459,7 @@ def _func_reverse(stream: Stream) -> Stream:
 def _func_unique(stream: Stream) -> Stream:
     """Return unique stream values preserving order."""
     seen: set[str] = set()
-    output: Stream = []
+    output = _stream()
     for value in stream:
         marker = repr(value)
         if marker in seen:
@@ -464,7 +471,7 @@ def _func_unique(stream: Stream) -> Stream:
 
 def _func_length(stream: Stream) -> Stream:
     """Return length for each stream value."""
-    output: Stream = []
+    output = _stream()
     for value in stream:
         if isinstance(value, OrgRootNode):
             output.append(len(list(value[1:])))
@@ -478,7 +485,7 @@ def _func_length(stream: Stream) -> Stream:
 
 def _func_sum(stream: Stream) -> Stream:
     """Return sum for each collection value in stream."""
-    output: Stream = []
+    output = _stream()
     for value in stream:
         values = _extract_numeric_collection(value)
         output.append(sum(values))
@@ -487,9 +494,9 @@ def _func_sum(stream: Stream) -> Stream:
 
 def _func_select(stream: Stream, condition: Expr, context: EvalContext) -> Stream:
     """Filter stream by condition subquery truthiness."""
-    output: Stream = []
+    output = _stream()
     for item in stream:
-        condition_values = evaluate_expr(condition, [item], context)
+        condition_values = evaluate_expr(condition, _stream([item]), context)
         if any(bool(value) for value in condition_values):
             output.append(item)
     return output
@@ -499,7 +506,7 @@ def _func_sort_by(stream: Stream, key_expr: Expr, context: EvalContext) -> Strea
     """Sort stream by key expression evaluated per item in descending order."""
     decorated: list[tuple[int, object, object]] = []
     for index, item in enumerate(stream):
-        key_values = evaluate_expr(key_expr, [item], context)
+        key_values = evaluate_expr(key_expr, _stream([item]), context)
         key = key_values[0] if key_values else None
         decorated.append((index, key, item))
 
@@ -509,14 +516,14 @@ def _func_sort_by(stream: Stream, key_expr: Expr, context: EvalContext) -> Strea
         return (key is None, comparable, original_index)
 
     ordered = sorted(decorated, key=sort_key, reverse=True)
-    return [item for _idx, _key, item in ordered]
+    return _stream([item for _idx, _key, item in ordered])
 
 
 def _func_join(stream: Stream, separator_expr: Expr, context: EvalContext) -> Stream:
     """Join collection values into strings using dynamic separator expression."""
-    output: Stream = []
+    output = _stream()
     for item in stream:
-        separator_values = evaluate_expr(separator_expr, [item], context)
+        separator_values = evaluate_expr(separator_expr, _stream([item]), context)
         separator = separator_values[0] if separator_values else ""
         if not isinstance(separator, str):
             raise QueryRuntimeError("join separator must evaluate to a string")
@@ -527,12 +534,12 @@ def _func_join(stream: Stream, separator_expr: Expr, context: EvalContext) -> St
 
 def _func_map(stream: Stream, subquery: Expr, context: EvalContext) -> Stream:
     """Map each collection value using a subquery."""
-    output: Stream = []
+    output = _stream()
     for item in stream:
         collection = _extract_collection(item)
         mapped: list[object] = []
         for value in collection:
-            mapped.extend(evaluate_expr(subquery, [value], context))
+            mapped.extend(evaluate_expr(subquery, _stream([value]), context))
         output.append(mapped)
     return output
 

@@ -13,7 +13,13 @@ from rich.syntax import Syntax
 
 from org import config as config_module
 from org.cli_common import load_root_data
-from org.query_language import EvalContext, QueryParseError, QueryRuntimeError, compile_query_text
+from org.query_language import (
+    EvalContext,
+    QueryParseError,
+    QueryRuntimeError,
+    Stream,
+    compile_query_text,
+)
 from org.tui import build_console, processing_status, setup_output
 
 
@@ -101,7 +107,7 @@ def run_query(args: QueryArgs) -> None:
         }
     )
     try:
-        stream_nodes: list[object] = [roots]
+        stream_nodes = Stream([roots])
         results = compiled_query(stream_nodes, context)
     except QueryRuntimeError as exc:
         raise typer.BadParameter(str(exc)) from exc

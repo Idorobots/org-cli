@@ -6,7 +6,7 @@ import orgparse
 import pytest
 from orgparse.node import OrgRootNode
 
-from org.query_language import EvalContext, QueryRuntimeError, compile_query_text
+from org.query_language import EvalContext, QueryRuntimeError, Stream, compile_query_text
 from tests.conftest import node_from_org
 
 
@@ -18,7 +18,7 @@ def _execute(
     compiled = compile_query_text(query)
     context_vars = {} if variables is None else variables
     context = EvalContext(context_vars)
-    return compiled([nodes], context)
+    return compiled(Stream([nodes]), context)
 
 
 def _sample_nodes() -> list[object]:
@@ -48,6 +48,13 @@ def test_runtime_select_done_nodes() -> None:
     nodes = _sample_nodes()
     result = _execute('.[] | select(.todo == "DONE") | .heading', nodes, None)
     assert result == ["Parent", "Zeta child"]
+
+
+def test_runtime_select_not_none_todo_filters_missing_values() -> None:
+    """Comparing against none should treat missing todo as none."""
+    nodes = [*node_from_org("* DONE Keep\n* Plain\n")]
+    result = _execute(".[] | select(.todo != none) | .heading", nodes, None)
+    assert result == ["Keep"]
 
 
 def test_runtime_reverse_and_index() -> None:
@@ -181,3 +188,10 @@ def test_runtime_fold_operator() -> None:
     assert tuple_fold == [[1, 2, 3]]
     assert scalar_fold == [["Parent"], ["Alpha child"], ["Zeta child"], ["Second"]]
     assert empty_fold == [[]]
+
+
+def test_runtime_returns_stream_type() -> None:
+    """Compiled queries should return Stream instances."""
+    compiled = compile_query_text(".[] | .heading")
+    result = compiled(Stream([_sample_nodes()]), EvalContext({}))
+    assert isinstance(result, Stream)

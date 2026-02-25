@@ -5,7 +5,16 @@ from __future__ import annotations
 import pytest
 
 from org.query_language import parse_query
-from org.query_language.ast import AsBinding, BinaryOp, FieldAccess, Fold, FunctionCall, Pipe, Slice
+from org.query_language.ast import (
+    AsBinding,
+    BinaryOp,
+    FieldAccess,
+    Fold,
+    FunctionCall,
+    NoneLiteral,
+    Pipe,
+    Slice,
+)
 from org.query_language.errors import QueryParseError
 
 
@@ -77,6 +86,13 @@ def test_parse_fold_shape() -> None:
     assert isinstance(expr, Fold)
 
 
+def test_parse_none_literal_is_not_identifier_string() -> None:
+    """none should parse as NoneLiteral in comparisons."""
+    expr = parse_query(".todo != none")
+    assert isinstance(expr, BinaryOp)
+    assert isinstance(expr.right, NoneLiteral)
+
+
 @pytest.mark.parametrize(
     "query",
     [
@@ -91,3 +107,10 @@ def test_parse_invalid_queries(query: str) -> None:
     """Parser should reject malformed query text."""
     with pytest.raises(QueryParseError):
         parse_query(query)
+
+
+def test_parse_error_does_not_include_keyword_boundary_regex() -> None:
+    """Syntax errors should not expose keyword-boundary regex internals."""
+    with pytest.raises(QueryParseError) as exc_info:
+        parse_query("select(.todo ==")
+    assert "(?![A-Za-z0-9_])" not in str(exc_info.value)

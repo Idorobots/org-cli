@@ -2455,7 +2455,10 @@ I'd like to extend the query language a little bit. Please implement the followi
 
 - Please add a "stream folding" operator that will allow a subquery stream to be folded back inta a collection. The syntax is as follows: ~[<subquery>]~ - square brackets around a subquery that are not preceeded by a subquery or identity, will cause the inner subquery stream to be folded back into a collection and passed further along as a collection. Here's an example usage: ~[ .[] | select(.todo == "DONE") ] | .[10:20]~ will result in a filtered stream of nodes to be folded into a collection of nodes that then is sliced by the slice operator. The operator should also support scalars, i.e. =.[] | [ .heading ]= would result in a stream of collections of 1 heading value each. The operator should also support tuple folding, i.e. =[.foo, .bar, .baz]= should result in a collection (list) of the values, not a collection of a single tuple, specifically, =[1, 2, 3]= should result in a list of the values 1, 2 and 3. It is possible to create an empty collection this way: =[]=.
 
-**** TODO Query language bugfixes                                                              :Bug:
+**** DONE Query language bugfixes                                                              :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-25 Wed 14:34]
+:END:
 There are several issues that I'd like to take care of:
 
 Please explain where is the =(?![A-Za-z0-9_])= string comming from in the error messages for query language syntax errors. Can the parser be changed to retain its current functionality, but improve the syntax error output by removing these specifiers from the error messages? If so, please remove them.
