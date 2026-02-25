@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -70,6 +71,7 @@ class GroupsArgs:
     max_tags: int
     use: str
     groups: list[str] | None
+    with_numeric_gamify_exp: bool
     with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
@@ -341,6 +343,11 @@ def register(app: typer.Typer) -> None:
             "--with-gamify-category",
             help="Preprocess nodes to set category property based on gamify_exp value",
         ),
+        with_numeric_gamify_exp: bool = typer.Option(
+            False,
+            "--with-numeric-gamify-exp",
+            help="Normalize gamify_exp property values to strict numeric form",
+        ),
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
@@ -393,6 +400,7 @@ def register(app: typer.Typer) -> None:
             max_tags=0,
             use=use,
             groups=groups,
+            with_numeric_gamify_exp=with_numeric_gamify_exp,
             with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
@@ -402,4 +410,6 @@ def register(app: typer.Typer) -> None:
             buckets=buckets,
         )
         config_module.apply_config_defaults(args)
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats groups")
+        config_module.log_command_arguments(args, "stats groups")
         run_stats_groups(args)

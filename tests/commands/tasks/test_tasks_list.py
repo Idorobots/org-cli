@@ -8,8 +8,6 @@ import sys
 import pytest
 
 from org.commands.tasks import list as tasks_list
-from org.order import order_nodes
-from tests.conftest import node_from_org
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
@@ -44,6 +42,7 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         details=False,
         offset=0,
         order_by="timestamp-desc",
+        with_numeric_gamify_exp=False,
         with_gamify_category=False,
         with_tags_as_category=False,
         category_property="CATEGORY",
@@ -52,111 +51,6 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
     for key, value in overrides.items():
         setattr(args, key, value)
     return args
-
-
-def test_order_nodes_timestamp_sorting_missing_last() -> None:
-    """Timestamp ordering should sort and push missing to the end."""
-    org_text = """* DONE Task 1
-CLOSED: [2024-01-10 Wed 10:00]
-
-* DONE Task 2
-CLOSED: [2024-01-12 Fri 09:00]
-
-* TODO Task 3
-"""
-    nodes = node_from_org(org_text)
-
-    desc = order_nodes(nodes, ["timestamp-desc"])
-    asc = order_nodes(nodes, ["timestamp-asc"])
-
-    assert [node.heading for node in desc] == ["Task 2", "Task 1", "Task 3"]
-    assert [node.heading for node in asc] == ["Task 1", "Task 2", "Task 3"]
-
-
-def test_order_nodes_gamify_exp_sorting_missing_last() -> None:
-    """Gamify ordering should sort and push missing to the end."""
-    org_text = """* DONE Task 1
-:PROPERTIES:
-:gamify_exp: 5
-:END:
-
-* DONE Task 2
-:PROPERTIES:
-:gamify_exp: 20
-:END:
-
-* DONE Task 3
-"""
-    nodes = node_from_org(org_text)
-
-    asc = order_nodes(nodes, ["gamify-exp-asc"])
-    desc = order_nodes(nodes, ["gamify-exp-desc"])
-
-    assert [node.heading for node in asc] == ["Task 1", "Task 2", "Task 3"]
-    assert [node.heading for node in desc] == ["Task 2", "Task 1", "Task 3"]
-
-
-def test_order_nodes_file_order_preserved() -> None:
-    """File order should preserve input ordering."""
-    org_text = """* DONE Task 1
-* DONE Task 2
-* DONE Task 3
-"""
-    nodes = node_from_org(org_text)
-
-    ordered = order_nodes(nodes, ["file-order"])
-
-    assert [node.heading for node in ordered] == ["Task 1", "Task 2", "Task 3"]
-
-
-def test_order_nodes_file_order_reverse() -> None:
-    """File order reverse should reverse input ordering."""
-    org_text = """* DONE Task 1
-* DONE Task 2
-* DONE Task 3
-"""
-    nodes = node_from_org(org_text)
-
-    ordered = order_nodes(nodes, ["file-order-reverse"])
-
-    assert [node.heading for node in ordered] == ["Task 3", "Task 2", "Task 1"]
-
-
-def test_order_nodes_level_sorting() -> None:
-    """Level ordering should sort by heading level."""
-    org_text = """* DONE Task 1
-** DONE Task 2
-*** DONE Task 3
-"""
-    nodes = node_from_org(org_text)
-
-    ordered = order_nodes(nodes, ["level"])
-
-    assert [node.heading for node in ordered] == ["Task 1", "Task 2", "Task 3"]
-
-
-def test_order_nodes_multiple_ordering_stable() -> None:
-    """Later orderings should preserve order from earlier orderings for ties."""
-    org_text = """* DONE Task A
-:PROPERTIES:
-:gamify_exp: 10
-:END:
-
-** DONE Task B
-:PROPERTIES:
-:gamify_exp: 10
-:END:
-
-** DONE Task C
-:PROPERTIES:
-:gamify_exp: 20
-:END:
-"""
-    nodes = node_from_org(org_text)
-
-    ordered = order_nodes(nodes, ["level", "gamify-exp-asc"])
-
-    assert [node.heading for node in ordered] == ["Task A", "Task B", "Task C"]
 
 
 def test_run_tasks_list_no_results(

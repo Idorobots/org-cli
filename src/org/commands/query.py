@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 
 import click
@@ -204,4 +205,6 @@ def register(app: typer.Typer) -> None:
             offset=offset,
         )
         config_module.apply_config_defaults(args)
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "query")
+        config_module.log_command_arguments(args, "query")
         run_query(args)

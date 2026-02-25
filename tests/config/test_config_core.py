@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -65,6 +66,7 @@ def test_build_config_defaults_applies_values() -> None:
         "--max-tags": 3,
         "--filter-tag": ["work", "team"],
         "--with-gamify-category": True,
+        "--with-numeric-gamify-exp": True,
         "--use": "heading",
     }
 
@@ -75,6 +77,7 @@ def test_build_config_defaults_applies_values() -> None:
     assert stats_defaults["max_results"] == 25
     assert stats_defaults["max_tags"] == 3
     assert stats_defaults["with_gamify_category"] is True
+    assert stats_defaults["with_numeric_gamify_exp"] is True
     assert stats_defaults["use"] == "heading"
     assert append_defaults["filter_tags"] == ["work", "team"]
 
@@ -212,6 +215,13 @@ def test_build_default_map_strips_command_specific_values() -> None:
     assert "show" not in groups_defaults
 
 
+def test_build_default_map_keeps_tasks_list_buckets_default() -> None:
+    """tasks list default map should include buckets from config."""
+    default_map = config.build_default_map({"buckets": 77})
+
+    assert default_map["tasks"]["list"]["buckets"] == 77
+
+
 def test_apply_config_defaults_applies_inline_and_append_defaults() -> None:
     """apply_config_defaults should fill append and inline values."""
     original_append = dict(config.CONFIG_APPEND_DEFAULTS)
@@ -234,3 +244,60 @@ def test_apply_config_defaults_applies_inline_and_append_defaults() -> None:
         config.CONFIG_APPEND_DEFAULTS.update(original_append)
         config.CONFIG_INLINE_DEFAULTS.clear()
         config.CONFIG_INLINE_DEFAULTS.update(original_inline)
+
+
+def test_log_applied_config_defaults_logs_only_config_applied_values(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Default logging should include only values applied from config."""
+    original_defaults = dict(config.CONFIG_DEFAULTS)
+    original_append = dict(config.CONFIG_APPEND_DEFAULTS)
+    original_inline = dict(config.CONFIG_INLINE_DEFAULTS)
+    try:
+        config.CONFIG_DEFAULTS.clear()
+        config.CONFIG_APPEND_DEFAULTS.clear()
+        config.CONFIG_INLINE_DEFAULTS.clear()
+
+        config.CONFIG_DEFAULTS.update({"max_results": 10, "buckets": 33})
+        config.CONFIG_APPEND_DEFAULTS.update({"filter_tags": ["work"]})
+        config.CONFIG_INLINE_DEFAULTS.update({"mapping_inline": {"foo": "bar"}})
+
+        args = SimpleNamespace(
+            max_results=10,
+            buckets=33,
+            filter_tags=["work"],
+            mapping_inline={"foo": "bar"},
+        )
+
+        with caplog.at_level(logging.INFO, logger="org"):
+            config.log_applied_config_defaults(
+                args,
+                ["stats", "summary", "--max-results", "20"],
+                "stats summary",
+            )
+
+        assert "Config defaults applied (stats summary):" in caplog.text
+        assert "--buckets=33" in caplog.text
+        assert "--filter-tag=['work']" in caplog.text
+        assert "--mapping={'foo': 'bar'}" in caplog.text
+        assert "--max-results=10" not in caplog.text
+    finally:
+        config.CONFIG_DEFAULTS.clear()
+        config.CONFIG_DEFAULTS.update(original_defaults)
+        config.CONFIG_APPEND_DEFAULTS.clear()
+        config.CONFIG_APPEND_DEFAULTS.update(original_append)
+        config.CONFIG_INLINE_DEFAULTS.clear()
+        config.CONFIG_INLINE_DEFAULTS.update(original_inline)
+
+
+def test_log_command_arguments_logs_all_values(caplog: pytest.LogCaptureFixture) -> None:
+    """Command argument logging should include all final argument values."""
+    args = SimpleNamespace(max_results=10, filter_tags=["work"], with_gamify_category=False)
+
+    with caplog.at_level(logging.INFO, logger="org"):
+        config.log_command_arguments(args, "stats summary")
+
+    assert "Command arguments (stats summary):" in caplog.text
+    assert "max_results=10" in caplog.text
+    assert "filter_tags=['work']" in caplog.text
+    assert "with_gamify_category=False" in caplog.text

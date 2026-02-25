@@ -82,6 +82,9 @@ def main() -> None:
     config.CONFIG_APPEND_DEFAULTS.update(append_defaults)
     config.CONFIG_INLINE_DEFAULTS.clear()
     config.CONFIG_INLINE_DEFAULTS.update(inline_defaults)
+    config.CONFIG_DEFAULTS.clear()
+    if defaults is not None:
+        config.CONFIG_DEFAULTS.update(defaults)
 
     command = typer.main.get_command(app)
     default_map = config.build_default_map(defaults) if defaults else None

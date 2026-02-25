@@ -1,6 +1,9 @@
 """Tests for CLI query construction helpers."""
 
+import logging
 from dataclasses import dataclass
+
+import pytest
 
 
 @dataclass
@@ -111,6 +114,45 @@ def test_build_query_text_with_property_filter() -> None:
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
     assert query == '[ .[] | select(.properties["priority"] == "A") ]'
+
+
+def test_build_query_text_with_filter_completed() -> None:
+    """Completed filter should include repeated task completion states."""
+    from org.cli_common import build_query_text
+
+    args = make_args(filter_completed=True)
+    argv = ["org", "tasks", "list", "--filter-completed", "file.org"]
+
+    query = build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+    assert query == ("[ .[] | select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys) ]")
+
+
+def test_build_query_text_with_filter_not_completed() -> None:
+    """Not-completed filter should include tasks with no done state."""
+    from org.cli_common import build_query_text
+
+    args = make_args(filter_not_completed=True)
+    argv = ["org", "tasks", "list", "--filter-not-completed", "file.org"]
+
+    query = build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+    assert query == (
+        "[ .[] | select(not(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys)) ]"
+    )
+
+
+def test_build_query_logs_query_before_compile(caplog: pytest.LogCaptureFixture) -> None:
+    """build_query should log the query text before compilation."""
+    from org.cli_common import build_query
+
+    args = make_args(filter_tags=["simple"])
+    argv = ["org", "stats", "summary", "--filter-tag", "simple", "file.org"]
+
+    with caplog.at_level(logging.INFO, logger="org"):
+        build_query(args, argv, include_ordering=False, include_slice=False)
+
+    assert 'Query: [ .[] | select(.tags[] matches "simple") ]' in caplog.text
 
 
 def test_get_top_day_info_none() -> None:

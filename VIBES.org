@@ -2596,7 +2596,7 @@ Comparison operators should be able to compare any value to =none=
 **** REWORKED Query language filters/ordering
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-02-25 Wed 21:10] \\
-  It introduced some bugs and left the old filters implementation "for posterity". Needs some cleanup.
+  It introduced some bugs and left the old filters implementation "for posterity". Needed some cleanup. Some of the filters work differently - completed/not-completed doesn't update the repeated_tasks.
 :END:
 
 Reimplement all the filters & orderings in terms of the query language.
@@ -2642,11 +2642,39 @@ All commands should be updated to use this new way of handling filters and order
 
 Ideally, tests that use filters should remain working unchanged.
 
+*** REWORKED Tests cleanup & bugfixes                                                          :Bug:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-25 Wed 23:14] \\
+  Needed some reprompting.
+:END:
+
+Please add logging of the configuration defaults applied to the arguments of the different commands.
+
+Please log all argument values that are used to run a command. That should be done in addition to the defaults applied log.
+
+Please add logging of the query that is built with filters and orderings. It should look like this: =Query: <query string>=
+This log should be logged whenever a query is build and about to be executed.
+
+It appears that =tasks list= command does not respect the file-configured =--buckets= value. It does respect the CLI switch. Analogous list in the =stats summary= command does respect the buckets setting. Please make sure that the =tasks list= command respects the configured values.
+
+Please add an additional CLI switch =--with-numeric-gamify-exp= that will update the =gamify_exp= property values on nodes that have it to be strictly numeric, that is:
+- if the property value is already a number, leave the node as is,
+- if the property value is of the form =(X Y)= where both X and Y are numbers, update the property value to just X,
+- if the property value is anything else, update the node to not have the =gamify_exp= property at all.
+
+It is OK now to remove the old filter/ordering tests and the entire filters and order modules for that matter (unless anything of that remains in use).
+
+The =--filter-completed= and =--filter-not-completed= don't work exactly how they used to, I think they should be updated to run the following filters:
+- =--filter-completed= becomes =select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys)=
+- =--filter-not-completed= becomes =select(not(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys))=
+
+Otherwise, none of the repeated tasks count and the not-completed filter omits tasks that don't have a state.
+
 *** TODO Query tests
 
-Please add integration tests for the =query= command. I'd like those tests to run various queries on the fixture files and check for expected results.
+Please add integration tests for the =query= command. I'd like those tests to run various queries on the fixture files and check for expected results. These should be kept to a minimum, just as a sanity check.
 
-** Command docs
+** TODO Command docs
 
 I'd like to start documenting the available commands.
 
@@ -2683,8 +2711,9 @@ We will be adding more output options, for instance JSON output, visualization o
 ** Mutable parse tree
 *** Use mutable orgparse
 - Bump the library version
-- Use it for repeated task filtering
+- Use it for repeated task filtering - =select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys) | .repeated_tasks = [.repeated_tasks[] | select(.after in $done_keys)]=
 - Use it for property additions
+- Use it for numeric gamify exp
 
 *** Query language mutation
 - ~a = b~ assignment operator

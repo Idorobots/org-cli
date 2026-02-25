@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -44,6 +45,7 @@ COMMAND_OPTION_NAMES = {
     "todo_keys",
     "use",
     "with_gamify_category",
+    "with_numeric_gamify_exp",
     "with_tags_as_category",
     "show",
     "groups",
@@ -53,6 +55,52 @@ COMMAND_OPTION_NAMES = {
 
 CONFIG_APPEND_DEFAULTS: dict[str, list[str]] = {}
 CONFIG_INLINE_DEFAULTS: dict[str, object] = {}
+CONFIG_DEFAULTS: dict[str, object] = {}
+
+
+DEST_TO_OPTION_NAME: dict[str, str] = {
+    "buckets": "--buckets",
+    "category_property": "--category-property",
+    "color_flag": "--color/--no-color",
+    "config": "--config",
+    "details": "--details",
+    "done_keys": "--done-keys",
+    "exclude": "--exclude",
+    "exclude_inline": "--exclude",
+    "filter_bodies": "--filter-body",
+    "filter_completed": "--filter-completed",
+    "filter_date_from": "--filter-date-from",
+    "filter_date_until": "--filter-date-until",
+    "filter_gamify_exp_above": "--filter-gamify-exp-above",
+    "filter_gamify_exp_below": "--filter-gamify-exp-below",
+    "filter_headings": "--filter-heading",
+    "filter_level": "--filter-level",
+    "filter_not_completed": "--filter-not-completed",
+    "filter_properties": "--filter-property",
+    "filter_repeats_above": "--filter-repeats-above",
+    "filter_repeats_below": "--filter-repeats-below",
+    "filter_tags": "--filter-tag",
+    "groups": "--group",
+    "mapping": "--mapping",
+    "mapping_inline": "--mapping",
+    "max_groups": "--max-groups",
+    "max_relations": "--max-relations",
+    "max_results": "--max-results",
+    "max_tags": "--max-tags",
+    "min_group_size": "--min-group-size",
+    "offset": "--offset",
+    "order_by": "--order-by",
+    "show": "--show",
+    "todo_keys": "--todo-keys",
+    "use": "--use",
+    "verbose": "--verbose",
+    "with_gamify_category": "--with-gamify-category",
+    "with_numeric_gamify_exp": "--with-numeric-gamify-exp",
+    "with_tags_as_category": "--with-tags-as-category",
+}
+
+
+logger = logging.getLogger("org")
 
 
 def normalize_exclude_values(values: list[str]) -> set[str]:
@@ -511,6 +559,7 @@ def build_config_defaults(
 
     stats_bool_options: dict[str, str] = {
         "--with-gamify-category": "with_gamify_category",
+        "--with-numeric-gamify-exp": "with_numeric_gamify_exp",
         "--with-tags-as-category": "with_tags_as_category",
     }
 
@@ -649,7 +698,6 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
         "use",
         "show",
         "groups",
-        "buckets",
     ):
         tasks_list_defaults.pop(key, None)
     order_by_default = tasks_list_defaults.get("order_by")
@@ -675,6 +723,100 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
         },
         "tasks": {"list": tasks_list_defaults},
     }
+
+
+def _option_was_provided(argv: list[str], option_name: str) -> bool:
+    """Return whether an option is present in argv."""
+    if option_name == "--color/--no-color":
+        return _option_was_provided(argv, "--color") or _option_was_provided(argv, "--no-color")
+    return option_name in argv or any(token.startswith(f"{option_name}=") for token in argv)
+
+
+def _values_equivalent(value: object, default_value: object) -> bool:
+    """Compare argument value against default with minor normalization."""
+    if isinstance(default_value, str) and isinstance(value, (list, tuple)):
+        return list(value) == [default_value]
+    if isinstance(default_value, tuple) and isinstance(value, list):
+        return value == list(default_value)
+    return value == default_value
+
+
+def _format_default_log_entry(option_name: str, value: object) -> str:
+    """Format one option/value pair for config-default logging."""
+    return f"{option_name}={value!r}"
+
+
+def _format_argument_log_entry(arg_name: str, value: object) -> str:
+    """Format one argument/value pair for command argument logging."""
+    return f"{arg_name}={value!r}"
+
+
+def log_applied_config_defaults(args: object, argv: list[str], command_name: str) -> None:
+    """Log config defaults that were applied to command arguments."""
+    if not logger.isEnabledFor(logging.INFO):
+        return
+
+    entries: list[str] = []
+
+    for dest, default_value in CONFIG_DEFAULTS.items():
+        option_name = DEST_TO_OPTION_NAME.get(dest)
+        if option_name is None or not hasattr(args, dest):
+            continue
+        if _option_was_provided(argv, option_name):
+            continue
+        arg_value = getattr(args, dest)
+        if _values_equivalent(arg_value, default_value):
+            entries.append(_format_default_log_entry(option_name, arg_value))
+
+    for dest, values in CONFIG_APPEND_DEFAULTS.items():
+        option_name = DEST_TO_OPTION_NAME.get(dest)
+        if option_name is None or not hasattr(args, dest):
+            continue
+        if _option_was_provided(argv, option_name):
+            continue
+        arg_value = getattr(args, dest)
+        if arg_value == values:
+            entries.append(_format_default_log_entry(option_name, arg_value))
+
+    mapping_inline = CONFIG_INLINE_DEFAULTS.get("mapping_inline")
+    mapping_target = cast(ConfigDefaultsTarget, args) if hasattr(args, "mapping_inline") else None
+    if (
+        mapping_inline is not None
+        and mapping_target is not None
+        and not _option_was_provided(argv, "--mapping")
+        and mapping_target.mapping_inline == mapping_inline
+    ):
+        entries.append(_format_default_log_entry("--mapping", mapping_inline))
+
+    exclude_inline = CONFIG_INLINE_DEFAULTS.get("exclude_inline")
+    exclude_target = cast(ConfigDefaultsTarget, args) if hasattr(args, "exclude_inline") else None
+    if (
+        exclude_inline is not None
+        and exclude_target is not None
+        and not _option_was_provided(argv, "--exclude")
+        and exclude_target.exclude_inline == exclude_inline
+    ):
+        entries.append(_format_default_log_entry("--exclude", exclude_inline))
+
+    if entries:
+        logger.info("Config defaults applied (%s): %s", command_name, ", ".join(entries))
+
+
+def log_command_arguments(args: object, command_name: str) -> None:
+    """Log all final argument values used to run a command."""
+    if not logger.isEnabledFor(logging.INFO):
+        return
+
+    try:
+        arg_items = vars(args).items()
+    except TypeError:
+        return
+
+    entries = [
+        _format_argument_log_entry(arg_name, arg_value)
+        for arg_name, arg_value in sorted(arg_items, key=lambda item: item[0])
+    ]
+    logger.info("Command arguments (%s): %s", command_name, ", ".join(entries))
 
 
 def apply_config_defaults(args: object) -> None:

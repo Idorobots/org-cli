@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sys
 from datetime import datetime
@@ -16,6 +17,7 @@ from org import config as config_module
 from org.analyze import TimeRange, normalize
 from org.filters import (
     preprocess_gamify_categories,
+    preprocess_numeric_gamify_exp,
     preprocess_tags_as_category,
 )
 from org.parse import load_root_nodes
@@ -38,6 +40,8 @@ from org.validation import (
 
 
 MAP: dict[str, str] = {}
+
+logger = logging.getLogger("org")
 
 TAGS: set[str] = set()
 
@@ -364,10 +368,11 @@ def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
             "select(.repeated_tasks + .deadline + .closed + .scheduled "
             f"| max <= timestamp({timestamp_value}))"
         )
+    # FIXME These two should also modify the .repeated_tasks property when mutation is added.
     elif arg_name == "--filter-completed" and args.filter_completed:
-        stage = "select(.todo in $done_keys)"
+        stage = "select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys)"
     elif arg_name == "--filter-not-completed" and args.filter_not_completed:
-        stage = "select(.todo in $todo_keys)"
+        stage = "select(not(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys))"
     return stage
 
 
@@ -510,6 +515,7 @@ def build_query(
 ) -> CompiledQuery:
     """Compile query for configured filter/ordering pipeline."""
     query_text = build_query_text(args, argv, include_ordering, include_slice)
+    logger.info("Query: %s", query_text)
     return compile_query_text(query_text)
 
 
@@ -622,6 +628,7 @@ class DataLoadArgs(FilterArgs, Protocol):
     todo_keys: str
     done_keys: str
     with_gamify_category: bool
+    with_numeric_gamify_exp: bool
     with_tags_as_category: bool
     category_property: str
 
@@ -672,6 +679,9 @@ def load_and_process_data(
     todo_keys, done_keys = validate_global_arguments(args)
     roots, todo_keys, done_keys = _load_roots_for_inputs(args.files, todo_keys, done_keys)
     nodes = [node for root in roots for node in root[1:]]
+
+    if args.with_numeric_gamify_exp:
+        nodes = preprocess_numeric_gamify_exp(nodes)
 
     if args.with_gamify_category:
         nodes = preprocess_gamify_categories(nodes, args.category_property)

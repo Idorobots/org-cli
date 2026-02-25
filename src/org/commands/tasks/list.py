@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 
 import orgparse
@@ -52,6 +53,7 @@ class ListArgs:
     details: bool
     offset: int
     order_by: str | list[str] | tuple[str, ...]
+    with_numeric_gamify_exp: bool
     with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
@@ -291,6 +293,11 @@ def register(app: typer.Typer) -> None:
             "--with-gamify-category",
             help="Preprocess nodes to set category property based on gamify_exp value",
         ),
+        with_numeric_gamify_exp: bool = typer.Option(
+            False,
+            "--with-numeric-gamify-exp",
+            help="Normalize gamify_exp property values to strict numeric form",
+        ),
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
@@ -337,10 +344,13 @@ def register(app: typer.Typer) -> None:
             details=details,
             offset=offset,
             order_by=order_by if order_by is not None else "timestamp-desc",
+            with_numeric_gamify_exp=with_numeric_gamify_exp,
             with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
             buckets=buckets,
         )
         config_module.apply_config_defaults(args)
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks list")
+        config_module.log_command_arguments(args, "tasks list")
         run_tasks_list(args)
