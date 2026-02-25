@@ -420,6 +420,9 @@ def _apply_in_operator(left: object, right: object) -> bool:
 
 def _apply_equality(operator: str, left: object, right: object) -> bool:
     """Apply equality operators."""
+    if isinstance(left, OrgDate) and isinstance(right, OrgDate):
+        left = _org_date_start_for_comparison(left)
+        right = _org_date_start_for_comparison(right)
     if operator == "==":
         return left == right
     return left != right
@@ -433,11 +436,21 @@ def _apply_boolean(operator: str, left: object, right: object) -> object:
 
 
 def _compare(operator: str, left: object, right: object) -> bool:
-    """Apply numeric or string comparison operators."""
+    """Apply numeric, string, or OrgDate comparison operators."""
+    if left is None or right is None:
+        if operator in {">", "<"}:
+            return False
+        return left is None and right is None
+
+    is_org_date = isinstance(left, OrgDate) and isinstance(right, OrgDate)
     is_numeric = isinstance(left, (int, float)) and isinstance(right, (int, float))
     is_string = isinstance(left, str) and isinstance(right, str)
-    if not is_numeric and not is_string:
-        raise QueryRuntimeError("Comparison operators require numeric or string operands")
+    if not is_org_date and not is_numeric and not is_string:
+        raise QueryRuntimeError("Comparison operators require numeric, string, or OrgDate operands")
+    if is_org_date:
+        left_date = _org_date_start_for_comparison(cast(OrgDate, left))
+        right_date = _org_date_start_for_comparison(cast(OrgDate, right))
+        return _compare_datetime(operator, left_date, right_date)
     if is_numeric:
         left_value_num = cast(float | int, left)
         right_value_num = cast(float | int, right)
@@ -471,6 +484,28 @@ def _compare_string(operator: str, left: str, right: str) -> bool:
     if operator == "<=":
         return left <= right
     raise QueryRuntimeError(f"Unsupported comparison operator: {operator}")
+
+
+def _compare_datetime(operator: str, left: datetime, right: datetime) -> bool:
+    """Apply datetime comparisons."""
+    if operator == ">":
+        return left > right
+    if operator == "<":
+        return left < right
+    if operator == ">=":
+        return left >= right
+    if operator == "<=":
+        return left <= right
+    raise QueryRuntimeError(f"Unsupported comparison operator: {operator}")
+
+
+def _org_date_start_for_comparison(value: OrgDate) -> datetime:
+    """Return OrgDate start normalized for comparisons."""
+    if value.start is None:
+        raise QueryRuntimeError("Comparison operators require OrgDate values with start")
+    if isinstance(value.start, datetime):
+        return value.start
+    return datetime(value.start.year, value.start.month, value.start.day)
 
 
 def _evaluate_tuple_expr(expr: TupleExpr, stream: Stream, context: EvalContext) -> Stream:

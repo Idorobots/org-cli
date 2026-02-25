@@ -470,6 +470,105 @@ def test_runtime_string_comparison_operators() -> None:
     assert result == [(True, True)]
 
 
+def test_runtime_org_date_comparison_operators_use_start_values() -> None:
+    """Date comparisons should work across OrgDate variants using start values."""
+    timestamp_value = _execute('timestamp("<2025-01-02 Thu 10:00>")', [None], None)[0]
+    clock_same_start = _execute(
+        'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:00>")',
+        [None],
+        None,
+    )[0]
+    repeated_later = _execute(
+        'repeated_task("<2025-01-03 Fri 09:00>", "TODO", "DONE")',
+        [None],
+        None,
+    )[0]
+
+    equal_result = _execute(
+        ".[0] == .[1], .[0] != .[1], .[0] >= .[1], .[0] <= .[1]",
+        [timestamp_value, clock_same_start],
+        None,
+    )
+    ordered_result = _execute(
+        ".[0] < .[1], .[1] > .[0], .[0] != .[1]",
+        [timestamp_value, repeated_later],
+        None,
+    )
+
+    assert equal_result == [(True, False, True, True)]
+    assert ordered_result == [(True, True, True)]
+
+
+def test_runtime_comparison_rejects_mixed_org_date_and_non_date() -> None:
+    """Date comparisons should still reject mixed date/non-date operands."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('timestamp("<2025-01-02 Thu>") > 1', [None], None)
+
+
+def test_runtime_org_date_ordering_against_none_returns_false() -> None:
+    """Date ordering operators should return false when one side is none."""
+    left_none = _execute(
+        'timestamp("<2025-01-02 Thu>") > none, '
+        'timestamp("<2025-01-02 Thu>") < none, '
+        'timestamp("<2025-01-02 Thu>") >= none, '
+        'timestamp("<2025-01-02 Thu>") <= none',
+        [None],
+        None,
+    )
+    right_none = _execute(
+        'none > timestamp("<2025-01-02 Thu>"), '
+        'none < timestamp("<2025-01-02 Thu>"), '
+        'none >= timestamp("<2025-01-02 Thu>"), '
+        'none <= timestamp("<2025-01-02 Thu>")',
+        [None],
+        None,
+    )
+
+    assert left_none == [(False, False, False, False)]
+    assert right_none == [(False, False, False, False)]
+
+
+def test_runtime_org_date_equality_with_none() -> None:
+    """Date equality operators should work when compared against none."""
+    result = _execute(
+        'timestamp("<2025-01-02 Thu>") == none, timestamp("<2025-01-02 Thu>") != none',
+        [None],
+        None,
+    )
+    assert result == [(False, True)]
+
+
+def test_runtime_comparison_operators_with_none_for_any_type() -> None:
+    """Ordering comparisons with none should follow language-wide none semantics."""
+    result = _execute(
+        "1 > none, 1 < none, 1 >= none, 1 <= none, "
+        "none > 1, none < 1, none >= 1, none <= 1, "
+        "none > none, none < none, none >= none, none <= none, "
+        '"x" > none, "x" <= none',
+        [None],
+        None,
+    )
+
+    assert result == [
+        (
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            True,
+            False,
+            False,
+        )
+    ]
+
+
 def test_runtime_function_arity_validation_for_no_arg_functions() -> None:
     """No-argument functions should reject unexpected argument expressions."""
     with pytest.raises(QueryRuntimeError):

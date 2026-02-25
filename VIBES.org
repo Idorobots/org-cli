@@ -2578,6 +2578,21 @@ Features should be documented briefly in a readable form, this file will be a de
 
 Please point the AGENTS.md file to this documentation directory, but don't modify the README.md file just yet, we will address that separately.
 
+**** REWORKED Comparisons should support dates & nones                                         :Bug:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-25 Wed 20:17] \\
+  Needed a few reprompts.
+:END:
+
+Please update the query language implementation, so that the comparison operators accept dates:
+- =a > b=, =a < b=, ~a >= b~, ~a <= b~, ~a == b~ and ~a != b~ should all compare the start dates and accept any org date types,
+- =a > b=, =a < b= comparing a value against =none= should return =false=,
+- ~a >= b~, ~a <= b~ comparing against =none= should only return =true= if both side are =none=.
+
+Comparisons should be supported between any =OrgDate= subclasses, including, specifically =OrgDateRepeatedTask= and =OrgDate= and also between org dates and the none value.
+
+Comparison operators should be able to compare any value to =none=
+
 **** TODO Query language filters/ordering
 
 Reimplement all the filters & orderings in terms of the query language
@@ -2586,8 +2601,6 @@ Reimplement all the filters & orderings in terms of the query language
 - ~--filter-gamify-exp-below X~ becomes =select(.properties["gamify_exp"] < X)=
 - ~--filter-repeats-above X~ becomes =select(.repeated_tasks | length > X)=
 - ~--filter-repeats-below X~ becomes =select(.repeated_tasks | length < X)=
-- ~--filter-date-from X~ becomes ~select(.latest_timestamp >= X)~
-- ~--filter-date-until X~ becomes ~select(.latest_timestamp <= X)~
 - ~--filter-property P=V~ becomes =select(.properties[P] == V)=
 - ~--filter-level L~ becomes =select(.level == L)=
 - ~--filter-tag REGEX~ becomes =select(.tags[] matches REGEX)=
@@ -2595,6 +2608,9 @@ Reimplement all the filters & orderings in terms of the query language
 - ~--filter-body REGEX~ becomes =select(.body matches REGEX)=
 - ~--filter-completed~ becomes =select(.todo in $done_keys)=
 - ~--filter-not-completed~ becomes =select(.todo in $todo_keys)=
+
+- ~--filter-date-from X~ becomes ~select(.repeated_tasks + .deadline + .closed + .scheduled | max >= timestamp(X))~
+- ~--filter-date-until X~ becomes ~select(.repeated_tasks + .deadline + .closed + .scheduled | max <= timestamp(X)~
 
 - ~--order-by file-order~ becomes ~.~
 - ~--order-by file-order-reversed~ becomes =reverse=

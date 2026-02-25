@@ -166,11 +166,21 @@ Examples below are minimal and syntactically valid. Output is shown as query-val
 ### Equality and comparison
 
 - `==`, `!=`, `>`, `<`, `>=`, `<=`
+- Numeric and string operands compare directly.
+- When both operands are org date values (`OrgDate`, `OrgDateClock`, `OrgDateRepeatedTask`),
+  comparisons use their `start` values.
+- For ordering operators with `none`:
+  - `a > none`, `a < none`, `none > a`, `none < a` are always `false`
+  - `a >= none` and `a <= none` are `true` only when both sides are `none`
 
 ```text
 "b" > "a"             => true
 2 <= 2                => true
 .todo == "DONE"       => true/false per item
+timestamp("<2025-01-02 Thu>") < clock("<2025-01-03 Fri>", "<2025-01-03 Fri>") => true
+timestamp("<2025-01-02 Thu>") > none => false
+none <= none => true
+1 >= none => false
 ```
 
 ### Regex match
