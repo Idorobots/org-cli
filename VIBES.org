@@ -2226,8 +2226,8 @@ Please don't worry about the logic behind the command just yet, we will explore 
 
 *** REWORKED Query language
 :PROPERTIES:
-:slop: [[file:plans/query-language.md]]
-:slop: [[file:plans/query-language1.md]]
+:slop: [[file:plans/rejected/query-language.md]]
+:slop: [[file:plans/rejected/query-language-alt.md]]
 :plan: [[file:plans/query-language2.md]]
 :END:
 :LOGBOOK:
