@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import sys
 from dataclasses import dataclass
-from typing import cast
 
 import orgparse
 import typer
 from rich.console import Console
 from rich.syntax import Syntax
-from rich.text import Text
 
 from org import config as config_module
-from org.cli_common import get_most_recent_timestamp, load_and_process_data
-from org.filters import get_gamify_exp
+from org.cli_common import load_and_process_data
 from org.tui import (
     TaskLineConfig,
     build_console,
@@ -24,74 +21,6 @@ from org.tui import (
     processing_status,
     setup_output,
 )
-
-
-@dataclass(frozen=True)
-class OrderSpec:
-    """Ordering specification for task lists."""
-
-    key: Callable[[orgparse.node.OrgNode], float | int | None]
-    direction: int
-    label: str
-
-
-def _timestamp_value(node: orgparse.node.OrgNode) -> float | None:
-    timestamp = get_most_recent_timestamp(node)
-    return timestamp.timestamp() if timestamp else None
-
-
-def _gamify_exp_value(node: orgparse.node.OrgNode) -> int | None:
-    return get_gamify_exp(node)
-
-
-def _level_value(node: orgparse.node.OrgNode) -> int | None:
-    level = node.level
-    if level is None:
-        return None
-    return cast(int, level)
-
-
-def _constant_value(_: orgparse.node.OrgNode) -> int:
-    return 0
-
-
-ORDER_SPECS: dict[str, OrderSpec] = {
-    "file-order": OrderSpec(
-        key=_constant_value,
-        direction=1,
-        label="file order",
-    ),
-    "file-order-reverse": OrderSpec(
-        key=_constant_value,
-        direction=1,
-        label="file order reversed",
-    ),
-    "timestamp-asc": OrderSpec(
-        key=_timestamp_value,
-        direction=1,
-        label="most recent timestamp ascending",
-    ),
-    "timestamp-desc": OrderSpec(
-        key=_timestamp_value,
-        direction=-1,
-        label="most recent timestamp descending",
-    ),
-    "gamify-exp-asc": OrderSpec(
-        key=_gamify_exp_value,
-        direction=1,
-        label="gamify_exp ascending",
-    ),
-    "gamify-exp-desc": OrderSpec(
-        key=_gamify_exp_value,
-        direction=-1,
-        label="gamify_exp descending",
-    ),
-    "level": OrderSpec(
-        key=_level_value,
-        direction=1,
-        label="level ascending",
-    ),
-}
 
 
 @dataclass
@@ -108,6 +37,7 @@ class ListArgs:
     done_keys: str
     filter_gamify_exp_above: int | None
     filter_gamify_exp_below: int | None
+    filter_level: int | None
     filter_repeats_above: int | None
     filter_repeats_below: int | None
     filter_date_from: str | None
@@ -123,64 +53,11 @@ class ListArgs:
     details: bool
     offset: int
     order_by: str | list[str] | tuple[str, ...]
+    with_numeric_gamify_exp: bool
     with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
     buckets: int
-
-
-def normalize_order_by(order_by: str | list[str] | tuple[str, ...]) -> list[str]:
-    """Normalize order_by values into a list."""
-    if isinstance(order_by, list):
-        return order_by
-    if isinstance(order_by, tuple):
-        return list(order_by)
-    return [order_by]
-
-
-def validate_order_by(order_by: list[str]) -> None:
-    """Validate order_by values."""
-    invalid = [value for value in order_by if value not in ORDER_SPECS]
-    if not invalid:
-        return
-
-    supported = ", ".join(ORDER_SPECS)
-    invalid_list = ", ".join(invalid)
-    raise typer.BadParameter(f"--order-by must be one of: {supported}\nGot: {invalid_list}")
-
-
-def order_nodes(
-    nodes: list[orgparse.node.OrgNode],
-    order_by: list[str],
-) -> list[orgparse.node.OrgNode]:
-    """Order nodes using the selected order criteria in sequence."""
-    validate_order_by(order_by)
-    ordered_nodes = list(nodes)
-
-    for order_value in order_by:
-        if order_value == "file-order":
-            continue
-        if order_value == "file-order-reverse":
-            ordered_nodes.reverse()
-            continue
-
-        order_spec = ORDER_SPECS[order_value]
-        key_fn = order_spec.key
-        direction = order_spec.direction
-
-        def sort_key(
-            node: orgparse.node.OrgNode,
-            key_func: Callable[[orgparse.node.OrgNode], float | int | None] = key_fn,
-            direction_value: int = direction,
-        ) -> tuple[int, float | int]:
-            value = key_func(node)
-            if value is None:
-                return (1, 0)
-            return (0, direction_value * value)
-
-        ordered_nodes = sorted(ordered_nodes, key=sort_key)
-
-    return ordered_nodes
 
 
 def format_short_task_list(
@@ -216,42 +93,39 @@ def render_detailed_task_list(
             console.print()
         filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
         node_text = str(node).rstrip()
-        header = Text(f"# {filename}")
-        header.no_wrap = True
-        header.overflow = "ignore"
-        console.print(header, markup=False)
-        console.print(Syntax(node_text, "org", line_numbers=False, word_wrap=False))
+        org_block = f"# {filename}\n{node_text}" if node_text else f"# {filename}"
+        console.print(Syntax(org_block, "org", line_numbers=False, word_wrap=False))
 
 
 def run_tasks_list(args: ListArgs) -> None:
     """Run the tasks list command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled)
-    order_by = normalize_order_by(args.order_by)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
+    if args.max_results <= 0:
+        console.print("No results", markup=False)
+        return
     with processing_status(console, color_enabled):
         nodes, todo_keys, done_keys = load_and_process_data(args)
-        if not nodes or args.max_results <= 0:
-            limited_nodes = []
+        if not nodes:
+            display_nodes = []
+            output = None
+        elif args.details:
+            display_nodes = nodes
             output = None
         else:
-            ordered_nodes = order_nodes(nodes, order_by)
-            offset_nodes = ordered_nodes[args.offset :]
-            limited_nodes = offset_nodes[: args.max_results]
-            if args.details:
-                output = None
-            else:
-                output = format_short_task_list(
-                    limited_nodes, done_keys, todo_keys, color_enabled, args.buckets
-                )
+            display_nodes = nodes
+            output = format_short_task_list(
+                display_nodes, done_keys, todo_keys, color_enabled, args.buckets
+            )
 
-    if not nodes or not limited_nodes:
+    if not nodes or not display_nodes:
         console.print("No results", markup=False)
         return
 
     if args.details:
-        render_detailed_task_list(limited_nodes, console)
+        render_detailed_task_list(display_nodes, console)
         return
 
     if output:
@@ -309,6 +183,12 @@ def register(app: typer.Typer) -> None:
             "--filter-gamify-exp-below",
             metavar="N",
             help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
+        ),
+        filter_level: int | None = typer.Option(
+            None,
+            "--filter-level",
+            metavar="N",
+            help="Filter tasks where heading level equals N",
         ),
         filter_repeats_above: int | None = typer.Option(
             None,
@@ -404,7 +284,7 @@ def register(app: typer.Typer) -> None:
             "--order-by",
             metavar="ORDER",
             help=(
-                "Order tasks by: file-order, file-order-reverse, level, timestamp-asc, "
+                "Order tasks by: file-order, file-order-reversed, level, timestamp-asc, "
                 "timestamp-desc, gamify-exp-asc, gamify-exp-desc"
             ),
         ),
@@ -412,6 +292,11 @@ def register(app: typer.Typer) -> None:
             False,
             "--with-gamify-category",
             help="Preprocess nodes to set category property based on gamify_exp value",
+        ),
+        with_numeric_gamify_exp: bool = typer.Option(
+            False,
+            "--with-numeric-gamify-exp",
+            help="Normalize gamify_exp property values to strict numeric form",
         ),
         with_tags_as_category: bool = typer.Option(
             False,
@@ -443,6 +328,7 @@ def register(app: typer.Typer) -> None:
             done_keys=done_keys,
             filter_gamify_exp_above=filter_gamify_exp_above,
             filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
             filter_repeats_below=filter_repeats_below,
             filter_date_from=filter_date_from,
@@ -458,10 +344,13 @@ def register(app: typer.Typer) -> None:
             details=details,
             offset=offset,
             order_by=order_by if order_by is not None else "timestamp-desc",
+            with_numeric_gamify_exp=with_numeric_gamify_exp,
             with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
             buckets=buckets,
         )
         config_module.apply_config_defaults(args)
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks list")
+        config_module.log_command_arguments(args, "tasks list")
         run_tasks_list(args)

@@ -10,6 +10,9 @@ import orgparse
 from org.timestamp import extract_timestamp_any
 
 
+_GAMIFY_EXP_TUPLE_PATTERN = re.compile(r"^\(\s*([+-]?\d+)\s+([+-]?\d+)\s*\)$")
+
+
 class _FilteredOrgNode(orgparse.node.OrgNode):
     """Wrapper for OrgNode that overrides repeated_tasks without copying the entire node.
 
@@ -52,51 +55,80 @@ class _FilteredOrgNode(orgparse.node.OrgNode):
         return getattr(self._original_node, name)
 
 
-class _PropertyEnrichedOrgNode(orgparse.node.OrgNode):
-    """Wrapper for OrgNode that adds/overrides properties without copying the entire node.
-
-    This class delegates all attribute access to the original node except for properties,
-    which is extended with additional key-value pairs. This avoids deep copying.
-    """
+class _PropertyRewrittenOrgNode(orgparse.node.OrgNode):
+    """Wrapper for OrgNode with fully rewritten properties."""
 
     def __init__(
         self,
         original_node: orgparse.node.OrgNode,
-        additional_properties: dict[str, str],
+        rewritten_properties: dict[str, typing.Any],
     ) -> None:
-        """Initialize with original node and additional properties.
-
-        Args:
-            original_node: The original OrgNode to wrap
-            additional_properties: Properties to add/override
-        """
+        """Initialize with original node and rewritten properties."""
         self._original_node = original_node
-        self._merged_properties = {}
-        self._merged_properties.update(original_node.properties)
-        self._merged_properties.update(additional_properties)
+        self._rewritten_properties = rewritten_properties
 
     @property
     def properties(self) -> dict[str, typing.Any]:
-        """Return merged properties (original + additional).
-
-        Additional properties override original ones with same key.
-
-        Returns:
-            Merged properties dictionary
-        """
-
-        return self._merged_properties
+        """Return rewritten properties dictionary."""
+        return self._rewritten_properties
 
     def __getattr__(self, name: str) -> typing.Any:  # noqa: ANN401
-        """Delegate attribute access to the original node.
-
-        Args:
-            name: Attribute name
-
-        Returns:
-            Attribute value from original node
-        """
+        """Delegate attribute access to the original node."""
         return getattr(self._original_node, name)
+
+
+def _parse_strict_numeric_gamify_exp(value: str) -> int | None:
+    """Parse gamify_exp from a string into a strict integer value."""
+    stripped = value.strip()
+    if not stripped:
+        return None
+
+    try:
+        return int(stripped)
+    except ValueError:
+        pass
+
+    match = _GAMIFY_EXP_TUPLE_PATTERN.fullmatch(stripped)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def preprocess_numeric_gamify_exp(
+    nodes: list[orgparse.node.OrgNode],
+) -> list[orgparse.node.OrgNode]:
+    """Normalize gamify_exp property values to strict numeric form.
+
+    Rules:
+    - Numeric values stay unchanged
+    - "(X Y)" values where both X and Y are numeric become X
+    - Any other value removes gamify_exp from properties
+    """
+    normalized_nodes: list[orgparse.node.OrgNode] = []
+
+    for node in nodes:
+        if "gamify_exp" not in node.properties:
+            normalized_nodes.append(node)
+            continue
+
+        raw_value = node.properties["gamify_exp"]
+        if isinstance(raw_value, int) and not isinstance(raw_value, bool):
+            normalized_nodes.append(node)
+            continue
+
+        normalized_value: int | None = None
+        if isinstance(raw_value, str):
+            normalized_value = _parse_strict_numeric_gamify_exp(raw_value)
+
+        rewritten_properties = dict(node.properties)
+        if normalized_value is None:
+            rewritten_properties.pop("gamify_exp", None)
+        else:
+            rewritten_properties["gamify_exp"] = normalized_value
+
+        normalized_nodes.append(_PropertyRewrittenOrgNode(node, rewritten_properties))
+
+    return normalized_nodes
 
 
 def parse_gamify_exp(gamify_exp_value: str | None) -> int | None:
@@ -563,7 +595,13 @@ def preprocess_gamify_categories(
     """
     # FIXME This is pretty slow, should be refactored in the future.
     return [
-        _PropertyEnrichedOrgNode(node, {category_property: get_gamify_category(node)})
+        _PropertyRewrittenOrgNode(
+            node,
+            {
+                **node.properties,
+                category_property: get_gamify_category(node),
+            },
+        )
         for node in nodes
     ]
 
@@ -591,7 +629,13 @@ def preprocess_tags_as_category(
         # FIXME node.tags is a set, but we want the ordered occurances.
         if node._tags and len(node._tags) > 0:
             first_tag = node._tags[0]
-            wrapped = _PropertyEnrichedOrgNode(node, {category_property: first_tag})
+            wrapped = _PropertyRewrittenOrgNode(
+                node,
+                {
+                    **node.properties,
+                    category_property: first_tag,
+                },
+            )
             result.append(wrapped)
         else:
             result.append(node)

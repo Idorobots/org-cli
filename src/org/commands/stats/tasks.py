@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -52,6 +53,7 @@ class TasksArgs:
     done_keys: str
     filter_gamify_exp_above: int | None
     filter_gamify_exp_below: int | None
+    filter_level: int | None
     filter_repeats_above: int | None
     filter_repeats_below: int | None
     filter_date_from: str | None
@@ -66,6 +68,7 @@ class TasksArgs:
     max_results: int
     max_tags: int
     use: str
+    with_numeric_gamify_exp: bool
     with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
@@ -295,6 +298,12 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
         ),
+        filter_level: int | None = typer.Option(
+            None,
+            "--filter-level",
+            metavar="N",
+            help="Filter tasks where heading level equals N",
+        ),
         filter_repeats_above: int | None = typer.Option(
             None,
             "--filter-repeats-above",
@@ -378,6 +387,11 @@ def register(app: typer.Typer) -> None:
             "--with-gamify-category",
             help="Preprocess nodes to set category property based on gamify_exp value",
         ),
+        with_numeric_gamify_exp: bool = typer.Option(
+            False,
+            "--with-numeric-gamify-exp",
+            help="Normalize gamify_exp property values to strict numeric form",
+        ),
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
@@ -408,6 +422,7 @@ def register(app: typer.Typer) -> None:
             done_keys=done_keys,
             filter_gamify_exp_above=filter_gamify_exp_above,
             filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
             filter_repeats_below=filter_repeats_below,
             filter_date_from=filter_date_from,
@@ -422,6 +437,7 @@ def register(app: typer.Typer) -> None:
             max_results=max_results,
             max_tags=5,
             use="tags",
+            with_numeric_gamify_exp=with_numeric_gamify_exp,
             with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
@@ -431,4 +447,6 @@ def register(app: typer.Typer) -> None:
             buckets=buckets,
         )
         config_module.apply_config_defaults(args)
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats tasks")
+        config_module.log_command_arguments(args, "stats tasks")
         run_stats_tasks(args)

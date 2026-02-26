@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -26,6 +27,7 @@ COMMAND_OPTION_NAMES = {
     "filter_date_until",
     "filter_gamify_exp_above",
     "filter_gamify_exp_below",
+    "filter_level",
     "filter_headings",
     "filter_not_completed",
     "filter_properties",
@@ -43,6 +45,7 @@ COMMAND_OPTION_NAMES = {
     "todo_keys",
     "use",
     "with_gamify_category",
+    "with_numeric_gamify_exp",
     "with_tags_as_category",
     "show",
     "groups",
@@ -52,6 +55,52 @@ COMMAND_OPTION_NAMES = {
 
 CONFIG_APPEND_DEFAULTS: dict[str, list[str]] = {}
 CONFIG_INLINE_DEFAULTS: dict[str, object] = {}
+CONFIG_DEFAULTS: dict[str, object] = {}
+
+
+DEST_TO_OPTION_NAME: dict[str, str] = {
+    "buckets": "--buckets",
+    "category_property": "--category-property",
+    "color_flag": "--color/--no-color",
+    "config": "--config",
+    "details": "--details",
+    "done_keys": "--done-keys",
+    "exclude": "--exclude",
+    "exclude_inline": "--exclude",
+    "filter_bodies": "--filter-body",
+    "filter_completed": "--filter-completed",
+    "filter_date_from": "--filter-date-from",
+    "filter_date_until": "--filter-date-until",
+    "filter_gamify_exp_above": "--filter-gamify-exp-above",
+    "filter_gamify_exp_below": "--filter-gamify-exp-below",
+    "filter_headings": "--filter-heading",
+    "filter_level": "--filter-level",
+    "filter_not_completed": "--filter-not-completed",
+    "filter_properties": "--filter-property",
+    "filter_repeats_above": "--filter-repeats-above",
+    "filter_repeats_below": "--filter-repeats-below",
+    "filter_tags": "--filter-tag",
+    "groups": "--group",
+    "mapping": "--mapping",
+    "mapping_inline": "--mapping",
+    "max_groups": "--max-groups",
+    "max_relations": "--max-relations",
+    "max_results": "--max-results",
+    "max_tags": "--max-tags",
+    "min_group_size": "--min-group-size",
+    "offset": "--offset",
+    "order_by": "--order-by",
+    "show": "--show",
+    "todo_keys": "--todo-keys",
+    "use": "--use",
+    "verbose": "--verbose",
+    "with_gamify_category": "--with-gamify-category",
+    "with_numeric_gamify_exp": "--with-numeric-gamify-exp",
+    "with_tags_as_category": "--with-tags-as-category",
+}
+
+
+logger = logging.getLogger("org")
 
 
 def normalize_exclude_values(values: list[str]) -> set[str]:
@@ -279,7 +328,7 @@ def validate_str_option(key: str, value: object) -> str | None:
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
     invalid_order_by = key == "--order-by" and value not in {
         "file-order",
-        "file-order-reverse",
+        "file-order-reversed",
         "level",
         "timestamp-asc",
         "timestamp-desc",
@@ -300,7 +349,7 @@ def validate_order_by_option(value: object) -> str | list[str] | None:
     """Validate order-by option value."""
     allowed = {
         "file-order",
-        "file-order-reverse",
+        "file-order-reversed",
         "level",
         "timestamp-asc",
         "timestamp-desc",
@@ -500,6 +549,7 @@ def build_config_defaults(
     global_int_options: dict[str, tuple[str, int | None]] = {
         "--filter-gamify-exp-above": ("filter_gamify_exp_above", None),
         "--filter-gamify-exp-below": ("filter_gamify_exp_below", None),
+        "--filter-level": ("filter_level", None),
         "--filter-repeats-above": ("filter_repeats_above", None),
         "--filter-repeats-below": ("filter_repeats_below", None),
         "--offset": ("offset", 0),
@@ -507,6 +557,7 @@ def build_config_defaults(
 
     stats_bool_options: dict[str, str] = {
         "--with-gamify-category": "with_gamify_category",
+        "--with-numeric-gamify-exp": "with_numeric_gamify_exp",
         "--with-tags-as-category": "with_tags_as_category",
     }
 
@@ -620,12 +671,11 @@ def load_cli_config(
 
 def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[str, object]]]:
     """Build Click default_map for Typer commands."""
-    summary_defaults = dict(defaults)
-    summary_defaults.pop("show", None)
-    summary_defaults.pop("groups", None)
+    summary_defaults = {
+        key: value for key, value in defaults.items() if key not in {"show", "groups"}
+    }
 
-    stats_tasks_defaults = dict(defaults)
-    for key in (
+    task_command_disallowed = {
         "max_tags",
         "max_relations",
         "max_groups",
@@ -633,34 +683,30 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
         "use",
         "show",
         "groups",
-    ):
-        stats_tasks_defaults.pop(key, None)
-
-    tasks_list_defaults = dict(defaults)
-    for key in (
-        "max_tags",
-        "max_relations",
-        "max_groups",
-        "min_group_size",
-        "use",
-        "show",
-        "groups",
-        "buckets",
-    ):
-        tasks_list_defaults.pop(key, None)
+    }
+    stats_tasks_defaults = {
+        key: value for key, value in defaults.items() if key not in task_command_disallowed
+    }
+    tasks_list_defaults = {
+        key: value for key, value in defaults.items() if key not in task_command_disallowed
+    }
     order_by_default = tasks_list_defaults.get("order_by")
     if isinstance(order_by_default, str):
         tasks_list_defaults["order_by"] = [order_by_default]
     elif is_string_tuple(order_by_default):
         tasks_list_defaults["order_by"] = list(order_by_default)
 
-    tags_defaults = dict(defaults)
-    for key in ("max_tags", "max_groups", "min_group_size", "groups"):
-        tags_defaults.pop(key, None)
+    tags_defaults = {
+        key: value
+        for key, value in defaults.items()
+        if key not in {"max_tags", "max_groups", "min_group_size", "groups"}
+    }
 
-    groups_defaults = dict(defaults)
-    for key in ("max_tags", "max_groups", "min_group_size", "show"):
-        groups_defaults.pop(key, None)
+    groups_defaults = {
+        key: value
+        for key, value in defaults.items()
+        if key not in {"max_tags", "max_groups", "min_group_size", "show"}
+    }
 
     return {
         "stats": {
@@ -671,6 +717,78 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
         },
         "tasks": {"list": tasks_list_defaults},
     }
+
+
+def _format_default_log_entry(option_name: str, value: object) -> str:
+    """Format one option/value pair for config-default logging."""
+    return f"{option_name}={value!r}"
+
+
+def _format_argument_log_entry(arg_name: str, value: object) -> str:
+    """Format one argument/value pair for command argument logging."""
+    return f"{arg_name}={value!r}"
+
+
+def _redact_inline_config_value(option_name: str, value: object) -> object:
+    """Redact inline mapping/exclude values in default logs."""
+    if option_name in {"--mapping", "--exclude"} and isinstance(value, (dict, list)):
+        return "<Value ellided...>"
+    return value
+
+
+def log_applied_config_defaults(_args: object, _argv: list[str], command_name: str) -> None:
+    """Log config defaults loaded from config file."""
+    if not logger.isEnabledFor(logging.INFO):
+        return
+
+    entries: list[str] = []
+
+    for dest, default_value in sorted(CONFIG_DEFAULTS.items(), key=lambda item: item[0]):
+        option_name = DEST_TO_OPTION_NAME.get(dest)
+        if option_name is None:
+            continue
+        entries.append(
+            _format_default_log_entry(
+                option_name, _redact_inline_config_value(option_name, default_value)
+            )
+        )
+
+    for dest, values in sorted(CONFIG_APPEND_DEFAULTS.items(), key=lambda item: item[0]):
+        option_name = DEST_TO_OPTION_NAME.get(dest)
+        if option_name is None:
+            continue
+        entries.append(
+            _format_default_log_entry(option_name, _redact_inline_config_value(option_name, values))
+        )
+
+    for dest, option_name in (
+        ("mapping_inline", "--mapping"),
+        ("exclude_inline", "--exclude"),
+    ):
+        inline_value = CONFIG_INLINE_DEFAULTS.get(dest)
+        if inline_value is None:
+            continue
+        entries.append(_format_default_log_entry(option_name, "<Value ellided...>"))
+
+    if entries:
+        logger.info("Config defaults applied (%s): %s", command_name, ", ".join(entries))
+
+
+def log_command_arguments(args: object, command_name: str) -> None:
+    """Log all final argument values used to run a command."""
+    if not logger.isEnabledFor(logging.INFO):
+        return
+
+    try:
+        arg_items = vars(args).items()
+    except TypeError:
+        return
+
+    entries = [
+        _format_argument_log_entry(arg_name, arg_value)
+        for arg_name, arg_value in sorted(arg_items, key=lambda item: item[0])
+    ]
+    logger.info("Command arguments (%s): %s", command_name, ", ".join(entries))
 
 
 def apply_config_defaults(args: object) -> None:

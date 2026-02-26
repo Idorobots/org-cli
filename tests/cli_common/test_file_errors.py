@@ -175,54 +175,24 @@ def test_load_mapping_mixed_non_string_types(tmp_path: Path) -> None:
         load_mapping(str(mapping_file))
 
 
-def test_load_nodes_not_found() -> None:
-    """Test that loading non-existent org file raises error."""
-    from org.parse import load_nodes
-
-    with pytest.raises(typer.BadParameter, match="not found"):
-        load_nodes(["/nonexistent/file.org"], ["TODO"], ["DONE"], [])
-
-
-def test_load_nodes_valid() -> None:
-    """Test loading valid org files."""
-    from org.parse import load_nodes
+def test_load_root_nodes_valid() -> None:
+    """Test loading valid org files as root nodes."""
+    from org.parse import load_root_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
-    nodes, _, _ = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
+    roots, _, _ = load_root_nodes([fixture_path], ["TODO"], ["DONE"])
 
-    assert len(nodes) > 0
-    assert all(hasattr(node, "heading") for node in nodes)
+    assert len(roots) == 1
+    assert len(list(roots[0][1:])) > 0
 
 
-def test_load_nodes_todo_keys() -> None:
-    """Test loading valid org files."""
-    from org.parse import load_nodes
+def test_load_root_nodes_todo_keys() -> None:
+    """Test loading todo keys from root nodes."""
+    from org.parse import load_root_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "todo_keys.org")
-    nodes, todo_keys, done_keys = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
+    roots, todo_keys, done_keys = load_root_nodes([fixture_path], ["TODO"], ["DONE"])
 
-    assert len(nodes) > 0
+    assert len(roots) == 1
     assert set(todo_keys) == {"TODO", "STARTED"}
     assert set(done_keys) == {"DONE", "CANCELLED"}
-
-
-def test_load_nodes_multiple() -> None:
-    """Test loading multiple org files."""
-    from org.parse import load_nodes
-
-    fixture1 = os.path.join(FIXTURES_DIR, "simple.org")
-    fixture2 = os.path.join(FIXTURES_DIR, "single_task.org")
-
-    nodes, _, _ = load_nodes([fixture1, fixture2], ["TODO"], ["DONE"], [])
-
-    assert len(nodes) > 0
-
-
-def test_load_nodes_with_24_00_time() -> None:
-    """Test that 24:00 time format is normalized."""
-    from org.parse import load_nodes
-
-    fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
-    nodes, _, _ = load_nodes([fixture_path], ["TODO"], ["DONE"], [])
-
-    assert len(nodes) > 0

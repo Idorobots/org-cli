@@ -1991,7 +1991,11 @@ Can you please extract the following duplicated piece of code into a helper func
 
 This piece of code is used by all ~stats~ commands currently (~stats tags~ abstracts that into a private function). It would make sense to define a helper for it and reuse that helper in the commands.
 
-** Tasks command                                                                          :CLI:CRUD:
+** DONE Tasks command                                                                     :CLI:CRUD:
+:LOGBOOK:
+- State "DONE"       from              [2026-02-25 Wed 19:11] \\
+  Mutable stuff delegated to another tim.
+:END:
 *** DONE Tasks *R**
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-02-22 Sun 16:18] \\
@@ -2168,29 +2172,6 @@ Add "spinner" (the dots style from Rich) when computing loading the files and co
 
 Add syntax highlighting on the detailed display of org nodes in the ~tasks list~ command output. Do not show any line numbers.
 
-*** Output abstraction
-We will be adding more output options, for instance JSON output, visualization output, etc.
-
-*** JSON output
-- Could be done with pandoc
-
-*** Markdown output
-- Could be done with pandoc
-
-*** Tasks C**D
-- Adding new nodes
-- Removing nodes
-- Moving nodes between headings
-
-*** Tasks **U*
-- Changing TODO state
-  + Update repeats
-  + Update completion dates
-- Setting tags
-- Setting properties
-- Modifying the heading
-- Modifying the body
-
 ** REWORKED [#B] More stats                                                            :UX:Analysis:
 :LOGBOOK:
 - State "REWORKED"       from "TODO"       [2026-02-23 Mon 22:16] \\
@@ -2221,6 +2202,550 @@ The priority value should be shown in light blue color (same as histogram bars).
 #+end_example
 
 The tags should be colored dim white, same as the filename.
+
+** TODO Query command                                                                    :CLI:Query:
+*** DONE Query command
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-23 Mon 23:08] \\
+  Implemented together with node loading.
+:END:
+I'd like to add a new command for qurying the task database. The command will be called ~query~ and won't have any subcommands.
+An example invocation is:
+
+#+begin_src bash
+org query '.[].repeated_tasks[]' # get all repeated tasks of all nodes
+org query '.[] | select(.todo == "DONE")' # select all nodes in DONE state
+org query '.[$offset : $limit] | .env.filename, .level, .todo, .heading' # select filename, level, todo and heading from $ limit nodes starting at $offset
+#+end_src
+
+Please add the boilerplate for such a command that will accept an additional positional argument (other than the files). The positional argument, called ~query~ should come first before the files. It is a mandatory argument for this command.
+
+The command should also accept the same filters & ordering clauses that the ~tasks list~ command accepts in addition to the common switches such as ~--color~, ~--verbose~ etc.
+
+Please don't worry about the logic behind the command just yet, we will explore that in the next steps. You can make it print "No results" for now.
+
+*** REWORKED Query language
+:PROPERTIES:
+:slop: [[file:plans/rejected/query-language.md]]
+:slop: [[file:plans/rejected/query-language-alt.md]]
+:plan: [[file:plans/query-language2.md]]
+:END:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-24 Tue 23:39] \\
+  See comment.
+:END:
+
+Please create a detailed design and implementation plan for the following feature, I would like you to store the plan in plans/query-language2.md file once the plan is created. It sholud cover the high level design, a step by step plan of implementation and plan of validation of the feature once implemented. Act more as a Software Architect than a Software Developer. The feature description follows:
+
+I'd like to add a query language similar to ~jq~ or ~yq~, but dedicated to selecting specific Org nodes and their properties.
+To do that, I'd like to extend the ~query~ command with a query parser & executor that will leverage the query language for node processing.
+
+An example invocation will look like this:
+
+#+begin_src bash
+org query '.[].repeated_tasks[]' # get all repeated tasks of all nodes
+org query '.[] | select(.todo == "DONE")' # select all nodes in DONE state
+org query '.[$offset : $limit] | .env.filename, .level, .todo, .heading' # select filename, level, todo and heading from $ limit nodes starting at $offset
+#+end_src
+
+The command will parse the query, compile the parse tree into function accepting nodes and execute the function on the input nodes producing results. The results will be then printed to the console, item by item on separate lines.
+
+A query in the query language will be comprised of a mix of syntactic forms, funcion calls, operator calls, values and whitespace. These subparts of a query can be nested. Whitespace is insignificant and can appear in any place in the query. The parser should handle whitespace gracefully.
+
+The query language should recognize the following forms:
+- ~.~ - identity, returns input unchanged
+- ~<subquery> , <subquery>~ - combine subqueries into one stream (produces a tuple of results for each pair)
+- ~<subquery> | <subquery>~ - pipe results of one subquery to another subquery
+- ~(<subquery>)~ - groups a subquery imposing a precedence of execution
+- ~<function_name>(<subquery>)~ - a function call of known function with a subquery
+- ~<function_name>~ - a function call without a subquery
+- ~$<variable_name>~ - access a value of a named variable
+
+Multiple forms can be piped together to form a sequential filter, for example ~.children[0] | .todo~ should return a stream of todo states of the first child of each node of the input stream.
+
+The query language should support the following unary operators:
+- ~.<field>~ - access a field of an object
+- ~["field"]~ - access a field of an object
+- ~[]~ - iterate over a collection of values (turn them into a stream)
+- ~[N]~ - select N-th element of a collection
+- ~[2:5]~ - collection slice (indices 2, 3, 4)
+
+The field access operator ~.field~ should support accessing any fields of the ~OrgNode~, ~OrgDate~ and any intermediate collections, string, numbers. If a field does not exist on an object it should return ~None~.
+The array subscribt operator ~.[N]~ should return a ~None~ value when the index is out of bounds.
+The array slice operator ~.[O:L]~ should return a slice of as many items as fall in the slice, or an empty if indexes are out of bounds.
+
+The query language should support the following binary operatorns:
+- ~a > b~ - compares numeric values
+- ~a < b~ - compares numeric values
+- ~a > b=~ - compares numeric values
+- ~a <= b~ - compares numeric values
+- ~a == b~ - compares any values as equal (structural equality)
+- ~a != b~ - compares any values as not equal (structural equality)
+- ~a matches b~ - regex matches strings, ~a matches b~ should be equivalent to ~re.combile(b).match(a)~
+- ~a and b~ - compares two boolean values
+- ~a or b~ - compares two boolean values
+- ~a in b~ - check if a value is a member of a collection
+
+Binary perators should accept subqueries as their arguments, so that it is possible to build complex conditions. For example: ~(.todo == "DONE") or (.todo == "CANCELLED")~.
+
+Operators can be combined into more complex invocations, for example ~.children[0].todo~ should return a stream of todo states of the first child of each node. Operators should also handle streams of data - executiong the operator logic on all stream members and a value, or on two streams.
+
+Operator precedence should follow the "usual", wildly accepted practices:
+- syntactic form parentheses for grouping,
+- function calls,
+- syntactic form field accesses & array subscripts,
+- coparison operators - ~>~, ~<~, ~==~, ~matches~, etc,
+- ~and~ and ~or~ boolean operatorns,
+- syntactic ~,~ form for tupling values,
+- syntactic ~|~ form form piping subqueries.
+
+Type mismatches in operator invocations should be raised as exeptions. Dates should be comparable as strings.
+
+The query language should recognize the following functions:
+- ~reverse~ - reverses a collection of values
+- ~unique~ - removes duplicate values
+- ~select(<subquery>)~ - select elements by condition subquery (runs the subquery for every value of the input stream, then filters the stream based on those values' truthiness)
+- ~sort_by(<subquery>)~ - sort collection by value selected by the subquery (runs the subquery for every value of the input stream, then sorts the stream based on those values)
+
+The functions can be used as filter stages to process the results, for example ~.children | reverse | .[0]~ returns the last child of a node.
+
+The query language should support the following values:
+
+- ~23~ - any integer or float number
+- ~"some value"~ - string literals
+- ~true~ and ~false~ - booleans
+- ~none~ - indicates missing value
+
+Please implement a parser that will take the value passed into the command and build a query execution function that can be applied to a list of nodes. The parser should validate that the query is well-formed and raise an exception otherwise. Don't be very deffensive, we might be changing the query language a lot initially, so let's delegate proper strict validation to another time. What is really important is making the query performant as it'll be applied on a large set of nodes.
+
+Please use a parser combinator library for the construction of a parser. For instance: Python's ~parsy~ library can be used to build a parser for this simple language quickly.
+
+Please add unit tests for this parser & the implementation of forms, functions and operators, but just enough for a sanity check. This language might change in the future, so let's keeps the test suite lean. We will address that in the future.
+
+Here are some queries that should parse with the parser:
+
+#+begin_example
+.todo
+.todo == "DONE"
+
+.properties
+.properties["foo"]
+
+.[0]
+.[0:10]
+
+.children[1:2].heading
+
+.[]
+.[] | reverse
+
+select(.properties["gamify_exp"] > X)
+select(.properties["gamify_exp"] < X)
+select(.latest_timestamp >= X)
+select(.latest_timestamp <= X)
+select(.properties[P] == V)
+select(.level == L)
+select(.tags[] matches REGEX)
+select(.heading matches REGEX)
+select(.body matches REGEX)
+select(.todo in $done_keys)
+select(.todo in $todo_keys)
+
+sort_by(.level)
+sort_by(.latest_timestamp)
+sort_by(.latest_timestamp) | reverse
+sort_by(.properties["gamify_exp"])
+sort_by(.properties["gamify_exp"]) | reverse
+
+select(.heading == ID, .properties[$id] == ID) | .children'
+select(.heading == ID, .properties[$id] == ID) | .siblings'
+select(.heading == ID, .properties[$id] == ID) | .parent'
+select(.heading == ID, .properties[$id] == ID) | .dependencies'
+select(.heading == ID, .properties[$id] == ID) | .dependants'
+
+.children[] | sort_by(.level) | reverse | .[0:10]
+
+select(.todo in $todo_keys) | select(.heading == ID, .properties[$id] == ID) | select((.depndencies[] | length) == 0)'
+select(.todo in $todo_keys) | select(.heading == ID, .properties[$id] == ID) | select((.depndencies[] | length) != 0)'
+#+end_example
+
+Don't worry about the execution correctness of those queries just yet, we'll refine that in the next step.
+
+The ~query~ command should be updated to parse the query passed to it, load the list of nodes according to the usual semantics (same as in the other commands), order the nodes by the ordering clauses, and then pipe the filtered & ordered nodes through the newly added query execution function to produce a result.
+The results can be either a collection of values or a single value. If it is a collection of values, the command should print each value on a separate line. If it is a singular value, it should be printed alone.
+
+Please don't add tests to the ~query~ command just yet, we will be expanding its functionality soon.
+
+**** COMMENT
+I asked Claude to write down a plan of implementation and store it in a file for another model to execute, but the plan turned out to be so sloppy that I decided to save it for posterity and link it to this task. It was 1033 lines long and full of implementation snippets. I also updated the prompt to focus on performance of the query. I then rerun the same prompt (with additions) on Codex and saved it to another plan file. This time the plan was barely there, just 86 lines, very high level. No details. Codex did implement the feature, except it's barely functional. I refined the prompt again to include more detais on the values that can be present in the query, the use of parser combinators, and gave it more examples of valid queries.
+
+Third time the implementation was actually pretty good, working mostly as expected (with the exception of ~none~ comparisons). The code is basically a parse tree and a separate tree-walking interpreter, with the "compiler" being a lambda that wraps the interpreter. Not exactly what I had in mind, but it seems to be performant enough.
+
+**** REWORKED Query tweaks                                                                      :UX:
+:LOGBOOK:
+- State "REWORKED"   from              [2026-02-25 Wed 11:47] \\
+  Needed additional prompting to get the output right.
+:END:
+I'd like to tweak the query command's ouput & UX. I identified a few areas that could use an improvement:
+
+- Display results in org mode syntax highlighting - when the query results in a stream of org objects (nodes or dates), it makes sense to display them using the Org Mode syntax highlighting (same as =tasks list --details= output).
+  Please update the =query= command to check the result type and format as Org Mode syntax if the result is an org object or a stream/collection of org objecs.
+
+- The =sort_by= query language function currently sorts the results in an ascending order, I'd like that order to be descending (results considered "highest" at the top).
+
+- The =load_and_process_data= function returns a list of all nodes of any level in the file, that then becomes a stream. That's an inconvenient starting point for the query language and instead I'd like this command to use all the =OrgRootNode='s loaded from all files.
+   Please create an additional data loading function that will load all the root nodes and return them verbatim. The function should share as much code with =load_and_process_data= as possible, it should run the argument validation, path resolving and data loading with preprocessing, but omit the filtering, enrichment & ordering. The result should be a list of root nodes & todo & done keys.
+   To achieve this, you will have to refactor the parse module and extract some helper functions to create an alternate data loading function (the current =load_data= function can use the new one and "flatten" its resulting set of root nodes to include all the nodes for each of the roots).
+   Please remove the filters & ordering CLI arguments handling from the =query= command, all of these filters & orderings can be expressed in the query language itself (we will do so in the future for the other commands).
+
+**** DONE More display tweaks
+:LOGBOOK:
+- State "DONE"       from              [2026-02-25 Wed 12:10]
+:END:
+Please make sure that the root node is also displayed using the org syntax highlighting. Specifically, if its part of the resulting set of nodes, all nodes should be displayed with org syntax highlighting.
+Please make sure that the filename comment is also displayed using the org syntax highlighitng (treat it as part of the node output).
+These output considerations should also be reflected in the =tasks list --details= output.
+
+**** DONE Query language extensions
+:LOGBOOK:
+- State "DONE"       from              [2026-02-25 Wed 13:36] \\
+  Seems to be working fine.
+:END:
+I'd like to extend the query language a little bit. Please implement the following features:
+
+- Please treat the =OrgRootNode= as a collection, i.e. it should be subscriptable via the =.[N]= operator, iterable via the =.[]= operator and sliceable via the =.[N:M]= operator.
+
+- Add a =sum= query language function that will sum all the elements in a collection. It's similar in spirit to =length= that it works on collections and returns a single numeric value.
+
+- Add a =join(<subquery>)= query language function that will "join" all elements in a collection, treating them as strings producing a single string in result, for instance: given this data =["a", "b", "c"]= a filter =. | join(",")= should produce a single string ="a,b,c"=. The join function should accept a subquery that evaluates to a string. It should convert all the values in the input array as strings. If passed a scalar value, the function should raise an exception.
+
+- Add numeric operation operators with the usual semantics & operator precedence:
+  - =a ** b= - power
+  - =a * b= - multiplication
+  - =a / b= - division
+  - =a + b= - addition
+  - =a - b= - subtraction
+  - =a mod b= - modulo
+  - =a rem b= - remainder
+  - =a quot b= - quotient
+  These will become useful for instance for the =map()= function or for the collection slicing =.[$offset : $offset + $limit]=. Please update the slicing operator to support subqueries for the start and end of a slice (they must evaluate to a numeric value).
+
+- Add a =map(<subquery>)= query language function that will map each value in a sequence according to a subquery. The result should be a sequence of mapped values, For example: given =[1, 2, 3]= sequence, the filter =map(. * 2)= should result in the following value: =[2, 4, 6]=.
+
+- Add a way to dynamically define new variables via the ~<subquery> as $variable~ syntax. A variable defined this way, should be accessible further down the processing pipeline, i.e. the =|= operator encountering a new variable definition on the left side, should make it available on the right side. For example: =. as $root | $root[], ($root[].children | length)= results in a steam of tuples of the root node along with its children.
+
+- Please add a "stream folding" operator that will allow a subquery stream to be folded back inta a collection. The syntax is as follows: ~[<subquery>]~ - square brackets around a subquery that are not preceeded by a subquery or identity, will cause the inner subquery stream to be folded back into a collection and passed further along as a collection. Here's an example usage: ~[ .[] | select(.todo == "DONE") ] | .[10:20]~ will result in a filtered stream of nodes to be folded into a collection of nodes that then is sliced by the slice operator. The operator should also support scalars, i.e. =.[] | [ .heading ]= would result in a stream of collections of 1 heading value each. The operator should also support tuple folding, i.e. =[.foo, .bar, .baz]= should result in a collection (list) of the values, not a collection of a single tuple, specifically, =[1, 2, 3]= should result in a list of the values 1, 2 and 3. It is possible to create an empty collection this way: =[]=.
+
+**** DONE Query language bugfixes                                                              :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-25 Wed 14:34]
+:END:
+There are several issues that I'd like to take care of:
+
+Please explain where is the =(?![A-Za-z0-9_])= string comming from in the error messages for query language syntax errors. Can the parser be changed to retain its current functionality, but improve the syntax error output by removing these specifiers from the error messages? If so, please remove them.
+
+The =none= value handling seems a bit off, it is for instance, impossible to filter for nodes that don't have a property set: ~.[][] | select(.todo != none)~ should return a list of nodes that do have a todo state set. It is returning all nodes instead.
+
+Please make the =Stream= type a full class extending =list=, as to avoid accidental confusion between streams and lists of items in larger queries.
+
+**** REWORKED Further extensions
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-25 Wed 15:56] \\
+  See comment.
+:END:
+I'd like to make some further improvements to the query language:
+
+Add a =type= query language function that returns a string representation of the type of an object passed to it, example: =.[][0].repeated_tasks[0] | type= would return the string =OrgDateRepeatedTask= or =None=.
+
+Add a =timestamp(...)= query language function that will create Org timestamps via the query language, according to the following rules:
+- =timestamp(<subquery>)= - evaluates the subquery and turns it into an =OrgDate= value if it is a string value that can be parsed,
+- =timestamp(<start_subquery>, <end_subquery>)= - evaluates both subqueries and turns it into an =OrgDate= with a start and end property, the end subquery can evaluate to a =none= value,
+- =timestamp(<start_subquery>, <end_subquery>, <active_subquery>)= - evaluates all subqueries and turns it into an =OrgDate= value with a start, end and active properties set. Either end subquery and active subquery can evaluate to a =none= value.
+
+Add a =clock()= query language function that will create clock entries according to the following rules:
+- =clock(<start_subquery>, <end_subquery>)= - creates an =OrgDateClock= object with a start and end timestamps, the duration property should be computed from the start and end values.
+- =clock(<start_subquery>, <end_subquery>, <active_subquery>)= - creates an =OrgDateClock= object with a start, end and an active state. The duration property should be computed from the start and end values.
+
+Add a =repeated_task(...)= query language function that will create a repeated tasks entry according to the following rules:
+- =repeated_task(<start_subquery>, <before_subquery>, <after_subquery>)= - evaluates all subqueries and constructs an =OrgDateRepeatedTask= object with a start timestamp, before and after states. Either of or all of before, after can be =none=.
+- =repeated_task(<start_subquery>, <before_subquery>, <after_subquery>, <active_subquery>)= - evaluates all subqueries and constructs an =OrgDateRepeatedTask= object with a start timestamp, before and after states and an active state. Either of or all of before, after and active can be =none=.
+
+Add a =not(...)= operator for negating conditions: =not(<subquery>)= results in =true= value if subquery is falsy and =false= if it is truthy.
+
+Make some of the numeric operators work with strings:
+- ="foo" * 2= should be =foofoo= (string duplication)
+- =2 * "foo"= should result in an error
+- ="foo" + "bar"= should be =foobar= (string concatenation)
+
+Make some of the numeric operators work with collections:
+- =[1, 2, 3] + 4]= should be =[1, 2, 3, 4]= (append item to a collection)
+- =[1, 2, 3] - 3= should be =[1, 2]= (remove item from a collection)
+- =[1, 2, 3] - [2, 3]= should be =[1]= (set difference preserwing collection type & ordering)
+
+Better syntax error display - add the query and a pointer to the offset at which the error is occuring. Additionally, please omit the =Invalid value:= prefix in the error message.
+
+Example Invocation:
+#+begin_src bash
+org query '.[][] | select(not(.todo in $done_keys)) | .todo'
+#+end_src
+
+Expected result:
+#+begin_example
+Usage: org query [OPTIONS] QUERY [FILE]
+Try 'org query --help' for help.
+╭─ Error ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Invalid query syntax: expected one of '!=', ')', '*', '**', '+', ',', '-', '.', '/', '<', '<=', '==', '>', '>=', '[', 'and', 'as', 'in', 'matches', 'mod', 'or', 'quot', 'rem', '|' at 0:18                     │
+│                                                                                                                                                                                                                 │
+│ .[][] | select(not(.todo in $done_keys)) | .todo                                                                                                                                                                │
+│                   ^                                                                                                                                                                                             │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+#+end_example
+***** COMMENT
+Agent got stuck several times when investigating due to network connection issues, not recovering when the connection was restored. Needed manual interruption and asking it to continue. One time it got completely stuck and needed an entirely new session to be established.
+
+**** DONE Collection append & collection max & min functions & booleans
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-25 Wed 17:12]
+:END:
+I'd like to make some extra additions to the query language:
+
+Add a way to append collections:
+- =[1, 2, 3] + [4]= should be =[1, 2, 3, 4]= (concatenate collections)
+
+Concatenation should apply to all collections, preserving the type of the LHS collection.
+
+Add the following functions that allow selecting values from a collection:
+- =max= - returns the "biggest" value in a collection (sort and then select the top element).
+- =min= - returns the "smallest" value in a collection (sort and then select the bottom element).
+
+This should work for collections of comparable values (numeric, string, dates). For mixed-type collections if they are not comparable then there should be an exception raised. Both =max= and =min= functions should return =none= for empty collections.
+
+Adjust the semantics of =or= and =and= operators to accept any value on each side:
+- =a or b= - if a is falsy, return b, otherwise return a, example: ="foo" or "x"= returns "foo".
+- =a and b= - if both values are truthy, return =true=, otherwise return =false=, ="x" and none= returns "false".
+
+**** DONE None & other shenanigans
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-25 Wed 17:33]
+:END:
+The =type= function should print the =none= type for a =none= value, not the capitalised one.
+
+There is a bug in the code, I managed to simplify it to a small reproduction:
+
+Running the following command results in an error. Please analyze the code and fix the cause of this error.
+#+begin_src bash
+poetry run org query '.[][].scheduled' tests/fixtures/simple.org
+#+end_src
+
+It seems that =sort_by()= does not work with dates, running the following command I expect to receive the results ordered by the "latest" timestamp of a node, if present:
+
+#+begin_src bash
+poetry run org query '.[][] | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | [ .[] | select(.) ] | max) | select(.) | .heading'
+#+end_src
+
+The command returns all results instead. Please verify if this is the case and make =sort_by= work with dates.
+
+All of =min=, =max= and =sort_by= should handle =none= values gracefully:
+- =min= should ignore any none values,
+- =max= should ignore any none values,
+- =sort_by= should place any none-corresponding values at the end, order doesn't matter.
+
+**** DONE Query language tests
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-25 Wed 18:59]
+:END:
+
+The query language is now pretty much complete, I don't expect vary many changes. Please add extra tests for the runtime of those queries to improve the coverage over-all. The coverage goal is above 90% over-all, and close to 100% for query language modules.
+
+**** REWORKED Query language documentation
+:LOGBOOK:
+- State "REWORKED"       from "TODO"       [2026-02-25 Wed 19:31] \\
+  Needed sam manual updates.
+:END:
+
+I'd like to document the query language features in docs/query_language.md.
+
+Please create a comprehensive documentation that outlines:
+- how the query language works (high level operation semantics, i.e. streaming data via a pipeline of filters),
+- query construction (high level syntax description, i.e. what constritutes a query and what classes of syntax objects it is comprised of),
+- detailed descriptions of all the syntax rules of the query language with slim, minimal examples (can be contrived but should be syntactically valid)
+- detailed descriptions of all the available operators & functions with examples of usage and the output they produce (can be contrived, but should be syntactically valid)
+- detailed description of values accepted by the language with examples of usage.
+
+The examples should be short and to-the-point, make sure they use each of the features they're meant to document.
+
+Features should be documented briefly in a readable form, this file will be a de-facto reference manual for the query language.
+
+Please point the AGENTS.md file to this documentation directory, but don't modify the README.md file just yet, we will address that separately.
+
+**** REWORKED Comparisons should support dates & nones                                         :Bug:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-25 Wed 20:17] \\
+  Needed a few reprompts.
+:END:
+
+Please update the query language implementation, so that the comparison operators accept dates:
+- =a > b=, =a < b=, ~a >= b~, ~a <= b~, ~a == b~ and ~a != b~ should all compare the start dates and accept any org date types,
+- =a > b=, =a < b= comparing a value against =none= should return =false=,
+- ~a >= b~, ~a <= b~ comparing against =none= should only return =true= if both side are =none=.
+
+Comparisons should be supported between any =OrgDate= subclasses, including, specifically =OrgDateRepeatedTask= and =OrgDate= and also between org dates and the none value.
+
+Comparison operators should be able to compare any value to =none=
+
+**** REWORKED Query language filters/ordering
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-25 Wed 21:10] \\
+  It introduced some bugs and left the old filters implementation "for posterity". Needed some cleanup. Some of the filters work differently - completed/not-completed doesn't update the repeated_tasks.
+:END:
+
+Reimplement all the filters & orderings in terms of the query language.
+Filters and ordering passed via the command line should be piped together in the order they appear on the command line, with filtering applied first, followed by the orderings: =<filter1> | <filter2> | ... | <order1> | <order2> | ...=.
+
+The full query string that would run a configured filtering/ordering pipeline should be:
+
+#+begin_example
+[ .[] | <filters and orderings> ][$offset:($offset + $limit))]
+#+end_example
+
+That is, the pipeline iterates though all the nodes on the list, applies the filtering pipeline, constructs a collection of the results and extracts the required number of results for display.
+
+Here's how to treat each filter & ordering switch:
+- ~--filter-gamify-exp-above X~ becomes =select(.properties["gamify_exp"] > X)=
+- ~--filter-gamify-exp-below X~ becomes =select(.properties["gamify_exp"] < X)=
+- ~--filter-repeats-above X~ becomes =select(.repeated_tasks | length > X)=
+- ~--filter-repeats-below X~ becomes =select(.repeated_tasks | length < X)=
+- ~--filter-property P=V~ becomes =select(.properties[P] == V)=
+- ~--filter-level L~ becomes =select(.level == L)=
+- ~--filter-tag REGEX~ becomes =select(select(.tags[] matches REGEX))=
+- ~--filter-heading REGEX~ becomes =select(.heading matches REGEX)=
+- ~--filter-body REGEX~ becomes =select(.body matches REGEX)=
+- ~--filter-completed~ becomes =select(.todo in $done_keys)=
+- ~--filter-not-completed~ becomes =select(.todo in $todo_keys)=
+
+- ~--filter-date-from X~ becomes ~select(.repeated_tasks + .deadline + .closed + .scheduled | max >= timestamp(X))~
+- ~--filter-date-until X~ becomes ~select(.repeated_tasks + .deadline + .closed + .scheduled | max <= timestamp(X)~
+
+- ~--order-by file-order~ becomes ~.~
+- ~--order-by file-order-reversed~ becomes =reverse=
+- ~--order-by level~ becomes =sort_by(.level)=
+- ~--order-by gamify-exp-asc~ becomes =sort_by(.properties["gamify_exp"]) | reverse=
+- ~--order-by gamify-exp-desc~ becomes =sort_by(.properties["gamify_exp"])=
+
+- ~--order-by timestamp-asc~ becomes =sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) | reverse=
+- ~--order-by timestamp-desc~ becomes =sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)=
+
+The =build_filter_chain= function should construct the query string and compile that to a query that can be used for node processing. You can rename that function to =build_query=.
+The =load_and_process_data= function should be updated to apply the query to the input nodes stream.
+
+All commands should be updated to use this new way of handling filters and ordering.
+
+Ideally, tests that use filters should remain working unchanged.
+
+*** REWORKED Tests cleanup & bugfixes                                                          :Bug:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-25 Wed 23:14] \\
+  Needed some reprompting.
+:END:
+
+Please add logging of the configuration defaults applied to the arguments of the different commands.
+
+Please log all argument values that are used to run a command. That should be done in addition to the defaults applied log.
+
+Please add logging of the query that is built with filters and orderings. It should look like this: =Query: <query string>=
+This log should be logged whenever a query is build and about to be executed.
+
+It appears that =tasks list= command does not respect the file-configured =--buckets= value. It does respect the CLI switch. Analogous list in the =stats summary= command does respect the buckets setting. Please make sure that the =tasks list= command respects the configured values.
+
+Please add an additional CLI switch =--with-numeric-gamify-exp= that will update the =gamify_exp= property values on nodes that have it to be strictly numeric, that is:
+- if the property value is already a number, leave the node as is,
+- if the property value is of the form =(X Y)= where both X and Y are numbers, update the property value to just X,
+- if the property value is anything else, update the node to not have the =gamify_exp= property at all.
+
+It is OK now to remove the old filter/ordering tests and the entire filters and order modules for that matter (unless anything of that remains in use).
+
+The =--filter-completed= and =--filter-not-completed= don't work exactly how they used to, I think they should be updated to run the following filters:
+- =--filter-completed= becomes =select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys)=
+- =--filter-not-completed= becomes =select(not(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys))=
+
+Otherwise, none of the repeated tasks count and the not-completed filter omits tasks that don't have a state.
+
+*** CANCELLED Query tests
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-02-26 Thu 10:36] \\
+  The tests were already written, so that's covered.
+:END:
+
+Please add integration tests for the =query= command. I'd like those tests to run various queries on the fixture files and check for expected results. These should be kept to a minimum, just as a sanity check.
+
+*** REWORKED Code review fixes
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-26 Thu 13:14] \\
+  It planned to refactor =build_default_map= but then decided to redo the current implementation in a different flavour.
+:END:
+There are some comments that I'd like addressed:
+
+- Query execution and output formatting of commands should be part of the =with processing_status()= block, only the actual output should be done outside. That is to notify the user that an action is taking place in the background. Please update all the command's run functions to make sure that all processing of data happens in the block, while only the output remains outside (once processing is done).
+
+- When a query in the query language uses a function that isn't known it currently defaults to returning a string. I would like this to be changed to throw an error that lists the available functions.
+
+- Refactor the =build_default_map= function in config module to explicitly create objects for the default maps, instead of "filtering down" a larger object to remove some of its fields. The goal is improved readability and undestandability of the code.
+
+- Simplify the =log_applied_config_defaults= function to always log all the values read from the config. No need to show only the ones that take effect or needlessly overanalyze. If the =mapping= or =exclude= list is provided in an config-embedded form (not a file path), ellide the value to only show that the value was provided: =<Value ellided...>=. The function should be similar to =log_command_arguments= in complexity and function.
+
+- Update all the code paths that use the =_PropertyEnrichednOrgNode= to use =_PropertyRewrittenOrgNode= instead. These classes are very similar in function and we only need one of them. The enriched node class can then be removed.
+
+** REWORKED Command docs
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-26 Thu 13:56] \\
+  Required manual changes and reprompting. AI is not very good at writing proper documentation.
+:END:
+
+I'd like to start documenting the available commands.
+
+For this task please create a directory structure in docs/ - I would like there to be a <command_name>_command.md file for each command explaining briefly how to use the command and what its outputs are. I'd like the description to be brief and laconic, while the examples short and understandable. The exmaple outputs should be ellided to only show the basic gist of what the compand outputs, the goal is to keep the documentation short.
+
+For the =stats= commands, please exmplain how to read the frequency plots and histograms.
+
+For the =query= commands, please point to the docs/query_language.md file for documentation.
+
+Mention that various filters & orderings are available, but do not give too many examples of their usage, focus on the command-specific switches, with examples on how to set them up.
+
+Create a file called index.md that will be the entry point for the documentation, it should have a brief description of what =org-cli= is, list all the available commands and link to the other files in the documentation.
+
+The index file should contain the documentation of the configuration files and various defaults that are applied to the arguments.
+
+The index file should also link to =gamify-el= (currently linked-to by the README.md file) and describe how =gamify_exp= is used in =org-cli=. Be brief about it.
+
+Please update the AGENTS.md file to point to the documentation index. While there, please update the command usage invocations, project strucure and project toolchain (deps, etc).
+
+Please update the README.md file to briefly describe what this project it and add a prominient link to the documentation index.
+Then, follow up with a secion for each command that is currently available, where a brief description of what can be achieved with a given command is present with a single invocation example that presents a medium-complexity use case. For the short-output commands, please include an example output. The examples should be instrumental, but easy to understand. Start with the =query= command and proceed with =stats summary= and the rest.
+
+The README file should also point to VIBES.org as the current roadmap of features.
+
+** Output format abstraction
+We will be adding more output options, for instance JSON output, visualization output, etc.
+
+*** JSON output
+- Could be done with pandoc
+
+*** Markdown output
+- Could be done with pandoc
+
+** Mutable parse tree
+*** Use mutable orgparse
+- Bump the library version
+- Use it for repeated task filtering - =select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys) | .repeated_tasks = [.repeated_tasks[] | select(.after in $done_keys)]=
+- Use it for property additions
+- Use it for numeric gamify exp
+
+*** Query language mutation
+- ~a = b~ assignment operator
+- ~+=~ append
+- ~-=~ remove
+- ~properties.foo = none~ set/delete property
+- update the documentation in docs/query_language.md
 
 ** More Rich support
 - columnar display on the stats summary - tasks section should be to the side of the histograms
