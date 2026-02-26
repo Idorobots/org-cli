@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import ast
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from typing import Literal, cast
 
 from parsy import ParseError, Parser, eof, forward_declaration, generate, regex, seq, string
 
@@ -48,6 +49,13 @@ KNOWN_FUNCTIONS = {
     "repeated_task",
     "not",
 }
+
+type FieldPostfix = tuple[Literal["field"], str]
+type IteratePostfix = tuple[Literal["iterate"]]
+type SlicePostfix = tuple[Literal["slice"], Expr | None, Expr | None]
+type IndexPostfix = tuple[Literal["index"], Expr]
+type BracketFieldPostfix = tuple[Literal["bracket-field"], StringLiteral]
+type PostfixOp = FieldPostfix | IteratePostfix | SlicePostfix | IndexPostfix | BracketFieldPostfix
 
 
 def _parse_line_and_column(line_info: str) -> tuple[int, int]:
@@ -131,13 +139,18 @@ def _build_function_call_parser(identifier: Parser, expr: Parser) -> Parser:
     """Build parser for known function calls."""
 
     @generate
-    def function_call() -> object:
-        name = yield identifier
+    def function_call() -> Generator[Parser, object, FunctionCall]:
+        name_result = yield identifier
+        if not isinstance(name_result, str):
+            raise QueryParseError("Invalid function name")
+        name = name_result
         if name not in KNOWN_FUNCTIONS:
             available = ", ".join(sorted(KNOWN_FUNCTIONS))
             raise QueryParseError(f"Unknown function: {name}. Available functions: {available}")
-        arg = yield (_symbol("(") >> expr << _symbol(")")).optional()
-        return FunctionCall(name, arg)
+        arg_result = yield (_symbol("(") >> expr << _symbol(")")).optional()
+        if arg_result is not None and not isinstance(arg_result, Expr):
+            raise QueryParseError("Invalid function argument")
+        return FunctionCall(name, arg_result)
 
     return function_call
 
@@ -146,16 +159,22 @@ def _build_bracket_postfix_parser(index_expr: Parser) -> Parser:
     """Build parser for bracket-based postfix operators."""
 
     @generate
-    def bracket_postfix() -> object:
+    def bracket_postfix() -> Generator[Parser, object, PostfixOp]:
         yield _symbol("[")
         empty = yield _symbol("]").optional()
         if empty is not None:
             return ("iterate",)
 
-        start = yield index_expr.optional()
+        start_result = yield index_expr.optional()
+        if start_result is not None and not isinstance(start_result, Expr):
+            raise QueryParseError("Invalid bracket expression")
+        start = start_result
         colon = yield _symbol(":").optional()
         if colon is not None:
-            end = yield index_expr.optional()
+            end_result = yield index_expr.optional()
+            if end_result is not None and not isinstance(end_result, Expr):
+                raise QueryParseError("Invalid slice expression")
+            end = end_result
             yield _symbol("]")
             return ("slice", start, end)
 
@@ -175,18 +194,29 @@ def _build_dot_expression_parser(identifier: Parser, bracket_postfix: Parser) ->
     postfix = dot_field_postfix | bracket_postfix
 
     @generate
-    def dot_expression() -> object:
+    def dot_expression() -> Generator[Parser, object, Expr]:
         yield string(".")
-        first_field = yield identifier.optional()
+        first_field_result = yield identifier.optional()
+        if first_field_result is not None and not isinstance(first_field_result, str):
+            raise QueryParseError("Invalid field name")
+        first_field = first_field_result
+
+        current: Expr
         if first_field is None:
-            first_bracket = yield bracket_postfix.optional()
+            first_bracket_result = yield bracket_postfix.optional()
+            if first_bracket_result is not None and not isinstance(first_bracket_result, tuple):
+                raise QueryParseError("Invalid bracket postfix")
+            first_bracket = cast(PostfixOp | None, first_bracket_result)
             current = (
                 Identity() if first_bracket is None else _apply_postfix(Identity(), first_bracket)
             )
         else:
             current = FieldAccess(Identity(), first_field)
 
-        rest = yield postfix.many()
+        rest_result = yield postfix.many()
+        if not isinstance(rest_result, list):
+            raise QueryParseError("Invalid postfix chain")
+        rest = cast(list[PostfixOp], rest_result)
         for op in rest:
             current = _apply_postfix(current, op)
         yield regex(r"\s*")
@@ -199,9 +229,11 @@ def _build_grouped_parser(expr: Parser) -> Parser:
     """Build parser for grouped expressions."""
 
     @generate
-    def grouped() -> object:
+    def grouped() -> Generator[Parser, object, Group]:
         yield _symbol("(")
         inner = yield expr
+        if not isinstance(inner, Expr):
+            raise QueryParseError("Invalid grouped expression")
         yield _symbol(")")
         return Group(inner)
 
@@ -212,12 +244,14 @@ def _build_fold_parser(expr: Parser) -> Parser:
     """Build parser for stream fold expressions `[subquery]`."""
 
     @generate
-    def fold() -> object:
+    def fold() -> Generator[Parser, object, Fold]:
         yield _symbol("[")
         close = yield _symbol("]").optional()
         if close is not None:
             return Fold(None)
         inner = yield expr
+        if not isinstance(inner, Expr):
+            raise QueryParseError("Invalid fold expression")
         yield _symbol("]")
         return Fold(inner)
 
@@ -234,9 +268,16 @@ def _build_postfix_chain_parser(
     postfix = dot_field_postfix | bracket_postfix
 
     @generate
-    def with_postfix() -> object:
-        current = yield base_parser
-        rest = yield postfix.many()
+    def with_postfix() -> Generator[Parser, object, Expr]:
+        current_result = yield base_parser
+        if not isinstance(current_result, Expr):
+            raise QueryParseError("Invalid base expression")
+        current: Expr = current_result
+
+        rest_result = yield postfix.many()
+        if not isinstance(rest_result, list):
+            raise QueryParseError("Invalid postfix chain")
+        rest = cast(list[PostfixOp], rest_result)
         for op in rest:
             current = _apply_postfix(current, op)
         return current
@@ -244,7 +285,7 @@ def _build_postfix_chain_parser(
     return with_postfix
 
 
-def _field_postfix(name: str) -> tuple[str, str]:
+def _field_postfix(name: str) -> FieldPostfix:
     """Create field postfix marker tuple."""
     return ("field", name)
 
@@ -333,10 +374,16 @@ def _build_as_binding_parser(term: Parser, identifier: Parser) -> Parser:
     """Build parser for `<subquery> as $variable` binding."""
 
     @generate
-    def parser() -> object:
-        source = yield term
-        bindings = yield (_lexeme(_keyword("as")) >> _symbol("$") >> identifier).many()
-        current = source
+    def parser() -> Generator[Parser, object, Expr]:
+        source_result = yield term
+        if not isinstance(source_result, Expr):
+            raise QueryParseError("Invalid binding source")
+        bindings_result = yield (_lexeme(_keyword("as")) >> _symbol("$") >> identifier).many()
+        if not isinstance(bindings_result, list):
+            raise QueryParseError("Invalid binding list")
+        bindings = cast(list[str], bindings_result)
+
+        current: Expr = source_result
         for name in bindings:
             current = AsBinding(current, name)
         return current
@@ -344,34 +391,30 @@ def _build_as_binding_parser(term: Parser, identifier: Parser) -> Parser:
     return parser
 
 
-def _apply_postfix(base: Expr, op: tuple[object, ...]) -> Expr:
+def _apply_postfix(base: Expr, op: PostfixOp) -> Expr:
     """Apply one postfix operator to an expression."""
-    kind = op[0]
-    if kind == "field":
-        field = op[1]
-        if not isinstance(field, str):
-            raise QueryParseError("Invalid field name")
-        return FieldAccess(base, field)
-    if kind == "iterate":
-        return Iterate(base)
-    if kind == "slice":
-        start_expr = op[1]
-        end_expr = op[2]
-        if start_expr is not None and not isinstance(start_expr, Expr):
-            raise QueryParseError("Invalid slice start")
-        if end_expr is not None and not isinstance(end_expr, Expr):
-            raise QueryParseError("Invalid slice end")
-        return Slice(base, start_expr, end_expr)
-    if kind == "index":
-        index_expr = op[1]
-        if not isinstance(index_expr, Expr):
-            raise QueryParseError("Invalid index expression")
-        return Index(base, index_expr)
-    if kind == "bracket-field":
-        key_expr = op[1]
-        if not isinstance(key_expr, Expr):
-            raise QueryParseError("Invalid bracket field expression")
-        return BracketFieldAccess(base, key_expr)
+    match op:
+        case ("field", field):
+            if not isinstance(field, str):
+                raise QueryParseError("Invalid field name")
+            return FieldAccess(base, field)
+        case ("iterate",):
+            return Iterate(base)
+        case ("slice", start_expr, end_expr):
+            if start_expr is not None and not isinstance(start_expr, Expr):
+                raise QueryParseError("Invalid slice start")
+            if end_expr is not None and not isinstance(end_expr, Expr):
+                raise QueryParseError("Invalid slice end")
+            return Slice(base, start_expr, end_expr)
+        case ("index", index_expr):
+            if not isinstance(index_expr, Expr):
+                raise QueryParseError("Invalid index expression")
+            return Index(base, index_expr)
+        case ("bracket-field", key_expr):
+            if not isinstance(key_expr, Expr):
+                raise QueryParseError("Invalid bracket field expression")
+            return BracketFieldAccess(base, key_expr)
+
     raise QueryParseError("Unknown postfix operator")
 
 
@@ -383,11 +426,22 @@ def _chain_left(
     """Build a left-associative parser from term and operator parsers."""
 
     @generate
-    def parser() -> object:
-        left = yield term
-        rest = yield seq(op, term).many()
-        current = left
+    def parser() -> Generator[Parser, object, Expr]:
+        left_result = yield term
+        if not isinstance(left_result, Expr):
+            raise QueryParseError("Invalid left expression")
+
+        rest_result = yield seq(op, term).many()
+        if not isinstance(rest_result, list):
+            raise QueryParseError("Invalid operator chain")
+
+        current: Expr = left_result
+        rest = cast(list[tuple[object, object]], rest_result)
         for operator, right in rest:
+            if not isinstance(operator, str):
+                raise QueryParseError("Invalid operator")
+            if not isinstance(right, Expr):
+                raise QueryParseError("Invalid right expression")
             current = builder(operator, current, right)
         return current
 
@@ -402,14 +456,30 @@ def _chain_right(
     """Build a right-associative parser from term and operator parsers."""
 
     @generate
-    def parser() -> object:
-        left = yield term
-        rest = yield seq(op, term).many()
+    def parser() -> Generator[Parser, object, Expr]:
+        left_result = yield term
+        if not isinstance(left_result, Expr):
+            raise QueryParseError("Invalid left expression")
+
+        rest_result = yield seq(op, term).many()
+        if not isinstance(rest_result, list):
+            raise QueryParseError("Invalid operator chain")
+        rest = cast(list[tuple[object, object]], rest_result)
+
         if not rest:
-            return left
-        operators = [item[0] for item in rest]
-        terms = [left, *[item[1] for item in rest]]
-        current = terms[-1]
+            return left_result
+
+        operators: list[str] = []
+        terms: list[Expr] = [left_result]
+        for operator, right in rest:
+            if not isinstance(operator, str):
+                raise QueryParseError("Invalid operator")
+            if not isinstance(right, Expr):
+                raise QueryParseError("Invalid right expression")
+            operators.append(operator)
+            terms.append(right)
+
+        current: Expr = terms[-1]
         for index in range(len(operators) - 1, -1, -1):
             current = builder(operators[index], terms[index], current)
         return current
@@ -421,12 +491,17 @@ def _chain_comma(term: Parser) -> Parser:
     """Build comma-level tuple parser."""
 
     @generate
-    def parser() -> object:
-        first = yield term
-        rest = yield (_symbol(",") >> term).many()
+    def parser() -> Generator[Parser, object, Expr]:
+        first_result = yield term
+        if not isinstance(first_result, Expr):
+            raise QueryParseError("Invalid tuple expression")
+        rest_result = yield (_symbol(",") >> term).many()
+        if not isinstance(rest_result, list):
+            raise QueryParseError("Invalid tuple expression")
+        rest = cast(list[Expr], rest_result)
         if not rest:
-            return first
-        return TupleExpr((first, *rest))
+            return first_result
+        return TupleExpr((first_result, *rest))
 
     return parser
 
