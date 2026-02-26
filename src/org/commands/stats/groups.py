@@ -141,10 +141,9 @@ def run_stats_groups(args: GroupsArgs) -> None:
     console = build_console(color_enabled)
     validate_stats_arguments(args)
 
-    mapping = resolve_mapping(args)
-    exclude_set = resolve_exclude_set(args)
-
     with processing_status(console, color_enabled):
+        mapping = resolve_mapping(args)
+        exclude_set = resolve_exclude_set(args)
         nodes, _, _ = load_and_process_data(args)
 
         if not nodes:

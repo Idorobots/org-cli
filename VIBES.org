@@ -2670,9 +2670,30 @@ The =--filter-completed= and =--filter-not-completed= don't work exactly how the
 
 Otherwise, none of the repeated tasks count and the not-completed filter omits tasks that don't have a state.
 
-*** TODO Query tests
+*** CANCELLED Query tests
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-02-26 Thu 10:36] \\
+  The tests were already written, so that's covered.
+:END:
 
 Please add integration tests for the =query= command. I'd like those tests to run various queries on the fixture files and check for expected results. These should be kept to a minimum, just as a sanity check.
+
+*** REWORKED Code review fixes
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-26 Thu 13:14] \\
+  It planned to refactor =build_default_map= but then decided to redo the current implementation in a different flavour.
+:END:
+There are some comments that I'd like addressed:
+
+- Query execution and output formatting of commands should be part of the =with processing_status()= block, only the actual output should be done outside. That is to notify the user that an action is taking place in the background. Please update all the command's run functions to make sure that all processing of data happens in the block, while only the output remains outside (once processing is done).
+
+- When a query in the query language uses a function that isn't known it currently defaults to returning a string. I would like this to be changed to throw an error that lists the available functions.
+
+- Refactor the =build_default_map= function in config module to explicitly create objects for the default maps, instead of "filtering down" a larger object to remove some of its fields. The goal is improved readability and undestandability of the code.
+
+- Simplify the =log_applied_config_defaults= function to always log all the values read from the config. No need to show only the ones that take effect or needlessly overanalyze. If the =mapping= or =exclude= list is provided in an config-embedded form (not a file path), ellide the value to only show that the value was provided: =<Value ellided...>=. The function should be similar to =log_command_arguments= in complexity and function.
+
+- Update all the code paths that use the =_PropertyEnrichednOrgNode= to use =_PropertyRewrittenOrgNode= instead. These classes are very similar in function and we only need one of them. The enriched node class can then be removed.
 
 ** TODO Command docs
 
@@ -2695,7 +2716,7 @@ The index file should also link to =gamify-el= (currently linked-to by the READM
 Please update the AGENTS.md file to point to the documentation index. While there, please update the command usage invocations, project strucure and project toolchain (deps, etc).
 
 Please update the README.md file to briefly describe what this project it and add a prominient link to the documentation index.
-Then, follow up with a secion for each command that is currently available, where a brief description of what can be achieved with a given command is present with a single invocation example that presents a medium-complexity use case. For the short-output commands, please include an example output. The examples should be instrumental, but easy to understand.
+Then, follow up with a secion for each command that is currently available, where a brief description of what can be achieved with a given command is present with a single invocation example that presents a medium-complexity use case. For the short-output commands, please include an example output. The examples should be instrumental, but easy to understand. Start with the =query= command and proceed with =stats summary= and the rest.
 
 The README file should also point to VIBES.org as the current roadmap of features.
 

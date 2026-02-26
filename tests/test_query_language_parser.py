@@ -29,9 +29,9 @@ from org.query_language.errors import QueryParseError
         ".children[1:2].heading",
         ".[]",
         ".[] | reverse",
-        'select(.properties["gamify_exp"] > X)',
+        'select(.properties["gamify_exp"] > 10)',
         "sort_by(.latest_timestamp) | reverse",
-        "select(.heading == ID, .properties[$id] == ID) | .children",
+        'select(.heading == "ID", .properties[$id] == "ID") | .children',
         ".children[] | sort_by(.level) | reverse | .[0:10]",
         "select((.depndencies[] | length) == 0)",
         ".[1:1 + $limit]",
@@ -133,3 +133,14 @@ def test_parse_error_includes_query_pointer() -> None:
     assert "Invalid query syntax:" in message
     assert query in message
     assert "^" in message
+
+
+def test_parse_unknown_function_lists_available_functions() -> None:
+    """Unknown function names should fail with available functions listed."""
+    with pytest.raises(QueryParseError) as exc_info:
+        parse_query("unknown_fn")
+
+    message = str(exc_info.value)
+    assert "Unknown function: unknown_fn." in message
+    assert "Available functions:" in message
+    assert "select" in message

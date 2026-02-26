@@ -671,12 +671,11 @@ def load_cli_config(
 
 def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[str, object]]]:
     """Build Click default_map for Typer commands."""
-    summary_defaults = dict(defaults)
-    summary_defaults.pop("show", None)
-    summary_defaults.pop("groups", None)
+    summary_defaults = {
+        key: value for key, value in defaults.items() if key not in {"show", "groups"}
+    }
 
-    stats_tasks_defaults = dict(defaults)
-    for key in (
+    task_command_disallowed = {
         "max_tags",
         "max_relations",
         "max_groups",
@@ -684,33 +683,30 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
         "use",
         "show",
         "groups",
-    ):
-        stats_tasks_defaults.pop(key, None)
-
-    tasks_list_defaults = dict(defaults)
-    for key in (
-        "max_tags",
-        "max_relations",
-        "max_groups",
-        "min_group_size",
-        "use",
-        "show",
-        "groups",
-    ):
-        tasks_list_defaults.pop(key, None)
+    }
+    stats_tasks_defaults = {
+        key: value for key, value in defaults.items() if key not in task_command_disallowed
+    }
+    tasks_list_defaults = {
+        key: value for key, value in defaults.items() if key not in task_command_disallowed
+    }
     order_by_default = tasks_list_defaults.get("order_by")
     if isinstance(order_by_default, str):
         tasks_list_defaults["order_by"] = [order_by_default]
     elif is_string_tuple(order_by_default):
         tasks_list_defaults["order_by"] = list(order_by_default)
 
-    tags_defaults = dict(defaults)
-    for key in ("max_tags", "max_groups", "min_group_size", "groups"):
-        tags_defaults.pop(key, None)
+    tags_defaults = {
+        key: value
+        for key, value in defaults.items()
+        if key not in {"max_tags", "max_groups", "min_group_size", "groups"}
+    }
 
-    groups_defaults = dict(defaults)
-    for key in ("max_tags", "max_groups", "min_group_size", "show"):
-        groups_defaults.pop(key, None)
+    groups_defaults = {
+        key: value
+        for key, value in defaults.items()
+        if key not in {"max_tags", "max_groups", "min_group_size", "show"}
+    }
 
     return {
         "stats": {
@@ -723,22 +719,6 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     }
 
 
-def _option_was_provided(argv: list[str], option_name: str) -> bool:
-    """Return whether an option is present in argv."""
-    if option_name == "--color/--no-color":
-        return _option_was_provided(argv, "--color") or _option_was_provided(argv, "--no-color")
-    return option_name in argv or any(token.startswith(f"{option_name}=") for token in argv)
-
-
-def _values_equivalent(value: object, default_value: object) -> bool:
-    """Compare argument value against default with minor normalization."""
-    if isinstance(default_value, str) and isinstance(value, (list, tuple)):
-        return list(value) == [default_value]
-    if isinstance(default_value, tuple) and isinstance(value, list):
-        return value == list(default_value)
-    return value == default_value
-
-
 def _format_default_log_entry(option_name: str, value: object) -> str:
     """Format one option/value pair for config-default logging."""
     return f"{option_name}={value!r}"
@@ -749,52 +729,46 @@ def _format_argument_log_entry(arg_name: str, value: object) -> str:
     return f"{arg_name}={value!r}"
 
 
-def log_applied_config_defaults(args: object, argv: list[str], command_name: str) -> None:
-    """Log config defaults that were applied to command arguments."""
+def _redact_inline_config_value(option_name: str, value: object) -> object:
+    """Redact inline mapping/exclude values in default logs."""
+    if option_name in {"--mapping", "--exclude"} and isinstance(value, (dict, list)):
+        return "<Value ellided...>"
+    return value
+
+
+def log_applied_config_defaults(_args: object, _argv: list[str], command_name: str) -> None:
+    """Log config defaults loaded from config file."""
     if not logger.isEnabledFor(logging.INFO):
         return
 
     entries: list[str] = []
 
-    for dest, default_value in CONFIG_DEFAULTS.items():
+    for dest, default_value in sorted(CONFIG_DEFAULTS.items(), key=lambda item: item[0]):
         option_name = DEST_TO_OPTION_NAME.get(dest)
-        if option_name is None or not hasattr(args, dest):
+        if option_name is None:
             continue
-        if _option_was_provided(argv, option_name):
-            continue
-        arg_value = getattr(args, dest)
-        if _values_equivalent(arg_value, default_value):
-            entries.append(_format_default_log_entry(option_name, arg_value))
+        entries.append(
+            _format_default_log_entry(
+                option_name, _redact_inline_config_value(option_name, default_value)
+            )
+        )
 
-    for dest, values in CONFIG_APPEND_DEFAULTS.items():
+    for dest, values in sorted(CONFIG_APPEND_DEFAULTS.items(), key=lambda item: item[0]):
         option_name = DEST_TO_OPTION_NAME.get(dest)
-        if option_name is None or not hasattr(args, dest):
+        if option_name is None:
             continue
-        if _option_was_provided(argv, option_name):
+        entries.append(
+            _format_default_log_entry(option_name, _redact_inline_config_value(option_name, values))
+        )
+
+    for dest, option_name in (
+        ("mapping_inline", "--mapping"),
+        ("exclude_inline", "--exclude"),
+    ):
+        inline_value = CONFIG_INLINE_DEFAULTS.get(dest)
+        if inline_value is None:
             continue
-        arg_value = getattr(args, dest)
-        if arg_value == values:
-            entries.append(_format_default_log_entry(option_name, arg_value))
-
-    mapping_inline = CONFIG_INLINE_DEFAULTS.get("mapping_inline")
-    mapping_target = cast(ConfigDefaultsTarget, args) if hasattr(args, "mapping_inline") else None
-    if (
-        mapping_inline is not None
-        and mapping_target is not None
-        and not _option_was_provided(argv, "--mapping")
-        and mapping_target.mapping_inline == mapping_inline
-    ):
-        entries.append(_format_default_log_entry("--mapping", mapping_inline))
-
-    exclude_inline = CONFIG_INLINE_DEFAULTS.get("exclude_inline")
-    exclude_target = cast(ConfigDefaultsTarget, args) if hasattr(args, "exclude_inline") else None
-    if (
-        exclude_inline is not None
-        and exclude_target is not None
-        and not _option_was_provided(argv, "--exclude")
-        and exclude_target.exclude_inline == exclude_inline
-    ):
-        entries.append(_format_default_log_entry("--exclude", exclude_inline))
+        entries.append(_format_default_log_entry(option_name, "<Value ellided...>"))
 
     if entries:
         logger.info("Config defaults applied (%s): %s", command_name, ", ".join(entries))

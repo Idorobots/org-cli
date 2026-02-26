@@ -471,13 +471,17 @@ def build_order_stages(args: object, argv: list[str]) -> list[str]:
         elif value == "level":
             order_stages.append("sort_by(.level)")
         elif value == "gamify-exp-asc":
-            order_stages.append('sort_by(.properties["gamify_exp"])')
+            key_expr = '.properties["gamify_exp"]'
+            order_stages.append(f"sort_by({key_expr})")
             order_stages.append("reverse")
+            order_stages.append(f"sort_by(({key_expr}) != none)")
         elif value == "gamify-exp-desc":
             order_stages.append('sort_by(.properties["gamify_exp"])')
         elif value == "timestamp-asc":
-            order_stages.append("sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)")
+            key_expr = ".repeated_tasks + .deadline + .closed + .scheduled | max"
+            order_stages.append(f"sort_by({key_expr})")
             order_stages.append("reverse")
+            order_stages.append(f"sort_by(({key_expr}) != none)")
         elif value == "timestamp-desc":
             order_stages.append("sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)")
     return order_stages

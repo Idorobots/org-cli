@@ -34,7 +34,6 @@ A query is an expression tree composed of these syntax classes:
 - `"text"`
 - `true`, `false`
 - `none`
-- Bare identifiers (for non-function names) are treated as strings.
 
 Examples:
 
@@ -42,7 +41,6 @@ Examples:
 42
 "abc"
 none
-DONE   # equivalent to "DONE"
 ```
 
 ### Variables

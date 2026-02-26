@@ -246,10 +246,10 @@ def test_apply_config_defaults_applies_inline_and_append_defaults() -> None:
         config.CONFIG_INLINE_DEFAULTS.update(original_inline)
 
 
-def test_log_applied_config_defaults_logs_only_config_applied_values(
+def test_log_applied_config_defaults_logs_all_config_values(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Default logging should include only values applied from config."""
+    """Default logging should include all values loaded from config."""
     original_defaults = dict(config.CONFIG_DEFAULTS)
     original_append = dict(config.CONFIG_APPEND_DEFAULTS)
     original_inline = dict(config.CONFIG_INLINE_DEFAULTS)
@@ -277,10 +277,10 @@ def test_log_applied_config_defaults_logs_only_config_applied_values(
             )
 
         assert "Config defaults applied (stats summary):" in caplog.text
+        assert "--max-results=10" in caplog.text
         assert "--buckets=33" in caplog.text
         assert "--filter-tag=['work']" in caplog.text
-        assert "--mapping={'foo': 'bar'}" in caplog.text
-        assert "--max-results=10" not in caplog.text
+        assert "--mapping='<Value ellided...>'" in caplog.text
     finally:
         config.CONFIG_DEFAULTS.clear()
         config.CONFIG_DEFAULTS.update(original_defaults)

@@ -107,7 +107,6 @@ def _build_value_parser(
     Parser,
     Parser,
     Parser,
-    Parser,
 ]:
     """Build parsers for literal and variable values."""
     true_literal = _lexeme(_keyword("true")).result(BoolLiteral(True))
@@ -118,7 +117,6 @@ def _build_value_parser(
         lambda v: NumberLiteral(float(v)) if "." in v else NumberLiteral(int(v))
     )
     string_literal = string_token.map(lambda v: StringLiteral(_decode_string(v)))
-    bare_identifier_value = identifier.map(StringLiteral)
     return (
         true_literal,
         false_literal,
@@ -126,18 +124,18 @@ def _build_value_parser(
         variable,
         number_literal,
         string_literal,
-        bare_identifier_value,
     )
 
 
 def _build_function_call_parser(identifier: Parser, expr: Parser) -> Parser:
-    """Build parser for function calls and bare identifier values."""
+    """Build parser for known function calls."""
 
     @generate
     def function_call() -> object:
         name = yield identifier
         if name not in KNOWN_FUNCTIONS:
-            return StringLiteral(name)
+            available = ", ".join(sorted(KNOWN_FUNCTIONS))
+            raise QueryParseError(f"Unknown function: {name}. Available functions: {available}")
         arg = yield (_symbol("(") >> expr << _symbol(")")).optional()
         return FunctionCall(name, arg)
 
@@ -278,7 +276,6 @@ def _make_parser() -> Parser:
         variable,
         number_literal,
         string_literal,
-        bare_identifier_value,
     ) = _build_value_parser(identifier, number_token, string_token)
     function_call = _build_function_call_parser(identifier, expr)
     bracket_postfix = _build_bracket_postfix_parser(index_expr)
@@ -297,7 +294,6 @@ def _make_parser() -> Parser:
         | variable
         | number_literal
         | string_literal
-        | bare_identifier_value
     )
     atom = _build_postfix_chain_parser(base_atom, identifier, bracket_postfix)
 

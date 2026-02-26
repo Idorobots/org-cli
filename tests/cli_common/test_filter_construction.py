@@ -104,6 +104,37 @@ def test_build_query_text_with_ordering_and_slice() -> None:
     )
 
 
+def test_build_query_text_with_timestamp_asc_keeps_none_last() -> None:
+    """timestamp-asc should keep items with no timestamp at the end."""
+    from org.cli_common import build_query_text
+
+    args = make_args(order_by=["timestamp-asc"])
+    argv = ["org", "tasks", "list", "--order-by", "timestamp-asc", "file.org"]
+
+    query = build_query_text(args, argv, include_ordering=True, include_slice=False)
+
+    assert query == (
+        "[ .[] | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) "
+        "| reverse "
+        "| sort_by((.repeated_tasks + .deadline + .closed + .scheduled | max) != none) ]"
+    )
+
+
+def test_build_query_text_with_gamify_exp_asc_keeps_none_last() -> None:
+    """gamify-exp-asc should keep items with missing value at the end."""
+    from org.cli_common import build_query_text
+
+    args = make_args(order_by=["gamify-exp-asc"])
+    argv = ["org", "tasks", "list", "--order-by", "gamify-exp-asc", "file.org"]
+
+    query = build_query_text(args, argv, include_ordering=True, include_slice=False)
+
+    assert query == (
+        '[ .[] | sort_by(.properties["gamify_exp"]) | reverse '
+        '| sort_by((.properties["gamify_exp"]) != none) ]'
+    )
+
+
 def test_build_query_text_with_property_filter() -> None:
     """Property filters should quote keys and values."""
     from org.cli_common import build_query_text

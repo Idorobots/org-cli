@@ -94,15 +94,15 @@ def run_query(args: QueryArgs) -> None:
     console = build_console(color_enabled)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
-
-    try:
-        compiled_query = compile_query_text(args.query)
-    except QueryParseError as exc:
-        raise click.UsageError(str(exc)) from exc
-
     lines: list[str] = []
+    org_output_values: list[object] = []
 
     with processing_status(console, color_enabled):
+        try:
+            compiled_query = compile_query_text(args.query)
+        except QueryParseError as exc:
+            raise click.UsageError(str(exc)) from exc
+
         roots, todo_keys, done_keys = load_root_data(args)
 
         context = EvalContext(
@@ -121,11 +121,14 @@ def run_query(args: QueryArgs) -> None:
 
         output_values = _flatten_result_stream(results)
 
-        if all(_is_org_object(value) for value in output_values):
-            _render_org_values(output_values, console)
-            return
+        if output_values and all(_is_org_object(value) for value in output_values):
+            org_output_values = output_values
+        else:
+            lines = [_format_query_value(value) for value in output_values]
 
-        lines = [_format_query_value(value) for value in output_values]
+    if org_output_values:
+        _render_org_values(org_output_values, console)
+        return
 
     if not lines:
         console.print("No results", markup=False)

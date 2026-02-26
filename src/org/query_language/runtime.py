@@ -553,7 +553,8 @@ def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext)
             raise QueryRuntimeError(f"{expr.name} requires an argument")
         return arg_functions[expr.name](stream, expr.argument, context)
 
-    raise QueryRuntimeError(f"Unsupported function: {expr.name}")
+    available = ", ".join(sorted({*no_arg_functions, *arg_functions}))
+    raise QueryRuntimeError(f"Unsupported function: {expr.name}. Available functions: {available}")
 
 
 def _type_name(value: object) -> str:

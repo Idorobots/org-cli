@@ -101,6 +101,17 @@ def test_query_empty_scheduled_timestamp_renders_none(capsys: pytest.CaptureFixt
     assert captured.strip() == "none"
 
 
+def test_query_empty_org_result_set_prints_no_results(capsys: pytest.CaptureFixture[str]) -> None:
+    """Empty org-object result sets should print No results."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[] | select(false)")
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    assert captured.strip() == "No results"
+
+
 def test_query_runtime_error_is_reported_as_usage_error() -> None:
     """Runtime query failures should be shown as usage errors."""
     runner = CliRunner()
