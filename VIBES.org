@@ -2695,7 +2695,11 @@ There are some comments that I'd like addressed:
 
 - Update all the code paths that use the =_PropertyEnrichednOrgNode= to use =_PropertyRewrittenOrgNode= instead. These classes are very similar in function and we only need one of them. The enriched node class can then be removed.
 
-** TODO Command docs
+** REWORKED Command docs
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-26 Thu 13:56] \\
+  Required manual changes and reprompting. AI is not very good at writing proper documentation.
+:END:
 
 I'd like to start documenting the available commands.
 

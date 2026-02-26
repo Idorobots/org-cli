@@ -4,38 +4,56 @@ This document provides essential information for AI coding agents working in the
 
 ## Project Overview
 
-**org-cli** is a Python CLI tool that analyzes Emacs Org-mode archive files to extract task statistics and generate frequency analysis of tags, headline words, and body words.
+**org-cli** is a Python CLI for Org-mode archives. It supports query-style data extraction, task listing, and statistical analysis.
 
-**Tech Stack:**
-- Python 3.14.2
-- Poetry for build & dependency management
-- See `pyproject.toml` for the dependencies & their versions.
+Top-level commands:
+
+- `org query`
+- `org stats summary`
+- `org stats tasks`
+- `org stats tags`
+- `org stats groups`
+- `org tasks list`
+
+**Project Toolchain:**
+
+- Python `>=3.12,<4.0` (configured in `pyproject.toml`)
+- Poetry for dependency management and packaging
+- Runtime dependencies: `orgparse`, `typer`, `rich`, `parsy`
+- Dev dependencies: `pytest`, `pytest-cov`, `ruff`, `mypy`, `pyright`, `taskipy`
 
 **Project Structure:**
+
 ```
 org-cli/
 ├── src/
-│   └── org/                  # Main package
-│       ├── __init__.py       # Package initialization (exports main, version, etc.)
-│       ├── __main__.py       # Entry point for `python -m org`
-│       ├── cli.py            # CLI interface
-│       ├── analyze.py        # Analysis logic
-│       └── filters.py        # Filtering utilities
+│   └── org/
+│       ├── cli.py
+│       ├── config.py
+│       ├── cli_common.py
+│       ├── analyze.py
+│       ├── filters.py
+│       ├── tui.py
+│       ├── query_language/
+│       └── commands/
+│           ├── query.py
+│           ├── stats/
+│           │   ├── summary.py
+│           │   ├── tasks.py
+│           │   ├── tags.py
+│           │   └── groups.py
+│           └── tasks/
+│               └── list.py
 ├── tests/
-│   ├── fixtures/             # Test Org-mode files
-│   ├── test_*.py             # Logic test files
-│   ├── conftest.py           # Shared test fixtures
-│   └── __init__.py
-├── examples/                 # Sample Org-mode archive files
-├── docs/                     # Project documentation
-│   └── query_language.md     # Query language reference manual
-├── pyproject.toml            # Poetry configuration & build settings
-├── poetry.lock               # Poetry dependency lock file
-└── .gitignore
+├── examples/
+├── docs/
+├── pyproject.toml
+└── poetry.lock
 ```
 
 ## Documentation
 
+- Entry point: `docs/index.md`
 - Query language reference: `docs/query_language.md`
 
 ## Development Setup
@@ -49,107 +67,41 @@ poetry install
 
 ### Running the Application
 ```bash
-# Recommended: Use the installed CLI command (after poetry install)
-poetry run org examples/ARCHIVE_small
-
-# View help and all options
+# View command tree
 poetry run org --help
 
-# Limit number of results displayed
-poetry run org --max-results 50 examples/ARCHIVE_small
-poetry run org -n 50 examples/ARCHIVE_small
+# Query command
+poetry run org query '.[][] | .heading' -n 5 examples/ARCHIVE_small
 
-# Limit number of tags displayed in Top tags section
-poetry run org --max-tags 3 examples/ARCHIVE_small
-poetry run org --max-tags 0 examples/ARCHIVE_small  # Omit Top tags section entirely
+# Summary stats
+poetry run org stats summary --max-tags 3 --max-groups 2 examples/ARCHIVE_small
 
-# Limit number of tag groups displayed
-poetry run org --max-groups 3 examples/ARCHIVE_small
-poetry run org --max-groups 0 examples/ARCHIVE_small  # Omit Tag groups section entirely
+# Task-only stats with derived categories from gamify_exp
+poetry run org stats tasks --with-gamify-category examples/ARCHIVE_small
 
-# Filter by task difficulty (requires --with-gamify-category)
-poetry run org --with-gamify-category --filter-category hard examples/ARCHIVE_small
-poetry run org --with-gamify-category --filter-category simple -n 20 examples/ARCHIVE_small
+# Focused tag stats
+poetry run org stats tags --show Debugging,Jira --max-relations 3 examples/ARCHIVE_small
 
-# Use first tag as category
-poetry run org --with-tags-as-category examples/ARCHIVE_small
+# Explicit groups
+poetry run org stats groups --group Debugging,Erlang --group ProjectManagement,Jira examples/ARCHIVE_small
 
-# Combine both preprocessors (tags will override gamify)
-poetry run org --with-gamify-category --with-tags-as-category examples/ARCHIVE_small
-
-# Filter by tag-based category
-poetry run org --with-tags-as-category --filter-category work examples/ARCHIVE_small
-
-# Show different data categories
-poetry run org --use tags examples/ARCHIVE_small       # Analyze tags (default)
-poetry run org --use heading examples/ARCHIVE_small    # Analyze headline words
-poetry run org --use body examples/ARCHIVE_small       # Analyze body words
-
-# Use custom stopword file (one word per line)
-poetry run org --exclude my_words.txt examples/ARCHIVE_small
-
-# Use custom tag mappings
-poetry run org --mapping tag_mappings.json examples/ARCHIVE_small
-
-# Filter by date range
-poetry run org --filter-date-from 2023-10-01 --filter-date-until 2023-10-31 examples/ARCHIVE_small
-
-# Filter by completion status
-poetry run org --filter-completed examples/ARCHIVE_small
-poetry run org --filter-not-completed examples/ARCHIVE_small
-
-# Filter by specific tags or properties
-poetry run org --filter-tag debugging examples/ARCHIVE_small
-poetry run org --filter-property priority=A examples/ARCHIVE_small
-
-# Filter by regex patterns
-poetry run org --filter-tag "^test" examples/ARCHIVE_small         # Tags starting with "test"
-poetry run org --filter-heading "bug|fix" examples/ARCHIVE_small   # Headings containing "bug" or "fix"
-poetry run org --filter-body "TODO:" examples/ARCHIVE_small        # Body containing "TODO:"
-
-# Combine multiple options
-poetry run org -n 25 --with-gamify-category --filter-category regular --exclude words.txt examples/ARCHIVE_small
-
-# Process multiple files
-poetry run org file1.org file2.org file3.org
+# Task listing with filters and ordering
+poetry run org tasks list --filter-not-completed --order-by level --order-by timestamp-asc examples/ARCHIVE_small
 ```
 
-**CLI Arguments:**
-- `files` - Org-mode archive files to analyze (positional arguments)
-- `--max-results N` / `-n N` - Maximum number of results to display (default: 10)
-- `--max-tags N` - Maximum number of tags to display in Top tags section (default: 5, use 0 to omit section)
-- `--max-relations N` - Maximum number of relations to display per item (default: 5, use 0 to omit sections)
-- `--max-groups N` - Maximum number of tag groups to display (default: 5, use 0 to omit section)
-- `--min-group-size N` - Minimum group size to display (default: 2)
-- `--buckets N` - Number of time buckets for timeline charts (default: 50, minimum: 20)
-- `--with-gamify-category` - Preprocess nodes to set category property based on gamify_exp value (disabled by default)
-- `--with-tags-as-category` - Preprocess nodes to set category property based on first tag (disabled by default)
-- `--category-property PROPERTY` - Property name for category histogram and filtering (default: CATEGORY)
-- `--filter-category VALUE` - Filter tasks by category property value (e.g., simple, regular, hard, none, or custom). Use 'all' to skip category filtering (default: all)
-  - When `--with-gamify-category` is enabled: categories are simple, regular, hard based on gamify_exp
-  - When `--with-tags-as-category` is enabled: category is the first tag on the task
-  - Without preprocessing: uses existing property values in org files (or "none" if missing)
-  - Can filter by any custom category value
-- `--use CATEGORY` - Category to display: tags, heading, or body (default: tags)
-- `--exclude FILE` - File with words to exclude (one per line, replaces default exclusion list)
-- `--mapping FILE` - JSON file containing tag mappings (dict[str, str])
-- `--todo-keys KEYS` - Comma-separated list of incomplete task states (default: TODO)
-- `--done-keys KEYS` - Comma-separated list of completed task states (default: DONE)
-- `--filter-gamify-exp-above N` - Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)
-- `--filter-gamify-exp-below N` - Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)
-- `--filter-repeats-above N` - Filter tasks where repeat count > N (non-inclusive)
-- `--filter-repeats-below N` - Filter tasks where repeat count < N (non-inclusive)
-- `--filter-date-from TIMESTAMP` - Filter tasks with timestamps after date (inclusive)
-- `--filter-date-until TIMESTAMP` - Filter tasks with timestamps before date (inclusive)
-- `--filter-property KEY=VALUE` - Filter tasks with exact property match (case-sensitive, can specify multiple)
-- `--filter-tag REGEX` - Filter tasks where any tag matches regex (case-sensitive, can specify multiple)
-- `--filter-heading REGEX` - Filter tasks where heading matches regex (case-sensitive, can specify multiple)
-- `--filter-body REGEX` - Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)
-- `--filter-completed` - Filter tasks with todo state in done keys
-- `--filter-not-completed` - Filter tasks with todo state in todo keys
-- `--help` / `-h` - Show help message
+Command options evolve; use the generated help for exact flags:
 
-Date formats: `YYYY-MM-DD`, `YYYY-MM-DDThh:mm`, `YYYY-MM-DDThh:mm:ss`, `YYYY-MM-DD hh:mm`, `YYYY-MM-DD hh:mm:ss`
+```bash
+poetry run org --help
+poetry run org query --help
+poetry run org stats --help
+poetry run org stats summary --help
+poetry run org stats tasks --help
+poetry run org stats tags --help
+poetry run org stats groups --help
+poetry run org tasks --help
+poetry run org tasks list --help
+```
 
 ## Build/Lint/Test Commands
 - All checks should be run with a single command:
@@ -403,5 +355,5 @@ poetry run task check
 
 ---
 
-**Last Updated:** 2026-02-08
+**Last Updated:** 2026-02-26
 **Maintained By:** AI Coding Agents (sometimes)
