@@ -328,7 +328,6 @@ def validate_str_option(key: str, value: object) -> str | None:
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
     invalid_order_by = key == "--order-by" and value not in {
         "file-order",
-        "file-order-reverse",
         "file-order-reversed",
         "level",
         "timestamp-asc",
@@ -350,7 +349,6 @@ def validate_order_by_option(value: object) -> str | list[str] | None:
     """Validate order-by option value."""
     allowed = {
         "file-order",
-        "file-order-reverse",
         "file-order-reversed",
         "level",
         "timestamp-asc",

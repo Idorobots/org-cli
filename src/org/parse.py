@@ -57,37 +57,3 @@ def load_root_nodes(
         roots.append(root)
 
     return roots, list(all_todo_keys), list(all_done_keys)
-
-
-def load_nodes(
-    filenames: list[str],
-    todo_keys: list[str],
-    done_keys: list[str],
-    filters: list[FilterSpec],
-) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
-    """Load, parse, and filter org-mode files.
-
-    Processes each file separately: preprocess -> parse -> filter -> extract keys -> combine.
-
-    Args:
-        filenames: List of file paths to load
-        todo_keys: List of TODO state keywords to prepend to files
-        done_keys: List of DONE state keywords to prepend to files
-        filters: List of filter specs to apply to nodes from each file
-
-    Returns:
-        Tuple of (filtered nodes, all todo keys, all done keys)
-
-    Raises:
-        typer.BadParameter: If file cannot be read
-    """
-    roots, all_todo_keys, all_done_keys = load_root_nodes(filenames, todo_keys, done_keys)
-
-    all_nodes: list[orgparse.node.OrgNode] = []
-    for root in roots:
-        file_nodes = list(root[1:])
-        for filter_spec in filters:
-            file_nodes = filter_spec.filter(file_nodes)
-        all_nodes = all_nodes + file_nodes
-
-    return all_nodes, all_todo_keys, all_done_keys

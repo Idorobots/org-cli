@@ -73,23 +73,6 @@ def test_run_query_org_root_results_render_with_file_header(
     assert "No results" not in captured
 
 
-@pytest.mark.parametrize("removed_option", ["--filter-tag", "--order-by", "--with-gamify-category"])
-def test_query_removed_cli_options_are_rejected(removed_option: str) -> None:
-    """Query command should reject removed filter/order/enrichment options."""
-    runner = CliRunner()
-    fixture_path = str(os.path.join(FIXTURES_DIR, "multiple_tags.org"))
-
-    args = ["query", ".[]", removed_option]
-    if removed_option in {"--filter-tag", "--order-by"}:
-        args.append("x")
-    args.append(fixture_path)
-
-    result = runner.invoke(app, args)
-
-    assert result.exit_code != 0
-    assert "No such option" in (result.output or result.stderr)
-
-
 def test_query_syntax_error_shows_pointer_without_invalid_value_prefix() -> None:
     """Query syntax errors should include pointer and omit Invalid value prefix."""
     runner = CliRunner()

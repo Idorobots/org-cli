@@ -284,7 +284,7 @@ def register(app: typer.Typer) -> None:
             "--order-by",
             metavar="ORDER",
             help=(
-                "Order tasks by: file-order, file-order-reverse, level, timestamp-asc, "
+                "Order tasks by: file-order, file-order-reversed, level, timestamp-asc, "
                 "timestamp-desc, gamify-exp-asc, gamify-exp-desc"
             ),
         ),

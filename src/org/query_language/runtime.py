@@ -289,10 +289,11 @@ def _apply_binary_operator(operator: str, left: object, right: object) -> object
     if operator in {"==", "!="}:
         return _apply_equality(operator, left, right)
     if operator in {">", "<", ">=", "<="}:
-        return _compare(operator, left, right)
+        return _apply_compare(operator, left, right)
     if operator == "matches":
         if not isinstance(left, str) or not isinstance(right, str):
             raise QueryRuntimeError("matches operator requires two strings")
+        # FIXME Potentially recompiles the same regex multiple times when broadcasting a scalar to stream.
         return bool(re.compile(right).search(left))
     if operator in {"and", "or"}:
         return _apply_boolean(operator, left, right)
@@ -435,7 +436,7 @@ def _apply_boolean(operator: str, left: object, right: object) -> object:
     return left if bool(left) else right
 
 
-def _compare(operator: str, left: object, right: object) -> bool:
+def _apply_compare(operator: str, left: object, right: object) -> bool:
     """Apply numeric, string, or OrgDate comparison operators."""
     if left is None or right is None:
         if operator in {">", "<"}:
@@ -450,17 +451,17 @@ def _compare(operator: str, left: object, right: object) -> bool:
     if is_org_date:
         left_date = _org_date_start_for_comparison(cast(OrgDate, left))
         right_date = _org_date_start_for_comparison(cast(OrgDate, right))
-        return _compare_datetime(operator, left_date, right_date)
+        return _apply_compare_datetime(operator, left_date, right_date)
     if is_numeric:
         left_value_num = cast(float | int, left)
         right_value_num = cast(float | int, right)
-        return _compare_numeric(operator, left_value_num, right_value_num)
+        return _apply_compare_numeric(operator, left_value_num, right_value_num)
     left_value_str = cast(str, left)
     right_value_str = cast(str, right)
-    return _compare_string(operator, left_value_str, right_value_str)
+    return _apply_compare_string(operator, left_value_str, right_value_str)
 
 
-def _compare_numeric(operator: str, left: float | int, right: float | int) -> bool:
+def _apply_compare_numeric(operator: str, left: float | int, right: float | int) -> bool:
     """Apply numeric comparisons."""
     if operator == ">":
         return left > right
@@ -473,7 +474,7 @@ def _compare_numeric(operator: str, left: float | int, right: float | int) -> bo
     raise QueryRuntimeError(f"Unsupported comparison operator: {operator}")
 
 
-def _compare_string(operator: str, left: str, right: str) -> bool:
+def _apply_compare_string(operator: str, left: str, right: str) -> bool:
     """Apply string comparisons."""
     if operator == ">":
         return left > right
@@ -486,7 +487,7 @@ def _compare_string(operator: str, left: str, right: str) -> bool:
     raise QueryRuntimeError(f"Unsupported comparison operator: {operator}")
 
 
-def _compare_datetime(operator: str, left: datetime, right: datetime) -> bool:
+def _apply_compare_datetime(operator: str, left: datetime, right: datetime) -> bool:
     """Apply datetime comparisons."""
     if operator == ">":
         return left > right
@@ -869,15 +870,15 @@ def _func_select(stream: Stream, condition: Expr, context: EvalContext) -> Strea
 
 def _func_sort_by(stream: Stream, key_expr: Expr, context: EvalContext) -> Stream:
     """Sort stream by key expression evaluated per item in descending order."""
-    with_key: list[tuple[int, str, ComparableKey, object]] = []
-    without_key: list[tuple[int, object]] = []
+    with_key: list[tuple[ComparableKey, object]] = []
+    without_key: list[object] = []
     key_category: str | None = None
 
-    for index, item in enumerate(stream):
+    for _, item in enumerate(stream):
         key_values = evaluate_expr(key_expr, _stream([item]), context)
         key = _normalize_org_date_value(key_values[0] if key_values else None)
         if key is None:
-            without_key.append((index, item))
+            without_key.append(item)
             continue
 
         category, comparable_key = _to_comparable_value(key)
@@ -885,42 +886,21 @@ def _func_sort_by(stream: Stream, key_expr: Expr, context: EvalContext) -> Strea
             key_category = category
         elif key_category != category:
             raise QueryRuntimeError("sort_by requires keys of one comparable type")
-        with_key.append((index, category, comparable_key, item))
+        with_key.append((comparable_key, item))
 
     ordered_with_key = _sort_with_key_entries(with_key, key_category)
-    ordered_without_key = [item for _, item in without_key]
-    return _stream([*ordered_with_key, *ordered_without_key])
+    return _stream([*ordered_with_key, *without_key])
 
 
 def _sort_with_key_entries(
-    entries: list[tuple[int, str, ComparableKey, object]],
+    entries: list[tuple[ComparableKey, object]],
     category: str | None,
 ) -> list[object]:
     """Sort key-bearing entries by comparable key descending."""
     if not entries or category is None:
-        return [item for _, _, _, item in entries]
+        return [item for _, item in entries]
 
-    if category == "number":
-        number_entries = cast(list[tuple[int, str, int | float, object]], entries)
-        return [
-            item
-            for _, _, _, item in sorted(number_entries, key=lambda value: value[2], reverse=True)
-        ]
-
-    if category == "string":
-        string_entries = cast(list[tuple[int, str, str, object]], entries)
-        return [
-            item
-            for _, _, _, item in sorted(string_entries, key=lambda value: value[2], reverse=True)
-        ]
-
-    if category == "date":
-        date_entries = cast(list[tuple[int, str, datetime, object]], entries)
-        return [
-            item for _, _, _, item in sorted(date_entries, key=lambda value: value[2], reverse=True)
-        ]
-
-    raise QueryRuntimeError(f"sort_by unsupported comparable category: {category}")
+    return [item for _, item in sorted(entries, key=lambda value: value[0], reverse=True)]
 
 
 def _func_join(stream: Stream, separator_expr: Expr, context: EvalContext) -> Stream:

@@ -54,6 +54,7 @@ def _format_org_block(value: object) -> str:
         filename = value.env.filename if value.env.filename else "unknown"
         node_text = str(value).rstrip()
         return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
+    # FIXME node.scheduled returns an OrgDateScheduled with None start sometimes.
     if isinstance(value, OrgDate) and not bool(value):
         return "none"
     return str(value)
@@ -99,33 +100,36 @@ def run_query(args: QueryArgs) -> None:
     except QueryParseError as exc:
         raise click.UsageError(str(exc)) from exc
 
+    lines: list[str] = []
+
     with processing_status(console, color_enabled):
         roots, todo_keys, done_keys = load_root_data(args)
 
-    context = EvalContext(
-        {
-            "offset": args.offset,
-            "limit": args.max_results,
-            "todo_keys": todo_keys,
-            "done_keys": done_keys,
-        }
-    )
-    try:
-        stream_nodes = Stream([roots])
-        results = compiled_query(stream_nodes, context)
-    except QueryRuntimeError as exc:
-        raise click.UsageError(str(exc)) from exc
+        context = EvalContext(
+            {
+                "offset": args.offset,
+                "limit": args.max_results,
+                "todo_keys": todo_keys,
+                "done_keys": done_keys,
+            }
+        )
+        try:
+            stream_nodes = Stream([roots])
+            results = compiled_query(stream_nodes, context)
+        except QueryRuntimeError as exc:
+            raise click.UsageError(str(exc)) from exc
 
-    output_values = _flatten_result_stream(results)
-    if not output_values:
+        output_values = _flatten_result_stream(results)
+
+        if all(_is_org_object(value) for value in output_values):
+            _render_org_values(output_values, console)
+            return
+
+        lines = [_format_query_value(value) for value in output_values]
+
+    if not lines:
         console.print("No results", markup=False)
         return
-
-    if all(_is_org_object(value) for value in output_values):
-        _render_org_values(output_values, console)
-        return
-
-    lines = [_format_query_value(value) for value in output_values]
 
     for line in lines:
         console.print(line, markup=False)

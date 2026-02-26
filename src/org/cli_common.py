@@ -232,7 +232,6 @@ ORDER_BY_OPTION = "--order-by"
 
 ORDER_BY_VALUES = {
     "file-order",
-    "file-order-reverse",
     "file-order-reversed",
     "level",
     "timestamp-asc",
@@ -467,7 +466,7 @@ def build_order_stages(args: object, argv: list[str]) -> list[str]:
     for value in order_values:
         if value == "file-order":
             order_stages.append(".")
-        elif value in {"file-order-reverse", "file-order-reversed"}:
+        elif value == "file-order-reversed":
             order_stages.append("reverse")
         elif value == "level":
             order_stages.append("sort_by(.level)")
