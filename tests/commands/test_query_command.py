@@ -32,6 +32,7 @@ def _make_args(files: list[str], query: str, **overrides: object) -> QueryArgs:
         max_results=10,
         offset=0,
         out=OutputFormat.ORG,
+        out_theme="github-dark",
         pandoc_args=None,
     )
     for key, value in overrides.items():
@@ -176,10 +177,17 @@ def test_run_query_markdown_pandoc_error_is_usage_error(monkeypatch: pytest.Monk
     class _FailingFormatter:
         include_filenames = False
 
-        def render(self, values: list[object], console: object, color_enabled: bool) -> None:
+        def prepare(
+            self,
+            values: list[object],
+            console: object,
+            color_enabled: bool,
+            out_theme: str,
+        ) -> object:
             del values
             del console
             del color_enabled
+            del out_theme
             raise OutputFormatError("pandoc missing")
 
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")

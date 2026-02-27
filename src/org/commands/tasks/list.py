@@ -11,10 +11,12 @@ import typer
 from org import config as config_module
 from org.cli_common import load_and_process_data
 from org.output_format import (
+    DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,
     TasksListRenderInput,
     get_tasks_list_formatter,
+    print_prepared_output,
 )
 from org.tui import build_console, processing_status, setup_output
 
@@ -55,6 +57,7 @@ class ListArgs:
     category_property: str
     buckets: int
     out: str
+    out_theme: str
     pandoc_args: str | None
 
 
@@ -70,21 +73,23 @@ def run_tasks_list(args: ListArgs) -> None:
     formatter = get_tasks_list_formatter(args.out, args.pandoc_args)
     with processing_status(console, color_enabled):
         nodes, todo_keys, done_keys = load_and_process_data(args)
-
-    try:
-        formatter.render(
-            TasksListRenderInput(
-                nodes=nodes,
-                console=console,
-                color_enabled=color_enabled,
-                done_keys=done_keys,
-                todo_keys=todo_keys,
-                details=args.details,
-                buckets=args.buckets,
+        try:
+            prepared_output = formatter.prepare(
+                TasksListRenderInput(
+                    nodes=nodes,
+                    console=console,
+                    color_enabled=color_enabled,
+                    done_keys=done_keys,
+                    todo_keys=todo_keys,
+                    details=args.details,
+                    buckets=args.buckets,
+                    out_theme=args.out_theme,
+                )
             )
-        )
-    except OutputFormatError as exc:
-        raise click.UsageError(str(exc)) from exc
+        except OutputFormatError as exc:
+            raise click.UsageError(str(exc)) from exc
+
+    print_prepared_output(console, prepared_output)
 
 
 def register(app: typer.Typer) -> None:
@@ -273,6 +278,11 @@ def register(app: typer.Typer) -> None:
             "--out",
             help="Output format: org, json, or any pandoc writer format",
         ),
+        out_theme: str = typer.Option(
+            DEFAULT_OUTPUT_THEME,
+            "--out-theme",
+            help="Syntax theme for highlighted output blocks",
+        ),
         pandoc_args: str | None = typer.Option(
             None,
             "--pandoc-args",
@@ -314,6 +324,7 @@ def register(app: typer.Typer) -> None:
             category_property=category_property,
             buckets=buckets,
             out=out,
+            out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
         config_module.apply_config_defaults(args)

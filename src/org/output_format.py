@@ -23,6 +23,8 @@ from org.tui import TaskLineConfig, format_task_line, lines_to_text, print_outpu
 
 logger = logging.getLogger("org")
 
+DEFAULT_OUTPUT_THEME = "github-dark"
+
 
 _RENDERABLE_OUTPUT_FORMATS: dict[str, str] = {
     "bibtex": "bibtex",
@@ -72,8 +74,11 @@ class QueryOutputFormatter(Protocol):
 
     include_filenames: bool
 
-    def render(self, values: list[object], console: Console, color_enabled: bool) -> None:
-        """Render query output values."""
+    def prepare(
+        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+    ) -> PreparedOutput:
+        """Prepare query output values for rendering."""
+        ...
 
 
 class TasksListOutputFormatter(Protocol):
@@ -81,8 +86,28 @@ class TasksListOutputFormatter(Protocol):
 
     include_filenames: bool
 
-    def render(self, data: TasksListRenderInput) -> None:
-        """Render tasks list output."""
+    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
+        """Prepare tasks list output for rendering."""
+        ...
+
+
+@dataclass(frozen=True)
+class OutputOperation:
+    """One prepared output operation."""
+
+    kind: str
+    text: str | None = None
+    renderable: object | None = None
+    markup: bool = False
+    color_enabled: bool = False
+    end: str = "\n"
+
+
+@dataclass(frozen=True)
+class PreparedOutput:
+    """Prepared output operations ready for console rendering."""
+
+    operations: tuple[OutputOperation, ...]
 
 
 @dataclass(frozen=True)
@@ -96,6 +121,7 @@ class TasksListRenderInput:
     todo_keys: list[str]
     details: bool
     buckets: int
+    out_theme: str
 
 
 def _is_org_object(value: object) -> bool:
@@ -130,28 +156,46 @@ class OrgQueryOutputFormatter:
 
     include_filenames = True
 
-    def render(self, values: list[object], console: Console, color_enabled: bool) -> None:
+    def prepare(
+        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+    ) -> PreparedOutput:
+        del console
         del color_enabled
         if values and all(_is_org_object(value) for value in values):
-            self._render_org_values(values, console)
-            return
+            return self._prepare_org_values(values, out_theme)
 
         lines = [_format_query_value(value) for value in values]
         if not lines:
-            console.print("No results", markup=False)
-            return
+            return PreparedOutput(
+                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+            )
 
-        for line in lines:
-            console.print(line, markup=False)
+        return PreparedOutput(
+            operations=tuple(
+                OutputOperation(kind="console_print", text=line, markup=False) for line in lines
+            )
+        )
 
-    def _render_org_values(self, values: list[object], console: Console) -> None:
-        """Render org values using org-mode syntax highlighting."""
+    def _prepare_org_values(self, values: list[object], out_theme: str) -> PreparedOutput:
+        """Prepare org values using org-mode syntax highlighting."""
+        theme = _normalize_syntax_theme(out_theme)
+        operations: list[OutputOperation] = []
         for idx, value in enumerate(values):
             if idx > 0:
-                console.print()
-            console.print(
-                Syntax(_format_org_block(value), "org", line_numbers=False, word_wrap=True)
+                operations.append(OutputOperation(kind="console_print", text="", markup=False))
+            operations.append(
+                OutputOperation(
+                    kind="console_print",
+                    renderable=Syntax(
+                        _format_org_block(value),
+                        "org",
+                        theme=theme,
+                        line_numbers=False,
+                        word_wrap=True,
+                    ),
+                )
             )
+        return PreparedOutput(operations=tuple(operations))
 
 
 class _StubQueryOutputFormatter:
@@ -159,10 +203,14 @@ class _StubQueryOutputFormatter:
 
     include_filenames = False
 
-    def render(self, values: list[object], console: Console, color_enabled: bool) -> None:
+    def prepare(
+        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+    ) -> PreparedOutput:
         del values
         del console
         del color_enabled
+        del out_theme
+        return PreparedOutput(operations=())
 
 
 class OutputFormatError(RuntimeError):
@@ -175,6 +223,28 @@ def _write_plain_output(console: Console, text: str) -> None:
     console.file.flush()
 
 
+def print_prepared_output(console: Console, prepared_output: PreparedOutput) -> None:
+    """Print already prepared output operations."""
+    for operation in prepared_output.operations:
+        if operation.kind == "plain_write":
+            if operation.text is not None:
+                _write_plain_output(console, operation.text)
+            continue
+        if operation.kind == "print_output":
+            if operation.text is not None:
+                print_output(
+                    console,
+                    operation.text,
+                    operation.color_enabled,
+                    end=operation.end,
+                )
+            continue
+        if operation.renderable is not None:
+            console.print(operation.renderable)
+            continue
+        console.print(operation.text if operation.text is not None else "", markup=operation.markup)
+
+
 def _resolve_syntax_language(output_format: str) -> str | None:
     """Resolve output format to a syntax highlighter language alias."""
     normalized_output = output_format.strip().lower()
@@ -185,14 +255,39 @@ def _resolve_syntax_language(output_format: str) -> str | None:
     return _RENDERABLE_OUTPUT_FORMATS.get(base_output)
 
 
-def _render_output(console: Console, text: str, color_enabled: bool, output_format: str) -> None:
-    """Render output with syntax highlighting when available."""
+def _normalize_syntax_theme(out_theme: str) -> str:
+    """Return a valid theme name for syntax rendering."""
+    normalized_theme = out_theme.strip()
+    if normalized_theme:
+        return normalized_theme
+    return DEFAULT_OUTPUT_THEME
+
+
+def _prepare_output(
+    text: str,
+    color_enabled: bool,
+    output_format: str,
+    out_theme: str,
+) -> PreparedOutput:
+    """Prepare output with syntax highlighting when available."""
     if color_enabled:
         language = _resolve_syntax_language(output_format)
         if language is not None:
-            console.print(Syntax(text, language, line_numbers=False, word_wrap=True))
-            return
-    _write_plain_output(console, text)
+            return PreparedOutput(
+                operations=(
+                    OutputOperation(
+                        kind="console_print",
+                        renderable=Syntax(
+                            text,
+                            language,
+                            theme=_normalize_syntax_theme(out_theme),
+                            line_numbers=False,
+                            word_wrap=True,
+                        ),
+                    ),
+                )
+            )
+    return PreparedOutput(operations=(OutputOperation(kind="plain_write", text=text),))
 
 
 def _to_org_input_text(value: object) -> str:
@@ -262,13 +357,16 @@ class PandocQueryOutputFormatter:
         self.output_format = output_format
         self.pandoc_args = _parse_pandoc_args(pandoc_args)
 
-    def render(self, values: list[object], console: Console, color_enabled: bool) -> None:
+    def prepare(
+        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+    ) -> PreparedOutput:
+        del console
         formatted_text = _org_to_pandoc_format(
             _build_org_document(values),
             self.output_format,
             self.pandoc_args,
         )
-        _render_output(console, formatted_text, color_enabled, self.output_format)
+        return _prepare_output(formatted_text, color_enabled, self.output_format, out_theme)
 
 
 _NODE_EXCLUDED_FIELDS = {
@@ -386,12 +484,15 @@ class JsonQueryOutputFormatter:
 
     include_filenames = False
 
-    def render(self, values: list[object], console: Console, color_enabled: bool) -> None:
-        _render_output(
-            console,
+    def prepare(
+        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+    ) -> PreparedOutput:
+        del console
+        return _prepare_output(
             json.dumps(_json_output_payload(values), ensure_ascii=True),
             color_enabled,
             OutputFormat.JSON,
+            out_theme,
         )
 
 
@@ -418,15 +519,27 @@ def _format_short_task_list(
     return lines_to_text(lines)
 
 
-def _render_detailed_task_list(nodes: list[orgparse.node.OrgNode], console: Console) -> None:
-    """Render detailed list of tasks with syntax highlighting."""
+def _prepare_detailed_task_list(
+    nodes: list[orgparse.node.OrgNode], out_theme: str
+) -> PreparedOutput:
+    """Prepare detailed list of tasks with syntax highlighting."""
+    theme = _normalize_syntax_theme(out_theme)
+    operations: list[OutputOperation] = []
     for idx, node in enumerate(nodes):
         if idx > 0:
-            console.print()
+            operations.append(OutputOperation(kind="console_print", text="", markup=False))
         filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
         node_text = str(node).rstrip()
         org_block = f"# {filename}\n{node_text}" if node_text else f"# {filename}"
-        console.print(Syntax(org_block, "org", line_numbers=False, word_wrap=True))
+        operations.append(
+            OutputOperation(
+                kind="console_print",
+                renderable=Syntax(
+                    org_block, "org", theme=theme, line_numbers=False, word_wrap=True
+                ),
+            )
+        )
+    return PreparedOutput(operations=tuple(operations))
 
 
 class OrgTasksListOutputFormatter:
@@ -434,14 +547,14 @@ class OrgTasksListOutputFormatter:
 
     include_filenames = True
 
-    def render(self, data: TasksListRenderInput) -> None:
+    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
         if not data.nodes:
-            data.console.print("No results", markup=False)
-            return
+            return PreparedOutput(
+                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+            )
 
         if data.details:
-            _render_detailed_task_list(data.nodes, data.console)
-            return
+            return _prepare_detailed_task_list(data.nodes, data.out_theme)
 
         output = _format_short_task_list(
             data.nodes,
@@ -451,10 +564,20 @@ class OrgTasksListOutputFormatter:
             data.buckets,
         )
         if output:
-            print_output(data.console, output, data.color_enabled, end="")
-            return
+            return PreparedOutput(
+                operations=(
+                    OutputOperation(
+                        kind="print_output",
+                        text=output,
+                        color_enabled=data.color_enabled,
+                        end="",
+                    ),
+                )
+            )
 
-        data.console.print("No results", markup=False)
+        return PreparedOutput(
+            operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+        )
 
 
 class _StubTasksListOutputFormatter:
@@ -462,8 +585,9 @@ class _StubTasksListOutputFormatter:
 
     include_filenames = False
 
-    def render(self, data: TasksListRenderInput) -> None:
+    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
         del data
+        return PreparedOutput(operations=())
 
 
 class PandocTasksListOutputFormatter:
@@ -475,13 +599,18 @@ class PandocTasksListOutputFormatter:
         self.output_format = output_format
         self.pandoc_args = _parse_pandoc_args(pandoc_args)
 
-    def render(self, data: TasksListRenderInput) -> None:
+    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
         formatted_text = _org_to_pandoc_format(
             _build_org_document(list(data.nodes)),
             self.output_format,
             self.pandoc_args,
         )
-        _render_output(data.console, formatted_text, data.color_enabled, self.output_format)
+        return _prepare_output(
+            formatted_text,
+            data.color_enabled,
+            self.output_format,
+            data.out_theme,
+        )
 
 
 class JsonTasksListOutputFormatter:
@@ -489,13 +618,13 @@ class JsonTasksListOutputFormatter:
 
     include_filenames = False
 
-    def render(self, data: TasksListRenderInput) -> None:
+    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
         payload = _json_output_payload(list(data.nodes))
-        _render_output(
-            data.console,
+        return _prepare_output(
             json.dumps(payload, ensure_ascii=True),
             data.color_enabled,
             OutputFormat.JSON,
+            data.out_theme,
         )
 
 

@@ -51,6 +51,7 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         category_property="CATEGORY",
         buckets=50,
         out=OutputFormat.ORG,
+        out_theme="github-dark",
         pandoc_args=None,
     )
     for key, value in overrides.items():
@@ -171,7 +172,7 @@ def test_run_tasks_list_markdown_pandoc_error_is_usage_error(
     class _FailingFormatter:
         include_filenames = False
 
-        def render(self, data: object) -> None:
+        def prepare(self, data: object) -> object:
             del data
             raise OutputFormatError("pandoc missing")
 

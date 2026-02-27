@@ -10,7 +10,13 @@ import typer
 
 from org import config as config_module
 from org.cli_common import load_root_data
-from org.output_format import OutputFormat, OutputFormatError, get_query_formatter
+from org.output_format import (
+    DEFAULT_OUTPUT_THEME,
+    OutputFormat,
+    OutputFormatError,
+    get_query_formatter,
+    print_prepared_output,
+)
 from org.query_language import (
     EvalContext,
     QueryParseError,
@@ -38,6 +44,7 @@ class QueryArgs:
     max_results: int
     offset: int
     out: str
+    out_theme: str
     pandoc_args: str | None
 
 
@@ -77,10 +84,14 @@ def run_query(args: QueryArgs) -> None:
         else:
             output_values = list(results)
 
-    try:
-        formatter.render(output_values, console, color_enabled)
-    except OutputFormatError as exc:
-        raise click.UsageError(str(exc)) from exc
+        try:
+            prepared_output = formatter.prepare(
+                output_values, console, color_enabled, args.out_theme
+            )
+        except OutputFormatError as exc:
+            raise click.UsageError(str(exc)) from exc
+
+    print_prepared_output(console, prepared_output)
 
 
 def register(app: typer.Typer) -> None:
@@ -145,6 +156,11 @@ def register(app: typer.Typer) -> None:
             "--out",
             help="Output format: org, json, or any pandoc writer format",
         ),
+        out_theme: str = typer.Option(
+            DEFAULT_OUTPUT_THEME,
+            "--out-theme",
+            help="Syntax theme for highlighted output blocks",
+        ),
         pandoc_args: str | None = typer.Option(
             None,
             "--pandoc-args",
@@ -167,6 +183,7 @@ def register(app: typer.Typer) -> None:
             max_results=max_results,
             offset=offset,
             out=out,
+            out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
         config_module.apply_config_defaults(args)

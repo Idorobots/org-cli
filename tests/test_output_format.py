@@ -120,11 +120,18 @@ def test_resolve_syntax_language_uses_renderable_map() -> None:
     assert output_format._resolve_syntax_language("unknown-format") is None
 
 
-def test_render_output_uses_syntax_when_color_and_mapped_format() -> None:
-    """Mapped format with color enabled should render through Syntax."""
-    console = _FakeConsole()
+def test_normalize_syntax_theme_uses_default_for_empty_theme() -> None:
+    """Empty syntax theme should fall back to default."""
+    assert output_format._normalize_syntax_theme("") == output_format.DEFAULT_OUTPUT_THEME
+    assert output_format._normalize_syntax_theme("  ") == output_format.DEFAULT_OUTPUT_THEME
 
-    output_format._render_output(cast(Console, console), "# title", True, "gfm")
+
+def test_prepare_output_uses_syntax_when_color_and_mapped_format() -> None:
+    """Mapped format with color enabled should prepare Syntax output."""
+    console = _FakeConsole()
+    prepared_output = output_format._prepare_output("# title", True, "gfm", "monokai")
+
+    output_format.print_prepared_output(cast(Console, console), prepared_output)
 
     assert console.file.getvalue() == ""
     assert len(console.renderables) == 1
@@ -135,11 +142,12 @@ def test_render_output_uses_syntax_when_color_and_mapped_format() -> None:
     assert syntax.word_wrap is True
 
 
-def test_render_output_falls_back_to_plain_when_not_mapped() -> None:
-    """Unmapped formats should still render without syntax highlighting."""
+def test_prepare_output_falls_back_to_plain_when_not_mapped() -> None:
+    """Unmapped formats should still prepare plain output."""
     console = _FakeConsole()
+    prepared_output = output_format._prepare_output("payload", True, "not-real", "monokai")
 
-    output_format._render_output(cast(Console, console), "payload", True, "not-real")
+    output_format.print_prepared_output(cast(Console, console), prepared_output)
 
     assert console.file.getvalue() == "payload\n"
     assert console.renderables == []
@@ -157,7 +165,8 @@ def test_pandoc_query_formatter_uses_syntax_when_color_enabled(
         lambda _org_text, _output, _args: "# title",
     )
 
-    formatter.render(["* TODO test"], cast(Console, console), True)
+    prepared_output = formatter.prepare(["* TODO test"], cast(Console, console), True, "monokai")
+    output_format.print_prepared_output(cast(Console, console), prepared_output)
 
     assert console.file.getvalue() == ""
     assert len(console.renderables) == 1
@@ -173,7 +182,8 @@ def test_json_query_formatter_uses_json_syntax_when_color_enabled() -> None:
     console = _FakeConsole()
     formatter = output_format.JsonQueryOutputFormatter()
 
-    formatter.render([{"ok": True}], cast(Console, console), True)
+    prepared_output = formatter.prepare([{"ok": True}], cast(Console, console), True, "monokai")
+    output_format.print_prepared_output(cast(Console, console), prepared_output)
 
     assert console.file.getvalue() == ""
     assert len(console.renderables) == 1
@@ -196,7 +206,7 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
         lambda _org_text, _output, _args: "<h1>title</h1>",
     )
 
-    formatter.render(
+    prepared_output = formatter.prepare(
         output_format.TasksListRenderInput(
             nodes=[],
             console=cast(Console, console),
@@ -205,8 +215,10 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
             todo_keys=["TODO"],
             details=False,
             buckets=10,
+            out_theme="monokai",
         )
     )
+    output_format.print_prepared_output(cast(Console, console), prepared_output)
 
     assert console.file.getvalue() == ""
     assert len(console.renderables) == 1
@@ -222,7 +234,7 @@ def test_json_tasks_formatter_uses_json_syntax_when_color_enabled() -> None:
     console = _FakeConsole()
     formatter = output_format.JsonTasksListOutputFormatter()
 
-    formatter.render(
+    prepared_output = formatter.prepare(
         output_format.TasksListRenderInput(
             nodes=[],
             console=cast(Console, console),
@@ -231,8 +243,10 @@ def test_json_tasks_formatter_uses_json_syntax_when_color_enabled() -> None:
             todo_keys=["TODO"],
             details=False,
             buckets=10,
+            out_theme="monokai",
         )
     )
+    output_format.print_prepared_output(cast(Console, console), prepared_output)
 
     assert console.file.getvalue() == ""
     assert len(console.renderables) == 1
