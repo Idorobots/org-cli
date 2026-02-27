@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import warnings
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time
@@ -17,6 +19,9 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 from org.tui import TaskLineConfig, format_task_line, lines_to_text, print_output
+
+
+logger = logging.getLogger("org")
 
 
 class OutputFormat(StrEnum):
@@ -158,9 +163,14 @@ def _build_org_document(values: list[object]) -> str:
 def _org_to_markdown(org_text: str) -> str:
     """Convert org text into markdown using the Python pandoc library."""
     try:
-        pandoc = import_module("pandoc")
-        document = pandoc.read(org_text, format="org")
-        return str(pandoc.write(document, format="markdown"))
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            pandoc = import_module("pandoc")
+            document = pandoc.read(org_text, format="org")
+            markdown_text = str(pandoc.write(document, format="markdown"))
+        for warning in caught_warnings:
+            logger.info("pandoc warning: %s", warning.message)
+        return markdown_text
     except Exception as exc:
         raise OutputFormatError(str(exc)) from exc
 
