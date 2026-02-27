@@ -41,6 +41,7 @@ COMMAND_OPTION_NAMES = {
     "max_tags",
     "min_group_size",
     "offset",
+    "out",
     "order_by",
     "todo_keys",
     "use",
@@ -89,6 +90,7 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "max_tags": "--max-tags",
     "min_group_size": "--min-group-size",
     "offset": "--offset",
+    "out": "--out",
     "order_by": "--order-by",
     "show": "--show",
     "todo_keys": "--todo-keys",
@@ -326,6 +328,7 @@ def validate_str_option(key: str, value: object) -> str | None:
         return None
 
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
+    invalid_out = key == "--out" and value not in {"org", "md", "json"}
     invalid_order_by = key == "--order-by" and value not in {
         "file-order",
         "file-order-reversed",
@@ -340,7 +343,7 @@ def validate_str_option(key: str, value: object) -> str | None:
         "--filter-date-from",
         "--filter-date-until",
     ) and not is_valid_date_argument(value)
-    if invalid_use or invalid_order_by or invalid_keys or invalid_dates:
+    if invalid_use or invalid_out or invalid_order_by or invalid_keys or invalid_dates:
         return None
     return value
 
@@ -579,6 +582,7 @@ def build_config_defaults(
         "--done-keys": "done_keys",
         "--filter-date-from": "filter_date_from",
         "--filter-date-until": "filter_date_until",
+        "--out": "out",
         "--order-by": "order_by",
         "--config": "config",
     }

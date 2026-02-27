@@ -5,22 +5,12 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 
-import orgparse
 import typer
-from rich.console import Console
-from rich.syntax import Syntax
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
-from org.tui import (
-    TaskLineConfig,
-    build_console,
-    format_task_line,
-    lines_to_text,
-    print_output,
-    processing_status,
-    setup_output,
-)
+from org.output_format import OutputFormat, TasksListRenderInput, get_tasks_list_formatter
+from org.tui import build_console, processing_status, setup_output
 
 
 @dataclass
@@ -58,43 +48,7 @@ class ListArgs:
     with_tags_as_category: bool
     category_property: str
     buckets: int
-
-
-def format_short_task_list(
-    nodes: list[orgparse.node.OrgNode],
-    done_keys: list[str],
-    todo_keys: list[str],
-    color_enabled: bool,
-    buckets: int,
-) -> str:
-    """Return formatted short list of tasks."""
-    lines = [
-        format_task_line(
-            node,
-            TaskLineConfig(
-                color_enabled=color_enabled,
-                done_keys=done_keys,
-                todo_keys=todo_keys,
-                buckets=buckets,
-            ),
-        )
-        for node in nodes
-    ]
-    return lines_to_text(lines)
-
-
-def render_detailed_task_list(
-    nodes: list[orgparse.node.OrgNode],
-    console: Console,
-) -> None:
-    """Render detailed list of tasks with syntax highlighting."""
-    for idx, node in enumerate(nodes):
-        if idx > 0:
-            console.print()
-        filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
-        node_text = str(node).rstrip()
-        org_block = f"# {filename}\n{node_text}" if node_text else f"# {filename}"
-        console.print(Syntax(org_block, "org", line_numbers=False, word_wrap=False))
+    out: OutputFormat
 
 
 def run_tasks_list(args: ListArgs) -> None:
@@ -106,32 +60,21 @@ def run_tasks_list(args: ListArgs) -> None:
     if args.max_results <= 0:
         console.print("No results", markup=False)
         return
+    formatter = get_tasks_list_formatter(args.out)
     with processing_status(console, color_enabled):
         nodes, todo_keys, done_keys = load_and_process_data(args)
-        if not nodes:
-            display_nodes = []
-            output = None
-        elif args.details:
-            display_nodes = nodes
-            output = None
-        else:
-            display_nodes = nodes
-            output = format_short_task_list(
-                display_nodes, done_keys, todo_keys, color_enabled, args.buckets
-            )
 
-    if not nodes or not display_nodes:
-        console.print("No results", markup=False)
-        return
-
-    if args.details:
-        render_detailed_task_list(display_nodes, console)
-        return
-
-    if output:
-        print_output(console, output, color_enabled, end="")
-    else:
-        console.print("No results", markup=False)
+    formatter.render(
+        TasksListRenderInput(
+            nodes=nodes,
+            console=console,
+            color_enabled=color_enabled,
+            done_keys=done_keys,
+            todo_keys=todo_keys,
+            details=args.details,
+            buckets=args.buckets,
+        )
+    )
 
 
 def register(app: typer.Typer) -> None:
@@ -315,6 +258,11 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Number of time buckets for timeline charts and tag alignment column",
         ),
+        out: OutputFormat = typer.Option(  # noqa: B008
+            OutputFormat.ORG,
+            "--out",
+            help="Output format: org, md, or json",
+        ),
     ) -> None:
         """List tasks matching filters."""
         args = ListArgs(
@@ -349,6 +297,7 @@ def register(app: typer.Typer) -> None:
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
             buckets=buckets,
+            out=out,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks list")

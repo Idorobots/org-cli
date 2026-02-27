@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from org.cli import app
 from org.commands.query import QueryArgs, run_query
+from org.output_format import OutputFormat
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -28,6 +29,7 @@ def _make_args(files: list[str], query: str, **overrides: object) -> QueryArgs:
         color_flag=False,
         max_results=10,
         offset=0,
+        out=OutputFormat.ORG,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -121,3 +123,27 @@ def test_query_runtime_error_is_reported_as_usage_error() -> None:
 
     assert result.exit_code != 0
     assert "Division by zero" in (result.output or result.stderr)
+
+
+def test_run_query_markdown_placeholder_emits_empty_output(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Markdown query formatter placeholder should emit an empty result."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[]", out=OutputFormat.MD)
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    assert captured == ""
+
+
+def test_run_query_json_placeholder_emits_empty_output(capsys: pytest.CaptureFixture[str]) -> None:
+    """JSON query formatter placeholder should emit an empty result."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[]", out=OutputFormat.JSON)
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    assert captured == ""

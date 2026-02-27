@@ -6,15 +6,11 @@ import sys
 from dataclasses import dataclass
 
 import click
-import orgparse
 import typer
-from orgparse.date import OrgDate
-from orgparse.node import OrgRootNode
-from rich.console import Console
-from rich.syntax import Syntax
 
 from org import config as config_module
 from org.cli_common import load_root_data
+from org.output_format import OutputFormat, get_query_formatter
 from org.query_language import (
     EvalContext,
     QueryParseError,
@@ -41,51 +37,7 @@ class QueryArgs:
     color_flag: bool | None
     max_results: int
     offset: int
-
-
-def _is_org_object(value: object) -> bool:
-    """Return whether value is an org node or org date object."""
-    return isinstance(value, orgparse.node.OrgNode | OrgRootNode | OrgDate)
-
-
-def _format_org_block(value: object) -> str:
-    """Build org-formatted text block for one value."""
-    if isinstance(value, orgparse.node.OrgNode | OrgRootNode):
-        filename = value.env.filename if value.env.filename else "unknown"
-        node_text = str(value).rstrip()
-        return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
-    # FIXME node.scheduled returns an OrgDateScheduled with None start sometimes.
-    if isinstance(value, OrgDate) and not bool(value):
-        return "none"
-    return str(value)
-
-
-def _flatten_result_stream(results: list[object]) -> list[object]:
-    """Flatten top-level collection result into output stream."""
-    if len(results) == 1 and isinstance(results[0], (list, tuple, set)):
-        return list(results[0])
-    return results
-
-
-def _render_org_values(values: list[object], console: Console) -> None:
-    """Render org values using org-mode syntax highlighting."""
-    for idx, value in enumerate(values):
-        if idx > 0:
-            console.print()
-        console.print(
-            Syntax(_format_org_block(value), "org", line_numbers=False, word_wrap=False),
-        )
-
-
-def _format_query_value(value: object) -> str:
-    """Format one query result value for output."""
-    if isinstance(value, orgparse.node.OrgNode):
-        return str(value).rstrip()
-    if value is None:
-        return "none"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
+    out: OutputFormat
 
 
 def run_query(args: QueryArgs) -> None:
@@ -94,8 +46,7 @@ def run_query(args: QueryArgs) -> None:
     console = build_console(color_enabled)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
-    lines: list[str] = []
-    org_output_values: list[object] = []
+    formatter = get_query_formatter(args.out)
 
     with processing_status(console, color_enabled):
         try:
@@ -119,23 +70,13 @@ def run_query(args: QueryArgs) -> None:
         except QueryRuntimeError as exc:
             raise click.UsageError(str(exc)) from exc
 
-        output_values = _flatten_result_stream(results)
-
-        if output_values and all(_is_org_object(value) for value in output_values):
-            org_output_values = output_values
+        first_result = results[0] if results else None
+        if isinstance(first_result, list | tuple | set):
+            output_values = list(first_result)
         else:
-            lines = [_format_query_value(value) for value in output_values]
+            output_values = list(results)
 
-    if org_output_values:
-        _render_org_values(org_output_values, console)
-        return
-
-    if not lines:
-        console.print("No results", markup=False)
-        return
-
-    for line in lines:
-        console.print(line, markup=False)
+    formatter.render(output_values, console, color_enabled)
 
 
 def register(app: typer.Typer) -> None:
@@ -195,6 +136,11 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Number of results to skip before displaying",
         ),
+        out: OutputFormat = typer.Option(  # noqa: B008
+            OutputFormat.ORG,
+            "--out",
+            help="Output format: org, md, or json",
+        ),
     ) -> None:
         """Query tasks using jq-style expressions."""
         args = QueryArgs(
@@ -210,6 +156,7 @@ def register(app: typer.Typer) -> None:
             color_flag=color_flag,
             max_results=max_results,
             offset=offset,
+            out=out,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "query")

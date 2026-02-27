@@ -8,6 +8,7 @@ import sys
 import pytest
 
 from org.commands.tasks import list as tasks_list
+from org.output_format import OutputFormat
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
@@ -47,6 +48,7 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         with_tags_as_category=False,
         category_property="CATEGORY",
         buckets=50,
+        out=OutputFormat.ORG,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -125,3 +127,31 @@ def test_run_tasks_list_offset_no_results(
     captured = capsys.readouterr().out
 
     assert captured.strip() == "No results"
+
+
+def test_run_tasks_list_markdown_placeholder_emits_empty_output(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Markdown tasks formatter placeholder should emit an empty result."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], out=OutputFormat.MD)
+
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "md"])
+    tasks_list.run_tasks_list(args)
+    captured = capsys.readouterr().out
+
+    assert captured == ""
+
+
+def test_run_tasks_list_json_placeholder_emits_empty_output(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """JSON tasks formatter placeholder should emit an empty result."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], out=OutputFormat.JSON)
+
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "json"])
+    tasks_list.run_tasks_list(args)
+    captured = capsys.readouterr().out
+
+    assert captured == ""
