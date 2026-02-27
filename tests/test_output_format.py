@@ -34,7 +34,7 @@ def test_org_to_pandoc_format_suppresses_warning_and_logs_info(
     def _fake_run(*args: object, **kwargs: object) -> SimpleNamespace:
         del args
         del kwargs
-        return SimpleNamespace(returncode=0, stdout="# converted", stderr="pandoc warning text\n")
+        return SimpleNamespace(returncode=0, stdout=b"# converted", stderr=b"pandoc warning text\n")
 
     monkeypatch.setattr("org.output_format.subprocess.run", _fake_run)
     caplog.set_level(logging.INFO, logger="org")
@@ -42,7 +42,7 @@ def test_org_to_pandoc_format_suppresses_warning_and_logs_info(
     markdown_text = output_format._org_to_pandoc_format("* TODO test", "markdown", [])
     captured = capsys.readouterr()
 
-    assert markdown_text == "# converted"
+    assert markdown_text == b"# converted"
     assert captured.err == ""
     assert "pandoc warning: pandoc warning text" in caplog.text
 
@@ -54,7 +54,7 @@ def test_org_to_pandoc_format_forwards_pandoc_output_args(monkeypatch: pytest.Mo
     def _fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         seen["command"] = command
         seen["kwargs"] = kwargs
-        return SimpleNamespace(returncode=0, stdout="converted", stderr="")
+        return SimpleNamespace(returncode=0, stdout=b"converted", stderr=b"")
 
     monkeypatch.setattr("org.output_format.subprocess.run", _fake_run)
 
@@ -64,11 +64,10 @@ def test_org_to_pandoc_format_forwards_pandoc_output_args(monkeypatch: pytest.Mo
         ["--wrap=none", "--columns=120"],
     )
 
-    assert rendered == "converted"
+    assert rendered == b"converted"
     assert seen["command"] == ["pandoc", "-f", "org", "-t", "gfm", "--wrap=none", "--columns=120"]
     assert seen["kwargs"] == {
-        "input": "* TODO test",
-        "text": True,
+        "input": b"* TODO test",
         "capture_output": True,
         "check": False,
     }
@@ -82,7 +81,7 @@ def test_org_to_pandoc_format_raises_output_error_on_nonzero_exit(
     def _fake_run(*args: object, **kwargs: object) -> SimpleNamespace:
         del args
         del kwargs
-        return SimpleNamespace(returncode=22, stdout="", stderr="Unknown output format\n")
+        return SimpleNamespace(returncode=22, stdout=b"", stderr=b"Unknown output format\n")
 
     monkeypatch.setattr("org.output_format.subprocess.run", _fake_run)
 
@@ -151,6 +150,20 @@ def test_prepare_output_falls_back_to_plain_when_not_mapped() -> None:
 
     assert console.file.getvalue() == "payload\n"
     assert console.renderables == []
+
+
+def test_prepare_output_falls_back_to_binary_write_on_decode_error() -> None:
+    """Binary pandoc output should be emitted as raw bytes."""
+    console = _FakeConsole()
+    prepared_output = output_format._prepare_output(b"\x00\xe4\x10", True, "pdf", "monokai")
+
+    assert len(prepared_output.operations) == 1
+    operation = prepared_output.operations[0]
+    assert operation.kind == "binary_write"
+    assert operation.data == b"\x00\xe4\x10"
+
+    with pytest.raises(output_format.OutputFormatError, match="binary output is not supported"):
+        output_format.print_prepared_output(cast(Console, console), prepared_output)
 
 
 def test_pandoc_query_formatter_uses_syntax_when_color_enabled(

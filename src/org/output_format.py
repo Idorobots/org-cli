@@ -97,6 +97,7 @@ class OutputOperation:
 
     kind: str
     text: str | None = None
+    data: bytes | None = None
     renderable: object | None = None
     markup: bool = False
     color_enabled: bool = False
@@ -223,12 +224,26 @@ def _write_plain_output(console: Console, text: str) -> None:
     console.file.flush()
 
 
+def _write_binary_output(console: Console, data: bytes) -> None:
+    """Write binary output directly to console stream."""
+    buffer = getattr(console.file, "buffer", None)
+    if buffer is not None:
+        buffer.write(data)
+        buffer.flush()
+        return
+    raise OutputFormatError("binary output is not supported by the active console stream")
+
+
 def print_prepared_output(console: Console, prepared_output: PreparedOutput) -> None:
     """Print already prepared output operations."""
     for operation in prepared_output.operations:
         if operation.kind == "plain_write":
             if operation.text is not None:
                 _write_plain_output(console, operation.text)
+            continue
+        if operation.kind == "binary_write":
+            if operation.data is not None:
+                _write_binary_output(console, operation.data)
             continue
         if operation.kind == "print_output":
             if operation.text is not None:
@@ -264,12 +279,31 @@ def _normalize_syntax_theme(out_theme: str) -> str:
 
 
 def _prepare_output(
-    text: str,
+    value: str | bytes,
     color_enabled: bool,
     output_format: str,
     out_theme: str,
 ) -> PreparedOutput:
     """Prepare output with syntax highlighting when available."""
+    text: str | None
+    data: bytes | None
+    if isinstance(value, bytes):
+        try:
+            text = value.decode("utf-8")
+            data = None
+        except UnicodeDecodeError:
+            text = None
+            data = value
+    else:
+        text = value
+        data = None
+
+    if data is not None:
+        return PreparedOutput(operations=(OutputOperation(kind="binary_write", data=data),))
+
+    if text is None:
+        return PreparedOutput(operations=(OutputOperation(kind="plain_write", text=""),))
+
     if color_enabled:
         language = _resolve_syntax_language(output_format)
         if language is not None:
@@ -320,21 +354,20 @@ def _parse_pandoc_args(pandoc_args: str | None) -> list[str]:
         raise OutputFormatError(str(exc)) from exc
 
 
-def _org_to_pandoc_format(org_text: str, output_format: str, pandoc_args: list[str]) -> str:
+def _org_to_pandoc_format(org_text: str, output_format: str, pandoc_args: list[str]) -> bytes:
     """Convert org text into the requested output format using one pandoc invocation."""
     try:
         command = ["pandoc", "-f", "org", "-t", output_format, *pandoc_args]
         result = subprocess.run(
             command,
-            input=org_text,
-            text=True,
+            input=org_text.encode("utf-8"),
             capture_output=True,
             check=False,
         )
     except (OSError, ValueError) as exc:
         raise OutputFormatError(str(exc)) from exc
 
-    stderr_text = result.stderr.strip()
+    stderr_text = result.stderr.decode("utf-8", errors="replace").strip()
     if result.returncode != 0:
         message = (
             stderr_text if stderr_text else f"pandoc failed with exit code {result.returncode}"
