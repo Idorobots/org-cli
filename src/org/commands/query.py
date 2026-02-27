@@ -10,7 +10,7 @@ import typer
 
 from org import config as config_module
 from org.cli_common import load_root_data
-from org.output_format import OutputFormat, get_query_formatter
+from org.output_format import OutputFormat, OutputFormatError, get_query_formatter
 from org.query_language import (
     EvalContext,
     QueryParseError,
@@ -76,7 +76,10 @@ def run_query(args: QueryArgs) -> None:
         else:
             output_values = list(results)
 
-    formatter.render(output_values, console, color_enabled)
+    try:
+        formatter.render(output_values, console, color_enabled)
+    except OutputFormatError as exc:
+        raise click.UsageError(str(exc)) from exc
 
 
 def register(app: typer.Typer) -> None:

@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import os
 
+import click
 import pytest
 from typer.testing import CliRunner
 
 from org.cli import app
 from org.commands.query import QueryArgs, run_query
-from org.output_format import OutputFormat
+from org.output_format import OutputFormat, OutputFormatError
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -126,17 +127,47 @@ def test_query_runtime_error_is_reported_as_usage_error() -> None:
     assert "Division by zero" in (result.output or result.stderr)
 
 
-def test_run_query_markdown_placeholder_emits_empty_output(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Markdown query formatter placeholder should emit an empty result."""
+def test_run_query_markdown_converts_org_results(capsys: pytest.CaptureFixture[str]) -> None:
+    """Markdown query formatter should convert org nodes into markdown."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = _make_args([fixture_path], ".[]", out=OutputFormat.MD)
+    args = _make_args([fixture_path], ".[] | .children | .[]", out=OutputFormat.MD)
 
     run_query(args)
     captured = capsys.readouterr().out
 
-    assert captured == ""
+    assert captured.strip()
+    assert "Refactor codebase" in captured
+
+
+def test_run_query_markdown_converts_scalar_results(capsys: pytest.CaptureFixture[str]) -> None:
+    """Markdown query formatter should emit valid markdown for scalar outputs."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[] | .children | length", out=OutputFormat.MD)
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    assert captured.strip() == "3"
+
+
+def test_run_query_markdown_pandoc_error_is_usage_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Markdown formatter failures should be surfaced as CLI usage errors."""
+
+    class _FailingFormatter:
+        include_filenames = False
+
+        def render(self, values: list[object], console: object, color_enabled: bool) -> None:
+            del values
+            del console
+            del color_enabled
+            raise OutputFormatError("pandoc missing")
+
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[]", out=OutputFormat.MD)
+    monkeypatch.setattr("org.commands.query.get_query_formatter", lambda _out: _FailingFormatter())
+
+    with pytest.raises(click.UsageError, match="pandoc missing"):
+        run_query(args)
 
 
 def test_run_query_json_root_result_is_single_object(capsys: pytest.CaptureFixture[str]) -> None:

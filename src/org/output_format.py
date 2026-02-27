@@ -7,6 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import StrEnum
+from importlib import import_module
 from typing import Protocol
 
 import orgparse
@@ -122,6 +123,57 @@ class _StubQueryOutputFormatter:
         del values
         del console
         del color_enabled
+
+
+class OutputFormatError(RuntimeError):
+    """Raised when output formatting fails."""
+
+
+def _write_plain_output(console: Console, text: str) -> None:
+    """Write plain output directly to console stream."""
+    console.file.write(f"{text}\n")
+    console.file.flush()
+
+
+def _to_org_input_text(value: object) -> str:
+    """Convert arbitrary query value into org text for markdown conversion."""
+    if isinstance(value, orgparse.node.OrgNode | OrgRootNode):
+        return str(value).rstrip()
+    if isinstance(value, OrgDate) and not bool(value):
+        return "none"
+    if value is None:
+        return "none"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _build_org_document(values: list[object]) -> str:
+    """Build one org document from all output values."""
+    parts = [_to_org_input_text(value) for value in values]
+    non_empty_parts = [part for part in parts if part]
+    return "\n\n".join(non_empty_parts)
+
+
+def _org_to_markdown(org_text: str) -> str:
+    """Convert org text into markdown using the Python pandoc library."""
+    try:
+        pandoc = import_module("pandoc")
+        document = pandoc.read(org_text, format="org")
+        return str(pandoc.write(document, format="markdown"))
+    except Exception as exc:
+        raise OutputFormatError(str(exc)) from exc
+
+
+class MarkdownQueryOutputFormatter:
+    """Markdown output formatter for query command."""
+
+    include_filenames = False
+
+    def render(self, values: list[object], console: Console, color_enabled: bool) -> None:
+        del color_enabled
+        markdown_text = _org_to_markdown(_build_org_document(values))
+        _write_plain_output(console, markdown_text)
 
 
 _NODE_EXCLUDED_FIELDS = {
@@ -241,8 +293,7 @@ class JsonQueryOutputFormatter:
 
     def render(self, values: list[object], console: Console, color_enabled: bool) -> None:
         del color_enabled
-        console.file.write(f"{json.dumps(_json_output_payload(values), ensure_ascii=True)}\n")
-        console.file.flush()
+        _write_plain_output(console, json.dumps(_json_output_payload(values), ensure_ascii=True))
 
 
 def _format_short_task_list(
@@ -316,6 +367,16 @@ class _StubTasksListOutputFormatter:
         del data
 
 
+class MarkdownTasksListOutputFormatter:
+    """Markdown output formatter for tasks list command."""
+
+    include_filenames = False
+
+    def render(self, data: TasksListRenderInput) -> None:
+        markdown_text = _org_to_markdown(_build_org_document(list(data.nodes)))
+        _write_plain_output(data.console, markdown_text)
+
+
 class JsonTasksListOutputFormatter:
     """JSON output formatter for tasks list command."""
 
@@ -323,16 +384,15 @@ class JsonTasksListOutputFormatter:
 
     def render(self, data: TasksListRenderInput) -> None:
         payload = _json_output_payload(list(data.nodes))
-        data.console.file.write(f"{json.dumps(payload, ensure_ascii=True)}\n")
-        data.console.file.flush()
+        _write_plain_output(data.console, json.dumps(payload, ensure_ascii=True))
 
 
 _ORG_QUERY_FORMATTER = OrgQueryOutputFormatter()
-_MD_QUERY_FORMATTER = _StubQueryOutputFormatter()
+_MD_QUERY_FORMATTER = MarkdownQueryOutputFormatter()
 _JSON_QUERY_FORMATTER = JsonQueryOutputFormatter()
 
 _ORG_TASKS_LIST_FORMATTER = OrgTasksListOutputFormatter()
-_MD_TASKS_LIST_FORMATTER = _StubTasksListOutputFormatter()
+_MD_TASKS_LIST_FORMATTER = MarkdownTasksListOutputFormatter()
 _JSON_TASKS_LIST_FORMATTER = JsonTasksListOutputFormatter()
 
 

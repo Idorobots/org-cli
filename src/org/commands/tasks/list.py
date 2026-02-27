@@ -5,11 +5,17 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 
+import click
 import typer
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
-from org.output_format import OutputFormat, TasksListRenderInput, get_tasks_list_formatter
+from org.output_format import (
+    OutputFormat,
+    OutputFormatError,
+    TasksListRenderInput,
+    get_tasks_list_formatter,
+)
 from org.tui import build_console, processing_status, setup_output
 
 
@@ -64,17 +70,20 @@ def run_tasks_list(args: ListArgs) -> None:
     with processing_status(console, color_enabled):
         nodes, todo_keys, done_keys = load_and_process_data(args)
 
-    formatter.render(
-        TasksListRenderInput(
-            nodes=nodes,
-            console=console,
-            color_enabled=color_enabled,
-            done_keys=done_keys,
-            todo_keys=todo_keys,
-            details=args.details,
-            buckets=args.buckets,
+    try:
+        formatter.render(
+            TasksListRenderInput(
+                nodes=nodes,
+                console=console,
+                color_enabled=color_enabled,
+                done_keys=done_keys,
+                todo_keys=todo_keys,
+                details=args.details,
+                buckets=args.buckets,
+            )
         )
-    )
+    except OutputFormatError as exc:
+        raise click.UsageError(str(exc)) from exc
 
 
 def register(app: typer.Typer) -> None:

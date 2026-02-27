@@ -6,10 +6,11 @@ import json
 import os
 import sys
 
+import click
 import pytest
 
 from org.commands.tasks import list as tasks_list
-from org.output_format import OutputFormat
+from org.output_format import OutputFormat, OutputFormatError
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
@@ -130,10 +131,10 @@ def test_run_tasks_list_offset_no_results(
     assert captured.strip() == "No results"
 
 
-def test_run_tasks_list_markdown_placeholder_emits_empty_output(
+def test_run_tasks_list_markdown_converts_nodes_to_single_document(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Markdown tasks formatter placeholder should emit an empty result."""
+    """Markdown tasks formatter should convert nodes into one markdown document."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_list_args([fixture_path], out=OutputFormat.MD)
 
@@ -141,7 +142,33 @@ def test_run_tasks_list_markdown_placeholder_emits_empty_output(
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
 
-    assert captured == ""
+    assert captured.strip()
+    assert "Refactor codebase" in captured
+    assert "Fix bug in parser" in captured
+
+
+def test_run_tasks_list_markdown_pandoc_error_is_usage_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Markdown formatter failures should be surfaced as CLI usage errors."""
+
+    class _FailingFormatter:
+        include_filenames = False
+
+        def render(self, data: object) -> None:
+            del data
+            raise OutputFormatError("pandoc missing")
+
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], out=OutputFormat.MD)
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "md"])
+    monkeypatch.setattr(
+        "org.commands.tasks.list.get_tasks_list_formatter",
+        lambda _out: _FailingFormatter(),
+    )
+
+    with pytest.raises(click.UsageError, match="pandoc missing"):
+        tasks_list.run_tasks_list(args)
 
 
 def test_run_tasks_list_json_emits_array_for_multiple_nodes(
