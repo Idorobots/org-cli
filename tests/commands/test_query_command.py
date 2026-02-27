@@ -241,3 +241,31 @@ def test_run_query_json_scalars_emit_single_json_value(capsys: pytest.CaptureFix
 
     parsed = json.loads(captured)
     assert parsed == 3
+
+
+def test_run_query_json_preserves_multiple_collection_results(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Query should not drop later collection results from the stream."""
+    fixture_paths = [
+        os.path.join(FIXTURES_DIR, "multiple_tags.org"),
+        os.path.join(FIXTURES_DIR, "simple.org"),
+    ]
+    args = _make_args(fixture_paths, ".[] | .children", out=OutputFormat.JSON)
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    parsed = json.loads(captured)
+    assert isinstance(parsed, list)
+    assert len(parsed) == 2
+    assert all(isinstance(item, list) for item in parsed)
+
+
+def test_run_query_invalid_pandoc_args_is_usage_error() -> None:
+    """Malformed pandoc args should be surfaced as a CLI usage error."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[]", out="gfm", pandoc_args='"')
+
+    with pytest.raises(click.UsageError, match="No closing quotation"):
+        run_query(args)

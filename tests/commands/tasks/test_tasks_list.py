@@ -237,3 +237,27 @@ def test_run_tasks_list_json_no_results_emits_empty_array(
 
     parsed = json.loads(captured)
     assert parsed == []
+
+
+def test_run_tasks_list_json_max_results_zero_emits_empty_array(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """JSON tasks output should stay valid JSON when max results is zero."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], out=OutputFormat.JSON, max_results=0)
+
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "json", "-n", "0"])
+    tasks_list.run_tasks_list(args)
+    captured = capsys.readouterr().out
+
+    parsed = json.loads(captured)
+    assert parsed == []
+
+
+def test_run_tasks_list_invalid_pandoc_args_is_usage_error() -> None:
+    """Malformed pandoc args should be surfaced as a CLI usage error."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], out="gfm", pandoc_args='"')
+
+    with pytest.raises(click.UsageError, match="No closing quotation"):
+        tasks_list.run_tasks_list(args)

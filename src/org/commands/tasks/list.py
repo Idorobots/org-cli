@@ -67,10 +67,10 @@ def run_tasks_list(args: ListArgs) -> None:
     console = build_console(color_enabled)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
-    if args.max_results <= 0:
-        console.print("No results", markup=False)
-        return
-    formatter = get_tasks_list_formatter(args.out, args.pandoc_args)
+    try:
+        formatter = get_tasks_list_formatter(args.out, args.pandoc_args)
+    except OutputFormatError as exc:
+        raise click.UsageError(str(exc)) from exc
     with processing_status(console, color_enabled):
         nodes, todo_keys, done_keys = load_and_process_data(args)
         try:

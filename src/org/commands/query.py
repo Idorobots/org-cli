@@ -54,7 +54,10 @@ def run_query(args: QueryArgs) -> None:
     console = build_console(color_enabled)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
-    formatter = get_query_formatter(args.out, args.pandoc_args)
+    try:
+        formatter = get_query_formatter(args.out, args.pandoc_args)
+    except OutputFormatError as exc:
+        raise click.UsageError(str(exc)) from exc
 
     with processing_status(console, color_enabled):
         try:
@@ -79,7 +82,7 @@ def run_query(args: QueryArgs) -> None:
             raise click.UsageError(str(exc)) from exc
 
         first_result = results[0] if results else None
-        if isinstance(first_result, list | tuple | set):
+        if len(results) == 1 and isinstance(first_result, list | tuple | set):
             output_values = list(first_result)
         else:
             output_values = list(results)
