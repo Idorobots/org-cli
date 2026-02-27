@@ -54,7 +54,8 @@ class ListArgs:
     with_tags_as_category: bool
     category_property: str
     buckets: int
-    out: OutputFormat
+    out: str
+    pandoc_args: str | None
 
 
 def run_tasks_list(args: ListArgs) -> None:
@@ -66,7 +67,7 @@ def run_tasks_list(args: ListArgs) -> None:
     if args.max_results <= 0:
         console.print("No results", markup=False)
         return
-    formatter = get_tasks_list_formatter(args.out)
+    formatter = get_tasks_list_formatter(args.out, args.pandoc_args)
     with processing_status(console, color_enabled):
         nodes, todo_keys, done_keys = load_and_process_data(args)
 
@@ -267,10 +268,16 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Number of time buckets for timeline charts and tag alignment column",
         ),
-        out: OutputFormat = typer.Option(  # noqa: B008
+        out: str = typer.Option(
             OutputFormat.ORG,
             "--out",
-            help="Output format: org, md, or json",
+            help="Output format: org, json, or any pandoc writer format",
+        ),
+        pandoc_args: str | None = typer.Option(
+            None,
+            "--pandoc-args",
+            metavar="ARGS",
+            help="Additional arguments forwarded to pandoc export",
         ),
     ) -> None:
         """List tasks matching filters."""
@@ -307,6 +314,7 @@ def register(app: typer.Typer) -> None:
             category_property=category_property,
             buckets=buckets,
             out=out,
+            pandoc_args=pandoc_args,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks list")

@@ -51,6 +51,7 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         category_property="CATEGORY",
         buckets=50,
         out=OutputFormat.ORG,
+        pandoc_args=None,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -136,15 +137,30 @@ def test_run_tasks_list_markdown_converts_nodes_to_single_document(
 ) -> None:
     """Markdown tasks formatter should convert nodes into one markdown document."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_list_args([fixture_path], out=OutputFormat.MD)
+    args = make_list_args([fixture_path], out="markdown")
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "md"])
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "markdown"])
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
 
     assert captured.strip()
     assert "Refactor codebase" in captured
     assert "Fix bug in parser" in captured
+
+
+def test_run_tasks_list_accepts_arbitrary_pandoc_output_format(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tasks list should route non-org/json --out values through pandoc."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], out="gfm", pandoc_args="--wrap=none")
+
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "gfm"])
+    tasks_list.run_tasks_list(args)
+    captured = capsys.readouterr().out
+
+    assert captured.strip()
+    assert "Refactor codebase" in captured
 
 
 def test_run_tasks_list_markdown_pandoc_error_is_usage_error(
@@ -160,11 +176,11 @@ def test_run_tasks_list_markdown_pandoc_error_is_usage_error(
             raise OutputFormatError("pandoc missing")
 
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_list_args([fixture_path], out=OutputFormat.MD)
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "md"])
+    args = make_list_args([fixture_path], out="markdown")
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "markdown"])
     monkeypatch.setattr(
         "org.commands.tasks.list.get_tasks_list_formatter",
-        lambda _out: _FailingFormatter(),
+        lambda _out, _pandoc_args: _FailingFormatter(),
     )
 
     with pytest.raises(click.UsageError, match="pandoc missing"):

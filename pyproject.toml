@@ -17,7 +17,6 @@ orgparse = "^0.4.20251020"
 typer = "^0.24.1"
 rich = "^14.3.3"
 parsy = "^2.2"
-pandoc = "^2.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"

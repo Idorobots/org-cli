@@ -37,7 +37,8 @@ class QueryArgs:
     color_flag: bool | None
     max_results: int
     offset: int
-    out: OutputFormat
+    out: str
+    pandoc_args: str | None
 
 
 def run_query(args: QueryArgs) -> None:
@@ -46,7 +47,7 @@ def run_query(args: QueryArgs) -> None:
     console = build_console(color_enabled)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
-    formatter = get_query_formatter(args.out)
+    formatter = get_query_formatter(args.out, args.pandoc_args)
 
     with processing_status(console, color_enabled):
         try:
@@ -139,10 +140,16 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Number of results to skip before displaying",
         ),
-        out: OutputFormat = typer.Option(  # noqa: B008
+        out: str = typer.Option(
             OutputFormat.ORG,
             "--out",
-            help="Output format: org, md, or json",
+            help="Output format: org, json, or any pandoc writer format",
+        ),
+        pandoc_args: str | None = typer.Option(
+            None,
+            "--pandoc-args",
+            metavar="ARGS",
+            help="Additional arguments forwarded to pandoc export",
         ),
     ) -> None:
         """Query tasks using jq-style expressions."""
@@ -160,6 +167,7 @@ def register(app: typer.Typer) -> None:
             max_results=max_results,
             offset=offset,
             out=out,
+            pandoc_args=pandoc_args,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "query")

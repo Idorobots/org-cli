@@ -32,6 +32,7 @@ def _make_args(files: list[str], query: str, **overrides: object) -> QueryArgs:
         max_results=10,
         offset=0,
         out=OutputFormat.ORG,
+        pandoc_args=None,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -130,7 +131,7 @@ def test_query_runtime_error_is_reported_as_usage_error() -> None:
 def test_run_query_markdown_converts_org_results(capsys: pytest.CaptureFixture[str]) -> None:
     """Markdown query formatter should convert org nodes into markdown."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = _make_args([fixture_path], ".[] | .children | .[]", out=OutputFormat.MD)
+    args = _make_args([fixture_path], ".[] | .children | .[]", out="markdown")
 
     run_query(args)
     captured = capsys.readouterr().out
@@ -142,12 +143,31 @@ def test_run_query_markdown_converts_org_results(capsys: pytest.CaptureFixture[s
 def test_run_query_markdown_converts_scalar_results(capsys: pytest.CaptureFixture[str]) -> None:
     """Markdown query formatter should emit valid markdown for scalar outputs."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = _make_args([fixture_path], ".[] | .children | length", out=OutputFormat.MD)
+    args = _make_args([fixture_path], ".[] | .children | length", out="markdown")
 
     run_query(args)
     captured = capsys.readouterr().out
 
     assert captured.strip() == "3"
+
+
+def test_run_query_accepts_arbitrary_pandoc_output_format(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Query should route non-org/json --out values through pandoc."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args(
+        [fixture_path],
+        ".[] | .children | .[]",
+        out="gfm",
+        pandoc_args="--wrap=none",
+    )
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    assert captured.strip()
+    assert "Refactor codebase" in captured
 
 
 def test_run_query_markdown_pandoc_error_is_usage_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -163,8 +183,11 @@ def test_run_query_markdown_pandoc_error_is_usage_error(monkeypatch: pytest.Monk
             raise OutputFormatError("pandoc missing")
 
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = _make_args([fixture_path], ".[]", out=OutputFormat.MD)
-    monkeypatch.setattr("org.commands.query.get_query_formatter", lambda _out: _FailingFormatter())
+    args = _make_args([fixture_path], ".[]", out="markdown")
+    monkeypatch.setattr(
+        "org.commands.query.get_query_formatter",
+        lambda _out, _pandoc_args: _FailingFormatter(),
+    )
 
     with pytest.raises(click.UsageError, match="pandoc missing"):
         run_query(args)
@@ -182,6 +205,8 @@ def test_run_query_json_root_result_is_single_object(capsys: pytest.CaptureFixtu
     assert isinstance(parsed, dict)
     assert parsed["type"] == "OrgRootNode"
     assert "env" in parsed
+    assert isinstance(parsed["env"], dict)
+    assert "nodes" not in parsed["env"]
 
 
 def test_run_query_json_node_result_excludes_env(capsys: pytest.CaptureFixture[str]) -> None:

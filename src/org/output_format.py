@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
-import warnings
+import shlex
+import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import StrEnum
-from importlib import import_module
 from typing import Protocol
 
 import orgparse
@@ -28,7 +28,6 @@ class OutputFormat(StrEnum):
     """Supported output formats."""
 
     ORG = "org"
-    MD = "md"
     JSON = "json"
 
 
@@ -160,30 +159,61 @@ def _build_org_document(values: list[object]) -> str:
     return "\n\n".join(non_empty_parts)
 
 
-def _org_to_markdown(org_text: str) -> str:
-    """Convert org text into markdown using the Python pandoc library."""
+def _parse_pandoc_args(pandoc_args: str | None) -> list[str]:
+    """Parse optional pandoc args string into argument list."""
+    if pandoc_args is None or not pandoc_args.strip():
+        return []
     try:
-        with warnings.catch_warnings(record=True) as caught_warnings:
-            warnings.simplefilter("always")
-            pandoc = import_module("pandoc")
-            document = pandoc.read(org_text, format="org")
-            markdown_text = str(pandoc.write(document, format="markdown"))
-        for warning in caught_warnings:
-            logger.info("pandoc warning: %s", warning.message)
-        return markdown_text
-    except Exception as exc:
+        return shlex.split(pandoc_args)
+    except ValueError as exc:
         raise OutputFormatError(str(exc)) from exc
 
 
-class MarkdownQueryOutputFormatter:
-    """Markdown output formatter for query command."""
+def _org_to_pandoc_format(org_text: str, output_format: str, pandoc_args: list[str]) -> str:
+    """Convert org text into the requested output format using one pandoc invocation."""
+    try:
+        command = ["pandoc", "-f", "org", "-t", output_format, *pandoc_args]
+        result = subprocess.run(
+            command,
+            input=org_text,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except (OSError, ValueError) as exc:
+        raise OutputFormatError(str(exc)) from exc
+
+    stderr_text = result.stderr.strip()
+    if result.returncode != 0:
+        message = (
+            stderr_text if stderr_text else f"pandoc failed with exit code {result.returncode}"
+        )
+        raise OutputFormatError(message)
+
+    if stderr_text:
+        for line in stderr_text.splitlines():
+            logger.info("pandoc warning: %s", line)
+
+    return result.stdout
+
+
+class PandocQueryOutputFormatter:
+    """Pandoc-based output formatter for query command."""
 
     include_filenames = False
 
+    def __init__(self, output_format: str, pandoc_args: str | None) -> None:
+        self.output_format = output_format
+        self.pandoc_args = _parse_pandoc_args(pandoc_args)
+
     def render(self, values: list[object], console: Console, color_enabled: bool) -> None:
         del color_enabled
-        markdown_text = _org_to_markdown(_build_org_document(values))
-        _write_plain_output(console, markdown_text)
+        formatted_text = _org_to_pandoc_format(
+            _build_org_document(values),
+            self.output_format,
+            self.pandoc_args,
+        )
+        _write_plain_output(console, formatted_text)
 
 
 _NODE_EXCLUDED_FIELDS = {
@@ -203,7 +233,7 @@ _ROOT_EXCLUDED_FIELDS = {
     "previous_same_level",
     "root",
 }
-_ENV_EXCLUDED_FIELDS: set[str] = set()
+_ENV_EXCLUDED_FIELDS: set[str] = {"nodes"}
 _DATE_EXCLUDED_FIELDS: set[str] = set()
 
 
@@ -377,14 +407,22 @@ class _StubTasksListOutputFormatter:
         del data
 
 
-class MarkdownTasksListOutputFormatter:
-    """Markdown output formatter for tasks list command."""
+class PandocTasksListOutputFormatter:
+    """Pandoc-based output formatter for tasks list command."""
 
     include_filenames = False
 
+    def __init__(self, output_format: str, pandoc_args: str | None) -> None:
+        self.output_format = output_format
+        self.pandoc_args = _parse_pandoc_args(pandoc_args)
+
     def render(self, data: TasksListRenderInput) -> None:
-        markdown_text = _org_to_markdown(_build_org_document(list(data.nodes)))
-        _write_plain_output(data.console, markdown_text)
+        formatted_text = _org_to_pandoc_format(
+            _build_org_document(list(data.nodes)),
+            self.output_format,
+            self.pandoc_args,
+        )
+        _write_plain_output(data.console, formatted_text)
 
 
 class JsonTasksListOutputFormatter:
@@ -398,27 +436,29 @@ class JsonTasksListOutputFormatter:
 
 
 _ORG_QUERY_FORMATTER = OrgQueryOutputFormatter()
-_MD_QUERY_FORMATTER = MarkdownQueryOutputFormatter()
 _JSON_QUERY_FORMATTER = JsonQueryOutputFormatter()
 
 _ORG_TASKS_LIST_FORMATTER = OrgTasksListOutputFormatter()
-_MD_TASKS_LIST_FORMATTER = MarkdownTasksListOutputFormatter()
 _JSON_TASKS_LIST_FORMATTER = JsonTasksListOutputFormatter()
 
 
-def get_query_formatter(output_format: OutputFormat) -> QueryOutputFormatter:
+def get_query_formatter(output_format: str, pandoc_args: str | None) -> QueryOutputFormatter:
     """Return query formatter for selected output format."""
-    if output_format is OutputFormat.ORG:
+    normalized_output = output_format.strip().lower()
+    if normalized_output == OutputFormat.ORG:
         return _ORG_QUERY_FORMATTER
-    if output_format is OutputFormat.MD:
-        return _MD_QUERY_FORMATTER
-    return _JSON_QUERY_FORMATTER
+    if normalized_output == OutputFormat.JSON:
+        return _JSON_QUERY_FORMATTER
+    return PandocQueryOutputFormatter(normalized_output, pandoc_args)
 
 
-def get_tasks_list_formatter(output_format: OutputFormat) -> TasksListOutputFormatter:
+def get_tasks_list_formatter(
+    output_format: str, pandoc_args: str | None
+) -> TasksListOutputFormatter:
     """Return tasks list formatter for selected output format."""
-    if output_format is OutputFormat.ORG:
+    normalized_output = output_format.strip().lower()
+    if normalized_output == OutputFormat.ORG:
         return _ORG_TASKS_LIST_FORMATTER
-    if output_format is OutputFormat.MD:
-        return _MD_TASKS_LIST_FORMATTER
-    return _JSON_TASKS_LIST_FORMATTER
+    if normalized_output == OutputFormat.JSON:
+        return _JSON_TASKS_LIST_FORMATTER
+    return PandocTasksListOutputFormatter(normalized_output, pandoc_args)
