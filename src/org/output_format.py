@@ -24,6 +24,42 @@ from org.tui import TaskLineConfig, format_task_line, lines_to_text, print_outpu
 logger = logging.getLogger("org")
 
 
+_RENDERABLE_OUTPUT_FORMATS: dict[str, str] = {
+    "bibtex": "bibtex",
+    "commonmark": "markdown",
+    "commonmark_x": "markdown",
+    "docbook": "xml",
+    "docbook4": "xml",
+    "docbook5": "xml",
+    "gfm": "markdown",
+    "haddock": "markdown",
+    "html": "html",
+    "html4": "html",
+    "html5": "html",
+    "jats": "xml",
+    "jats_archiving": "xml",
+    "jats_articleauthoring": "xml",
+    "jats_publishing": "xml",
+    "json": "json",
+    "latex": "latex",
+    "man": "man",
+    "markdown": "markdown",
+    "markdown_github": "markdown",
+    "markdown_mmd": "markdown",
+    "markdown_phpextra": "markdown",
+    "markdown_strict": "markdown",
+    "mediawiki": "mediawiki",
+    "ms": "ms",
+    "org": "org",
+    "rst": "rst",
+    "tei": "xml",
+    "textile": "textile",
+    "typst": "typst",
+    "xwiki": "mediawiki",
+    "zimwiki": "mediawiki",
+}
+
+
 class OutputFormat(StrEnum):
     """Supported output formats."""
 
@@ -114,7 +150,7 @@ class OrgQueryOutputFormatter:
             if idx > 0:
                 console.print()
             console.print(
-                Syntax(_format_org_block(value), "org", line_numbers=False, word_wrap=False)
+                Syntax(_format_org_block(value), "org", line_numbers=False, word_wrap=True)
             )
 
 
@@ -137,6 +173,26 @@ def _write_plain_output(console: Console, text: str) -> None:
     """Write plain output directly to console stream."""
     console.file.write(f"{text}\n")
     console.file.flush()
+
+
+def _resolve_syntax_language(output_format: str) -> str | None:
+    """Resolve output format to a syntax highlighter language alias."""
+    normalized_output = output_format.strip().lower()
+    base_output = normalized_output.split("+", 1)[0].split("-", 1)[0]
+    language = _RENDERABLE_OUTPUT_FORMATS.get(normalized_output)
+    if language is not None:
+        return language
+    return _RENDERABLE_OUTPUT_FORMATS.get(base_output)
+
+
+def _render_output(console: Console, text: str, color_enabled: bool, output_format: str) -> None:
+    """Render output with syntax highlighting when available."""
+    if color_enabled:
+        language = _resolve_syntax_language(output_format)
+        if language is not None:
+            console.print(Syntax(text, language, line_numbers=False, word_wrap=True))
+            return
+    _write_plain_output(console, text)
 
 
 def _to_org_input_text(value: object) -> str:
@@ -207,13 +263,12 @@ class PandocQueryOutputFormatter:
         self.pandoc_args = _parse_pandoc_args(pandoc_args)
 
     def render(self, values: list[object], console: Console, color_enabled: bool) -> None:
-        del color_enabled
         formatted_text = _org_to_pandoc_format(
             _build_org_document(values),
             self.output_format,
             self.pandoc_args,
         )
-        _write_plain_output(console, formatted_text)
+        _render_output(console, formatted_text, color_enabled, self.output_format)
 
 
 _NODE_EXCLUDED_FIELDS = {
@@ -332,8 +387,12 @@ class JsonQueryOutputFormatter:
     include_filenames = False
 
     def render(self, values: list[object], console: Console, color_enabled: bool) -> None:
-        del color_enabled
-        _write_plain_output(console, json.dumps(_json_output_payload(values), ensure_ascii=True))
+        _render_output(
+            console,
+            json.dumps(_json_output_payload(values), ensure_ascii=True),
+            color_enabled,
+            OutputFormat.JSON,
+        )
 
 
 def _format_short_task_list(
@@ -367,7 +426,7 @@ def _render_detailed_task_list(nodes: list[orgparse.node.OrgNode], console: Cons
         filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
         node_text = str(node).rstrip()
         org_block = f"# {filename}\n{node_text}" if node_text else f"# {filename}"
-        console.print(Syntax(org_block, "org", line_numbers=False, word_wrap=False))
+        console.print(Syntax(org_block, "org", line_numbers=False, word_wrap=True))
 
 
 class OrgTasksListOutputFormatter:
@@ -422,7 +481,7 @@ class PandocTasksListOutputFormatter:
             self.output_format,
             self.pandoc_args,
         )
-        _write_plain_output(data.console, formatted_text)
+        _render_output(data.console, formatted_text, data.color_enabled, self.output_format)
 
 
 class JsonTasksListOutputFormatter:
@@ -432,7 +491,12 @@ class JsonTasksListOutputFormatter:
 
     def render(self, data: TasksListRenderInput) -> None:
         payload = _json_output_payload(list(data.nodes))
-        _write_plain_output(data.console, json.dumps(payload, ensure_ascii=True))
+        _render_output(
+            data.console,
+            json.dumps(payload, ensure_ascii=True),
+            data.color_enabled,
+            OutputFormat.JSON,
+        )
 
 
 _ORG_QUERY_FORMATTER = OrgQueryOutputFormatter()
