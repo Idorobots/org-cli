@@ -14,6 +14,9 @@ poetry run org tasks list [OPTIONS] [FILE ...]
 - `--order-by` - Apply one or more orderings (`file-order`, `file-order-reversed`, `level`, `timestamp-asc`, `timestamp-desc`, `gamify-exp-asc`, `gamify-exp-desc`).
 - `--offset` - Skip first N results.
 - `--max-results`, `-n` - Limit displayed tasks.
+- `--out` - Output format (`org`, `json`, or any Pandoc writer format such as `gfm`, `html5`, `rst`, `pdf`).
+- `--out-theme` - Pygments syntax-highlighting theme for renderable output formats (default: `github-dark`).
+- `--pandoc-args` - Extra arguments forwarded to Pandoc during conversion.
 
 ## Available filters
 
@@ -100,3 +103,25 @@ Detailed output example (ellided):
 - Default mode: one task per line with source file prefix.
 - `--details` mode: full syntax-highlighted Org blocks.
 - Empty result set prints `No results`.
+
+## Output formatting
+
+- `--out` is passed directly to Pandoc (`-t <format>`) for format conversion.
+- For renderable text outputs, syntax highlighting uses Rich + Pygments with the theme selected by `--out-theme`.
+- Format-to-highlighter mapping is best-effort (`gfm -> markdown`, `html5 -> html`, etc.); unmapped formats are still exported without syntax highlighting.
+- Binary Pandoc outputs (for example `--out pdf`) are written as raw bytes (no escaping/formatting), which supports shell redirection.
+
+6) Export as HTML with a selected Pygments theme
+
+```bash
+poetry run org tasks list \
+  --out html5 \
+  --out-theme Vim \
+  examples/ARCHIVE_small
+```
+
+7) Export PDF by piping raw binary output to a file
+
+```bash
+poetry run org tasks list --out pdf examples/ARCHIVE_small > tasks.pdf
+```
