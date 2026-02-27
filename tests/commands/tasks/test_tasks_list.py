@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -143,15 +144,52 @@ def test_run_tasks_list_markdown_placeholder_emits_empty_output(
     assert captured == ""
 
 
-def test_run_tasks_list_json_placeholder_emits_empty_output(
+def test_run_tasks_list_json_emits_array_for_multiple_nodes(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """JSON tasks formatter placeholder should emit an empty result."""
+    """JSON tasks output should be an array when multiple tasks are present."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_list_args([fixture_path], out=OutputFormat.JSON)
+    args = make_list_args([fixture_path], out=OutputFormat.JSON, max_results=2)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "json"])
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
 
-    assert captured == ""
+    parsed = json.loads(captured)
+    assert isinstance(parsed, list)
+    assert len(parsed) == 2
+    assert parsed[0]["type"] == "OrgNode"
+    assert "env" not in parsed[0]
+
+
+def test_run_tasks_list_json_emits_single_value_for_single_node(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """JSON tasks output should be one object when one task remains."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], out=OutputFormat.JSON, max_results=1)
+
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "json", "-n", "1"])
+    tasks_list.run_tasks_list(args)
+    captured = capsys.readouterr().out
+
+    parsed = json.loads(captured)
+    assert isinstance(parsed, dict)
+    assert parsed["type"] == "OrgNode"
+
+
+def test_run_tasks_list_json_no_results_emits_empty_array(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """JSON tasks output should emit an empty array when no tasks match."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], out=OutputFormat.JSON, filter_tags=["nomatch$"])
+
+    monkeypatch.setattr(
+        sys, "argv", ["org", "tasks", "list", "--out", "json", "--filter-tag", "nomatch$"]
+    )
+    tasks_list.run_tasks_list(args)
+    captured = capsys.readouterr().out
+
+    parsed = json.loads(captured)
+    assert parsed == []

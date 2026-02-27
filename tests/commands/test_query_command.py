@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -138,12 +139,41 @@ def test_run_query_markdown_placeholder_emits_empty_output(
     assert captured == ""
 
 
-def test_run_query_json_placeholder_emits_empty_output(capsys: pytest.CaptureFixture[str]) -> None:
-    """JSON query formatter placeholder should emit an empty result."""
+def test_run_query_json_root_result_is_single_object(capsys: pytest.CaptureFixture[str]) -> None:
+    """JSON query output should return one object for a single root result."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[]", out=OutputFormat.JSON)
 
     run_query(args)
     captured = capsys.readouterr().out
 
-    assert captured == ""
+    parsed = json.loads(captured)
+    assert isinstance(parsed, dict)
+    assert parsed["type"] == "OrgRootNode"
+    assert "env" in parsed
+
+
+def test_run_query_json_node_result_excludes_env(capsys: pytest.CaptureFixture[str]) -> None:
+    """JSON query output should exclude env from non-root org nodes."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[] | .children | .[0]", out=OutputFormat.JSON)
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    parsed = json.loads(captured)
+    assert isinstance(parsed, dict)
+    assert parsed["type"] == "OrgNode"
+    assert "env" not in parsed
+
+
+def test_run_query_json_scalars_emit_single_json_value(capsys: pytest.CaptureFixture[str]) -> None:
+    """JSON query output should emit scalar JSON when one item remains."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[] | .children | length", out=OutputFormat.JSON)
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    parsed = json.loads(captured)
+    assert parsed == 3

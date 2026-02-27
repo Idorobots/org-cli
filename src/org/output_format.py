@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import date, datetime, time
 from enum import StrEnum
 from typing import Protocol
 
@@ -121,6 +124,127 @@ class _StubQueryOutputFormatter:
         del color_enabled
 
 
+_NODE_EXCLUDED_FIELDS = {
+    "body_rich",
+    "children",
+    "env",
+    "next_same_level",
+    "parent",
+    "previous_same_level",
+    "root",
+}
+_ROOT_EXCLUDED_FIELDS = {
+    "body_rich",
+    "children",
+    "next_same_level",
+    "parent",
+    "previous_same_level",
+    "root",
+}
+_ENV_EXCLUDED_FIELDS: set[str] = set()
+_DATE_EXCLUDED_FIELDS: set[str] = set()
+
+
+def _is_primitive_json_type(value: object) -> bool:
+    """Return whether the value maps directly to a JSON primitive."""
+    return value is None or isinstance(value, bool | int | float | str)
+
+
+def _iter_public_attributes(value: object) -> Iterable[tuple[str, object]]:
+    """Yield public, non-callable attributes from an object."""
+    for name in dir(value):
+        if name.startswith("_"):
+            continue
+        try:
+            attr_value = getattr(value, name)
+        except AttributeError:
+            continue
+        except RuntimeError:
+            continue
+        except TypeError:
+            continue
+        except ValueError:
+            continue
+        if callable(attr_value):
+            continue
+        yield name, attr_value
+
+
+def _org_object_to_json_dict(value: object, seen: set[int]) -> dict[str, object]:
+    """Serialize org object public attributes into a JSON object."""
+    excluded_fields = _DATE_EXCLUDED_FIELDS
+    if isinstance(value, OrgRootNode):
+        excluded_fields = _ROOT_EXCLUDED_FIELDS
+    elif isinstance(value, orgparse.node.OrgNode):
+        excluded_fields = _NODE_EXCLUDED_FIELDS
+    elif isinstance(value, orgparse.node.OrgEnv):
+        excluded_fields = _ENV_EXCLUDED_FIELDS
+
+    data: dict[str, object] = {"type": type(value).__name__}
+    for field_name, field_value in _iter_public_attributes(value):
+        if field_name in excluded_fields:
+            continue
+        data[field_name] = _to_json_compatible(field_value, seen)
+    return data
+
+
+def _iterable_to_json_list(value: object, seen: set[int]) -> list[object]:
+    """Convert iterable values into JSON arrays."""
+    if isinstance(value, Iterable):
+        return [_to_json_compatible(item, seen) for item in value]
+    return [str(value)]
+
+
+def _to_json_compatible(value: object, seen: set[int] | None = None) -> object:
+    """Convert arbitrary values to JSON-serializable structures."""
+    if _is_primitive_json_type(value):
+        return value
+
+    if seen is None:
+        seen = set()
+
+    obj_id = id(value)
+    if obj_id in seen:
+        return None
+
+    result: object
+    if isinstance(value, datetime | date | time):
+        result = value.isoformat()
+    elif isinstance(value, bytes):
+        result = value.decode("utf-8", errors="replace")
+    elif isinstance(value, OrgDate | orgparse.node.OrgNode | OrgRootNode | orgparse.node.OrgEnv):
+        seen.add(obj_id)
+        result = _org_object_to_json_dict(value, seen)
+    elif isinstance(value, Mapping):
+        seen.add(obj_id)
+        result = {str(key): _to_json_compatible(item, seen) for key, item in value.items()}
+    elif isinstance(value, Iterable):
+        seen.add(obj_id)
+        result = _iterable_to_json_list(value, seen)
+    else:
+        result = str(value)
+    return result
+
+
+def _json_output_payload(values: list[object]) -> object:
+    """Convert formatter values to final JSON payload shape."""
+    converted = [_to_json_compatible(value) for value in values]
+    if len(converted) == 1:
+        return converted[0]
+    return converted
+
+
+class JsonQueryOutputFormatter:
+    """JSON output formatter for query command."""
+
+    include_filenames = False
+
+    def render(self, values: list[object], console: Console, color_enabled: bool) -> None:
+        del color_enabled
+        console.file.write(f"{json.dumps(_json_output_payload(values), ensure_ascii=True)}\n")
+        console.file.flush()
+
+
 def _format_short_task_list(
     nodes: list[orgparse.node.OrgNode],
     done_keys: list[str],
@@ -192,13 +316,24 @@ class _StubTasksListOutputFormatter:
         del data
 
 
+class JsonTasksListOutputFormatter:
+    """JSON output formatter for tasks list command."""
+
+    include_filenames = False
+
+    def render(self, data: TasksListRenderInput) -> None:
+        payload = _json_output_payload(list(data.nodes))
+        data.console.file.write(f"{json.dumps(payload, ensure_ascii=True)}\n")
+        data.console.file.flush()
+
+
 _ORG_QUERY_FORMATTER = OrgQueryOutputFormatter()
 _MD_QUERY_FORMATTER = _StubQueryOutputFormatter()
-_JSON_QUERY_FORMATTER = _StubQueryOutputFormatter()
+_JSON_QUERY_FORMATTER = JsonQueryOutputFormatter()
 
 _ORG_TASKS_LIST_FORMATTER = OrgTasksListOutputFormatter()
 _MD_TASKS_LIST_FORMATTER = _StubTasksListOutputFormatter()
-_JSON_TASKS_LIST_FORMATTER = _StubTasksListOutputFormatter()
+_JSON_TASKS_LIST_FORMATTER = JsonTasksListOutputFormatter()
 
 
 def get_query_formatter(output_format: OutputFormat) -> QueryOutputFormatter:
