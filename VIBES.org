@@ -2203,7 +2203,10 @@ The priority value should be shown in light blue color (same as histogram bars).
 
 The tags should be colored dim white, same as the filename.
 
-** TODO Query command                                                                    :CLI:Query:
+** DONE Query command                                                                    :CLI:Query:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-27 Fri 18:45]
+:END:
 *** DONE Query command
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-02-23 Mon 23:08] \\
@@ -2557,7 +2560,7 @@ All of =min=, =max= and =sort_by= should handle =none= values gracefully:
 
 The query language is now pretty much complete, I don't expect vary many changes. Please add extra tests for the runtime of those queries to improve the coverage over-all. The coverage goal is above 90% over-all, and close to 100% for query language modules.
 
-**** REWORKED Query language documentation
+**** REWORKED Query language documentation                                                    :Docs:
 :LOGBOOK:
 - State "REWORKED"       from "TODO"       [2026-02-25 Wed 19:31] \\
   Needed sam manual updates.
@@ -2695,7 +2698,7 @@ There are some comments that I'd like addressed:
 
 - Update all the code paths that use the =_PropertyEnrichednOrgNode= to use =_PropertyRewrittenOrgNode= instead. These classes are very similar in function and we only need one of them. The enriched node class can then be removed.
 
-** REWORKED Command docs
+** REWORKED Command docs                                                                      :Docs:
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-02-26 Thu 13:56] \\
   Required manual changes and reprompting. AI is not very good at writing proper documentation.
@@ -2724,14 +2727,187 @@ Then, follow up with a secion for each command that is currently available, wher
 
 The README file should also point to VIBES.org as the current roadmap of features.
 
-** Output format abstraction
-We will be adding more output options, for instance JSON output, visualization output, etc.
+** REWORKED Output format abstraction                                                       :CLI:UX:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-28 Sat 12:58] \\
+  Needed extra tasks to get right.
+:END:
+We will be adding more output options for the =query= and =tasks list= commands, for instance JSON output, Markdown, etc.
 
-*** JSON output
-- Could be done with pandoc
+Please create an output format abstraction that will allow switching the output formatter based on the CLI arguments passed to the command. Only one output format can be selected at a time. The CLI option for selecting this output will be named =--out=:
+- =--out org= - default, results in the current Org-Mode format to be output,
+- =--out md= - will cause the output to be formatted as a Markdown document,
+- =--out json= - will cause the output to be a valid JSON format.
 
-*** Markdown output
-- Could be done with pandoc
+Don't worry about the =json= or =md= formatters right now, just create stubs for them. We will address these one by one later.
+
+By default, the org formatter should be used. It behaves exactly like the current output formatting.
+
+When using an alternative formatter to the =org= formatter, the filenames will be omitted (the assumption is that the user will use these alternatives as data, not Org tasks lists).
+
+*** REWORKED JSON output
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-27 Fri 19:57] \\
+  Required some extra removals after the fact as it didn't infer the intent.
+:END:
+Create a JSON formatter implementation that will cause all the objects reported by =query= and =tasks list= commands to be valid JSON objects. If a query results in something else than org nodes, the JSON conversion should still create a valid JSON output. The output JSON will be an array of items when a list of items is printed, or a single JSON value if a single item remains in the set.
+
+For =OrgNode='s, please extract all the public properties except for the =env= and put them in an object. For dates do the same. All other, primitive types should be mapped to JSON primitives, i.e. =None= becomes =null=, =dict= becomes an object, any iterable collection becomes an array, etc. It is not neccessary to export the =children= or =parent= properties, as it is assumed that these will be present on the list. Please don't include `previous_same_level` or `next_same_level` or `body_rich`  properties either.
+
+For the root =OrgRootNode=, do export the =env= property along with the other public properties. It is not neccessary to export the =children= or =parent= properties, as it is assumed that these will be present on the list. Please don't include `previous_same_level` or `next_same_level` or `body_rich` properties either.
+
+The =OrgEnv= should get the same treatment - export all public properties.
+
+All org-related nodes should have a =type= field in the JSON output that stores the class-name.
+
+The translation is one way by design, we don't expect anybody to convert back from JSON to Org, so lossy translation is acceptable.
+
+The filename output is going to be a port of the root node's =env= property, so it can be ommited for the other nodes.
+
+*** REWORKED Markdown output
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-27 Fri 19:57] \\
+  Required better handling of pandoc warnings.
+:END:
+Create a markdown formatter that will translate all the org nodes in the result to a markdown format. If a query results in multiple nodes, they should all be exported as one Markdown document. If the result is something else than Org Nodes, the export should still be a valid Markdown document.
+
+The formatter can be based on =pandoc=, to run the conversion from Org Mode text to Markdown, but it should be done in-memory or via temporary files. When producing the output, let Pandoc interpret it as an org file regardless of the result.
+
+Assume that the user should have pandoc installed locally for the command to work, if the Python =pandoc= library throws an error when Pandoc isn't found, please forward the error as the CLI command error.
+
+*** DONE Supress Pandoc warning
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-27 Fri 19:57]
+:END:
+Pandoc prints the following warning on my end, please suppress the stderr output from the pandoc call and log it via the console logger. It should be visible in the verbose output when using the =--verbose= flag.
+
+The warning:
+#+begin_example
+lib/python3.14/site-packages/pandoc/utils.py:62: UserWarning: 
+Pandoc version 3.5 is not supported, we proceed as if pandoc 3.2.1 was used. 
+The behavior of the library is undefined if the document models of these versions differ.
+#+end_example
+
+*** REWORKED Other formats
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-27 Fri 19:58] \\
+  Needed some slop cleanup and further bugfixes.
+:END:
+Pandoc supports more formats, we should ideally allow converting the results into any of these formats the same way as was done for the Markdown formatter. Please make the =--out= CLI switch accept any Pandoc-supported output format and export using that as the Pandoc output format.
+
+It also makes sense to have a CLI switch that allows forwarding extra params to Pandoc. Call it =--pandoc-args=. It should accept a string that will be passed as the additional arguments to the Pandoc exporter. The new CLI switch should be available in all the commands that support =--out=.
+
+*** DONE Pandoc bugfixes                                                                       :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-27 Fri 20:01]
+:END:
+There are several issues:
+
+- Please change the Pandoc exporter to use a single Pandoc invocation to parse and export the file, i.e. pass =-f org -t <out>= parameters to it in one go.
+
+- Prease omit the =env.nodes= property of an =OrgEnv= when exporting to JSON.
+
+- Pandoc is reporting the following warning:
+#+begin_example
+pandoc warning: unclosed file <_io.BufferedReader name='/tmp/tmp69dp_4j6/output'>
+#+end_example
+Please check if the warning can be addressed and resolved. If so, please fix it.
+
+- Please don't treat =md= as a special value for the =--out= parameter. The user should pass =--out markdown=.
+
+- Please remove the =pandoc= python dependency.
+
+*** REWORKED More syntax highlighting
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-27 Fri 22:00] \\
+  Needed extra prompting to get right.
+:END:
+Use the =--out= type for syntax highlighting of the output.
+When =--out= is specified and =--color= is enabled, the =Syntax= block should be wrapped around the output of the JSON and Pandoc formatters with the right language set up (configured in =--out=).
+
+Make sure to create an map of "renderable" output formats that will be syntax-highlighted. When an output type is not in the map, it should be displayed as is.
+
+You can build the map by looking up what formats Pandoc supports and then what formats Python's Pygments library supports. The map would be then create as follows: ~<pandoc-output-format> => <matching-pygments-language>~
+
+For example:
+- markdown => markdown,
+- gfm => markdown,
+- rst => rst,
+- html => html,
+- etc
+
+If an output format is not in the map it should still be exported, this map should only be used for syntax highlighting.
+
+=--out= remains unchanged, the format passed via =--out= goes directly to Pandoc, then it is mapped to the Pygments language for the `Syntax` block.
+
+Please make sure the text in the syntax blocks wraps around properly, so that all of the text is visible in the console.
+
+Please make the theme used for Syntax highlighting configurable. The default should be "GitHub Dark". The theme should by selectable with a new CLI switch =--out-theme=. The switch should be available in all commands that use syntax highlighting formatters (=tasks list= and =query=).
+
+*** DONE Binary file support & spinner                                                         :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-27 Fri 22:21]
+:END:
+
+Please separate the output generation from the actual output printing in the formatters. I'd like the formatting to happen as part of the =with processing_status():= block, so that a lengthy conversion to the output format will be marked as in-progress, and the final printing of the value to the console will be quick and replace the "processing" spinner.
+
+Furthermore, I'd like to be able to generate PDFs and other binary file formats with the =--out= switch.
+Currently, that is impossible, since the temporary file opened after pandoc conversion is opened in =utf-8= encoding which fails to parse a binary file:
+
+#+begin_example
+'utf-8' codec can't decode byte 0xe4 in position 10: invalid continuation byte
+#+end_example
+
+Please update the Pandoc formatter to recover from file reading errors when a binary file is read. In case of decoding errors, the file should be displayed as-is to the console without any formatting or escaping (so that piping a PDF to a file can work).
+
+*** DONE Docs update                                                                          :Docs:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-02-27 Fri 22:29]
+:END:
+
+Update the documentation for =tasks list= and =query= commands to include the extra output format-related CLI options.
+
+Mention the use of Pygments syntax highlighting themes & Pandoc format conversion.
+
+*** REWORKED Code review                                                               :Cleanup:Bug:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-02-28 Sat 12:56] \\
+  Some of these were simple enough to do them manually.
+:END:
+
+Agent review found several issues:
+
+#+begin_example
+- **High:** `run_query` now flattens whenever `results[0]` is a collection, which drops later items from the stream; this can silently lose results across multiple roots/files (`src/org/commands/query.py:81`).
+- **Medium:** malformed `--pandoc-args` can raise `OutputFormatError` during formatter construction and escape as a traceback, because formatter creation is outside the `click.UsageError` conversion path (`src/org/commands/query.py:57`, `src/org/commands/tasks/list.py:73`).
+- **Medium:** `tasks list --out json -n 0` prints plain text `No results`, which is invalid for JSON consumers (`src/org/commands/tasks/list.py:70`).
+#+end_example
+
+Please fix these issues.
+
+Refactor the following tests not to call Pandoc directly - we can assume that it works. We just want to check if it is called when the output is set as =markdown= and it is called with the right arguments:
+- =test_run_tasks_list_markdown_converts_nodes_to_single_document=
+- =test_run_tasks_list_accepts_arbitrary_pandoc_output_format=
+- =test_run_query_markdown_converts_org_results=
+- =test_run_query_markdown_converts_scalar_results=
+
+Move the =*TaskList*= formatters to the task list command module. They shouldn't be placed in the common =output_format= module, as that is a place just for the shared formatting helpers.
+
+Move the =*Query*= formatters to the query command module. They shouldn't be placed in the common =output_format= module.
+
+Refactor the =_prepare_output= function's binary file handling so that the code is simpler.
+
+Refactor the =_org_object_to_json_dict= to use "exported fields" lists instead of exclude lists for the different org objects. I want it to be explicit in which fields are exported.
+
+** More Rich support & other output fixes
+- columnar display on the stats summary - tasks section should be to the side of the histograms
+- scroll through task list
+- use boxes for the sections
+- Don't indent TAGS and GROUPS sections on summary
+- derive the size of the viewport from the console window
+- There are cases still that print =None= and Python class strings (stream of lists of values) - should be mended with a custom formatter for collections & values.
+- top frequency value to be moved to top in the middle of the dates
+- unicode strings in heading cause misalignment of tags on task lists
 
 ** Mutable parse tree
 *** Use mutable orgparse
@@ -2747,9 +2923,19 @@ We will be adding more output options, for instance JSON output, visualization o
 - ~properties.foo = none~ set/delete property
 - update the documentation in docs/query_language.md
 
-** More Rich support
-- columnar display on the stats summary - tasks section should be to the side of the histograms
-- scroll through task list
+*** Tasks C**D
+- Adding new nodes
+- Removing nodes
+- Moving nodes between headings
+
+*** Tasks **U*
+- Changing TODO state
+  + Update repeats
+  + Update completion dates
+- Setting tags
+- Setting properties
+- Modifying the heading
+- Modifying the body
 
 ** Workflow command
 
@@ -2817,6 +3003,38 @@ org task update --id "Foo" --todo ACTIVE --property AGENT=OpenCode VIBES.org
 org task update --id "Foo" --todo REVIEW VIBES.org
 #+end_example
 
+*** Extra filters
+- ~--id-property NAME~ - names the property serving as the task ID
+- ~--dependencies-property NAME~ - names the property used for dependencies between tasks
+
+- ~--filter-children ID_OR_HEADING~ - returns tasks that are children of a node
+- ~--filter-sibling ID_OR_HEADING~ - returns tasks that are siblings of a node (same parent, same level)
+- ~--filter-parent ID_OR_HEADING~ - returns task that is a parent of the specified node
+- ~--filter-dependencies ID_OR_HEADING~ - returns tasks that are dependencies of a task
+- ~--filter-dependants ID_OR_HEADING~ - returns tasks that are depending on a task
+
+- ~--with-implicit-siblings-dependencies~ - siblings preceeding a node are added to its dependencies
+
+- ~--filter-not-blocked~ - in TODO state, all dependencies completed
+- ~--filter-blocked~ - in TODO state, not all dependencies completed
+
+*** More query language filters/ordering
+
+Redo all the filters & orderings in terms of the query language
+
+- ~--filter-priority P~ - 'select(.priority == P)'
+
+- ~--filter-children ID~ - 'select(.heading == ID, .properties[$id] == ID) | .children'
+- ~--filter-sibling ID~ - 'select(.heading == ID, .properties[$id] == ID) | .siblings'
+- ~--filter-parent ID~ - 'select(.heading == ID, .properties[$id] == ID) | .parent'
+- ~--filter-dependencies ID~ - 'select(.heading == ID, .properties[$id] == ID) | .dependencies'
+- ~--filter-dependants ID~ - 'select(.heading == ID, .properties[$id] == ID) | .dependants'
+
+- ~--filter-not-blocked~ - 'select(.todo in $todo_keys) | select(.heading == ID, .properties[$id] == ID) | select((.depndencies[] | length) == 0)'
+- ~--filter-blocked~ - 'select(.todo in $todo_keys) | select(.heading == ID, .properties[$id] == ID) | select((.depndencies[] | length) != 0)'
+
+- ~--order-by priority~ - 'sortby(.priority)'
+
 *** workflow --init
 - Task links via properties
 - External attachments (for the execution plan)
@@ -2831,6 +3049,23 @@ org task update --id "Foo" --todo REVIEW VIBES.org
 - Add extra tasks, modify state
 - Loop
 
+*** Gantt chart
+** Dashboard command
+- Reads a dashboard config and shows a visualization on a server.
+- Live updating.
+
+*** --watch & --serve switches
+--watch for file watching and updating live on changes
+--serve to start a server showing a visualization of the data
+
+** Extra filters/ordering
+- filter by priority
+- order by priority
+- order by node relations (preserves tree order, but allows using the other stable sorting) (could replace the level ordering)
+- --with-priority-as-category
+- ability to define extra (all?) filters by a configuration file
+- move gamify specific filters to the config file.
+
 ** JavaScript visualization
 
 *** D3 visualization - tag cloud
@@ -2842,13 +3077,27 @@ Node size is how many tasks are related to a tag. Closeness is how related these
 Allow selecting specific tags or top tags.
 
 ** File watching and updated display
-** Dashboard command
-- Reads a dashboard config and shows a visualization on a server.
-- Live updating.
+** Agenda command
+Like Org Agenta, but CLI.
 
-*** --watch & --serve switches
---watch for file watching and updating live on changes
---serve to start a server showing a visualization of the data
+- accept a date, default to today
+- select what the agenda shows, exclusions for deadlines, overdue etc.
 
+- Tasks to do on a given day including timestamp, state, heading and tags.
+- Tasks done on a given day
+- Tasks that are overdue
+- Deadlines that are overdue
+- Upcomming deadlines
+
+- ability to refile tasks to another file
+
+** Format command
+Like linting and formatting.
+** Documentation
+- Document the CLI
+- Document the config format
 ** Better heading & body parsing
 ** MCP server
+** Website for org-cli
+- Publish the package
+- Add a static site for org-cli.idorobots.org on github pages.
