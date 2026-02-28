@@ -226,6 +226,28 @@ def test_run_query_markdown_pandoc_error_is_usage_error(monkeypatch: pytest.Monk
         run_query(args)
 
 
+def test_run_query_pandoc_empty_results_prints_no_results(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pandoc query output should preserve empty-result messaging."""
+
+    def _should_not_call(_org_text: str, _output_format: str, _pandoc_args: list[str]) -> str:
+        raise AssertionError("pandoc must not be called for empty results")
+
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args(
+        [fixture_path],
+        ".[] | .children | .[] | select(false)",
+        out="gfm",
+    )
+    monkeypatch.setattr("org.commands.query._org_to_pandoc_format", _should_not_call)
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    assert captured.strip() == "No results"
+
+
 def test_run_query_json_root_result_is_single_object(capsys: pytest.CaptureFixture[str]) -> None:
     """JSON query output should return one object for a single root result."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")

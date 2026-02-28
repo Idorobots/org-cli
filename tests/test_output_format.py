@@ -7,6 +7,7 @@ import logging
 from types import SimpleNamespace
 from typing import cast
 
+import orgparse
 import pytest
 from rich.console import Console
 from rich.syntax import Syntax
@@ -213,6 +214,11 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pandoc tasks formatter should syntax-highlight mapped output formats."""
+
+    class _FakeNode:
+        def __str__(self) -> str:
+            return "* TODO task"
+
     console = _FakeConsole()
     formatter = tasks_list_command.PandocTasksListOutputFormatter("html5", None)
 
@@ -223,7 +229,7 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
 
     prepared_output = formatter.prepare(
         tasks_list_command.TasksListRenderInput(
-            nodes=[],
+            nodes=[cast(orgparse.node.OrgNode, _FakeNode())],
             console=cast(Console, console),
             color_enabled=True,
             done_keys=["DONE"],

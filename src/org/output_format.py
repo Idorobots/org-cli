@@ -199,7 +199,7 @@ def _build_org_document(values: list[object]) -> str:
     """Build one org document from all output values."""
     parts = [_to_org_input_text(value) for value in values]
     non_empty_parts = [part for part in parts if part]
-    return "".join(non_empty_parts)
+    return "\n".join(non_empty_parts)
 
 
 def _parse_pandoc_args(pandoc_args: str | None) -> list[str]:

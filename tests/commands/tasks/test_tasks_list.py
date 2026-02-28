@@ -208,6 +208,28 @@ def test_run_tasks_list_markdown_pandoc_error_is_usage_error(
         tasks_list.run_tasks_list(args)
 
 
+def test_run_tasks_list_pandoc_empty_results_prints_no_results(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pandoc tasks output should preserve empty-result messaging."""
+
+    def _should_not_call(_org_text: str, _output_format: str, _pandoc_args: list[str]) -> str:
+        raise AssertionError("pandoc must not be called for empty results")
+
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args(
+        [fixture_path],
+        out="gfm",
+        filter_tags=["nomatch$"],
+    )
+    monkeypatch.setattr("org.commands.tasks.list._org_to_pandoc_format", _should_not_call)
+
+    tasks_list.run_tasks_list(args)
+    captured = capsys.readouterr().out
+
+    assert captured.strip() == "No results"
+
+
 def test_run_tasks_list_json_emits_array_for_multiple_nodes(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

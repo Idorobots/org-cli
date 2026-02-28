@@ -197,6 +197,10 @@ class PandocTasksListOutputFormatter:
         self.pandoc_args = _parse_pandoc_args(pandoc_args)
 
     def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
+        if not data.nodes:
+            return PreparedOutput(
+                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+            )
         formatted_text = _org_to_pandoc_format(
             _build_org_document(list(data.nodes)),
             self.output_format,

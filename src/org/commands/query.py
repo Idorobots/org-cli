@@ -140,6 +140,10 @@ class PandocQueryOutputFormatter:
         self, values: list[object], console: Console, color_enabled: bool, out_theme: str
     ) -> PreparedOutput:
         del console
+        if not values:
+            return PreparedOutput(
+                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+            )
         formatted_text = _org_to_pandoc_format(
             _build_org_document(values),
             self.output_format,
