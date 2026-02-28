@@ -251,6 +251,8 @@ def run_tasks_list(args: ListArgs) -> None:
     console = build_console(color_enabled)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
+    if args.max_results < 0:
+        raise typer.BadParameter("--max-results must be non-negative")
     try:
         formatter = get_tasks_list_formatter(args.out, args.pandoc_args)
     except OutputFormatError as exc:

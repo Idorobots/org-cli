@@ -118,6 +118,15 @@ def test_query_empty_org_result_set_prints_no_results(capsys: pytest.CaptureFixt
     assert captured.strip() == "No results"
 
 
+def test_run_query_negative_max_results_raises_bad_parameter() -> None:
+    """Query should reject negative max-results values."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[]", max_results=-1)
+
+    with pytest.raises(click.BadParameter, match="--max-results must be non-negative"):
+        run_query(args)
+
+
 def test_query_runtime_error_is_reported_as_usage_error() -> None:
     """Runtime query failures should be shown as usage errors."""
     runner = CliRunner()

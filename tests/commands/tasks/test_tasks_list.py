@@ -8,6 +8,7 @@ import sys
 
 import click
 import pytest
+import typer
 
 from org.commands.tasks import list as tasks_list
 from org.output_format import OutputFormat, OutputFormatError
@@ -131,6 +132,15 @@ def test_run_tasks_list_offset_no_results(
     captured = capsys.readouterr().out
 
     assert captured.strip() == "No results"
+
+
+def test_run_tasks_list_negative_max_results_raises_bad_parameter() -> None:
+    """Tasks list should reject negative max-results values."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], max_results=-1)
+
+    with pytest.raises(typer.BadParameter, match="--max-results must be non-negative"):
+        tasks_list.run_tasks_list(args)
 
 
 def test_run_tasks_list_markdown_converts_nodes_to_single_document(
