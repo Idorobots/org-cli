@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from dataclasses import dataclass
+from typing import Protocol
 
+import click
 import orgparse
 import typer
 from rich.console import Console
@@ -12,12 +15,25 @@ from rich.syntax import Syntax
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
+from org.output_format import (
+    DEFAULT_OUTPUT_THEME,
+    OutputFormat,
+    OutputFormatError,
+    OutputOperation,
+    PreparedOutput,
+    _build_org_document,
+    _json_output_payload,
+    _normalize_syntax_theme,
+    _org_to_pandoc_format,
+    _parse_pandoc_args,
+    _prepare_output,
+    print_prepared_output,
+)
 from org.tui import (
     TaskLineConfig,
     build_console,
     format_task_line,
     lines_to_text,
-    print_output,
     processing_status,
     setup_output,
 )
@@ -58,9 +74,36 @@ class ListArgs:
     with_tags_as_category: bool
     category_property: str
     buckets: int
+    out: str
+    out_theme: str
+    pandoc_args: str | None
 
 
-def format_short_task_list(
+@dataclass(frozen=True)
+class TasksListRenderInput:
+    """Render input for tasks list output formatters."""
+
+    nodes: list[orgparse.node.OrgNode]
+    console: Console
+    color_enabled: bool
+    done_keys: list[str]
+    todo_keys: list[str]
+    details: bool
+    buckets: int
+    out_theme: str
+
+
+class TasksListOutputFormatter(Protocol):
+    """Formatter interface for the tasks list command."""
+
+    include_filenames: bool
+
+    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
+        """Prepare tasks list output for rendering."""
+        ...
+
+
+def _format_short_task_list(
     nodes: list[orgparse.node.OrgNode],
     done_keys: list[str],
     todo_keys: list[str],
@@ -83,18 +126,123 @@ def format_short_task_list(
     return lines_to_text(lines)
 
 
-def render_detailed_task_list(
-    nodes: list[orgparse.node.OrgNode],
-    console: Console,
-) -> None:
-    """Render detailed list of tasks with syntax highlighting."""
+def _prepare_detailed_task_list(
+    nodes: list[orgparse.node.OrgNode], out_theme: str
+) -> PreparedOutput:
+    """Prepare detailed list of tasks with syntax highlighting."""
+    theme = _normalize_syntax_theme(out_theme)
+    operations: list[OutputOperation] = []
     for idx, node in enumerate(nodes):
         if idx > 0:
-            console.print()
+            operations.append(OutputOperation(kind="console_print", text="", markup=False))
         filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
         node_text = str(node).rstrip()
         org_block = f"# {filename}\n{node_text}" if node_text else f"# {filename}"
-        console.print(Syntax(org_block, "org", line_numbers=False, word_wrap=False))
+        operations.append(
+            OutputOperation(
+                kind="console_print",
+                renderable=Syntax(
+                    org_block, "org", theme=theme, line_numbers=False, word_wrap=True
+                ),
+            )
+        )
+    return PreparedOutput(operations=tuple(operations))
+
+
+class OrgTasksListOutputFormatter:
+    """Org output formatter for tasks list command."""
+
+    include_filenames = True
+
+    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
+        if not data.nodes:
+            return PreparedOutput(
+                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+            )
+
+        if data.details:
+            return _prepare_detailed_task_list(data.nodes, data.out_theme)
+
+        output = _format_short_task_list(
+            data.nodes,
+            data.done_keys,
+            data.todo_keys,
+            data.color_enabled,
+            data.buckets,
+        )
+        if output:
+            return PreparedOutput(
+                operations=(
+                    OutputOperation(
+                        kind="print_output",
+                        text=output,
+                        color_enabled=data.color_enabled,
+                        end="",
+                    ),
+                )
+            )
+
+        return PreparedOutput(
+            operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+        )
+
+
+class PandocTasksListOutputFormatter:
+    """Pandoc-based output formatter for tasks list command."""
+
+    include_filenames = False
+
+    def __init__(self, output_format: str, pandoc_args: str | None) -> None:
+        self.output_format = output_format
+        self.pandoc_args = _parse_pandoc_args(pandoc_args)
+
+    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
+        if not data.nodes:
+            return PreparedOutput(
+                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+            )
+        formatted_text = _org_to_pandoc_format(
+            _build_org_document(list(data.nodes)),
+            self.output_format,
+            self.pandoc_args,
+        )
+        return _prepare_output(
+            formatted_text,
+            data.color_enabled,
+            self.output_format,
+            data.out_theme,
+        )
+
+
+class JsonTasksListOutputFormatter:
+    """JSON output formatter for tasks list command."""
+
+    include_filenames = False
+
+    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
+        payload = _json_output_payload(list(data.nodes))
+        return _prepare_output(
+            json.dumps(payload, ensure_ascii=True),
+            data.color_enabled,
+            OutputFormat.JSON,
+            data.out_theme,
+        )
+
+
+_ORG_TASKS_LIST_FORMATTER = OrgTasksListOutputFormatter()
+_JSON_TASKS_LIST_FORMATTER = JsonTasksListOutputFormatter()
+
+
+def get_tasks_list_formatter(
+    output_format: str, pandoc_args: str | None
+) -> TasksListOutputFormatter:
+    """Return tasks list formatter for selected output format."""
+    normalized_output = output_format.strip().lower()
+    if normalized_output == OutputFormat.ORG:
+        return _ORG_TASKS_LIST_FORMATTER
+    if normalized_output == OutputFormat.JSON:
+        return _JSON_TASKS_LIST_FORMATTER
+    return PandocTasksListOutputFormatter(normalized_output, pandoc_args)
 
 
 def run_tasks_list(args: ListArgs) -> None:
@@ -103,35 +251,31 @@ def run_tasks_list(args: ListArgs) -> None:
     console = build_console(color_enabled)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
-    if args.max_results <= 0:
-        console.print("No results", markup=False)
-        return
+    if args.max_results < 0:
+        raise typer.BadParameter("--max-results must be non-negative")
+    try:
+        formatter = get_tasks_list_formatter(args.out, args.pandoc_args)
+    except OutputFormatError as exc:
+        raise click.UsageError(str(exc)) from exc
     with processing_status(console, color_enabled):
         nodes, todo_keys, done_keys = load_and_process_data(args)
-        if not nodes:
-            display_nodes = []
-            output = None
-        elif args.details:
-            display_nodes = nodes
-            output = None
-        else:
-            display_nodes = nodes
-            output = format_short_task_list(
-                display_nodes, done_keys, todo_keys, color_enabled, args.buckets
+        try:
+            prepared_output = formatter.prepare(
+                TasksListRenderInput(
+                    nodes=nodes,
+                    console=console,
+                    color_enabled=color_enabled,
+                    done_keys=done_keys,
+                    todo_keys=todo_keys,
+                    details=args.details,
+                    buckets=args.buckets,
+                    out_theme=args.out_theme,
+                )
             )
+        except OutputFormatError as exc:
+            raise click.UsageError(str(exc)) from exc
 
-    if not nodes or not display_nodes:
-        console.print("No results", markup=False)
-        return
-
-    if args.details:
-        render_detailed_task_list(display_nodes, console)
-        return
-
-    if output:
-        print_output(console, output, color_enabled, end="")
-    else:
-        console.print("No results", markup=False)
+    print_prepared_output(console, prepared_output)
 
 
 def register(app: typer.Typer) -> None:
@@ -315,6 +459,22 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Number of time buckets for timeline charts and tag alignment column",
         ),
+        out: str = typer.Option(
+            OutputFormat.ORG,
+            "--out",
+            help="Output format: org, json, or any pandoc writer format",
+        ),
+        out_theme: str = typer.Option(
+            DEFAULT_OUTPUT_THEME,
+            "--out-theme",
+            help="Syntax theme for highlighted output blocks",
+        ),
+        pandoc_args: str | None = typer.Option(
+            None,
+            "--pandoc-args",
+            metavar="ARGS",
+            help="Additional arguments forwarded to pandoc export",
+        ),
     ) -> None:
         """List tasks matching filters."""
         args = ListArgs(
@@ -349,6 +509,9 @@ def register(app: typer.Typer) -> None:
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
             buckets=buckets,
+            out=out,
+            out_theme=out_theme,
+            pandoc_args=pandoc_args,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks list")

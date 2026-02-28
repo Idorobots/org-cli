@@ -41,6 +41,9 @@ COMMAND_OPTION_NAMES = {
     "max_tags",
     "min_group_size",
     "offset",
+    "out",
+    "out_theme",
+    "pandoc_args",
     "order_by",
     "todo_keys",
     "use",
@@ -89,6 +92,9 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "max_tags": "--max-tags",
     "min_group_size": "--min-group-size",
     "offset": "--offset",
+    "out": "--out",
+    "out_theme": "--out-theme",
+    "pandoc_args": "--pandoc-args",
     "order_by": "--order-by",
     "show": "--show",
     "todo_keys": "--todo-keys",
@@ -322,7 +328,7 @@ def validate_str_option(key: str, value: object) -> str | None:
     if not isinstance(value, str):
         return None
     stripped = value.strip()
-    if key in ("--config", "--show") and not stripped:
+    if key in ("--config", "--show", "--out") and not stripped:
         return None
 
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
@@ -579,6 +585,9 @@ def build_config_defaults(
         "--done-keys": "done_keys",
         "--filter-date-from": "filter_date_from",
         "--filter-date-until": "filter_date_until",
+        "--out": "out",
+        "--out-theme": "out_theme",
+        "--pandoc-args": "pandoc_args",
         "--order-by": "order_by",
         "--config": "config",
     }

@@ -68,6 +68,7 @@ def test_build_config_defaults_applies_values() -> None:
         "--with-gamify-category": True,
         "--with-numeric-gamify-exp": True,
         "--use": "heading",
+        "--pandoc-args": "--wrap=none",
     }
 
     defaults = config.build_config_defaults(raw)
@@ -79,6 +80,7 @@ def test_build_config_defaults_applies_values() -> None:
     assert stats_defaults["with_gamify_category"] is True
     assert stats_defaults["with_numeric_gamify_exp"] is True
     assert stats_defaults["use"] == "heading"
+    assert default_values["pandoc_args"] == "--wrap=none"
     assert append_defaults["filter_tags"] == ["work", "team"]
 
 
@@ -147,6 +149,8 @@ def test_validate_helpers() -> None:
 
     assert config.validate_str_option("--use", "tags") == "tags"
     assert config.validate_str_option("--use", "nope") is None
+    assert config.validate_str_option("--out", "gfm") == "gfm"
+    assert config.validate_str_option("--out", "") is None
     assert config.validate_str_option("--todo-keys", "TODO|WAIT") is None
     assert config.validate_str_option("--filter-date-from", "2025/01/15") is None
 

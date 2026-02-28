@@ -61,6 +61,7 @@ def test_validate_global_arguments_invalid_regex() -> None:
     ("override", "message"),
     [
         ("use", "--use must be one of"),
+        ("max_results", "--max-results must be non-negative"),
         ("max_relations", "--max-relations must be non-negative"),
         ("max_tags", "--max-tags must be non-negative"),
         ("max_groups", "--max-groups must be non-negative"),
@@ -72,6 +73,7 @@ def test_validate_stats_arguments_errors(override: str, message: str) -> None:
     """validate_stats_arguments should reject invalid values."""
     args = SimpleNamespace(
         use="tags",
+        max_results=1,
         max_relations=1,
         max_tags=1,
         max_groups=1,
@@ -81,6 +83,8 @@ def test_validate_stats_arguments_errors(override: str, message: str) -> None:
 
     if override == "use":
         args.use = "bad"
+    elif override == "max_results":
+        args.max_results = -1
     elif override == "max_relations":
         args.max_relations = -1
     elif override == "max_tags":

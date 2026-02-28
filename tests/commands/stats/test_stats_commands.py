@@ -6,6 +6,7 @@ import os
 import sys
 
 import pytest
+import typer
 
 from org.analyze import AnalysisResult, Group, Tag, TimeRange
 from org.commands.stats import groups as stats_groups
@@ -232,6 +233,42 @@ def test_run_stats_tasks_no_results(
     captured = capsys.readouterr().out
 
     assert "No results" in captured
+
+
+def test_run_stats_summary_negative_max_results_raises_bad_parameter() -> None:
+    """Summary command should reject negative max-results values."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_summary_args([fixture_path], max_results=-1)
+
+    with pytest.raises(typer.BadParameter, match="--max-results must be non-negative"):
+        stats_summary.run_stats(args)
+
+
+def test_run_stats_tasks_negative_max_results_raises_bad_parameter() -> None:
+    """Tasks command should reject negative max-results values."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_tasks_args([fixture_path], max_results=-1)
+
+    with pytest.raises(typer.BadParameter, match="--max-results must be non-negative"):
+        stats_tasks.run_stats_tasks(args)
+
+
+def test_run_stats_tags_negative_max_results_raises_bad_parameter() -> None:
+    """Tags command should reject negative max-results values."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_tags_args([fixture_path], max_results=-1)
+
+    with pytest.raises(typer.BadParameter, match="--max-results must be non-negative"):
+        stats_tags.run_stats_tags(args)
+
+
+def test_run_stats_groups_negative_max_results_raises_bad_parameter() -> None:
+    """Groups command should reject negative max-results values."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_groups_args([fixture_path], max_results=-1)
+
+    with pytest.raises(typer.BadParameter, match="--max-results must be non-negative"):
+        stats_groups.run_stats_groups(args)
 
 
 def test_run_stats_tags_respects_show_filter(

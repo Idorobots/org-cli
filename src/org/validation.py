@@ -23,6 +23,7 @@ class StatsArgs(Protocol):
     """Protocol for arguments used in stats validation."""
 
     use: str
+    max_results: int
     max_relations: int
     max_tags: int
     max_groups: int
@@ -205,6 +206,9 @@ def validate_stats_arguments(args: StatsArgs) -> None:
     """Validate stats command arguments."""
     if args.use not in {"tags", "heading", "body"}:
         raise typer.BadParameter("--use must be one of: tags, heading, body")
+
+    if args.max_results < 0:
+        raise typer.BadParameter("--max-results must be non-negative")
 
     if args.max_relations < 0:
         raise typer.BadParameter("--max-relations must be non-negative")
