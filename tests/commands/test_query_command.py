@@ -129,27 +129,52 @@ def test_query_runtime_error_is_reported_as_usage_error() -> None:
     assert "Division by zero" in (result.output or result.stderr)
 
 
-def test_run_query_markdown_converts_org_results(capsys: pytest.CaptureFixture[str]) -> None:
-    """Markdown query formatter should convert org nodes into markdown."""
+def test_run_query_markdown_converts_org_results(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Markdown query formatter should invoke pandoc with markdown output."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[] | .children | .[]", out="markdown")
+    seen: dict[str, object] = {}
 
+    def _fake_pandoc(org_text: str, output_format: str, pandoc_args: list[str]) -> str:
+        seen["org_text"] = org_text
+        seen["output_format"] = output_format
+        seen["pandoc_args"] = pandoc_args
+        return "converted markdown"
+
+    monkeypatch.setattr("org.commands.query._org_to_pandoc_format", _fake_pandoc)
     run_query(args)
     captured = capsys.readouterr().out
 
-    assert captured.strip()
-    assert "Refactor codebase" in captured
+    assert captured.strip() == "converted markdown"
+    assert seen["output_format"] == "markdown"
+    assert seen["pandoc_args"] == []
+    assert "Refactor codebase" in str(seen["org_text"])
 
 
-def test_run_query_markdown_converts_scalar_results(capsys: pytest.CaptureFixture[str]) -> None:
-    """Markdown query formatter should emit valid markdown for scalar outputs."""
+def test_run_query_markdown_converts_scalar_results(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Markdown query formatter should pass scalar outputs to pandoc."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[] | .children | length", out="markdown")
+    seen: dict[str, object] = {}
 
+    def _fake_pandoc(org_text: str, output_format: str, pandoc_args: list[str]) -> str:
+        seen["org_text"] = org_text
+        seen["output_format"] = output_format
+        seen["pandoc_args"] = pandoc_args
+        return "converted scalar"
+
+    monkeypatch.setattr("org.commands.query._org_to_pandoc_format", _fake_pandoc)
     run_query(args)
     captured = capsys.readouterr().out
 
-    assert captured.strip() == "3"
+    assert captured.strip() == "converted scalar"
+    assert seen["org_text"] == "3"
+    assert seen["output_format"] == "markdown"
+    assert seen["pandoc_args"] == []
 
 
 def test_run_query_accepts_arbitrary_pandoc_output_format(

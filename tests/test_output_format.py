@@ -12,6 +12,8 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 from org import output_format
+from org.commands import query as query_command
+from org.commands.tasks import list as tasks_list_command
 
 
 class _FakeConsole:
@@ -171,10 +173,10 @@ def test_pandoc_query_formatter_uses_syntax_when_color_enabled(
 ) -> None:
     """Pandoc query formatter should syntax-highlight mapped output formats."""
     console = _FakeConsole()
-    formatter = output_format.PandocQueryOutputFormatter("gfm", None)
+    formatter = query_command.PandocQueryOutputFormatter("gfm", None)
 
     monkeypatch.setattr(
-        "org.output_format._org_to_pandoc_format",
+        "org.commands.query._org_to_pandoc_format",
         lambda _org_text, _output, _args: "# title",
     )
 
@@ -193,7 +195,7 @@ def test_pandoc_query_formatter_uses_syntax_when_color_enabled(
 def test_json_query_formatter_uses_json_syntax_when_color_enabled() -> None:
     """JSON query formatter should syntax-highlight JSON output with color."""
     console = _FakeConsole()
-    formatter = output_format.JsonQueryOutputFormatter()
+    formatter = query_command.JsonQueryOutputFormatter()
 
     prepared_output = formatter.prepare([{"ok": True}], cast(Console, console), True, "monokai")
     output_format.print_prepared_output(cast(Console, console), prepared_output)
@@ -212,15 +214,15 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
 ) -> None:
     """Pandoc tasks formatter should syntax-highlight mapped output formats."""
     console = _FakeConsole()
-    formatter = output_format.PandocTasksListOutputFormatter("html5", None)
+    formatter = tasks_list_command.PandocTasksListOutputFormatter("html5", None)
 
     monkeypatch.setattr(
-        "org.output_format._org_to_pandoc_format",
+        "org.commands.tasks.list._org_to_pandoc_format",
         lambda _org_text, _output, _args: "<h1>title</h1>",
     )
 
     prepared_output = formatter.prepare(
-        output_format.TasksListRenderInput(
+        tasks_list_command.TasksListRenderInput(
             nodes=[],
             console=cast(Console, console),
             color_enabled=True,
@@ -245,10 +247,10 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
 def test_json_tasks_formatter_uses_json_syntax_when_color_enabled() -> None:
     """JSON tasks formatter should syntax-highlight JSON output with color."""
     console = _FakeConsole()
-    formatter = output_format.JsonTasksListOutputFormatter()
+    formatter = tasks_list_command.JsonTasksListOutputFormatter()
 
     prepared_output = formatter.prepare(
-        output_format.TasksListRenderInput(
+        tasks_list_command.TasksListRenderInput(
             nodes=[],
             console=cast(Console, console),
             color_enabled=True,

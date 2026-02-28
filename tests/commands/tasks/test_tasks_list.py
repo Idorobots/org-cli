@@ -136,17 +136,27 @@ def test_run_tasks_list_offset_no_results(
 def test_run_tasks_list_markdown_converts_nodes_to_single_document(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Markdown tasks formatter should convert nodes into one markdown document."""
+    """Markdown tasks formatter should invoke pandoc with markdown output."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_list_args([fixture_path], out="markdown")
+    seen: dict[str, object] = {}
+
+    def _fake_pandoc(org_text: str, output_format: str, pandoc_args: list[str]) -> str:
+        seen["org_text"] = org_text
+        seen["output_format"] = output_format
+        seen["pandoc_args"] = pandoc_args
+        return "converted markdown"
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "markdown"])
+    monkeypatch.setattr("org.commands.tasks.list._org_to_pandoc_format", _fake_pandoc)
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
 
-    assert captured.strip()
-    assert "Refactor codebase" in captured
-    assert "Fix bug in parser" in captured
+    assert captured.strip() == "converted markdown"
+    assert seen["output_format"] == "markdown"
+    assert seen["pandoc_args"] == []
+    assert "Refactor codebase" in str(seen["org_text"])
+    assert "Fix bug in parser" in str(seen["org_text"])
 
 
 def test_run_tasks_list_accepts_arbitrary_pandoc_output_format(
@@ -155,13 +165,23 @@ def test_run_tasks_list_accepts_arbitrary_pandoc_output_format(
     """Tasks list should route non-org/json --out values through pandoc."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_list_args([fixture_path], out="gfm", pandoc_args="--wrap=none")
+    seen: dict[str, object] = {}
+
+    def _fake_pandoc(org_text: str, output_format: str, pandoc_args: list[str]) -> str:
+        seen["org_text"] = org_text
+        seen["output_format"] = output_format
+        seen["pandoc_args"] = pandoc_args
+        return "converted gfm"
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "gfm"])
+    monkeypatch.setattr("org.commands.tasks.list._org_to_pandoc_format", _fake_pandoc)
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
 
-    assert captured.strip()
-    assert "Refactor codebase" in captured
+    assert captured.strip() == "converted gfm"
+    assert seen["output_format"] == "gfm"
+    assert seen["pandoc_args"] == ["--wrap=none"]
+    assert "Refactor codebase" in str(seen["org_text"])
 
 
 def test_run_tasks_list_markdown_pandoc_error_is_usage_error(

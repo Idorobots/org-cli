@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from dataclasses import dataclass
+from typing import Protocol
 
 import click
+import orgparse
 import typer
+from orgparse.date import OrgDate
+from orgparse.node import OrgRootNode
+from rich.console import Console
+from rich.syntax import Syntax
 
 from org import config as config_module
 from org.cli_common import load_root_data
@@ -14,7 +21,14 @@ from org.output_format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,
-    get_query_formatter,
+    OutputOperation,
+    PreparedOutput,
+    _build_org_document,
+    _json_output_payload,
+    _normalize_syntax_theme,
+    _org_to_pandoc_format,
+    _parse_pandoc_args,
+    _prepare_output,
     print_prepared_output,
 )
 from org.query_language import (
@@ -25,6 +39,144 @@ from org.query_language import (
     compile_query_text,
 )
 from org.tui import build_console, processing_status, setup_output
+
+
+class QueryOutputFormatter(Protocol):
+    """Formatter interface for the query command."""
+
+    include_filenames: bool
+
+    def prepare(
+        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+    ) -> PreparedOutput:
+        """Prepare query output values for rendering."""
+        ...
+
+
+def _is_org_object(value: object) -> bool:
+    """Return whether value is an org node or org date object."""
+    return isinstance(value, orgparse.node.OrgNode | OrgRootNode | OrgDate)
+
+
+def _format_org_block(value: object) -> str:
+    """Build org-formatted text block for one value."""
+    if isinstance(value, orgparse.node.OrgNode | OrgRootNode):
+        filename = value.env.filename if value.env.filename else "unknown"
+        node_text = str(value).rstrip()
+        return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
+    if isinstance(value, OrgDate) and not bool(value):
+        return "none"
+    return str(value)
+
+
+def _format_query_value(value: object) -> str:
+    """Format one query result value for output."""
+    if isinstance(value, orgparse.node.OrgNode):
+        return str(value).rstrip()
+    if value is None:
+        return "none"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+class OrgQueryOutputFormatter:
+    """Org output formatter for query command."""
+
+    include_filenames = True
+
+    def prepare(
+        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+    ) -> PreparedOutput:
+        del console
+        del color_enabled
+        if values and all(_is_org_object(value) for value in values):
+            return self._prepare_org_values(values, out_theme)
+
+        lines = [_format_query_value(value) for value in values]
+        if not lines:
+            return PreparedOutput(
+                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+            )
+
+        return PreparedOutput(
+            operations=tuple(
+                OutputOperation(kind="console_print", text=line, markup=False) for line in lines
+            )
+        )
+
+    def _prepare_org_values(self, values: list[object], out_theme: str) -> PreparedOutput:
+        """Prepare org values using org-mode syntax highlighting."""
+        theme = _normalize_syntax_theme(out_theme)
+        operations: list[OutputOperation] = []
+        for idx, value in enumerate(values):
+            if idx > 0:
+                operations.append(OutputOperation(kind="console_print", text="", markup=False))
+            operations.append(
+                OutputOperation(
+                    kind="console_print",
+                    renderable=Syntax(
+                        _format_org_block(value),
+                        "org",
+                        theme=theme,
+                        line_numbers=False,
+                        word_wrap=True,
+                    ),
+                )
+            )
+        return PreparedOutput(operations=tuple(operations))
+
+
+class PandocQueryOutputFormatter:
+    """Pandoc-based output formatter for query command."""
+
+    include_filenames = False
+
+    def __init__(self, output_format: str, pandoc_args: str | None) -> None:
+        self.output_format = output_format
+        self.pandoc_args = _parse_pandoc_args(pandoc_args)
+
+    def prepare(
+        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+    ) -> PreparedOutput:
+        del console
+        formatted_text = _org_to_pandoc_format(
+            _build_org_document(values),
+            self.output_format,
+            self.pandoc_args,
+        )
+        return _prepare_output(formatted_text, color_enabled, self.output_format, out_theme)
+
+
+class JsonQueryOutputFormatter:
+    """JSON output formatter for query command."""
+
+    include_filenames = False
+
+    def prepare(
+        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+    ) -> PreparedOutput:
+        del console
+        return _prepare_output(
+            json.dumps(_json_output_payload(values), ensure_ascii=True),
+            color_enabled,
+            OutputFormat.JSON,
+            out_theme,
+        )
+
+
+_ORG_QUERY_FORMATTER = OrgQueryOutputFormatter()
+_JSON_QUERY_FORMATTER = JsonQueryOutputFormatter()
+
+
+def get_query_formatter(output_format: str, pandoc_args: str | None) -> QueryOutputFormatter:
+    """Return query formatter for selected output format."""
+    normalized_output = output_format.strip().lower()
+    if normalized_output == OutputFormat.ORG:
+        return _ORG_QUERY_FORMATTER
+    if normalized_output == OutputFormat.JSON:
+        return _JSON_QUERY_FORMATTER
+    return PandocQueryOutputFormatter(normalized_output, pandoc_args)
 
 
 @dataclass

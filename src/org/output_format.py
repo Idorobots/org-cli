@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import shlex
 import subprocess
@@ -10,7 +9,6 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import StrEnum
-from typing import Protocol
 
 import orgparse
 from orgparse.date import OrgDate
@@ -18,7 +16,7 @@ from orgparse.node import OrgRootNode
 from rich.console import Console
 from rich.syntax import Syntax
 
-from org.tui import TaskLineConfig, format_task_line, lines_to_text, print_output
+from org.tui import print_output
 
 
 logger = logging.getLogger("org")
@@ -69,28 +67,6 @@ class OutputFormat(StrEnum):
     JSON = "json"
 
 
-class QueryOutputFormatter(Protocol):
-    """Formatter interface for the query command."""
-
-    include_filenames: bool
-
-    def prepare(
-        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
-    ) -> PreparedOutput:
-        """Prepare query output values for rendering."""
-        ...
-
-
-class TasksListOutputFormatter(Protocol):
-    """Formatter interface for the tasks list command."""
-
-    include_filenames: bool
-
-    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
-        """Prepare tasks list output for rendering."""
-        ...
-
-
 @dataclass(frozen=True)
 class OutputOperation:
     """One prepared output operation."""
@@ -109,109 +85,6 @@ class PreparedOutput:
     """Prepared output operations ready for console rendering."""
 
     operations: tuple[OutputOperation, ...]
-
-
-@dataclass(frozen=True)
-class TasksListRenderInput:
-    """Render input for tasks list output formatters."""
-
-    nodes: list[orgparse.node.OrgNode]
-    console: Console
-    color_enabled: bool
-    done_keys: list[str]
-    todo_keys: list[str]
-    details: bool
-    buckets: int
-    out_theme: str
-
-
-def _is_org_object(value: object) -> bool:
-    """Return whether value is an org node or org date object."""
-    return isinstance(value, orgparse.node.OrgNode | OrgRootNode | OrgDate)
-
-
-def _format_org_block(value: object) -> str:
-    """Build org-formatted text block for one value."""
-    if isinstance(value, orgparse.node.OrgNode | OrgRootNode):
-        filename = value.env.filename if value.env.filename else "unknown"
-        node_text = str(value).rstrip()
-        return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
-    if isinstance(value, OrgDate) and not bool(value):
-        return "none"
-    return str(value)
-
-
-def _format_query_value(value: object) -> str:
-    """Format one query result value for output."""
-    if isinstance(value, orgparse.node.OrgNode):
-        return str(value).rstrip()
-    if value is None:
-        return "none"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
-
-
-class OrgQueryOutputFormatter:
-    """Org output formatter for query command."""
-
-    include_filenames = True
-
-    def prepare(
-        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
-    ) -> PreparedOutput:
-        del console
-        del color_enabled
-        if values and all(_is_org_object(value) for value in values):
-            return self._prepare_org_values(values, out_theme)
-
-        lines = [_format_query_value(value) for value in values]
-        if not lines:
-            return PreparedOutput(
-                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
-            )
-
-        return PreparedOutput(
-            operations=tuple(
-                OutputOperation(kind="console_print", text=line, markup=False) for line in lines
-            )
-        )
-
-    def _prepare_org_values(self, values: list[object], out_theme: str) -> PreparedOutput:
-        """Prepare org values using org-mode syntax highlighting."""
-        theme = _normalize_syntax_theme(out_theme)
-        operations: list[OutputOperation] = []
-        for idx, value in enumerate(values):
-            if idx > 0:
-                operations.append(OutputOperation(kind="console_print", text="", markup=False))
-            operations.append(
-                OutputOperation(
-                    kind="console_print",
-                    renderable=Syntax(
-                        _format_org_block(value),
-                        "org",
-                        theme=theme,
-                        line_numbers=False,
-                        word_wrap=True,
-                    ),
-                )
-            )
-        return PreparedOutput(operations=tuple(operations))
-
-
-class _StubQueryOutputFormatter:
-    """Placeholder formatter for non-org query output."""
-
-    include_filenames = False
-
-    def prepare(
-        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
-    ) -> PreparedOutput:
-        del values
-        del console
-        del color_enabled
-        del out_theme
-        return PreparedOutput(operations=())
 
 
 class OutputFormatError(RuntimeError):
@@ -263,11 +136,7 @@ def print_prepared_output(console: Console, prepared_output: PreparedOutput) -> 
 def _resolve_syntax_language(output_format: str) -> str | None:
     """Resolve output format to a syntax highlighter language alias."""
     normalized_output = output_format.strip().lower()
-    base_output = normalized_output.split("+", 1)[0].split("-", 1)[0]
-    language = _RENDERABLE_OUTPUT_FORMATS.get(normalized_output)
-    if language is not None:
-        return language
-    return _RENDERABLE_OUTPUT_FORMATS.get(base_output)
+    return _RENDERABLE_OUTPUT_FORMATS.get(normalized_output)
 
 
 def _normalize_syntax_theme(out_theme: str) -> str:
@@ -285,24 +154,13 @@ def _prepare_output(
     out_theme: str,
 ) -> PreparedOutput:
     """Prepare output with syntax highlighting when available."""
-    text: str | None
-    data: bytes | None
     if isinstance(value, bytes):
         try:
             text = value.decode("utf-8")
-            data = None
         except UnicodeDecodeError:
-            text = None
-            data = value
+            return PreparedOutput(operations=(OutputOperation(kind="binary_write", data=value),))
     else:
         text = value
-        data = None
-
-    if data is not None:
-        return PreparedOutput(operations=(OutputOperation(kind="binary_write", data=data),))
-
-    if text is None:
-        return PreparedOutput(operations=(OutputOperation(kind="plain_write", text=""),))
 
     if color_enabled:
         language = _resolve_syntax_language(output_format)
@@ -327,7 +185,7 @@ def _prepare_output(
 def _to_org_input_text(value: object) -> str:
     """Convert arbitrary query value into org text for markdown conversion."""
     if isinstance(value, orgparse.node.OrgNode | OrgRootNode):
-        return str(value).rstrip()
+        return str(value)
     if isinstance(value, OrgDate) and not bool(value):
         return "none"
     if value is None:
@@ -341,7 +199,7 @@ def _build_org_document(values: list[object]) -> str:
     """Build one org document from all output values."""
     parts = [_to_org_input_text(value) for value in values]
     non_empty_parts = [part for part in parts if part]
-    return "\n\n".join(non_empty_parts)
+    return "".join(non_empty_parts)
 
 
 def _parse_pandoc_args(pandoc_args: str | None) -> list[str]:
@@ -381,46 +239,48 @@ def _org_to_pandoc_format(org_text: str, output_format: str, pandoc_args: list[s
     return result.stdout
 
 
-class PandocQueryOutputFormatter:
-    """Pandoc-based output formatter for query command."""
-
-    include_filenames = False
-
-    def __init__(self, output_format: str, pandoc_args: str | None) -> None:
-        self.output_format = output_format
-        self.pandoc_args = _parse_pandoc_args(pandoc_args)
-
-    def prepare(
-        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
-    ) -> PreparedOutput:
-        del console
-        formatted_text = _org_to_pandoc_format(
-            _build_org_document(values),
-            self.output_format,
-            self.pandoc_args,
-        )
-        return _prepare_output(formatted_text, color_enabled, self.output_format, out_theme)
-
-
-_NODE_EXCLUDED_FIELDS = {
-    "body_rich",
-    "children",
+_NODE_EXPORTED_FIELDS = (
+    "body",
+    "clock",
+    "closed",
+    "datelist",
+    "deadline",
+    "heading",
+    "level",
+    "linenumber",
+    "priority",
+    "properties",
+    "rangelist",
+    "repeated_tasks",
+    "scheduled",
+    "shallow_tags",
+    "tags",
+    "todo",
+)
+_ROOT_EXPORTED_FIELDS = (
+    "body",
+    "datelist",
     "env",
-    "next_same_level",
-    "parent",
-    "previous_same_level",
-    "root",
-}
-_ROOT_EXCLUDED_FIELDS = {
-    "body_rich",
-    "children",
-    "next_same_level",
-    "parent",
-    "previous_same_level",
-    "root",
-}
-_ENV_EXCLUDED_FIELDS: set[str] = {"nodes"}
-_DATE_EXCLUDED_FIELDS: set[str] = set()
+    "heading",
+    "level",
+    "linenumber",
+    "properties",
+    "rangelist",
+    "shallow_tags",
+    "tags",
+)
+_ENV_EXPORTED_FIELDS = (
+    "all_todo_keys",
+    "done_keys",
+    "filename",
+    "todo_keys",
+)
+_DATE_EXPORTED_FIELDS = (
+    "active",
+    "end",
+    "duration",
+    "start",
+)
 
 
 def _is_primitive_json_type(value: object) -> bool:
@@ -428,40 +288,24 @@ def _is_primitive_json_type(value: object) -> bool:
     return value is None or isinstance(value, bool | int | float | str)
 
 
-def _iter_public_attributes(value: object) -> Iterable[tuple[str, object]]:
-    """Yield public, non-callable attributes from an object."""
-    for name in dir(value):
-        if name.startswith("_"):
-            continue
-        try:
-            attr_value = getattr(value, name)
-        except AttributeError:
-            continue
-        except RuntimeError:
-            continue
-        except TypeError:
-            continue
-        except ValueError:
-            continue
-        if callable(attr_value):
-            continue
-        yield name, attr_value
+def _exported_org_fields(value: object) -> tuple[str, ...]:
+    """Return explicit exported field names for each org object type."""
+    if isinstance(value, OrgRootNode):
+        return _ROOT_EXPORTED_FIELDS
+    if isinstance(value, orgparse.node.OrgNode):
+        return _NODE_EXPORTED_FIELDS
+    if isinstance(value, orgparse.node.OrgEnv):
+        return _ENV_EXPORTED_FIELDS
+    return _DATE_EXPORTED_FIELDS
 
 
 def _org_object_to_json_dict(value: object, seen: set[int]) -> dict[str, object]:
     """Serialize org object public attributes into a JSON object."""
-    excluded_fields = _DATE_EXCLUDED_FIELDS
-    if isinstance(value, OrgRootNode):
-        excluded_fields = _ROOT_EXCLUDED_FIELDS
-    elif isinstance(value, orgparse.node.OrgNode):
-        excluded_fields = _NODE_EXCLUDED_FIELDS
-    elif isinstance(value, orgparse.node.OrgEnv):
-        excluded_fields = _ENV_EXCLUDED_FIELDS
-
     data: dict[str, object] = {"type": type(value).__name__}
-    for field_name, field_value in _iter_public_attributes(value):
-        if field_name in excluded_fields:
+    for field_name in _exported_org_fields(value):
+        if not hasattr(value, field_name):
             continue
+        field_value = getattr(value, field_name)
         data[field_name] = _to_json_compatible(field_value, seen)
     return data
 
@@ -510,181 +354,3 @@ def _json_output_payload(values: list[object]) -> object:
     if len(converted) == 1:
         return converted[0]
     return converted
-
-
-class JsonQueryOutputFormatter:
-    """JSON output formatter for query command."""
-
-    include_filenames = False
-
-    def prepare(
-        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
-    ) -> PreparedOutput:
-        del console
-        return _prepare_output(
-            json.dumps(_json_output_payload(values), ensure_ascii=True),
-            color_enabled,
-            OutputFormat.JSON,
-            out_theme,
-        )
-
-
-def _format_short_task_list(
-    nodes: list[orgparse.node.OrgNode],
-    done_keys: list[str],
-    todo_keys: list[str],
-    color_enabled: bool,
-    buckets: int,
-) -> str:
-    """Return formatted short list of tasks."""
-    lines = [
-        format_task_line(
-            node,
-            TaskLineConfig(
-                color_enabled=color_enabled,
-                done_keys=done_keys,
-                todo_keys=todo_keys,
-                buckets=buckets,
-            ),
-        )
-        for node in nodes
-    ]
-    return lines_to_text(lines)
-
-
-def _prepare_detailed_task_list(
-    nodes: list[orgparse.node.OrgNode], out_theme: str
-) -> PreparedOutput:
-    """Prepare detailed list of tasks with syntax highlighting."""
-    theme = _normalize_syntax_theme(out_theme)
-    operations: list[OutputOperation] = []
-    for idx, node in enumerate(nodes):
-        if idx > 0:
-            operations.append(OutputOperation(kind="console_print", text="", markup=False))
-        filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
-        node_text = str(node).rstrip()
-        org_block = f"# {filename}\n{node_text}" if node_text else f"# {filename}"
-        operations.append(
-            OutputOperation(
-                kind="console_print",
-                renderable=Syntax(
-                    org_block, "org", theme=theme, line_numbers=False, word_wrap=True
-                ),
-            )
-        )
-    return PreparedOutput(operations=tuple(operations))
-
-
-class OrgTasksListOutputFormatter:
-    """Org output formatter for tasks list command."""
-
-    include_filenames = True
-
-    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
-        if not data.nodes:
-            return PreparedOutput(
-                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
-            )
-
-        if data.details:
-            return _prepare_detailed_task_list(data.nodes, data.out_theme)
-
-        output = _format_short_task_list(
-            data.nodes,
-            data.done_keys,
-            data.todo_keys,
-            data.color_enabled,
-            data.buckets,
-        )
-        if output:
-            return PreparedOutput(
-                operations=(
-                    OutputOperation(
-                        kind="print_output",
-                        text=output,
-                        color_enabled=data.color_enabled,
-                        end="",
-                    ),
-                )
-            )
-
-        return PreparedOutput(
-            operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
-        )
-
-
-class _StubTasksListOutputFormatter:
-    """Placeholder formatter for non-org tasks list output."""
-
-    include_filenames = False
-
-    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
-        del data
-        return PreparedOutput(operations=())
-
-
-class PandocTasksListOutputFormatter:
-    """Pandoc-based output formatter for tasks list command."""
-
-    include_filenames = False
-
-    def __init__(self, output_format: str, pandoc_args: str | None) -> None:
-        self.output_format = output_format
-        self.pandoc_args = _parse_pandoc_args(pandoc_args)
-
-    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
-        formatted_text = _org_to_pandoc_format(
-            _build_org_document(list(data.nodes)),
-            self.output_format,
-            self.pandoc_args,
-        )
-        return _prepare_output(
-            formatted_text,
-            data.color_enabled,
-            self.output_format,
-            data.out_theme,
-        )
-
-
-class JsonTasksListOutputFormatter:
-    """JSON output formatter for tasks list command."""
-
-    include_filenames = False
-
-    def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
-        payload = _json_output_payload(list(data.nodes))
-        return _prepare_output(
-            json.dumps(payload, ensure_ascii=True),
-            data.color_enabled,
-            OutputFormat.JSON,
-            data.out_theme,
-        )
-
-
-_ORG_QUERY_FORMATTER = OrgQueryOutputFormatter()
-_JSON_QUERY_FORMATTER = JsonQueryOutputFormatter()
-
-_ORG_TASKS_LIST_FORMATTER = OrgTasksListOutputFormatter()
-_JSON_TASKS_LIST_FORMATTER = JsonTasksListOutputFormatter()
-
-
-def get_query_formatter(output_format: str, pandoc_args: str | None) -> QueryOutputFormatter:
-    """Return query formatter for selected output format."""
-    normalized_output = output_format.strip().lower()
-    if normalized_output == OutputFormat.ORG:
-        return _ORG_QUERY_FORMATTER
-    if normalized_output == OutputFormat.JSON:
-        return _JSON_QUERY_FORMATTER
-    return PandocQueryOutputFormatter(normalized_output, pandoc_args)
-
-
-def get_tasks_list_formatter(
-    output_format: str, pandoc_args: str | None
-) -> TasksListOutputFormatter:
-    """Return tasks list formatter for selected output format."""
-    normalized_output = output_format.strip().lower()
-    if normalized_output == OutputFormat.ORG:
-        return _ORG_TASKS_LIST_FORMATTER
-    if normalized_output == OutputFormat.JSON:
-        return _JSON_TASKS_LIST_FORMATTER
-    return PandocTasksListOutputFormatter(normalized_output, pandoc_args)
