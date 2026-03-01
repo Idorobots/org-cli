@@ -2,7 +2,9 @@
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
+import click
 import pytest
 
 
@@ -23,6 +25,7 @@ class FilterArgsStub:
     filter_bodies: list[str] | None = None
     filter_completed: bool = False
     filter_not_completed: bool = False
+    files: list[str] | None = None
     order_by_level: bool = False
     order_by_file_order: bool = False
     order_by_file_order_reversed: bool = False
@@ -32,6 +35,12 @@ class FilterArgsStub:
     order_by_gamify_exp_desc: bool = False
     offset: int = 0
     max_results: int = 10
+    todo_keys: str = "TODO"
+    done_keys: str = "DONE"
+    with_gamify_category: bool = False
+    with_numeric_gamify_exp: bool = False
+    with_tags_as_category: bool = False
+    category_property: str = "CATEGORY"
 
 
 def make_args(**overrides: object) -> FilterArgsStub:
@@ -208,6 +217,180 @@ def test_build_query_logs_query_before_compile(caplog: pytest.LogCaptureFixture)
         build_query(args, argv, include_ordering=False, include_slice=False)
 
     assert 'Query: [ .[] | select(.tags[] matches "simple") ]' in caplog.text
+
+
+def test_build_query_text_with_custom_filter_and_optional_arg(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Custom filter switches should bind $arg and support omitted values."""
+    from org import config
+    from org.cli_common import build_query_text
+
+    monkeypatch.setattr(
+        config,
+        "CONFIG_CUSTOM_FILTERS",
+        {
+            "priority": "select(.priority == $arg)",
+            "has-todo": "select(.todo != none)",
+        },
+    )
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {})
+
+    args = make_args(files=["file.org"])
+    argv = [
+        "org",
+        "tasks",
+        "list",
+        "--filter-priority",
+        "3",
+        "--filter-has-todo",
+        "file.org",
+    ]
+
+    query = build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+    assert query == (
+        "[ .[] | ., (3 as $arg) | .[0] | (select(.priority == $arg))"
+        " | ., (none as $arg) | .[0] | (select(.todo != none)) ]"
+    )
+
+
+def test_collect_custom_context_vars_returns_empty_for_custom_args(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Custom arguments are embedded in query text and not added to context vars."""
+    from org import config
+    from org.cli_common import collect_custom_context_vars
+
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {"value": "select(.v == $arg)"})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"priority": "sort_by(.priority)"})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {"mark": '. + {"x": $arg}'})
+
+    args = make_args(files=["file.org"])
+    argv = [
+        "org",
+        "tasks",
+        "list",
+        "--with-mark",
+        "none",
+        "--with-mark",
+        "true",
+        "--filter-value",
+        "12",
+        "--order-by-priority",
+        "12.5",
+        "--order-by-priority",
+        "alpha",
+        "file.org",
+    ]
+
+    context_vars = collect_custom_context_vars(argv, args.files, include_builtin_ordering=True)
+
+    assert context_vars == {}
+
+
+def test_build_query_text_custom_with_before_filters(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Custom enrichment stages should be applied before filters."""
+    from org import config
+    from org.cli_common import build_query_text
+
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {"tagged": "select(.tag != none)"})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {"mark": '. + {"x": $arg}'})
+
+    args = make_args(filter_completed=True, files=["file.org"])
+    argv = [
+        "org",
+        "tasks",
+        "list",
+        "--with-mark",
+        "one",
+        "--filter-tagged",
+        "--filter-completed",
+        "file.org",
+    ]
+
+    query = build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+    assert query.startswith('[ .[] | ., ("one" as $arg) | .[0] | (. + {"x": $arg}) | ')
+    assert "| ., (none as $arg) | .[0] | (select(.tag != none)) |" in query
+
+
+def test_build_query_text_custom_ordering_for_stats(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Custom order-by switches should work even when built-in ordering is disabled."""
+    from org import config
+    from org.cli_common import build_query_text
+
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"priority": "sort_by(.priority)"})
+
+    args = make_args(files=["file.org"])
+    argv = ["org", "stats", "summary", "--order-by-priority", "file.org"]
+
+    query = build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+    assert query == "[ .[] | ., (none as $arg) | .[0] | (sort_by(.priority)) ]"
+
+
+def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixture) -> None:
+    """Data loading should log the query execution context."""
+    from org.cli_common import load_and_process_data
+
+    fixture_path = str((Path(__file__).resolve().parents[1] / "fixtures" / "simple.org").resolve())
+    args = make_args(files=[fixture_path], offset=0, max_results=1)
+
+    with caplog.at_level(logging.INFO, logger="org"):
+        load_and_process_data(args)
+
+    assert "Query context:" in caplog.text
+    assert "'todo_keys': ['TODO']" in caplog.text
+
+
+def test_build_query_text_preserves_mixed_ordering_cli_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Built-in and custom ordering switches should follow CLI specification order."""
+    from org import config
+    from org.cli_common import build_query_text
+
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"priority": "sort_by(.priority)"})
+
+    args = make_args(order_by_timestamp_desc=True, files=["file.org"])
+    argv = [
+        "org",
+        "tasks",
+        "list",
+        "--order-by-priority",
+        "--order-by-timestamp-desc",
+        "file.org",
+    ]
+
+    query = build_query_text(args, argv, include_ordering=True, include_slice=False)
+
+    assert query == (
+        "[ .[] | ., (none as $arg) | .[0] | (sort_by(.priority))"
+        " | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) ]"
+    )
+
+
+def test_build_query_text_rejects_unknown_custom_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unknown prefixed custom switches should fail validation."""
+    from org import config
+    from org.cli_common import build_query_text
+
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {})
+
+    args = make_args(files=["file.org"])
+    argv = ["org", "tasks", "list", "--filter-unknown", "file.org"]
+
+    with pytest.raises(click.NoSuchOption, match="No such option"):
+        build_query_text(args, argv, include_ordering=False, include_slice=False)
 
 
 def test_get_top_day_info_none() -> None:

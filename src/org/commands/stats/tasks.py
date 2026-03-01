@@ -251,7 +251,10 @@ def run_stats_tasks(args: TasksArgs) -> None:
 def register(app: typer.Typer) -> None:
     """Register the stats tasks command."""
 
-    @app.command("tasks")
+    @app.command(
+        "tasks",
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    )
     def stats_tasks(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None, metavar="FILE", help="Org-mode archive files or directories to analyze"

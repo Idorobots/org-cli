@@ -194,7 +194,10 @@ def run_stats_groups(args: GroupsArgs) -> None:
 def register(app: typer.Typer) -> None:
     """Register the stats groups command."""
 
-    @app.command("groups")
+    @app.command(
+        "groups",
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    )
     def stats_groups(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None, metavar="FILE", help="Org-mode archive files or directories to analyze"
