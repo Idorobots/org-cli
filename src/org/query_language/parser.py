@@ -13,6 +13,7 @@ from org.query_language.ast import (
     BinaryOp,
     BoolLiteral,
     BracketFieldAccess,
+    DictAssignment,
     Expr,
     FieldAccess,
     Fold,
@@ -26,6 +27,7 @@ from org.query_language.ast import (
     NoneLiteral,
     NumberLiteral,
     Pipe,
+    Sequence,
     Slice,
     StringLiteral,
     TupleExpr,
@@ -352,6 +354,27 @@ def _pipe_builder(_operator: str, left: Expr, right: Expr) -> Expr:
     return Pipe(left, right)
 
 
+def _sequence_builder(_operator: str, left: Expr, right: Expr) -> Expr:
+    """Construct sequencing expression."""
+    return Sequence(left, right)
+
+
+def _assignment_builder(_operator: str, left: Expr, right: Expr) -> Expr:
+    """Construct dictionary assignment expression."""
+    return _build_assignment_expr(left, right)
+
+
+def _build_assignment_expr(left: Expr, right: Expr) -> Expr:
+    """Build assignment expression from supported assignment targets."""
+    if isinstance(left, FieldAccess):
+        return DictAssignment(left.base, left.field, right)
+    if isinstance(left, BracketFieldAccess):
+        if isinstance(left.key_expr, StringLiteral):
+            return DictAssignment(left.base, left.key_expr.value, right)
+        raise QueryParseError("Assignment bracket key must be a string literal")
+    raise QueryParseError('Assignment target must be .field or ["field"] access')
+
+
 def _make_parser() -> Parser:
     """Create the full expression parser."""
     ws = regex(r"\s*")
@@ -434,7 +457,9 @@ def _make_parser() -> Parser:
 
     let_binding = _build_let_binding_parser(comma, expr, identifier)
     as_binding = _build_as_binding_parser(let_binding | comma, identifier)
-    pipe = _chain_left(as_binding, _symbol("|"), _pipe_builder)
+    assignment = _chain_right(as_binding, _symbol("="), _assignment_builder)
+    sequence = _chain_left(assignment, _symbol(";"), _sequence_builder)
+    pipe = _chain_left(sequence, _symbol("|"), _pipe_builder)
 
     expr.become(pipe)
     return ws >> expr << ws << eof

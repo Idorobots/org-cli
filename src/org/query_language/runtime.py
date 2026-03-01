@@ -20,6 +20,7 @@ from org.query_language.ast import (
     BinaryOp,
     BoolLiteral,
     BracketFieldAccess,
+    DictAssignment,
     Expr,
     FieldAccess,
     Fold,
@@ -33,6 +34,7 @@ from org.query_language.ast import (
     NoneLiteral,
     NumberLiteral,
     Pipe,
+    Sequence,
     Slice,
     StringLiteral,
     TupleExpr,
@@ -67,6 +69,8 @@ def evaluate_expr(expr: Expr, stream: Stream, context: EvalContext) -> Stream:
     if atomic_result is not None:
         return atomic_result
 
+    if isinstance(expr, Sequence):
+        return _evaluate_sequence(expr, stream, context)
     if isinstance(expr, Pipe):
         left = evaluate_expr(expr.left, stream, context)
         return evaluate_expr(expr.right, left, context)
@@ -118,9 +122,36 @@ def _evaluate_operator_expr(expr: Expr, stream: Stream, context: EvalContext) ->
         result = _evaluate_binary_op(expr, stream, context)
     elif isinstance(expr, Fold):
         result = _evaluate_fold(expr, stream, context)
+    elif isinstance(expr, DictAssignment):
+        result = _evaluate_dict_assignment(expr, stream, context)
     if result is not None:
         return result
     raise QueryRuntimeError("Unsupported expression type")
+
+
+def _evaluate_sequence(expr: Sequence, stream: Stream, context: EvalContext) -> Stream:
+    """Evaluate left expression for side effects, then return right expression."""
+    evaluate_expr(expr.first, stream, context)
+    return evaluate_expr(expr.second, stream, context)
+
+
+def _evaluate_dict_assignment(
+    expr: DictAssignment,
+    stream: Stream,
+    context: EvalContext,
+) -> Stream:
+    """Evaluate dictionary field assignment expressions."""
+    output = _stream()
+    for item in stream:
+        base_values = evaluate_expr(expr.base, _stream([item]), context)
+        value_values = evaluate_expr(expr.value, _stream([item]), context)
+        value_base_pairs = _broadcast(value_values, base_values)
+        for value, base in value_base_pairs:
+            if not isinstance(base, dict):
+                raise QueryRuntimeError("Assignment target must evaluate to a dictionary")
+            base[expr.key] = value
+            output.append(base)
+    return output
 
 
 def _evaluate_as_binding(expr: AsBinding, stream: Stream, context: EvalContext) -> Stream:

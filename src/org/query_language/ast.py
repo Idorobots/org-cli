@@ -158,3 +158,20 @@ class Fold(Expr):
     """Fold subquery stream into a collection per input item."""
 
     expr: Expr | None
+
+
+@dataclass(frozen=True, slots=True)
+class DictAssignment(Expr):
+    """Dictionary field assignment expression."""
+
+    base: Expr
+    key: str
+    value: Expr
+
+
+@dataclass(frozen=True, slots=True)
+class Sequence(Expr):
+    """Sequencing expression evaluating left then right."""
+
+    first: Expr
+    second: Expr

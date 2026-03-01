@@ -762,6 +762,39 @@ def test_runtime_bracket_field_access_variants() -> None:
     assert none_value == [None]
 
 
+def test_runtime_dict_assignment_sets_and_overwrites_values() -> None:
+    """Dictionary assignment should set and overwrite dictionary keys."""
+    values = [{"x": 1}, {}]
+    result = _execute('.[] | .["x"] = 2', values, None)
+
+    assert result == [{"x": 2}, {"x": 2}]
+    assert values == [{"x": 2}, {"x": 2}]
+
+
+def test_runtime_dict_assignment_with_dot_target() -> None:
+    """Dictionary assignment should work with dot field targets."""
+    values = [{"meta": {}}, {"meta": {"done": False}}]
+    result = _execute(".[] | .meta.done = true", values, None)
+
+    assert result == [{"done": True}, {"done": True}]
+    assert values == [{"meta": {"done": True}}, {"meta": {"done": True}}]
+
+
+def test_runtime_sequence_evaluates_side_effects_before_returning_right_value() -> None:
+    """Sequence should run left side effects and return right expression values."""
+    values = [{"x": 1}, {"x": 10}]
+    result = _execute('.[] | .["x"] = .["x"] + 1; .["x"]', values, None)
+
+    assert result == [2, 11]
+    assert values == [{"x": 2}, {"x": 11}]
+
+
+def test_runtime_dict_assignment_requires_dictionary_target() -> None:
+    """Dictionary assignment should fail for non-dictionary target values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('.[] | .["x"] = 1', [1], None)
+
+
 def test_runtime_iterate_skips_none_values() -> None:
     """Iteration should ignore none values in collection streams."""
     result = _execute(".[] | .[]", [None, [1, 2]], None)

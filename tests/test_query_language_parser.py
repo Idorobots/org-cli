@@ -8,6 +8,7 @@ from org.query_language import parse_query
 from org.query_language.ast import (
     AsBinding,
     BinaryOp,
+    DictAssignment,
     FieldAccess,
     Fold,
     FunctionCall,
@@ -16,6 +17,7 @@ from org.query_language.ast import (
     NoneLiteral,
     NumberLiteral,
     Pipe,
+    Sequence,
     Slice,
 )
 from org.query_language.errors import QueryParseError
@@ -65,6 +67,9 @@ from org.query_language.errors import QueryParseError
         '[ .[] | select(.todo == "DONE") ] | .[10:20]',
         "[]",
         "[1, 2, 3]",
+        '.properties["x"] = 1',
+        ".properties.x = 1",
+        '.properties["x"] = 1; .properties["x"]',
     ],
 )
 def test_parse_query_examples(query: str) -> None:
@@ -131,6 +136,19 @@ def test_parse_fold_shape() -> None:
     assert isinstance(expr, Fold)
 
 
+def test_parse_dict_assignment_shape() -> None:
+    """Parser should parse dictionary assignment expressions."""
+    expr = parse_query('.properties["done"] = true')
+    assert isinstance(expr, DictAssignment)
+    assert expr.key == "done"
+
+
+def test_parse_sequence_shape() -> None:
+    """Parser should parse sequence expressions."""
+    expr = parse_query('.properties["done"] = true; .properties["done"]')
+    assert isinstance(expr, Sequence)
+
+
 def test_parse_none_literal_is_not_identifier_string() -> None:
     """none should parse as NoneLiteral in comparisons."""
     expr = parse_query(".todo != none")
@@ -148,6 +166,9 @@ def test_parse_none_literal_is_not_identifier_string() -> None:
         ". as root",
         "let . as root in .",
         'if .todo == "DONE" then .heading',
+        ".[] = 1",
+        ".children[0] = 1",
+        ".children[$i] = 1",
     ],
 )
 def test_parse_invalid_queries(query: str) -> None:

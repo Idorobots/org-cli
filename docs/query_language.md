@@ -25,6 +25,7 @@ A query is an expression tree composed of these syntax classes:
 - **Function calls**: built-ins like `select(...)`, `sort_by(...)`, `sum`, `uuid`.
 - **Operators**: arithmetic, comparison, boolean, membership, regex match.
 - **Combinators**: tuple (`,`), variable binding (`as`), scoped binding (`let ... in`), conditional (`if ... then ... else ...`), pipeline (`|`), fold (`[ ... ]`).
+  sequencing (`;`), dictionary assignment (`=`, limited forms).
 
 ## 3) Syntax reference
 
@@ -158,12 +159,38 @@ runs either branch based on truthiness.
 []
 ```
 
+### Dictionary assignment
+
+Assignment is currently supported only for dictionary field writes:
+
+- `<subquery>.field = <value-subquery>`
+- `<subquery>["field"] = <value-subquery>`
+
+The target subquery must evaluate to dictionaries at runtime. Assignment mutates those dictionaries and
+returns the mutated dictionary stream.
+
+```text
+.properties.done = true
+.properties["priority"] = "A"
+```
+
+No other assignment target forms are supported yet.
+
 ### Pipeline
 
 `left | right` feeds left output stream into right stage.
 
 ```text
 .[] | select(.todo == "DONE") | .heading
+```
+
+### Sequence
+
+`left; right` evaluates `left` for side effects, ignores its output, then evaluates `right` and returns
+`right` output.
+
+```text
+.properties["seen"] = true; .properties["seen"]
 ```
 
 ## 4) Operator precedence and associativity
@@ -179,7 +206,9 @@ Highest to lowest:
 7. Boolean (`and`, `or`)
 8. Tuple (`,`)
 9. Binding (`as $name`)
-10. Pipeline (`|`)
+10. Assignment (`=`)
+11. Sequence (`;`)
+12. Pipeline (`|`)
 
 ## 5) Operators reference
 
