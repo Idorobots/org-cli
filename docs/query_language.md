@@ -22,9 +22,9 @@ A query is an expression tree composed of these syntax classes:
 
 - **Primary values**: literals, variables, identity, grouped expressions.
 - **Postfix accessors**: field access, bracket key/index/slice, iteration.
-- **Function calls**: built-ins like `select(...)`, `sort_by(...)`, `sum`.
+- **Function calls**: built-ins like `select(...)`, `sort_by(...)`, `sum`, `uuid`.
 - **Operators**: arithmetic, comparison, boolean, membership, regex match.
-- **Combinators**: tuple (`,`), variable binding (`as`), pipeline (`|`), fold (`[ ... ]`).
+- **Combinators**: tuple (`,`), variable binding (`as`), scoped binding (`let ... in`), conditional (`if ... then ... else ...`), pipeline (`|`), fold (`[ ... ]`).
 
 ## 3) Syntax reference
 
@@ -124,6 +124,26 @@ Bind stage output to a variable:
 
 ```text
 . as $root | $root[]
+```
+
+### Scoped `let` binding
+
+`let <value-subquery> as $name in <body-subquery>` evaluates the value subquery, binds `$name`
+while evaluating the body, then restores/clears the variable afterwards.
+
+```text
+let .heading as $h in $h
+let "DONE" as $state in select(.todo == $state)
+```
+
+### Conditional expression
+
+`if <condition-subquery> then <then-subquery> else <else-subquery>` evaluates the condition and
+runs either branch based on truthiness.
+
+```text
+2 | if . == 2 then "yes" else "no"
+.[] | if .todo == "DONE" then .heading else "pending"
 ```
 
 ### Fold expression
@@ -239,6 +259,77 @@ Collection `+`/`-` preserve left-hand collection type (`list`, `tuple`, `set`).
 
 ```text
 reverse                 # [1,2,3] => [3,2,1]
+```
+
+### `str(subquery)`
+
+- Converts each subquery result to string.
+
+```text
+str(.priority)
+```
+
+### `int(subquery)`
+
+- Converts each subquery result to int.
+- Accepts integer and string values.
+
+```text
+int("42")
+```
+
+### `float(subquery)`
+
+- Converts each subquery result to float.
+- Accepts float and string values.
+
+```text
+float("3.14")
+```
+
+### `bool(subquery)`
+
+- Converts each subquery result to bool.
+- Accepts boolean and string values (`"true"` / `"false"`, case-insensitive).
+
+```text
+bool("true")
+```
+
+### `ts(subquery)`
+
+- Converts each subquery result to `OrgDate`.
+- Accepts existing org-date values and org timestamp strings.
+
+```text
+ts("[2026-03-01 Sun 10:00-12:00]")
+```
+
+### `sha256`
+
+- No args.
+- Returns a SHA-256 hex digest for each input string value.
+
+```text
+"abc" | sha256
+```
+
+### `match(subquery)`
+
+- Matches each string input item against regex from subquery.
+- Returns `[full_match, group1, group2, ...]` on match, else `none`.
+
+```text
+.[] | match("(DONE)-(\\d+)")
+```
+
+### `uuid`
+
+- No args.
+- Emits a new UUIDv4 string for each input item.
+
+```text
+uuid
 ```
 
 ### `unique`

@@ -412,7 +412,7 @@ def _build_custom_invocation(
 def _custom_stage(query: str, arg_value: object) -> str:
     """Build one custom query stage preserving input item stream values."""
     arg_literal = _query_literal(arg_value)
-    return f"., ({arg_literal} as $arg) | .[0] | ({query})"
+    return f"let {arg_literal} as $arg in ({query})"
 
 
 def _query_literal(value: object) -> str:

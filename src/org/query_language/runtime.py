@@ -6,9 +6,11 @@ import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
+from hashlib import sha256
 from itertools import product
 from math import trunc
 from typing import cast
+from uuid import uuid4
 
 from orgparse.date import OrgDate, OrgDateClock, OrgDateRepeatedTask
 from orgparse.node import OrgRootNode
@@ -24,8 +26,10 @@ from org.query_language.ast import (
     FunctionCall,
     Group,
     Identity,
+    IfElse,
     Index,
     Iterate,
+    LetBinding,
     NoneLiteral,
     NumberLiteral,
     Pipe,
@@ -88,6 +92,10 @@ def _evaluate_atomic(expr: Expr, stream: Stream, context: EvalContext) -> Stream
         result = _stream([None])
     elif isinstance(expr, AsBinding):
         result = _evaluate_as_binding(expr, stream, context)
+    elif isinstance(expr, LetBinding):
+        result = _evaluate_let_binding(expr, stream, context)
+    elif isinstance(expr, IfElse):
+        result = _evaluate_if_else(expr, stream, context)
     return result
 
 
@@ -121,6 +129,36 @@ def _evaluate_as_binding(expr: AsBinding, stream: Stream, context: EvalContext) 
     bound_value = bound_values[0] if len(bound_values) == 1 else bound_values
     context.variables[expr.name] = bound_value
     return bound_values
+
+
+def _evaluate_let_binding(expr: LetBinding, stream: Stream, context: EvalContext) -> Stream:
+    """Evaluate let-binding with scoped variable lifetime."""
+    bound_values = evaluate_expr(expr.value, stream, context)
+    bound_value: object = bound_values[0] if len(bound_values) == 1 else bound_values
+
+    had_previous = expr.name in context.variables
+    previous_value = context.variables.get(expr.name)
+
+    context.variables[expr.name] = bound_value
+    try:
+        return evaluate_expr(expr.body, stream, context)
+    finally:
+        if had_previous:
+            context.variables[expr.name] = previous_value
+        else:
+            context.variables.pop(expr.name, None)
+
+
+def _evaluate_if_else(expr: IfElse, stream: Stream, context: EvalContext) -> Stream:
+    """Evaluate conditional expressions per input stream item."""
+    output = _stream()
+    for item in stream:
+        condition_values = evaluate_expr(expr.condition, _stream([item]), context)
+        branch = (
+            expr.then_expr if any(bool(value) for value in condition_values) else expr.else_expr
+        )
+        output.extend(evaluate_expr(branch, _stream([item]), context))
+    return output
 
 
 def _evaluate_fold(expr: Fold, stream: Stream, context: EvalContext) -> Stream:
@@ -531,8 +569,16 @@ def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext)
         "max": _func_max,
         "min": _func_min,
         "type": _func_type,
+        "sha256": _func_sha256,
+        "uuid": _func_uuid,
     }
     arg_functions: dict[str, Callable[[Stream, Expr, EvalContext], Stream]] = {
+        "str": _func_str,
+        "int": _func_int,
+        "float": _func_float,
+        "bool": _func_bool,
+        "ts": _func_ts,
+        "match": _func_match,
         "select": _func_select,
         "sort_by": _func_sort_by,
         "join": _func_join,
@@ -638,6 +684,129 @@ def _as_state_or_none(value: object, field_name: str) -> str | None:
 def _func_type(stream: Stream) -> Stream:
     """Return type names for stream values."""
     return _stream([_type_name(value) for value in stream])
+
+
+def _func_uuid(stream: Stream) -> Stream:
+    """Return one UUIDv4 value per input stream item."""
+    return _stream([str(uuid4()) for _item in stream])
+
+
+def _func_str(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Convert argument values into strings."""
+    output = _stream()
+    for item in stream:
+        argument_values = evaluate_expr(argument, _stream([item]), context)
+        output.extend(str(value) for value in argument_values)
+    return output
+
+
+def _func_int(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Convert argument values into integers."""
+    output = _stream()
+    for item in stream:
+        argument_values = evaluate_expr(argument, _stream([item]), context)
+        for value in argument_values:
+            output.append(_convert_to_int(value))
+    return output
+
+
+def _func_float(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Convert argument values into floats."""
+    output = _stream()
+    for item in stream:
+        argument_values = evaluate_expr(argument, _stream([item]), context)
+        for value in argument_values:
+            output.append(_convert_to_float(value))
+    return output
+
+
+def _func_bool(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Convert argument values into booleans."""
+    output = _stream()
+    for item in stream:
+        argument_values = evaluate_expr(argument, _stream([item]), context)
+        for value in argument_values:
+            output.append(_convert_to_bool(value))
+    return output
+
+
+def _func_ts(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Convert argument values into OrgDate timestamps."""
+    output = _stream()
+    for item in stream:
+        argument_values = evaluate_expr(argument, _stream([item]), context)
+        for value in argument_values:
+            output.append(_parse_org_date(value))
+    return output
+
+
+def _func_sha256(stream: Stream) -> Stream:
+    """Hash each input string value with SHA-256."""
+    output = _stream()
+    for value in stream:
+        if not isinstance(value, str):
+            raise QueryRuntimeError("sha256 requires string input values")
+        output.append(sha256(value.encode("utf-8")).hexdigest())
+    return output
+
+
+def _func_match(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Match input strings against regex argument values."""
+    output = _stream()
+    for item in stream:
+        if not isinstance(item, str):
+            raise QueryRuntimeError("match requires string input values")
+        regex_values = evaluate_expr(argument, _stream([item]), context)
+        for regex_value in regex_values:
+            if not isinstance(regex_value, str):
+                raise QueryRuntimeError("match requires string regex values")
+            match_result = re.search(regex_value, item)
+            if match_result is None:
+                output.append(None)
+                continue
+            captures = [match_result.group(0), *list(match_result.groups())]
+            output.append(captures)
+    return output
+
+
+def _convert_to_int(value: object) -> int:
+    """Convert one value into integer with query typing rules."""
+    if isinstance(value, bool):
+        raise QueryRuntimeError("int accepts integer and string values")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise QueryRuntimeError(f"Cannot parse int: {value}") from exc
+    raise QueryRuntimeError("int accepts integer and string values")
+
+
+def _convert_to_float(value: object) -> float:
+    """Convert one value into float with query typing rules."""
+    if isinstance(value, float):
+        return value
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise QueryRuntimeError(f"Cannot parse float: {value}") from exc
+    raise QueryRuntimeError("float accepts float and string values")
+
+
+def _convert_to_bool(value: object) -> bool:
+    """Convert one value into bool with query typing rules."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.lower()
+        if lowered == "true":
+            return True
+        if lowered == "false":
+            return False
+        raise QueryRuntimeError(f"Cannot parse bool: {value}")
+    raise QueryRuntimeError("bool accepts boolean and string values")
 
 
 def _func_not(stream: Stream, condition: Expr, context: EvalContext) -> Stream:

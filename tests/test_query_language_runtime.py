@@ -6,7 +6,7 @@ from typing import cast
 
 import orgparse
 import pytest
-from orgparse.date import OrgDateClock, OrgDateRepeatedTask
+from orgparse.date import OrgDate, OrgDateClock, OrgDateRepeatedTask
 from orgparse.node import OrgRootNode
 
 from org.query_language import EvalContext, QueryRuntimeError, Stream, compile_query_text
@@ -275,6 +275,92 @@ def test_runtime_not_function() -> None:
     nodes = _sample_nodes()
     result = _execute(".[] | not(.todo in $done_keys)", nodes, {"done_keys": ["DONE"]})
     assert result == [False, True, False, True]
+
+
+def test_runtime_uuid_function_returns_unique_uuidv4_strings() -> None:
+    """uuid should emit one UUIDv4 string per input item."""
+    result = _execute(".[] | uuid", [1, 2, 3], None)
+    assert len(result) == 3
+    assert len(set(result)) == 3
+    for value in result:
+        assert isinstance(value, str)
+        assert len(value) == 36
+
+
+def test_runtime_cast_functions_convert_supported_values() -> None:
+    """str/int/float/bool/ts/sha256 should convert supported value types."""
+    converted = _execute(
+        'str(1), int("42"), float("3.5"), bool("true"), ("abc" | sha256)',
+        [None],
+        None,
+    )
+    timestamp_value = _execute('ts("<2026-03-01 Sun 10:00-12:00>")', [None], None)
+
+    assert converted == [
+        (
+            "1",
+            42,
+            3.5,
+            True,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        )
+    ]
+    assert len(timestamp_value) == 1
+    assert isinstance(timestamp_value[0], OrgDate)
+    assert str(timestamp_value[0]) == "<2026-03-01 Sun 10:00--12:00>"
+
+
+def test_runtime_match_function_returns_full_match_and_capture_groups() -> None:
+    """match should return full match and capture groups for matching strings."""
+    result = _execute('.[] | match("(DONE)-([0-9]+)")', ["DONE-42", "TODO-7"], None)
+    assert result == [["DONE-42", "DONE", "42"], None]
+
+
+def test_runtime_if_expression_evaluates_selected_branch() -> None:
+    """if should evaluate then/else branch based on condition truthiness."""
+    direct = _execute('2 | if . == 2 then "yes" else "no"', [None], None)
+    nodes = _sample_nodes()
+    per_item = _execute('.[] | if .todo == "DONE" then .heading else "pending"', nodes, None)
+
+    assert direct == ["yes"]
+    assert per_item == ["Parent", "pending", "Zeta child", "pending"]
+
+
+def test_runtime_let_binding_scopes_variable_to_body_only() -> None:
+    """let should bind variables only while evaluating the body expression."""
+    context_vars: dict[str, object] = {"x": "outer"}
+    result = _execute("let . as $x in str($x)", 2, context_vars)
+
+    assert result == ["2"]
+    assert context_vars["x"] == "outer"
+
+
+def test_runtime_let_binding_without_previous_value_clears_variable_after_body() -> None:
+    """let should remove newly introduced variables after body evaluation."""
+    compiled = compile_query_text('let "v" as $temp in $temp')
+    context = EvalContext({})
+    result = compiled(Stream([None]), context)
+
+    assert result == ["v"]
+    assert "temp" not in context.variables
+
+
+def test_runtime_cast_and_match_validation_errors() -> None:
+    """Cast and match functions should validate argument and input types."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("int(1.5)", [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute("float(1)", [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute('bool("yes")', [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute("1 | sha256", [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute('sha256("abc")', [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[] | match(1)", ["value"], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute('.[] | match("x")', [1], None)
 
 
 def test_runtime_timestamp_function_with_supported_arities() -> None:

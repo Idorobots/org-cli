@@ -136,6 +136,24 @@ class AsBinding(Expr):
 
 
 @dataclass(frozen=True, slots=True)
+class LetBinding(Expr):
+    """Scoped binding expression `let <value> as $name in <body>`."""
+
+    value: Expr
+    name: str
+    body: Expr
+
+
+@dataclass(frozen=True, slots=True)
+class IfElse(Expr):
+    """Conditional expression `if <condition> then <then> else <else>`."""
+
+    condition: Expr
+    then_expr: Expr
+    else_expr: Expr
+
+
+@dataclass(frozen=True, slots=True)
 class Fold(Expr):
     """Fold subquery stream into a collection per input item."""
 

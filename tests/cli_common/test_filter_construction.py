@@ -246,8 +246,8 @@ def test_build_query_text_with_custom_filter_and_optional_arg(
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
     assert query == (
-        "[ .[] | ., (3 as $arg) | .[0] | (select(.todo == $arg))"
-        " | ., (none as $arg) | .[0] | (select(.todo != none)) ]"
+        "[ .[] | let 3 as $arg in (select(.todo == $arg))"
+        " | let none as $arg in (select(.todo != none)) ]"
     )
 
 
@@ -308,8 +308,8 @@ def test_build_query_text_custom_with_before_filters(monkeypatch: pytest.MonkeyP
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
-    assert query.startswith('[ .[] | ., ("one" as $arg) | .[0] | (. + {"x": $arg}) | ')
-    assert "| ., (none as $arg) | .[0] | (select(.tag != none)) |" in query
+    assert query.startswith('[ .[] | let "one" as $arg in (. + {"x": $arg}) | ')
+    assert "| let none as $arg in (select(.tag != none)) |" in query
 
 
 def test_build_query_text_custom_ordering_for_stats(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -326,7 +326,7 @@ def test_build_query_text_custom_ordering_for_stats(monkeypatch: pytest.MonkeyPa
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
-    assert query == "[ .[] | ., (none as $arg) | .[0] | (sort_by(.priority)) ]"
+    assert query == "[ .[] | let none as $arg in (sort_by(.priority)) ]"
 
 
 def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixture) -> None:
@@ -367,7 +367,7 @@ def test_build_query_text_preserves_mixed_ordering_cli_order(
     query = build_query_text(args, argv, include_ordering=True, include_slice=False)
 
     assert query == (
-        "[ .[] | ., (none as $arg) | .[0] | (sort_by(.priority))"
+        "[ .[] | let none as $arg in (sort_by(.priority))"
         " | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) ]"
     )
 

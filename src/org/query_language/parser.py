@@ -19,8 +19,10 @@ from org.query_language.ast import (
     FunctionCall,
     Group,
     Identity,
+    IfElse,
     Index,
     Iterate,
+    LetBinding,
     NoneLiteral,
     NumberLiteral,
     Pipe,
@@ -33,6 +35,9 @@ from org.query_language.errors import QueryParseError
 
 
 KNOWN_FUNCTIONS = {
+    "bool",
+    "float",
+    "int",
     "reverse",
     "unique",
     "select",
@@ -43,10 +48,15 @@ KNOWN_FUNCTIONS = {
     "min",
     "join",
     "map",
+    "match",
+    "sha256",
+    "str",
+    "ts",
     "type",
     "timestamp",
     "clock",
     "repeated_task",
+    "uuid",
     "not",
 }
 
@@ -258,6 +268,48 @@ def _build_fold_parser(expr: Parser) -> Parser:
     return fold
 
 
+def _build_let_binding_parser(value_expr: Parser, body_expr: Parser, identifier: Parser) -> Parser:
+    """Build parser for scoped let binding expressions."""
+
+    @generate
+    def let_binding() -> Generator[Parser, object, LetBinding]:
+        yield _lexeme(_keyword("let"))
+        value_result = yield value_expr
+        if not isinstance(value_result, Expr):
+            raise QueryParseError("Invalid let value expression")
+        yield _lexeme(_keyword("as"))
+        yield _symbol("$")
+        name_result = yield identifier
+        if not isinstance(name_result, str):
+            raise QueryParseError("Invalid let variable name")
+        body_result = yield (_lexeme(_keyword("in")) >> body_expr)
+        if not isinstance(body_result, Expr):
+            raise QueryParseError("Invalid let body expression")
+        return LetBinding(value_result, name_result, body_result)
+
+    return let_binding
+
+
+def _build_if_else_parser(expr: Parser) -> Parser:
+    """Build parser for conditional if-then-else expressions."""
+
+    @generate
+    def if_else() -> Generator[Parser, object, IfElse]:
+        yield _lexeme(_keyword("if"))
+        condition_result = yield (expr << _lexeme(_keyword("then")))
+        if not isinstance(condition_result, Expr):
+            raise QueryParseError("Invalid if condition expression")
+        then_result = yield (expr << _lexeme(_keyword("else")))
+        if not isinstance(then_result, Expr):
+            raise QueryParseError("Invalid then expression")
+        else_result = yield expr
+        if not isinstance(else_result, Expr):
+            raise QueryParseError("Invalid else expression")
+        return IfElse(condition_result, then_result, else_result)
+
+    return if_else
+
+
 def _build_postfix_chain_parser(
     base_parser: Parser,
     identifier: Parser,
@@ -323,11 +375,13 @@ def _make_parser() -> Parser:
     dot_expression = _build_dot_expression_parser(identifier, bracket_postfix)
     grouped = _build_grouped_parser(expr)
     fold = _build_fold_parser(expr)
+    if_else = _build_if_else_parser(expr)
 
     base_atom = (
         dot_expression
         | grouped
         | fold
+        | if_else
         | true_literal
         | false_literal
         | none_literal
@@ -363,7 +417,8 @@ def _make_parser() -> Parser:
     boolean = _chain_left(comparison, bool_op, _binary_builder)
     comma = _chain_comma(boolean)
 
-    as_binding = _build_as_binding_parser(comma, identifier)
+    let_binding = _build_let_binding_parser(comma, expr, identifier)
+    as_binding = _build_as_binding_parser(let_binding | comma, identifier)
     pipe = _chain_left(as_binding, _symbol("|"), _pipe_builder)
 
     expr.become(pipe)

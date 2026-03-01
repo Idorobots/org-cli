@@ -11,6 +11,8 @@ from org.query_language.ast import (
     FieldAccess,
     Fold,
     FunctionCall,
+    IfElse,
+    LetBinding,
     NoneLiteral,
     Pipe,
     Slice,
@@ -45,6 +47,16 @@ from org.query_language.errors import QueryParseError
         "clock(.closed, .scheduled, true)",
         'repeated_task(.closed, .todo, "DONE", none)',
         'not(.todo == "DONE")',
+        "str(.heading)",
+        'int("42")',
+        'float("3.14")',
+        'bool("true")',
+        'ts("<2026-03-01 Sun 10:00-12:00>")',
+        "sha256",
+        'match("(DONE|TODO)")',
+        "uuid",
+        "let .heading as $h in $h",
+        'if .todo == "DONE" then .heading else "pending"',
         ". as $root | $root[]",
         '[ .[] | select(.todo == "DONE") ] | .[10:20]',
         "[]",
@@ -87,6 +99,19 @@ def test_parse_as_binding_shape() -> None:
     assert expr.left.name == "root"
 
 
+def test_parse_let_binding_shape() -> None:
+    """Parser should parse let-binding nodes."""
+    expr = parse_query("let .heading as $h in $h")
+    assert isinstance(expr, LetBinding)
+    assert expr.name == "h"
+
+
+def test_parse_if_else_shape() -> None:
+    """Parser should parse if-then-else nodes."""
+    expr = parse_query('if .todo == "DONE" then .heading else "pending"')
+    assert isinstance(expr, IfElse)
+
+
 def test_parse_fold_shape() -> None:
     """Parser should parse fold expressions."""
     expr = parse_query("[ .[] | .heading ]")
@@ -108,6 +133,8 @@ def test_parse_none_literal_is_not_identifier_string() -> None:
         ".[] | | .todo",
         "a +",
         ". as root",
+        "let . as root in .",
+        'if .todo == "DONE" then .heading',
     ],
 )
 def test_parse_invalid_queries(query: str) -> None:
