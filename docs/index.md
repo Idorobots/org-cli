@@ -20,13 +20,13 @@ For query syntax details, use [query_language.md](query_language.md).
 - Mapping source: `--mapping FILE` (JSON object: `{"from": "to"}`) or inline config value.
 - Exclude source: `--exclude FILE` (one value per line) or inline config list.
 
-Most analysis commands accept many `--filter-*` switches. Ordering controls are available on `org tasks list` via `--order-by`.
+Most analysis commands accept many `--filter-*` switches. Ordering controls are available on `org tasks list` via `--order-by-*` switches.
 
 Built-in argument defaults:
 
 - Global: `--max-results 10`, `--offset 0`, `--todo-keys TODO`, `--done-keys DONE`.
 - Stats: `--use tags`, `--max-tags 5` (summary), `--max-relations 5`, `--max-groups 5` (summary), `--min-group-size 2` (summary), `--buckets 50`.
-- Tasks list ordering: default `--order-by timestamp-desc`.
+- Tasks list ordering: default timestamp-desc (same as `--order-by-timestamp-desc`).
 
 Repository-local defaults may override built-ins. In this repository, `.org-cli.json` sets:
 

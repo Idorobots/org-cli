@@ -68,7 +68,13 @@ class ListArgs:
     max_results: int
     details: bool
     offset: int
-    order_by: str | list[str] | tuple[str, ...]
+    order_by_level: bool
+    order_by_file_order: bool
+    order_by_file_order_reversed: bool
+    order_by_timestamp_asc: bool
+    order_by_timestamp_desc: bool
+    order_by_gamify_exp_asc: bool
+    order_by_gamify_exp_desc: bool
     with_numeric_gamify_exp: bool
     with_gamify_category: bool
     with_tags_as_category: bool
@@ -423,14 +429,40 @@ def register(app: typer.Typer) -> None:
             "--details",
             help="Show full org node details",
         ),
-        order_by: list[str] | None = typer.Option(  # noqa: B008
-            None,
-            "--order-by",
-            metavar="ORDER",
-            help=(
-                "Order tasks by: file-order, file-order-reversed, level, timestamp-asc, "
-                "timestamp-desc, gamify-exp-asc, gamify-exp-desc"
-            ),
+        order_by_level: bool = typer.Option(
+            False,
+            "--order-by-level",
+            help="Order tasks by heading level (repeatable)",
+        ),
+        order_by_file_order: bool = typer.Option(
+            False,
+            "--order-by-file-order",
+            help="Keep tasks in source file order (repeatable)",
+        ),
+        order_by_file_order_reversed: bool = typer.Option(
+            False,
+            "--order-by-file-order-reversed",
+            help="Reverse source file order (repeatable)",
+        ),
+        order_by_timestamp_asc: bool = typer.Option(
+            False,
+            "--order-by-timestamp-asc",
+            help="Order by oldest timestamp first (repeatable)",
+        ),
+        order_by_timestamp_desc: bool = typer.Option(
+            False,
+            "--order-by-timestamp-desc",
+            help="Order by newest timestamp first (repeatable)",
+        ),
+        order_by_gamify_exp_asc: bool = typer.Option(
+            False,
+            "--order-by-gamify-exp-asc",
+            help="Order by lowest gamify_exp first (repeatable)",
+        ),
+        order_by_gamify_exp_desc: bool = typer.Option(
+            False,
+            "--order-by-gamify-exp-desc",
+            help="Order by highest gamify_exp first (repeatable)",
         ),
         with_gamify_category: bool = typer.Option(
             False,
@@ -503,7 +535,13 @@ def register(app: typer.Typer) -> None:
             max_results=max_results,
             details=details,
             offset=offset,
-            order_by=order_by if order_by is not None else "timestamp-desc",
+            order_by_level=order_by_level,
+            order_by_file_order=order_by_file_order,
+            order_by_file_order_reversed=order_by_file_order_reversed,
+            order_by_timestamp_asc=order_by_timestamp_asc,
+            order_by_timestamp_desc=order_by_timestamp_desc,
+            order_by_gamify_exp_asc=order_by_gamify_exp_asc,
+            order_by_gamify_exp_desc=order_by_gamify_exp_desc,
             with_numeric_gamify_exp=with_numeric_gamify_exp,
             with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,

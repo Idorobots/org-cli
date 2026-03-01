@@ -93,6 +93,32 @@ def test_build_config_defaults_rejects_invalid_entry() -> None:
     assert defaults is None
 
 
+def test_build_config_defaults_accepts_ordering_flags() -> None:
+    """Ordering switches should support boolean config defaults."""
+    raw: dict[str, object] = {
+        "--order-by-level": True,
+        "--order-by-timestamp-desc": True,
+        "--order-by-gamify-exp-asc": False,
+    }
+
+    defaults = config.build_config_defaults(raw)
+
+    assert defaults is not None
+    default_values, _stats_defaults, _append_defaults = defaults
+    assert default_values["order_by_level"] is True
+    assert default_values["order_by_timestamp_desc"] is True
+    assert default_values["order_by_gamify_exp_asc"] is False
+
+
+def test_build_config_defaults_rejects_non_boolean_ordering_flags() -> None:
+    """Ordering switch defaults must be boolean values."""
+    raw: dict[str, object] = {"--order-by-level": "yes"}
+
+    defaults = config.build_config_defaults(raw)
+
+    assert defaults is None
+
+
 def test_parse_config_argument_prefers_cli_value() -> None:
     """--config argument should override default config name."""
     argv = ["org", "stats", "summary", "--config", "custom.json"]
@@ -224,6 +250,20 @@ def test_build_default_map_keeps_tasks_list_buckets_default() -> None:
     default_map = config.build_default_map({"buckets": 77})
 
     assert default_map["tasks"]["list"]["buckets"] == 77
+
+
+def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
+    """Tasks list ordering defaults should remain boolean flags."""
+    default_map = config.build_default_map(
+        {
+            "order_by_level": True,
+            "order_by_timestamp_desc": False,
+        }
+    )
+
+    tasks_list_defaults = default_map["tasks"]["list"]
+    assert tasks_list_defaults["order_by_level"] is True
+    assert tasks_list_defaults["order_by_timestamp_desc"] is False
 
 
 def test_apply_config_defaults_applies_inline_and_append_defaults() -> None:

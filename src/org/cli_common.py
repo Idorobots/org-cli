@@ -228,28 +228,25 @@ FILTER_OPTIONS_FLAGS = {
     "--filter-not-completed",
 }
 
-ORDER_BY_OPTION = "--order-by"
-
-ORDER_BY_VALUES = {
-    "file-order",
-    "file-order-reversed",
-    "level",
-    "timestamp-asc",
-    "timestamp-desc",
-    "gamify-exp-asc",
-    "gamify-exp-desc",
+ORDER_BY_OPTION_TO_VALUE = {
+    "--order-by-level": "level",
+    "--order-by-file-order": "file-order",
+    "--order-by-file-order-reversed": "file-order-reversed",
+    "--order-by-timestamp-asc": "timestamp-asc",
+    "--order-by-timestamp-desc": "timestamp-desc",
+    "--order-by-gamify-exp-asc": "gamify-exp-asc",
+    "--order-by-gamify-exp-desc": "gamify-exp-desc",
 }
 
-
-def _parse_option_order_from_argv(argv: list[str], option_name: str) -> list[str]:
-    """Extract option values in command-line order."""
-    values: list[str] = []
-    for index, token in enumerate(argv):
-        if token == option_name and index + 1 < len(argv):
-            values.append(argv[index + 1])
-        elif token.startswith(f"{option_name}="):
-            values.append(token.split("=", 1)[1])
-    return values
+ORDER_BY_DEST_TO_VALUE = {
+    "order_by_level": "level",
+    "order_by_file_order": "file-order",
+    "order_by_file_order_reversed": "file-order-reversed",
+    "order_by_timestamp_asc": "timestamp-asc",
+    "order_by_timestamp_desc": "timestamp-desc",
+    "order_by_gamify_exp_asc": "gamify-exp-asc",
+    "order_by_gamify_exp_desc": "gamify-exp-desc",
+}
 
 
 def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
@@ -266,25 +263,14 @@ def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
     return filter_order
 
 
-def normalize_order_by_values(order_by: str | list[str] | tuple[str, ...] | None) -> list[str]:
-    """Normalize order-by values into a list."""
-    if order_by is None:
-        return []
-    if isinstance(order_by, list):
-        return order_by
-    if isinstance(order_by, tuple):
-        return list(order_by)
-    return [order_by]
-
-
-def validate_order_by_values(order_by: list[str]) -> None:
-    """Validate order-by values."""
-    invalid = [value for value in order_by if value not in ORDER_BY_VALUES]
-    if not invalid:
-        return
-    supported = ", ".join(sorted(ORDER_BY_VALUES))
-    invalid_list = ", ".join(invalid)
-    raise typer.BadParameter(f"--order-by must be one of: {supported}\nGot: {invalid_list}")
+def parse_order_values_from_argv(argv: list[str]) -> list[str]:
+    """Extract ordering values in command-line argument order."""
+    values: list[str] = []
+    for token in argv:
+        value = ORDER_BY_OPTION_TO_VALUE.get(token)
+        if value is not None:
+            values.append(value)
+    return values
 
 
 def count_filter_values(value: list[str] | None) -> int:
@@ -445,22 +431,29 @@ def build_filter_stages(args: FilterArgs, filter_order: list[str]) -> list[str]:
 
 def extend_order_values_with_defaults(order_values: list[str], args: object) -> list[str]:
     """Append config-provided orderings not present in argv order."""
-    desired = normalize_order_by_values(getattr(args, "order_by", None))
-    if not desired:
-        return order_values
+    expected_counts: dict[str, int] = dict.fromkeys(ORDER_BY_DEST_TO_VALUE.values(), 0)
+    for dest_name, value in ORDER_BY_DEST_TO_VALUE.items():
+        count = getattr(args, dest_name, 0)
+        if isinstance(count, bool):
+            expected_counts[value] += int(count)
+        elif isinstance(count, int) and count > 0:
+            expected_counts[value] += count
 
     full_order = list(order_values)
-    for value in desired:
-        if full_order.count(value) < desired.count(value):
-            full_order.append(value)
+    for value, expected in expected_counts.items():
+        existing = full_order.count(value)
+        missing = expected - existing
+        if missing > 0:
+            full_order.extend([value] * missing)
     return full_order
 
 
 def build_order_stages(args: object, argv: list[str]) -> list[str]:
     """Build query stages for ordering pipeline."""
-    order_values = _parse_option_order_from_argv(argv, ORDER_BY_OPTION)
+    order_values = parse_order_values_from_argv(argv)
     order_values = extend_order_values_with_defaults(order_values, args)
-    validate_order_by_values(order_values)
+    if not order_values:
+        order_values = ["timestamp-desc"]
 
     order_stages: list[str] = []
     for value in order_values:
@@ -692,7 +685,7 @@ def load_and_process_data(
     if args.with_tags_as_category:
         nodes = preprocess_tags_as_category(nodes, args.category_property)
 
-    include_ordering = hasattr(args, "order_by")
+    include_ordering = hasattr(args, "order_by_level")
     include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
     query = build_query(
         args, sys.argv, include_ordering=include_ordering, include_slice=include_slice

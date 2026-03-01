@@ -86,7 +86,7 @@ poetry run org stats tags --show Debugging,Jira --max-relations 3 examples/ARCHI
 poetry run org stats groups --group Debugging,Erlang --group ProjectManagement,Jira examples/ARCHIVE_small
 
 # Task listing with filters and ordering
-poetry run org tasks list --filter-not-completed --order-by level --order-by timestamp-asc examples/ARCHIVE_small
+poetry run org tasks list --filter-not-completed --order-by-level --order-by-timestamp-asc examples/ARCHIVE_small
 ```
 
 Command options evolve; use the generated help for exact flags:

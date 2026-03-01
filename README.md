@@ -113,8 +113,8 @@ List matching tasks with filters and ordering.
 ```bash
 poetry run org tasks list \
   --filter-completed \
-  --order-by level \
-  --order-by timestamp-asc \
+  --order-by-level \
+  --order-by-timestamp-asc \
   --max-results 5 \
   --offset 20 \
   examples/ARCHIVE_small

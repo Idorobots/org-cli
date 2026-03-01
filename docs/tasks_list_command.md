@@ -11,7 +11,13 @@ poetry run org tasks list [OPTIONS] [FILE ...]
 ## Command-specific switches
 
 - `--details` - Print full Org node blocks instead of one-line entries.
-- `--order-by` - Apply one or more orderings (`file-order`, `file-order-reversed`, `level`, `timestamp-asc`, `timestamp-desc`, `gamify-exp-asc`, `gamify-exp-desc`).
+- `--order-by-level` - Sort by heading level (repeatable).
+- `--order-by-file-order` - Keep/archive input order (repeatable).
+- `--order-by-file-order-reversed` - Reverse archive input order (repeatable).
+- `--order-by-timestamp-asc` - Sort by task timestamp ascending (repeatable).
+- `--order-by-timestamp-desc` - Sort by task timestamp descending (repeatable).
+- `--order-by-gamify-exp-asc` - Sort by `gamify_exp` ascending (repeatable).
+- `--order-by-gamify-exp-desc` - Sort by `gamify_exp` descending (repeatable).
 - `--offset` - Skip first N results.
 - `--max-results`, `-n` - Limit displayed tasks.
 - `--out` - Output format (`org`, `json`, or any Pandoc writer format such as `gfm`, `html5`, `rst`, `pdf`).
@@ -35,7 +41,7 @@ poetry run org tasks list [OPTIONS] [FILE ...]
 - `timestamp-asc`, `timestamp-desc` - Sort by task timestamps.
 - `gamify-exp-asc`, `gamify-exp-desc` - Sort by `gamify_exp` value.
 
-`--order-by` is repeatable; orderings are applied in the sequence you pass them.
+Ordering switches are repeatable; orderings are applied in the sequence you pass them.
 
 ## Examples
 
@@ -56,8 +62,8 @@ poetry run org tasks list --filter-not-completed examples/ARCHIVE_small
 ```bash
 poetry run org tasks list \
   --filter-not-completed \
-  --order-by level \
-  --order-by timestamp-asc \
+  --order-by-level \
+  --order-by-timestamp-asc \
   --max-results 5 \
   examples/ARCHIVE_small
 ```
@@ -69,8 +75,8 @@ poetry run org tasks list \
   --filter-completed \
   --filter-date-from 2023-11-01 \
   --filter-date-until 2023-11-01 \
-  --order-by level \
-  --order-by timestamp-asc \
+  --order-by-level \
+  --order-by-timestamp-asc \
   --max-results 5 \
   --offset 20 \
   examples/ARCHIVE_small

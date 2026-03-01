@@ -23,7 +23,13 @@ class FilterArgsStub:
     filter_bodies: list[str] | None = None
     filter_completed: bool = False
     filter_not_completed: bool = False
-    order_by: list[str] | None = None
+    order_by_level: bool = False
+    order_by_file_order: bool = False
+    order_by_file_order_reversed: bool = False
+    order_by_timestamp_asc: bool = False
+    order_by_timestamp_desc: bool = False
+    order_by_gamify_exp_asc: bool = False
+    order_by_gamify_exp_desc: bool = False
     offset: int = 0
     max_results: int = 10
 
@@ -67,6 +73,25 @@ def test_parse_filter_order_from_argv_supports_equals_form() -> None:
     assert result == ["--filter-level", "--filter-tag"]
 
 
+def test_parse_order_values_from_argv() -> None:
+    """Ordering switches should preserve command-line occurrence order."""
+    from org.cli_common import parse_order_values_from_argv
+
+    argv = [
+        "org",
+        "tasks",
+        "list",
+        "--order-by-level",
+        "--order-by-timestamp-asc",
+        "--order-by-level",
+        "file.org",
+    ]
+
+    result = parse_order_values_from_argv(argv)
+
+    assert result == ["level", "timestamp-asc", "level"]
+
+
 def test_build_query_text_filters_only() -> None:
     """Query text should include filters in command order."""
     from org.cli_common import build_query_text
@@ -83,15 +108,14 @@ def test_build_query_text_with_ordering_and_slice() -> None:
     """Query text should append order stages then slice."""
     from org.cli_common import build_query_text
 
-    args = make_args(filter_tags=["work"], order_by=["timestamp-desc"], offset=5, max_results=10)
+    args = make_args(filter_tags=["work"], order_by_timestamp_desc=True, offset=5, max_results=10)
     argv = [
         "org",
         "tasks",
         "list",
         "--filter-tag",
         "work",
-        "--order-by",
-        "timestamp-desc",
+        "--order-by-timestamp-desc",
         "file.org",
     ]
 
@@ -108,8 +132,8 @@ def test_build_query_text_with_timestamp_asc_keeps_none_last() -> None:
     """timestamp-asc should keep items with no timestamp at the end."""
     from org.cli_common import build_query_text
 
-    args = make_args(order_by=["timestamp-asc"])
-    argv = ["org", "tasks", "list", "--order-by", "timestamp-asc", "file.org"]
+    args = make_args(order_by_timestamp_asc=True)
+    argv = ["org", "tasks", "list", "--order-by-timestamp-asc", "file.org"]
 
     query = build_query_text(args, argv, include_ordering=True, include_slice=False)
 
@@ -124,8 +148,8 @@ def test_build_query_text_with_gamify_exp_asc_keeps_none_last() -> None:
     """gamify-exp-asc should keep items with missing value at the end."""
     from org.cli_common import build_query_text
 
-    args = make_args(order_by=["gamify-exp-asc"])
-    argv = ["org", "tasks", "list", "--order-by", "gamify-exp-asc", "file.org"]
+    args = make_args(order_by_gamify_exp_asc=True)
+    argv = ["org", "tasks", "list", "--order-by-gamify-exp-asc", "file.org"]
 
     query = build_query_text(args, argv, include_ordering=True, include_slice=False)
 

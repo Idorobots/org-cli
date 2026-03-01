@@ -44,7 +44,13 @@ COMMAND_OPTION_NAMES = {
     "out",
     "out_theme",
     "pandoc_args",
-    "order_by",
+    "order_by_file_order",
+    "order_by_file_order_reversed",
+    "order_by_gamify_exp_asc",
+    "order_by_gamify_exp_desc",
+    "order_by_level",
+    "order_by_timestamp_asc",
+    "order_by_timestamp_desc",
     "todo_keys",
     "use",
     "with_gamify_category",
@@ -95,7 +101,13 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "out": "--out",
     "out_theme": "--out-theme",
     "pandoc_args": "--pandoc-args",
-    "order_by": "--order-by",
+    "order_by_file_order": "--order-by-file-order",
+    "order_by_file_order_reversed": "--order-by-file-order-reversed",
+    "order_by_gamify_exp_asc": "--order-by-gamify-exp-asc",
+    "order_by_gamify_exp_desc": "--order-by-gamify-exp-desc",
+    "order_by_level": "--order-by-level",
+    "order_by_timestamp_asc": "--order-by-timestamp-asc",
+    "order_by_timestamp_desc": "--order-by-timestamp-desc",
     "show": "--show",
     "todo_keys": "--todo-keys",
     "use": "--use",
@@ -264,11 +276,6 @@ def is_string_list(value: object) -> TypeGuard[list[str]]:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
-def is_string_tuple(value: object) -> TypeGuard[tuple[str, ...]]:
-    """Check if value is tuple[str, ...]."""
-    return isinstance(value, tuple) and all(isinstance(item, str) for item in value)
-
-
 def is_string_dict(value: object) -> TypeGuard[dict[str, str]]:
     """Check if value is dict[str, str]."""
     return isinstance(value, dict) and all(
@@ -332,42 +339,14 @@ def validate_str_option(key: str, value: object) -> str | None:
         return None
 
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
-    invalid_order_by = key == "--order-by" and value not in {
-        "file-order",
-        "file-order-reversed",
-        "level",
-        "timestamp-asc",
-        "timestamp-desc",
-        "gamify-exp-asc",
-        "gamify-exp-desc",
-    }
     invalid_keys = key in ("--todo-keys", "--done-keys") and not is_valid_keys_string(value)
     invalid_dates = key in (
         "--filter-date-from",
         "--filter-date-until",
     ) and not is_valid_date_argument(value)
-    if invalid_use or invalid_order_by or invalid_keys or invalid_dates:
+    if invalid_use or invalid_keys or invalid_dates:
         return None
     return value
-
-
-def validate_order_by_option(value: object) -> str | list[str] | None:
-    """Validate order-by option value."""
-    allowed = {
-        "file-order",
-        "file-order-reversed",
-        "level",
-        "timestamp-asc",
-        "timestamp-desc",
-        "gamify-exp-asc",
-        "gamify-exp-desc",
-    }
-    if isinstance(value, str):
-        return value if value in allowed else None
-    if is_string_list(value) or is_string_tuple(value):
-        order_by_values = list(value)
-        return order_by_values if all(item in allowed for item in order_by_values) else None
-    return None
 
 
 def validate_list_option(key: str, value: object) -> list[str] | None:
@@ -442,13 +421,6 @@ def apply_str_option(
     defaults: dict[str, object],
 ) -> bool:
     """Apply string config option."""
-    if key == "--order-by":
-        order_by_value = validate_order_by_option(value)
-        if order_by_value is None:
-            return False
-        defaults[dest] = order_by_value
-        return True
-
     str_value = validate_str_option(key, value)
     if str_value is None:
         return False
@@ -571,6 +543,13 @@ def build_config_defaults(
         "--details": "details",
         "--filter-completed": "filter_completed",
         "--filter-not-completed": "filter_not_completed",
+        "--order-by-file-order": "order_by_file_order",
+        "--order-by-file-order-reversed": "order_by_file_order_reversed",
+        "--order-by-gamify-exp-asc": "order_by_gamify_exp_asc",
+        "--order-by-gamify-exp-desc": "order_by_gamify_exp_desc",
+        "--order-by-level": "order_by_level",
+        "--order-by-timestamp-asc": "order_by_timestamp_asc",
+        "--order-by-timestamp-desc": "order_by_timestamp_desc",
         "--verbose": "verbose",
     }
 
@@ -588,7 +567,6 @@ def build_config_defaults(
         "--out": "out",
         "--out-theme": "out_theme",
         "--pandoc-args": "pandoc_args",
-        "--order-by": "order_by",
         "--config": "config",
     }
 
@@ -699,12 +677,6 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     tasks_list_defaults = {
         key: value for key, value in defaults.items() if key not in task_command_disallowed
     }
-    order_by_default = tasks_list_defaults.get("order_by")
-    if isinstance(order_by_default, str):
-        tasks_list_defaults["order_by"] = [order_by_default]
-    elif is_string_tuple(order_by_default):
-        tasks_list_defaults["order_by"] = list(order_by_default)
-
     tags_defaults = {
         key: value
         for key, value in defaults.items()
