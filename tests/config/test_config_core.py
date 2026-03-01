@@ -141,14 +141,75 @@ def test_parse_config_argument_default() -> None:
 def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """load_cli_config should load defaults from config file."""
     config_path = tmp_path / ".org-cli.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "defaults": {"--max-results": 7},
+                "filter": {"custom-filter": ".[]"},
+                "order-by": {"custom-order": "."},
+                "with": {"custom-with": "."},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    loaded = config.load_cli_config(["org"])
+
+    assert loaded.defaults["max_results"] == 7
+    assert loaded.append_defaults == {}
+    assert loaded.inline_defaults == {}
+    assert loaded.custom_filters == {"custom-filter": ".[]"}
+    assert loaded.custom_order_by == {"custom-order": "."}
+    assert loaded.custom_with == {"custom-with": "."}
+
+
+def test_load_cli_config_accepts_only_defaults_section_format(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Flat legacy config format should be rejected."""
+    config_path = tmp_path / ".org-cli.json"
     config_path.write_text(json.dumps({"--max-results": 7}), encoding="utf-8")
 
     monkeypatch.chdir(config_path.parent)
-    defaults, append_defaults, inline_defaults = config.load_cli_config(["org"])
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
 
-    assert defaults["max_results"] == 7
-    assert append_defaults == {}
-    assert inline_defaults == {}
+
+def test_load_cli_config_sections_are_optional(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only defaults section should be enough for valid config."""
+    config_path = tmp_path / ".org-cli.json"
+    config_path.write_text(json.dumps({"defaults": {"--max-results": 7}}), encoding="utf-8")
+
+    monkeypatch.chdir(config_path.parent)
+    loaded = config.load_cli_config(["org"])
+
+    assert loaded.defaults["max_results"] == 7
+    assert loaded.custom_filters == {}
+    assert loaded.custom_order_by == {}
+    assert loaded.custom_with == {}
+
+
+def test_load_cli_config_rejects_invalid_custom_section_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Custom sections must be object[string -> string]."""
+    config_path = tmp_path / ".org-cli.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "defaults": {"--max-results": 7},
+                "filter": {"custom-filter": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
 
 
 def test_load_cli_config_malformed_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

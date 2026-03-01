@@ -27,7 +27,18 @@ def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_get_command(_app: object) -> DummyCommand:
         return DummyCommand()
 
-    monkeypatch.setattr(config, "load_cli_config", lambda _argv: ({"max_results": 3}, {}, {}))
+    monkeypatch.setattr(
+        config,
+        "load_cli_config",
+        lambda _argv: config.LoadedCliConfig(
+            defaults={"max_results": 3},
+            append_defaults={},
+            inline_defaults={},
+            custom_filters={},
+            custom_order_by={},
+            custom_with={},
+        ),
+    )
     monkeypatch.setattr(config, "build_default_map", lambda _defaults: {"stats": _defaults})
     monkeypatch.setattr(typer.main, "get_command", fake_get_command)
 
@@ -44,8 +55,14 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
     """main should update config append and inline defaults."""
     original_append = dict(config.CONFIG_APPEND_DEFAULTS)
     original_inline = dict(config.CONFIG_INLINE_DEFAULTS)
+    original_custom_filters = dict(config.CONFIG_CUSTOM_FILTERS)
+    original_custom_order_by = dict(config.CONFIG_CUSTOM_ORDER_BY)
+    original_custom_with = dict(config.CONFIG_CUSTOM_WITH)
     config.CONFIG_APPEND_DEFAULTS.clear()
     config.CONFIG_INLINE_DEFAULTS.clear()
+    config.CONFIG_CUSTOM_FILTERS.clear()
+    config.CONFIG_CUSTOM_ORDER_BY.clear()
+    config.CONFIG_CUSTOM_WITH.clear()
 
     def fake_get_command(_app: object) -> SimpleNamespace:
         return SimpleNamespace(main=lambda **_: None)
@@ -53,7 +70,14 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(
         config,
         "load_cli_config",
-        lambda _argv: ({}, {"filter_tags": ["alpha"]}, {"mapping_inline": {"a": "b"}}),
+        lambda _argv: config.LoadedCliConfig(
+            defaults={},
+            append_defaults={"filter_tags": ["alpha"]},
+            inline_defaults={"mapping_inline": {"a": "b"}},
+            custom_filters={"my-filter": ".[]"},
+            custom_order_by={"my-order": "."},
+            custom_with={"my-with": "."},
+        ),
     )
     monkeypatch.setattr(config, "build_default_map", lambda _defaults: {})
     monkeypatch.setattr(typer.main, "get_command", fake_get_command)
@@ -64,8 +88,17 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
 
         assert config.CONFIG_APPEND_DEFAULTS == {"filter_tags": ["alpha"]}
         assert config.CONFIG_INLINE_DEFAULTS == {"mapping_inline": {"a": "b"}}
+        assert config.CONFIG_CUSTOM_FILTERS == {"my-filter": ".[]"}
+        assert config.CONFIG_CUSTOM_ORDER_BY == {"my-order": "."}
+        assert config.CONFIG_CUSTOM_WITH == {"my-with": "."}
     finally:
         config.CONFIG_APPEND_DEFAULTS.clear()
         config.CONFIG_APPEND_DEFAULTS.update(original_append)
         config.CONFIG_INLINE_DEFAULTS.clear()
         config.CONFIG_INLINE_DEFAULTS.update(original_inline)
+        config.CONFIG_CUSTOM_FILTERS.clear()
+        config.CONFIG_CUSTOM_FILTERS.update(original_custom_filters)
+        config.CONFIG_CUSTOM_ORDER_BY.clear()
+        config.CONFIG_CUSTOM_ORDER_BY.update(original_custom_order_by)
+        config.CONFIG_CUSTOM_WITH.clear()
+        config.CONFIG_CUSTOM_WITH.update(original_custom_with)

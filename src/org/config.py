@@ -65,6 +65,9 @@ COMMAND_OPTION_NAMES = {
 CONFIG_APPEND_DEFAULTS: dict[str, list[str]] = {}
 CONFIG_INLINE_DEFAULTS: dict[str, object] = {}
 CONFIG_DEFAULTS: dict[str, object] = {}
+CONFIG_CUSTOM_FILTERS: dict[str, str] = {}
+CONFIG_CUSTOM_ORDER_BY: dict[str, str] = {}
+CONFIG_CUSTOM_WITH: dict[str, str] = {}
 
 
 DEST_TO_OPTION_NAME: dict[str, str] = {
@@ -205,6 +208,18 @@ class ConfigContext:
     append_defaults: dict[str, list[str]]
     global_options: ConfigOptions
     stats_options: ConfigOptions
+
+
+@dataclass
+class LoadedCliConfig:
+    """Fully parsed CLI config payload."""
+
+    defaults: dict[str, object]
+    append_defaults: dict[str, list[str]]
+    inline_defaults: dict[str, object]
+    custom_filters: dict[str, str]
+    custom_order_by: dict[str, str]
+    custom_with: dict[str, str]
 
 
 class ConfigDefaultsTarget(Protocol):
@@ -494,6 +509,47 @@ def apply_config_entry(
     return False
 
 
+def parse_config_sections(
+    raw_config: dict[str, object],
+) -> tuple[dict[str, object], dict[str, str], dict[str, str], dict[str, str]] | None:
+    """Parse top-level config sections.
+
+    Accepted shape:
+      {
+        "defaults": { ... },
+        "filter": {"name": "query"},
+        "order-by": {"name": "query"},
+        "with": {"name": "query"}
+      }
+    """
+    allowed_keys = {"defaults", "filter", "order-by", "with"}
+    if any(key not in allowed_keys for key in raw_config):
+        return None
+
+    defaults_section = raw_config.get("defaults", {})
+    if not isinstance(defaults_section, dict):
+        return None
+
+    filter_section = raw_config.get("filter", {})
+    if not is_string_dict(filter_section):
+        return None
+
+    order_by_section = raw_config.get("order-by", {})
+    if not is_string_dict(order_by_section):
+        return None
+
+    with_section = raw_config.get("with", {})
+    if not is_string_dict(with_section):
+        return None
+
+    return (
+        cast(dict[str, object], defaults_section),
+        dict(filter_section),
+        dict(order_by_section),
+        dict(with_section),
+    )
+
+
 def build_config_defaults(
     config: dict[str, object],
 ) -> tuple[dict[str, object], dict[str, object], dict[str, list[str]]] | None:
@@ -624,9 +680,7 @@ def parse_config_argument(argv: list[str]) -> str:
     return default
 
 
-def load_cli_config(
-    argv: list[str],
-) -> tuple[dict[str, object], dict[str, list[str]], dict[str, object]]:
+def load_cli_config(argv: list[str]) -> LoadedCliConfig:
     """Load config defaults from the configured file path."""
     config_name = parse_config_argument(argv)
     config_path = Path(config_name)
@@ -637,7 +691,13 @@ def load_cli_config(
     if load_error:
         raise typer.BadParameter("Malformed config")
 
-    config_defaults = build_config_defaults(config)
+    config_sections = parse_config_sections(config)
+    if config_sections is None:
+        raise typer.BadParameter("Malformed config")
+
+    defaults_config, custom_filters, custom_order_by, custom_with = config_sections
+
+    config_defaults = build_config_defaults(defaults_config)
     if config_defaults is None:
         raise typer.BadParameter("Malformed config")
 
@@ -653,7 +713,14 @@ def load_cli_config(
         key: value for key, value in combined_defaults.items() if key in COMMAND_OPTION_NAMES
     }
 
-    return (filtered_defaults, append_defaults, inline_defaults)
+    return LoadedCliConfig(
+        defaults=filtered_defaults,
+        append_defaults=append_defaults,
+        inline_defaults=inline_defaults,
+        custom_filters=custom_filters,
+        custom_order_by=custom_order_by,
+        custom_with=custom_with,
+    )
 
 
 def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[str, object]]]:
