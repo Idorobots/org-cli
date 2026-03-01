@@ -37,7 +37,10 @@ poetry run org stats tags examples/ARCHIVE_small
 2) Inspect specific tags you care about
 
 ```bash
-poetry run org stats tags --show Debugging,Jira examples/ARCHIVE_small
+poetry run org stats tags \
+  --show Debugging,Jira \
+  --filter-priority A \
+  examples/ARCHIVE_small
 ```
 
 3) Analyze frequent heading words instead of tags

@@ -12,6 +12,39 @@ poetry install
 
 This installs the `org` command.
 
+## Configuration
+
+`org-cli` loads `.org-cli.json` from the current directory by default.
+
+Top-level config sections:
+
+- `defaults` for built-in option defaults
+- `filter` for custom `--filter-<name>` query snippets
+- `order-by` for custom `--order-by-<name>` query snippets
+- `with` for custom `--with-<name>` query snippets
+
+```json
+{
+  "defaults": {
+    "--done-keys": "DONE,CANCELLED,DELEGATED",
+    "--buckets": 80,
+    "--filter-priority": "A",
+    "--mapping": "examples/mapping_example.json",
+    "--exclude": "examples/exclude_example.txt"
+  },
+  "filter": {
+    "level-above": "select(.level > $arg)",
+    "has-todo": "select(.todo != none)"
+  },
+  "order-by": {
+    "recent-first": "sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"
+  },
+  "with": {
+    "priority-value": ". + {\"priority_value\": .priority }"
+  }
+}
+```
+
 ## Commands
 
 ### `org query`

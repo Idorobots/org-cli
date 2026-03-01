@@ -40,6 +40,7 @@ poetry run org stats groups examples/ARCHIVE_small
 poetry run org stats groups \
   --group Debugging,Erlang \
   --group ProjectManagement,Jira \
+  --filter-priority B \
   examples/ARCHIVE_small
 ```
 
@@ -47,6 +48,7 @@ poetry run org stats groups \
 
 ```bash
 poetry run org stats groups \
+  --filter-priority C \
   --filter-date-from 2023-10-20 \
   --filter-date-until 2023-11-15 \
   --filter-not-completed \

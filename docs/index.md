@@ -20,13 +20,48 @@ For query syntax details, use [query_language.md](query_language.md).
 - Mapping source: `--mapping FILE` (JSON object: `{"from": "to"}`) or inline config value.
 - Exclude source: `--exclude FILE` (one value per line) or inline config list.
 
-Most analysis commands accept many `--filter-*` switches. Ordering controls are available on `org tasks list` via `--order-by-*` switches.
+### Config file layout
+
+Config uses four top-level sections:
+
+- `defaults`: built-in option defaults (for example `--done-keys`, `--buckets`, `--filter-priority`, `--order-by-priority`).
+- `filter`: custom `--filter-<name>` query snippets.
+- `order-by`: custom `--order-by-<name>` query snippets.
+- `with`: custom `--with-<name>` query snippets.
+
+Example:
+
+```json
+{
+  "defaults": {
+    "--done-keys": "DONE,CANCELLED,DELEGATED",
+    "--buckets": 80,
+    "--mapping": "examples/mapping_example.json",
+    "--exclude": "examples/exclude_example.txt",
+    "--filter-priority": "A"
+  },
+  "filter": {
+    "level-above": "select(.level > $arg)",
+    "has-todo": "select(.todo != none)"
+  },
+  "order-by": {
+    "recent-first": "sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"
+  },
+  "with": {
+    "priority-value": ". + {\"priority_value\": .priority }"
+  }
+}
+```
+
+Most analysis commands accept many `--filter-*` switches. Ordering controls are available on `org tasks list` via built-in `--order-by-*` switches.
 
 Built-in argument defaults:
 
 - Global: `--max-results 10`, `--offset 0`, `--todo-keys TODO`, `--done-keys DONE`.
 - Stats: `--use tags`, `--max-tags 5` (summary), `--max-relations 5`, `--max-groups 5` (summary), `--min-group-size 2` (summary), `--buckets 50`.
-- Tasks list ordering: default timestamp-desc (same as `--order-by-timestamp-desc`).
+- Built-in filter additions: `--filter-priority P`.
+- Tasks list built-in ordering: `--order-by-priority`, `--order-by-level`, `--order-by-file-order`, `--order-by-file-order-reversed`, `--order-by-timestamp-asc`, `--order-by-timestamp-desc`.
+- Tasks list default ordering remains timestamp-desc (same as `--order-by-timestamp-desc`).
 
 Repository-local defaults may override built-ins. In this repository, `.org-cli.json` sets:
 
