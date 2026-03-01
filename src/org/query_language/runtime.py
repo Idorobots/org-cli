@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -49,6 +50,9 @@ class Stream(list[object]):
 
 _OPERATOR_NOT_HANDLED = object()
 type ComparableKey = int | float | str | datetime
+
+
+logger = logging.getLogger("org")
 
 
 def _stream(values: Iterable[object] = ()) -> Stream:
@@ -144,12 +148,18 @@ def _evaluate_dict_assignment(
     output = _stream()
     for item in stream:
         base_values = evaluate_expr(expr.base, _stream([item]), context)
+        key_values = evaluate_expr(expr.key_expr, _stream([item]), context)
         value_values = evaluate_expr(expr.value, _stream([item]), context)
-        value_base_pairs = _broadcast(value_values, base_values)
-        for value, base in value_base_pairs:
+
+        key_base_pairs = _broadcast(key_values, base_values)
+        value_key_base_pairs = _broadcast(value_values, _stream(key_base_pairs))
+        for value, key_base_pair in value_key_base_pairs:
+            key, base = cast(tuple[object, object], key_base_pair)
             if not isinstance(base, dict):
                 raise QueryRuntimeError("Assignment target must evaluate to a dictionary")
-            base[expr.key] = value
+            if not isinstance(key, str):
+                raise QueryRuntimeError("Assignment key must evaluate to a string")
+            base[key] = value
             output.append(base)
     return output
 
@@ -606,6 +616,7 @@ def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext)
         "type": _func_type,
         "sha256": _func_sha256,
         "uuid": _func_uuid,
+        "debug": _func_debug,
     }
     arg_functions: dict[str, Callable[[Stream, Expr, EvalContext], Stream]] = {
         "str": _func_str,
@@ -724,6 +735,13 @@ def _func_type(stream: Stream) -> Stream:
 def _func_uuid(stream: Stream) -> Stream:
     """Return one UUIDv4 value per input stream item."""
     return _stream([str(uuid4()) for _item in stream])
+
+
+def _func_debug(stream: Stream) -> Stream:
+    """Log each input value and return the input stream unchanged."""
+    for value in stream:
+        logger.info("%s", value)
+    return _stream(stream)
 
 
 def _func_str(stream: Stream, argument: Expr, context: EvalContext) -> Stream:

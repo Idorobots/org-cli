@@ -341,6 +341,7 @@ def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixtu
 
     assert "Query context:" in caplog.text
     assert "'todo_keys': ['TODO']" in caplog.text
+    assert "'category_property': 'CATEGORY'" in caplog.text
 
 
 def test_build_query_text_preserves_mixed_ordering_cli_order(

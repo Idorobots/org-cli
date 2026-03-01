@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import cast
 
 import orgparse
@@ -298,6 +299,19 @@ def test_runtime_uuid_function_returns_unique_uuidv4_strings() -> None:
         assert len(value) == 36
 
 
+def test_runtime_debug_function_logs_and_returns_input_unchanged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """debug should log values and pass through stream items unchanged."""
+    with caplog.at_level(logging.INFO, logger="org"):
+        result = _execute(".[0][] | debug", [[1, "x", None]], None)
+
+    assert result == [1, "x", None]
+    assert "1" in caplog.text
+    assert "x" in caplog.text
+    assert "None" in caplog.text
+
+
 def test_runtime_cast_functions_convert_supported_values() -> None:
     """str/int/float/bool/ts/sha256 should convert supported value types."""
     converted = _execute(
@@ -335,6 +349,16 @@ def test_runtime_if_expression_evaluates_selected_branch() -> None:
 
     assert direct == ["yes"]
     assert per_item == ["Parent", "pending", "Zeta child", "pending"]
+
+
+def test_runtime_if_expression_supports_elif_branches() -> None:
+    """if should evaluate the first matching elif branch before else."""
+    result = _execute(
+        '.[0][] | if . == 1 then "one" elif . == 2 then "two" elif . == 3 then "three" else "other"',
+        [[1, 2, 3, 4]],
+        None,
+    )
+    assert result == ["one", "two", "three", "other"]
 
 
 def test_runtime_let_binding_scopes_variable_to_body_only() -> None:
@@ -780,6 +804,18 @@ def test_runtime_dict_assignment_with_dot_target() -> None:
     assert values == [{"meta": {"done": True}}, {"meta": {"done": True}}]
 
 
+def test_runtime_dict_assignment_with_dynamic_key_expression() -> None:
+    """Dictionary assignment should support computed bracket keys."""
+    values = [{"k": "done", "meta": {}}, {"k": "state", "meta": {}}]
+    result = _execute('.[] | .meta[.["k"]] = true; .meta', values, None)
+
+    assert result == [{"done": True}, {"state": True}]
+    assert values == [
+        {"k": "done", "meta": {"done": True}},
+        {"k": "state", "meta": {"state": True}},
+    ]
+
+
 def test_runtime_sequence_evaluates_side_effects_before_returning_right_value() -> None:
     """Sequence should run left side effects and return right expression values."""
     values = [{"x": 1}, {"x": 10}]
@@ -793,6 +829,12 @@ def test_runtime_dict_assignment_requires_dictionary_target() -> None:
     """Dictionary assignment should fail for non-dictionary target values."""
     with pytest.raises(QueryRuntimeError):
         _execute('.[] | .["x"] = 1', [1], None)
+
+
+def test_runtime_dict_assignment_requires_string_key() -> None:
+    """Dictionary assignment should reject non-string key values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[] | .[$k] = 1", [{}], {"k": 1})
 
 
 def test_runtime_iterate_skips_none_values() -> None:

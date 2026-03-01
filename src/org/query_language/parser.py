@@ -60,6 +60,7 @@ KNOWN_FUNCTIONS = {
     "repeated_task",
     "uuid",
     "not",
+    "debug",
 }
 
 type FieldPostfix = tuple[Literal["field"], str]
@@ -293,7 +294,12 @@ def _build_let_binding_parser(value_expr: Parser, body_expr: Parser, identifier:
 
 
 def _build_if_else_parser(expr: Parser) -> Parser:
-    """Build parser for conditional if-then-else expressions."""
+    """Build parser for conditional if-then-elif-else expressions."""
+
+    elif_clause = seq(
+        _lexeme(_keyword("elif")) >> (expr << _lexeme(_keyword("then"))),
+        expr,
+    )
 
     @generate
     def if_else() -> Generator[Parser, object, IfElse]:
@@ -301,13 +307,32 @@ def _build_if_else_parser(expr: Parser) -> Parser:
         condition_result = yield (expr << _lexeme(_keyword("then")))
         if not isinstance(condition_result, Expr):
             raise QueryParseError("Invalid if condition expression")
-        then_result = yield (expr << _lexeme(_keyword("else")))
+        then_result = yield expr
         if not isinstance(then_result, Expr):
             raise QueryParseError("Invalid then expression")
+
+        elif_clauses_result = yield elif_clause.many()
+        if not isinstance(elif_clauses_result, list):
+            raise QueryParseError("Invalid elif clauses")
+        elif_clauses = cast(list[tuple[object, object]], elif_clauses_result)
+
+        yield _lexeme(_keyword("else"))
         else_result = yield expr
         if not isinstance(else_result, Expr):
             raise QueryParseError("Invalid else expression")
-        return IfElse(condition_result, then_result, else_result)
+
+        branches: list[tuple[Expr, Expr]] = [(condition_result, then_result)]
+        for elif_condition, elif_then in elif_clauses:
+            if not isinstance(elif_condition, Expr):
+                raise QueryParseError("Invalid elif condition expression")
+            if not isinstance(elif_then, Expr):
+                raise QueryParseError("Invalid elif then expression")
+            branches.append((elif_condition, elif_then))
+
+        current_else: Expr = else_result
+        for branch_condition, branch_then in reversed(branches):
+            current_else = IfElse(branch_condition, branch_then, current_else)
+        return cast(IfElse, current_else)
 
     return if_else
 
@@ -367,12 +392,12 @@ def _assignment_builder(_operator: str, left: Expr, right: Expr) -> Expr:
 def _build_assignment_expr(left: Expr, right: Expr) -> Expr:
     """Build assignment expression from supported assignment targets."""
     if isinstance(left, FieldAccess):
-        return DictAssignment(left.base, left.field, right)
+        return DictAssignment(left.base, StringLiteral(left.field), right)
+    if isinstance(left, Index):
+        return DictAssignment(left.base, left.index_expr, right)
     if isinstance(left, BracketFieldAccess):
-        if isinstance(left.key_expr, StringLiteral):
-            return DictAssignment(left.base, left.key_expr.value, right)
-        raise QueryParseError("Assignment bracket key must be a string literal")
-    raise QueryParseError('Assignment target must be .field or ["field"] access')
+        return DictAssignment(left.base, left.key_expr, right)
+    raise QueryParseError("Assignment target must be .field or [<field-subquery>] access")
 
 
 def _make_parser() -> Parser:

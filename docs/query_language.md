@@ -51,6 +51,9 @@ Negative values use unary minus (`-subquery`), which is evaluated as `0 - subque
 
 Variables are referenced as `$name`.
 
+Common CLI-provided context variables include `$todo_keys`, `$done_keys`, `$offset`, `$limit`, and
+`$category_property`.
+
 ```text
 .[] | select(.todo in $done_keys)
 ```
@@ -145,9 +148,14 @@ let "DONE" as $state in select(.todo == $state)
 `if <condition-subquery> then <then-subquery> else <else-subquery>` evaluates the condition and
 runs either branch based on truthiness.
 
+`elif` branches are also supported and can repeat:
+
+`if <condition> then <then> elif <condition> then <then> ... else <else>`
+
 ```text
 2 | if . == 2 then "yes" else "no"
 .[] | if .todo == "DONE" then .heading else "pending"
+.[] | if .todo == "DONE" then .heading elif .todo == "TODO" then "todo" else "pending"
 ```
 
 ### Fold expression
@@ -164,14 +172,16 @@ runs either branch based on truthiness.
 Assignment is currently supported only for dictionary field writes:
 
 - `<subquery>.field = <value-subquery>`
-- `<subquery>["field"] = <value-subquery>`
+- `<subquery>[<field-subquery>] = <value-subquery>`
 
-The target subquery must evaluate to dictionaries at runtime. Assignment mutates those dictionaries and
-returns the mutated dictionary stream.
+The target subquery must evaluate to dictionaries at runtime. For bracket assignment, the key subquery
+must evaluate to a string. Assignment mutates those dictionaries and returns the mutated dictionary
+stream.
 
 ```text
 .properties.done = true
 .properties["priority"] = "A"
+.properties[$field_name] = "A"
 ```
 
 No other assignment target forms are supported yet.
@@ -364,6 +374,15 @@ ts("[2026-03-01 Sun 10:00-12:00]")
 
 ```text
 uuid
+```
+
+### `debug`
+
+- No args.
+- Logs each input value to stdout via the CLI logger and returns values unchanged.
+
+```text
+.[] | debug
 ```
 
 ### `unique`

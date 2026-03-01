@@ -1087,6 +1087,7 @@ def load_and_process_data(
     context_vars: dict[str, object] = {
         "todo_keys": todo_keys,
         "done_keys": done_keys,
+        "category_property": args.category_property,
     }
     context_vars.update(collect_custom_context_vars(sys.argv, normalized_files, include_ordering))
     if include_slice:

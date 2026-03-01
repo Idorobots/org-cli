@@ -165,7 +165,7 @@ class DictAssignment(Expr):
     """Dictionary field assignment expression."""
 
     base: Expr
-    key: str
+    key_expr: Expr
     value: Expr
 
 
