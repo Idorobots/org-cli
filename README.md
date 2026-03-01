@@ -79,7 +79,6 @@ poetry run org stats summary \
   --max-tags 3 \
   --max-groups 2 \
   --max-relations 3 \
-  --with-gamify-category \
   examples/ARCHIVE_small
 ```
 
@@ -108,8 +107,8 @@ Show task-only metrics and histograms.
 
 ```bash
 poetry run org stats tasks \
-  --with-gamify-category \
   --category-property CATEGORY \
+  --with-tags-as-category \
   --filter-date-from 2023-10-20 \
   --filter-date-until 2023-11-15 \
   examples/ARCHIVE_small

@@ -65,8 +65,6 @@ def test_build_config_defaults_applies_values() -> None:
         "--max-results": 25,
         "--max-tags": 3,
         "--filter-tag": ["work", "team"],
-        "--with-gamify-category": True,
-        "--with-numeric-gamify-exp": True,
         "--use": "heading",
         "--pandoc-args": "--wrap=none",
     }
@@ -77,8 +75,6 @@ def test_build_config_defaults_applies_values() -> None:
     default_values, stats_defaults, append_defaults = defaults
     assert stats_defaults["max_results"] == 25
     assert stats_defaults["max_tags"] == 3
-    assert stats_defaults["with_gamify_category"] is True
-    assert stats_defaults["with_numeric_gamify_exp"] is True
     assert stats_defaults["use"] == "heading"
     assert default_values["pandoc_args"] == "--wrap=none"
     assert append_defaults["filter_tags"] == ["work", "team"]
@@ -397,7 +393,7 @@ def test_log_applied_config_defaults_logs_all_config_values(
 
 def test_log_command_arguments_logs_all_values(caplog: pytest.LogCaptureFixture) -> None:
     """Command argument logging should include all final argument values."""
-    args = SimpleNamespace(max_results=10, filter_tags=["work"], with_gamify_category=False)
+    args = SimpleNamespace(max_results=10, filter_tags=["work"])
 
     with caplog.at_level(logging.INFO, logger="org"):
         config.log_command_arguments(args, "stats summary")
@@ -405,4 +401,3 @@ def test_log_command_arguments_logs_all_values(caplog: pytest.LogCaptureFixture)
     assert "Command arguments (stats summary):" in caplog.text
     assert "max_results=10" in caplog.text
     assert "filter_tags=['work']" in caplog.text
-    assert "with_gamify_category=False" in caplog.text

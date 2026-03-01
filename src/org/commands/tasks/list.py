@@ -73,8 +73,6 @@ class ListArgs:
     order_by_priority: bool
     order_by_timestamp_asc: bool
     order_by_timestamp_desc: bool
-    with_numeric_gamify_exp: bool
-    with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
     buckets: int
@@ -454,16 +452,6 @@ def register(app: typer.Typer) -> None:
             "--order-by-timestamp-desc",
             help="Order by newest timestamp first (repeatable)",
         ),
-        with_gamify_category: bool = typer.Option(
-            False,
-            "--with-gamify-category",
-            help="Preprocess nodes to set category property based on gamify_exp value",
-        ),
-        with_numeric_gamify_exp: bool = typer.Option(
-            False,
-            "--with-numeric-gamify-exp",
-            help="Normalize gamify_exp property values to strict numeric form",
-        ),
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
@@ -530,8 +518,6 @@ def register(app: typer.Typer) -> None:
             order_by_priority=order_by_priority,
             order_by_timestamp_asc=order_by_timestamp_asc,
             order_by_timestamp_desc=order_by_timestamp_desc,
-            with_numeric_gamify_exp=with_numeric_gamify_exp,
-            with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
             buckets=buckets,

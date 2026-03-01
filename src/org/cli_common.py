@@ -18,8 +18,6 @@ import typer
 from org import config as config_module
 from org.analyze import TimeRange, normalize
 from org.filters import (
-    preprocess_gamify_categories,
-    preprocess_numeric_gamify_exp,
     preprocess_tags_as_category,
 )
 from org.parse import load_root_nodes
@@ -229,8 +227,6 @@ FILTER_OPTIONS_FLAGS = {
 }
 
 WITH_OPTIONS_FLAGS = {
-    "--with-gamify-category",
-    "--with-numeric-gamify-exp",
     "--with-tags-as-category",
 }
 
@@ -1011,8 +1007,6 @@ class DataLoadArgs(FilterArgs, Protocol):
     files: list[str] | None
     todo_keys: str
     done_keys: str
-    with_gamify_category: bool
-    with_numeric_gamify_exp: bool
     with_tags_as_category: bool
     category_property: str
 
@@ -1069,12 +1063,6 @@ def load_and_process_data(
     todo_keys, done_keys = validate_global_arguments(args)
     roots, todo_keys, done_keys = _load_roots_for_inputs(normalized_files, todo_keys, done_keys)
     nodes = [node for root in roots for node in root[1:]]
-
-    if args.with_numeric_gamify_exp:
-        nodes = preprocess_numeric_gamify_exp(nodes)
-
-    if args.with_gamify_category:
-        nodes = preprocess_gamify_categories(nodes, args.category_property)
 
     if args.with_tags_as_category:
         nodes = preprocess_tags_as_category(nodes, args.category_property)

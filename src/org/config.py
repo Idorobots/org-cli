@@ -51,8 +51,6 @@ COMMAND_OPTION_NAMES = {
     "order_by_timestamp_desc",
     "todo_keys",
     "use",
-    "with_gamify_category",
-    "with_numeric_gamify_exp",
     "with_tags_as_category",
     "show",
     "groups",
@@ -111,8 +109,6 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "todo_keys": "--todo-keys",
     "use": "--use",
     "verbose": "--verbose",
-    "with_gamify_category": "--with-gamify-category",
-    "with_numeric_gamify_exp": "--with-numeric-gamify-exp",
     "with_tags_as_category": "--with-tags-as-category",
 }
 
@@ -584,8 +580,6 @@ def build_config_defaults(
     }
 
     stats_bool_options: dict[str, str] = {
-        "--with-gamify-category": "with_gamify_category",
-        "--with-numeric-gamify-exp": "with_numeric_gamify_exp",
         "--with-tags-as-category": "with_tags_as_category",
     }
 

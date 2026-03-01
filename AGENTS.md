@@ -87,8 +87,8 @@ poetry run org query '.[][] | .heading' -n 5 examples/ARCHIVE_small
 # Summary stats
 poetry run org stats summary --filter-priority A --max-tags 3 --max-groups 2 examples/ARCHIVE_small
 
-# Task-only stats with derived categories from gamify_exp
-poetry run org stats tasks --with-gamify-category --filter-priority B examples/ARCHIVE_small
+# Task-only stats with derived categories from tags
+poetry run org stats tasks --with-tags-as-category --filter-priority B examples/ARCHIVE_small
 
 # Focused tag stats
 poetry run org stats tags --show Debugging,Jira --max-relations 3 examples/ARCHIVE_small

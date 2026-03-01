@@ -69,8 +69,6 @@ class TagsArgs:
     max_tags: int
     use: str
     show: str | None
-    with_numeric_gamify_exp: bool
-    with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
     max_relations: int
@@ -344,16 +342,6 @@ def register(app: typer.Typer) -> None:
             metavar="TAGS",
             help="Comma-separated list of tags to display (default: top results)",
         ),
-        with_gamify_category: bool = typer.Option(
-            False,
-            "--with-gamify-category",
-            help="Preprocess nodes to set category property based on gamify_exp value",
-        ),
-        with_numeric_gamify_exp: bool = typer.Option(
-            False,
-            "--with-numeric-gamify-exp",
-            help="Normalize gamify_exp property values to strict numeric form",
-        ),
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
@@ -405,8 +393,6 @@ def register(app: typer.Typer) -> None:
             max_tags=0,
             use=use,
             show=show,
-            with_numeric_gamify_exp=with_numeric_gamify_exp,
-            with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
             max_relations=max_relations,

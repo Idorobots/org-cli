@@ -50,8 +50,6 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         order_by_priority=False,
         order_by_timestamp_asc=False,
         order_by_timestamp_desc=False,
-        with_numeric_gamify_exp=False,
-        with_gamify_category=False,
         with_tags_as_category=False,
         category_property="CATEGORY",
         buckets=50,

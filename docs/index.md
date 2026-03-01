@@ -78,14 +78,7 @@ Common date formats for date filters:
 - `YYYY-MM-DD hh:mm`
 - `YYYY-MM-DD hh:mm:ss`
 
-## gamify_exp
+## Categories
 
-`org-cli` can read `gamify_exp` and derive categories with `--with-gamify-category`:
-
-- `simple`: `gamify_exp < 10`
-- `regular`: `10 <= gamify_exp < 20`
-- `hard`: `gamify_exp >= 20`
-
-Tasks with missing or invalid `gamify_exp` are treated as `regular`.
-
-Background on the property source: [gamify-el](https://github.com/Idorobots/gamify-el).
+`org-cli` can derive categories from tags with `--with-tags-as-category` and store them in a
+customizable property name via `--category-property`.
