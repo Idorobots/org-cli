@@ -96,18 +96,18 @@ def test_build_config_defaults_rejects_invalid_entry() -> None:
 def test_build_config_defaults_accepts_ordering_flags() -> None:
     """Ordering switches should support boolean config defaults."""
     raw: dict[str, object] = {
+        "--order-by-priority": True,
         "--order-by-level": True,
         "--order-by-timestamp-desc": True,
-        "--order-by-gamify-exp-asc": False,
     }
 
     defaults = config.build_config_defaults(raw)
 
     assert defaults is not None
     default_values, _stats_defaults, _append_defaults = defaults
+    assert default_values["order_by_priority"] is True
     assert default_values["order_by_level"] is True
     assert default_values["order_by_timestamp_desc"] is True
-    assert default_values["order_by_gamify_exp_asc"] is False
 
 
 def test_build_config_defaults_rejects_non_boolean_ordering_flags() -> None:

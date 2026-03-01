@@ -132,8 +132,7 @@ CATEGORY_NAMES = {"tags": "tags", "heading": "heading words", "body": "body word
 class FilterArgs(Protocol):
     """Protocol for filter-related CLI arguments."""
 
-    filter_gamify_exp_above: int | None
-    filter_gamify_exp_below: int | None
+    filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
     filter_repeats_below: int | None
@@ -212,8 +211,7 @@ def get_top_tasks(
 
 
 FILTER_OPTIONS_WITH_VALUE = {
-    "--filter-gamify-exp-above",
-    "--filter-gamify-exp-below",
+    "--filter-priority",
     "--filter-level",
     "--filter-repeats-above",
     "--filter-repeats-below",
@@ -237,23 +235,21 @@ WITH_OPTIONS_FLAGS = {
 }
 
 ORDER_BY_OPTION_TO_VALUE = {
+    "--order-by-priority": "priority",
     "--order-by-level": "level",
     "--order-by-file-order": "file-order",
     "--order-by-file-order-reversed": "file-order-reversed",
     "--order-by-timestamp-asc": "timestamp-asc",
     "--order-by-timestamp-desc": "timestamp-desc",
-    "--order-by-gamify-exp-asc": "gamify-exp-asc",
-    "--order-by-gamify-exp-desc": "gamify-exp-desc",
 }
 
 ORDER_BY_DEST_TO_VALUE = {
+    "order_by_priority": "priority",
     "order_by_level": "level",
     "order_by_file_order": "file-order",
     "order_by_file_order_reversed": "file-order-reversed",
     "order_by_timestamp_asc": "timestamp-asc",
     "order_by_timestamp_desc": "timestamp-desc",
-    "order_by_gamify_exp_asc": "gamify-exp-asc",
-    "order_by_gamify_exp_desc": "gamify-exp-desc",
 }
 
 
@@ -264,7 +260,6 @@ class CustomStageInvocation:
     name: str
     query: str
     arg_value: object
-    context_var: str
 
 
 def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
@@ -405,15 +400,12 @@ def _build_custom_invocation(
     name: str,
     query: str,
     raw_arg: str | None,
-    context_prefix: str,
-    index: int,
 ) -> CustomStageInvocation:
     """Build one parsed custom invocation with typed context binding."""
     return CustomStageInvocation(
         name=name,
         query=query,
         arg_value=_coerce_custom_arg_value(raw_arg),
-        context_var=f"custom_{context_prefix}_arg_{index}",
     )
 
 
@@ -476,7 +468,6 @@ def parse_filter_entries_from_argv(
     """Parse built-in and custom filter switch occurrences in argv order."""
     entries: list[str | CustomStageInvocation] = []
     index = 0
-    custom_index = 0
     builtins = FILTER_OPTIONS_WITH_VALUE.union(FILTER_OPTIONS_FLAGS)
     while index < len(argv):
         token = argv[index]
@@ -499,11 +490,8 @@ def parse_filter_entries_from_argv(
                     name=name,
                     query=query,
                     raw_arg=token.split("=", 1)[1],
-                    context_prefix="filter",
-                    index=custom_index,
                 )
             )
-            custom_index += 1
             index += 1
             continue
 
@@ -513,11 +501,8 @@ def parse_filter_entries_from_argv(
                 name=name,
                 query=query,
                 raw_arg=custom_arg,
-                context_prefix="filter",
-                index=custom_index,
             )
         )
-        custom_index += 1
         index = consumed_index + 1
 
     return entries
@@ -531,7 +516,6 @@ def parse_order_entries_from_argv(
     """Parse built-in and custom ordering switch occurrences in argv order."""
     entries: list[str | CustomStageInvocation] = []
     index = 0
-    custom_index = 0
     builtin_options = set(ORDER_BY_OPTION_TO_VALUE) if include_builtin_ordering else set()
     while index < len(argv):
         token = argv[index]
@@ -559,11 +543,8 @@ def parse_order_entries_from_argv(
                     name=name,
                     query=query,
                     raw_arg=token.split("=", 1)[1],
-                    context_prefix="order_by",
-                    index=custom_index,
                 )
             )
-            custom_index += 1
             index += 1
             continue
 
@@ -573,11 +554,8 @@ def parse_order_entries_from_argv(
                 name=name,
                 query=query,
                 raw_arg=custom_arg,
-                context_prefix="order_by",
-                index=custom_index,
             )
         )
-        custom_index += 1
         index = consumed_index + 1
 
     return entries
@@ -590,7 +568,6 @@ def parse_with_entries_from_argv(
     """Parse custom enrichment switch occurrences in argv order."""
     entries: list[CustomStageInvocation] = []
     index = 0
-    custom_index = 0
     while index < len(argv):
         token = argv[index]
         option = _extract_option_token(token)
@@ -610,11 +587,8 @@ def parse_with_entries_from_argv(
                     name=name,
                     query=query,
                     raw_arg=token.split("=", 1)[1],
-                    context_prefix="with",
-                    index=custom_index,
                 )
             )
-            custom_index += 1
             index += 1
             continue
 
@@ -624,11 +598,8 @@ def parse_with_entries_from_argv(
                 name=name,
                 query=query,
                 raw_arg=custom_arg,
-                context_prefix="with",
-                index=custom_index,
             )
         )
-        custom_index += 1
         index = consumed_index + 1
 
     return entries
@@ -646,8 +617,7 @@ def extend_filter_order_with_defaults(
     filter_headings = getattr(args, "filter_headings", None)
     filter_bodies = getattr(args, "filter_bodies", None)
     expected_counts = {
-        "--filter-gamify-exp-above": 1 if args.filter_gamify_exp_above is not None else 0,
-        "--filter-gamify-exp-below": 1 if args.filter_gamify_exp_below is not None else 0,
+        "--filter-priority": 1 if args.filter_priority is not None else 0,
         "--filter-level": 1 if args.filter_level is not None else 0,
         "--filter-repeats-above": 1 if args.filter_repeats_above is not None else 0,
         "--filter-repeats-below": 1 if args.filter_repeats_below is not None else 0,
@@ -690,12 +660,8 @@ def _quote_string(value: str) -> str:
 def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
     """Build query stage for non-indexed filter options."""
     stage: str | None = None
-    if arg_name == "--filter-gamify-exp-above" and args.filter_gamify_exp_above is not None:
-        threshold = args.filter_gamify_exp_above
-        stage = f'select(.properties["gamify_exp"] > {threshold})'
-    elif arg_name == "--filter-gamify-exp-below" and args.filter_gamify_exp_below is not None:
-        threshold = args.filter_gamify_exp_below
-        stage = f'select(.properties["gamify_exp"] < {threshold})'
+    if arg_name == "--filter-priority" and args.filter_priority is not None:
+        stage = f"select(.priority == {_quote_string(args.filter_priority)})"
     elif arg_name == "--filter-level" and args.filter_level is not None:
         stage = f"select(.level == {args.filter_level})"
     elif arg_name == "--filter-repeats-above" and args.filter_repeats_above is not None:
@@ -864,18 +830,12 @@ def build_order_stages(
 
 def _builtin_order_stages(value: str) -> list[str]:
     """Build query stages for one built-in ordering value."""
-    gamify_key_expr = '.properties["gamify_exp"]'
     timestamp_key_expr = ".repeated_tasks + .deadline + .closed + .scheduled | max"
     order_stages: dict[str, list[str]] = {
         "file-order": ["."],
         "file-order-reversed": ["reverse"],
+        "priority": ["sort_by(.priority)"],
         "level": ["sort_by(.level)"],
-        "gamify-exp-asc": [
-            f"sort_by({gamify_key_expr})",
-            "reverse",
-            f"sort_by(({gamify_key_expr}) != none)",
-        ],
-        "gamify-exp-desc": ['sort_by(.properties["gamify_exp"])'],
         "timestamp-asc": [
             f"sort_by({timestamp_key_expr})",
             "reverse",

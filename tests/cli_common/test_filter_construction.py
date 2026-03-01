@@ -12,8 +12,7 @@ import pytest
 class FilterArgsStub:
     """Stub arguments for query construction tests."""
 
-    filter_gamify_exp_above: int | None = None
-    filter_gamify_exp_below: int | None = None
+    filter_priority: str | None = None
     filter_level: int | None = None
     filter_repeats_above: int | None = None
     filter_repeats_below: int | None = None
@@ -29,10 +28,9 @@ class FilterArgsStub:
     order_by_level: bool = False
     order_by_file_order: bool = False
     order_by_file_order_reversed: bool = False
+    order_by_priority: bool = False
     order_by_timestamp_asc: bool = False
     order_by_timestamp_desc: bool = False
-    order_by_gamify_exp_asc: bool = False
-    order_by_gamify_exp_desc: bool = False
     offset: int = 0
     max_results: int = 10
     todo_keys: str = "TODO"
@@ -59,8 +57,8 @@ def test_parse_filter_order_from_argv() -> None:
         "org",
         "tasks",
         "list",
-        "--filter-gamify-exp-above",
-        "10",
+        "--filter-priority",
+        "A",
         "--filter-tag",
         "work$",
         "file.org",
@@ -68,7 +66,7 @@ def test_parse_filter_order_from_argv() -> None:
 
     result = parse_filter_order_from_argv(argv)
 
-    assert result == ["--filter-gamify-exp-above", "--filter-tag"]
+    assert result == ["--filter-priority", "--filter-tag"]
 
 
 def test_parse_filter_order_from_argv_supports_equals_form() -> None:
@@ -153,19 +151,16 @@ def test_build_query_text_with_timestamp_asc_keeps_none_last() -> None:
     )
 
 
-def test_build_query_text_with_gamify_exp_asc_keeps_none_last() -> None:
-    """gamify-exp-asc should keep items with missing value at the end."""
+def test_build_query_text_with_priority_ordering() -> None:
+    """priority ordering should sort by node priority value."""
     from org.cli_common import build_query_text
 
-    args = make_args(order_by_gamify_exp_asc=True)
-    argv = ["org", "tasks", "list", "--order-by-gamify-exp-asc", "file.org"]
+    args = make_args(order_by_priority=True)
+    argv = ["org", "tasks", "list", "--order-by-priority", "file.org"]
 
     query = build_query_text(args, argv, include_ordering=True, include_slice=False)
 
-    assert query == (
-        '[ .[] | sort_by(.properties["gamify_exp"]) | reverse '
-        '| sort_by((.properties["gamify_exp"]) != none) ]'
-    )
+    assert query == "[ .[] | sort_by(.priority) ]"
 
 
 def test_build_query_text_with_property_filter() -> None:
@@ -230,7 +225,7 @@ def test_build_query_text_with_custom_filter_and_optional_arg(
         config,
         "CONFIG_CUSTOM_FILTERS",
         {
-            "priority": "select(.priority == $arg)",
+            "todo-state": "select(.todo == $arg)",
             "has-todo": "select(.todo != none)",
         },
     )
@@ -242,7 +237,7 @@ def test_build_query_text_with_custom_filter_and_optional_arg(
         "org",
         "tasks",
         "list",
-        "--filter-priority",
+        "--filter-todo-state",
         "3",
         "--filter-has-todo",
         "file.org",
@@ -251,7 +246,7 @@ def test_build_query_text_with_custom_filter_and_optional_arg(
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
     assert query == (
-        "[ .[] | ., (3 as $arg) | .[0] | (select(.priority == $arg))"
+        "[ .[] | ., (3 as $arg) | .[0] | (select(.todo == $arg))"
         " | ., (none as $arg) | .[0] | (select(.todo != none)) ]"
     )
 
@@ -264,7 +259,7 @@ def test_collect_custom_context_vars_returns_empty_for_custom_args(
     from org.cli_common import collect_custom_context_vars
 
     monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {"value": "select(.v == $arg)"})
-    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"priority": "sort_by(.priority)"})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"weight": "sort_by(.priority)"})
     monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {"mark": '. + {"x": $arg}'})
 
     args = make_args(files=["file.org"])
@@ -278,9 +273,9 @@ def test_collect_custom_context_vars_returns_empty_for_custom_args(
         "true",
         "--filter-value",
         "12",
-        "--order-by-priority",
+        "--order-by-weight",
         "12.5",
-        "--order-by-priority",
+        "--order-by-weight",
         "alpha",
         "file.org",
     ]
@@ -324,10 +319,10 @@ def test_build_query_text_custom_ordering_for_stats(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {})
     monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {})
-    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"priority": "sort_by(.priority)"})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"weight": "sort_by(.priority)"})
 
     args = make_args(files=["file.org"])
-    argv = ["org", "stats", "summary", "--order-by-priority", "file.org"]
+    argv = ["org", "stats", "summary", "--order-by-weight", "file.org"]
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
@@ -357,14 +352,14 @@ def test_build_query_text_preserves_mixed_ordering_cli_order(
 
     monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {})
     monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {})
-    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"priority": "sort_by(.priority)"})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"weight": "sort_by(.priority)"})
 
     args = make_args(order_by_timestamp_desc=True, files=["file.org"])
     argv = [
         "org",
         "tasks",
         "list",
-        "--order-by-priority",
+        "--order-by-weight",
         "--order-by-timestamp-desc",
         "file.org",
     ]

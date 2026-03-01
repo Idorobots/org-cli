@@ -51,8 +51,7 @@ class ListArgs:
     exclude_inline: list[str] | None
     todo_keys: str
     done_keys: str
-    filter_gamify_exp_above: int | None
-    filter_gamify_exp_below: int | None
+    filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
     filter_repeats_below: int | None
@@ -71,10 +70,9 @@ class ListArgs:
     order_by_level: bool
     order_by_file_order: bool
     order_by_file_order_reversed: bool
+    order_by_priority: bool
     order_by_timestamp_asc: bool
     order_by_timestamp_desc: bool
-    order_by_gamify_exp_asc: bool
-    order_by_gamify_exp_desc: bool
     with_numeric_gamify_exp: bool
     with_gamify_category: bool
     with_tags_as_category: bool
@@ -325,17 +323,11 @@ def register(app: typer.Typer) -> None:
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
-        filter_gamify_exp_above: int | None = typer.Option(
+        filter_priority: str | None = typer.Option(
             None,
-            "--filter-gamify-exp-above",
-            metavar="N",
-            help="Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)",
-        ),
-        filter_gamify_exp_below: int | None = typer.Option(
-            None,
-            "--filter-gamify-exp-below",
-            metavar="N",
-            help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
+            "--filter-priority",
+            metavar="P",
+            help="Filter tasks where priority equals P",
         ),
         filter_level: int | None = typer.Option(
             None,
@@ -447,6 +439,11 @@ def register(app: typer.Typer) -> None:
             "--order-by-file-order-reversed",
             help="Reverse source file order (repeatable)",
         ),
+        order_by_priority: bool = typer.Option(
+            False,
+            "--order-by-priority",
+            help="Order by priority (repeatable)",
+        ),
         order_by_timestamp_asc: bool = typer.Option(
             False,
             "--order-by-timestamp-asc",
@@ -456,16 +453,6 @@ def register(app: typer.Typer) -> None:
             False,
             "--order-by-timestamp-desc",
             help="Order by newest timestamp first (repeatable)",
-        ),
-        order_by_gamify_exp_asc: bool = typer.Option(
-            False,
-            "--order-by-gamify-exp-asc",
-            help="Order by lowest gamify_exp first (repeatable)",
-        ),
-        order_by_gamify_exp_desc: bool = typer.Option(
-            False,
-            "--order-by-gamify-exp-desc",
-            help="Order by highest gamify_exp first (repeatable)",
         ),
         with_gamify_category: bool = typer.Option(
             False,
@@ -521,8 +508,7 @@ def register(app: typer.Typer) -> None:
             exclude_inline=None,
             todo_keys=todo_keys,
             done_keys=done_keys,
-            filter_gamify_exp_above=filter_gamify_exp_above,
-            filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_priority=filter_priority,
             filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
             filter_repeats_below=filter_repeats_below,
@@ -541,10 +527,9 @@ def register(app: typer.Typer) -> None:
             order_by_level=order_by_level,
             order_by_file_order=order_by_file_order,
             order_by_file_order_reversed=order_by_file_order_reversed,
+            order_by_priority=order_by_priority,
             order_by_timestamp_asc=order_by_timestamp_asc,
             order_by_timestamp_desc=order_by_timestamp_desc,
-            order_by_gamify_exp_asc=order_by_gamify_exp_asc,
-            order_by_gamify_exp_desc=order_by_gamify_exp_desc,
             with_numeric_gamify_exp=with_numeric_gamify_exp,
             with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,

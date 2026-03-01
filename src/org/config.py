@@ -25,8 +25,7 @@ COMMAND_OPTION_NAMES = {
     "filter_completed",
     "filter_date_from",
     "filter_date_until",
-    "filter_gamify_exp_above",
-    "filter_gamify_exp_below",
+    "filter_priority",
     "filter_level",
     "filter_headings",
     "filter_not_completed",
@@ -46,8 +45,7 @@ COMMAND_OPTION_NAMES = {
     "pandoc_args",
     "order_by_file_order",
     "order_by_file_order_reversed",
-    "order_by_gamify_exp_asc",
-    "order_by_gamify_exp_desc",
+    "order_by_priority",
     "order_by_level",
     "order_by_timestamp_asc",
     "order_by_timestamp_desc",
@@ -83,8 +81,7 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "filter_completed": "--filter-completed",
     "filter_date_from": "--filter-date-from",
     "filter_date_until": "--filter-date-until",
-    "filter_gamify_exp_above": "--filter-gamify-exp-above",
-    "filter_gamify_exp_below": "--filter-gamify-exp-below",
+    "filter_priority": "--filter-priority",
     "filter_headings": "--filter-heading",
     "filter_level": "--filter-level",
     "filter_not_completed": "--filter-not-completed",
@@ -106,8 +103,7 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "pandoc_args": "--pandoc-args",
     "order_by_file_order": "--order-by-file-order",
     "order_by_file_order_reversed": "--order-by-file-order-reversed",
-    "order_by_gamify_exp_asc": "--order-by-gamify-exp-asc",
-    "order_by_gamify_exp_desc": "--order-by-gamify-exp-desc",
+    "order_by_priority": "--order-by-priority",
     "order_by_level": "--order-by-level",
     "order_by_timestamp_asc": "--order-by-timestamp-asc",
     "order_by_timestamp_desc": "--order-by-timestamp-desc",
@@ -350,7 +346,7 @@ def validate_str_option(key: str, value: object) -> str | None:
     if not isinstance(value, str):
         return None
     stripped = value.strip()
-    if key in ("--config", "--show", "--out") and not stripped:
+    if key in ("--config", "--show", "--out", "--filter-priority") and not stripped:
         return None
 
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
@@ -581,8 +577,6 @@ def build_config_defaults(
     }
 
     global_int_options: dict[str, tuple[str, int | None]] = {
-        "--filter-gamify-exp-above": ("filter_gamify_exp_above", None),
-        "--filter-gamify-exp-below": ("filter_gamify_exp_below", None),
         "--filter-level": ("filter_level", None),
         "--filter-repeats-above": ("filter_repeats_above", None),
         "--filter-repeats-below": ("filter_repeats_below", None),
@@ -601,9 +595,8 @@ def build_config_defaults(
         "--filter-not-completed": "filter_not_completed",
         "--order-by-file-order": "order_by_file_order",
         "--order-by-file-order-reversed": "order_by_file_order_reversed",
-        "--order-by-gamify-exp-asc": "order_by_gamify_exp_asc",
-        "--order-by-gamify-exp-desc": "order_by_gamify_exp_desc",
         "--order-by-level": "order_by_level",
+        "--order-by-priority": "order_by_priority",
         "--order-by-timestamp-asc": "order_by_timestamp_asc",
         "--order-by-timestamp-desc": "order_by_timestamp_desc",
         "--verbose": "verbose",
@@ -620,6 +613,7 @@ def build_config_defaults(
         "--done-keys": "done_keys",
         "--filter-date-from": "filter_date_from",
         "--filter-date-until": "filter_date_until",
+        "--filter-priority": "filter_priority",
         "--out": "out",
         "--out-theme": "out_theme",
         "--pandoc-args": "pandoc_args",

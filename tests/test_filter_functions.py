@@ -11,8 +11,6 @@ from org.filters import (
     filter_completed,
     filter_date_from,
     filter_date_until,
-    filter_gamify_exp_above,
-    filter_gamify_exp_below,
     filter_heading,
     filter_not_completed,
     filter_property,
@@ -40,80 +38,6 @@ def test_get_repeat_count_with_repeats() -> None:
 """
     nodes = node_from_org(org_text)
     assert get_repeat_count(nodes[0]) == 2
-
-
-@pytest.mark.parametrize(
-    "filter_func,threshold,expected_count",
-    [
-        (filter_gamify_exp_above, 10, 2),
-        (filter_gamify_exp_above, 20, 1),
-        (filter_gamify_exp_below, 20, 2),
-        (filter_gamify_exp_below, 10, 1),
-    ],
-)
-def test_filter_gamify_exp_threshold(
-    filter_func: Callable[[list[OrgNode], int], list[OrgNode]], threshold: int, expected_count: int
-) -> None:
-    """Test gamify_exp filters with various thresholds."""
-    nodes = (
-        node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 5\n:END:\n")
-        + node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 15\n:END:\n")
-        + node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 25\n:END:\n")
-    )
-
-    result = filter_func(nodes, threshold)
-
-    assert len(result) == expected_count
-
-
-@pytest.mark.parametrize(
-    "filter_func,threshold,boundary_value,should_match",
-    [
-        (filter_gamify_exp_above, 10, 10, False),
-        (filter_gamify_exp_above, 10, 11, True),
-        (filter_gamify_exp_below, 10, 10, False),
-        (filter_gamify_exp_below, 10, 9, True),
-    ],
-)
-def test_filter_gamify_exp_boundary(
-    filter_func: Callable[[list[OrgNode], int], list[OrgNode]],
-    threshold: int,
-    boundary_value: int,
-    should_match: bool,
-) -> None:
-    """Test gamify_exp filters are non-inclusive at boundaries."""
-    nodes = node_from_org(f"* DONE Task\n:PROPERTIES:\n:gamify_exp: {boundary_value}\n:END:\n")
-
-    result = filter_func(nodes, threshold)
-
-    assert len(result) == (1 if should_match else 0)
-
-
-@pytest.mark.parametrize(
-    "filter_func,threshold",
-    [
-        (filter_gamify_exp_above, 9),
-        (filter_gamify_exp_below, 11),
-    ],
-)
-def test_filter_gamify_exp_missing_defaults_to_10(
-    filter_func: Callable[[list[OrgNode], int], list[OrgNode]], threshold: int
-) -> None:
-    """Test gamify_exp filters with missing gamify_exp (defaults to 10)."""
-    nodes = node_from_org("* DONE Task\n")
-
-    result = filter_func(nodes, threshold)
-
-    assert len(result) == 1
-
-
-def test_filter_gamify_exp_above_empty_list() -> None:
-    """Test filter_gamify_exp_above with empty list."""
-    nodes: list[OrgNode] = []
-
-    result = filter_gamify_exp_above(nodes, 10)
-
-    assert result == []
 
 
 @pytest.mark.parametrize(
@@ -545,12 +469,16 @@ def test_filter_completion_no_match(
 def test_filters_preserve_order() -> None:
     """Test that all filters preserve original node order."""
     nodes = (
-        node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 15\n:END:\n")
-        + node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 25\n:END:\n")
-        + node_from_org("* DONE Task\n:PROPERTIES:\n:gamify_exp: 35\n:END:\n")
+        node_from_org("* DONE Task\n")
+        + node_from_org(
+            '* DONE Task\n:LOGBOOK:\n- State "DONE" from "TODO" [2025-01-12 Sun 11:00]\n:END:\n'
+        )
+        + node_from_org(
+            '* DONE Task\n:LOGBOOK:\n- State "DONE" from "TODO" [2025-01-13 Mon 11:00]\n- State "DONE" from "TODO" [2025-01-14 Tue 11:00]\n:END:\n'
+        )
     )
 
-    result = filter_gamify_exp_above(nodes, 10)
+    result = filter_repeats_above(nodes, 0)
 
     assert len(result) == 3
     assert result[0] == nodes[0]

@@ -245,40 +245,6 @@ def _filter_node_repeats(
     return _FilteredOrgNode(node, matching_repeats)
 
 
-def filter_gamify_exp_above(
-    nodes: list[orgparse.node.OrgNode], threshold: int
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes where gamify_exp > threshold (non-inclusive).
-
-    Missing gamify_exp defaults to 10.
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        threshold: Threshold value
-
-    Returns:
-        Filtered list of nodes
-    """
-    return [node for node in nodes if (get_gamify_exp(node) or 10) > threshold]
-
-
-def filter_gamify_exp_below(
-    nodes: list[orgparse.node.OrgNode], threshold: int
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes where gamify_exp < threshold (non-inclusive).
-
-    Missing gamify_exp defaults to 10.
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        threshold: Threshold value
-
-    Returns:
-        Filtered list of nodes
-    """
-    return [node for node in nodes if (get_gamify_exp(node) or 10) < threshold]
-
-
 def filter_repeats_above(
     nodes: list[orgparse.node.OrgNode], threshold: int
 ) -> list[orgparse.node.OrgNode]:

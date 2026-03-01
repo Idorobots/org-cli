@@ -14,10 +14,9 @@ poetry run org tasks list [OPTIONS] [FILE ...]
 - `--order-by-level` - Sort by heading level (repeatable).
 - `--order-by-file-order` - Keep/archive input order (repeatable).
 - `--order-by-file-order-reversed` - Reverse archive input order (repeatable).
+- `--order-by-priority` - Sort by task priority (repeatable).
 - `--order-by-timestamp-asc` - Sort by task timestamp ascending (repeatable).
 - `--order-by-timestamp-desc` - Sort by task timestamp descending (repeatable).
-- `--order-by-gamify-exp-asc` - Sort by `gamify_exp` ascending (repeatable).
-- `--order-by-gamify-exp-desc` - Sort by `gamify_exp` descending (repeatable).
 - `--offset` - Skip first N results.
 - `--max-results`, `-n` - Limit displayed tasks.
 - `--out` - Output format (`org`, `json`, or any Pandoc writer format such as `gfm`, `html5`, `rst`, `pdf`).
@@ -26,7 +25,7 @@ poetry run org tasks list [OPTIONS] [FILE ...]
 
 ## Available filters
 
-- `--filter-gamify-exp-above N`, `--filter-gamify-exp-below N` - Filter by `gamify_exp` thresholds.
+- `--filter-priority P` - Keep only tasks with priority equal to `P`.
 - `--filter-level N` - Keep only tasks at heading level `N`.
 - `--filter-repeats-above N`, `--filter-repeats-below N` - Filter by repeat count.
 - `--filter-date-from TS`, `--filter-date-until TS` - Keep tasks in a timestamp window.
@@ -37,9 +36,9 @@ poetry run org tasks list [OPTIONS] [FILE ...]
 ## Available orderings
 
 - `file-order`, `file-order-reversed` - Keep/archive input order.
+- `priority` - Sort by task priority.
 - `level` - Sort by heading level.
 - `timestamp-asc`, `timestamp-desc` - Sort by task timestamps.
-- `gamify-exp-asc`, `gamify-exp-desc` - Sort by `gamify_exp` value.
 
 Ordering switches are repeatable; orderings are applied in the sequence you pass them.
 

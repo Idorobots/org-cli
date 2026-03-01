@@ -50,8 +50,7 @@ class SummaryArgs:
     exclude_inline: list[str] | None
     todo_keys: str
     done_keys: str
-    filter_gamify_exp_above: int | None
-    filter_gamify_exp_below: int | None
+    filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
     filter_repeats_below: int | None
@@ -276,17 +275,11 @@ def register(app: typer.Typer) -> None:
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
-        filter_gamify_exp_above: int | None = typer.Option(
+        filter_priority: str | None = typer.Option(
             None,
-            "--filter-gamify-exp-above",
-            metavar="N",
-            help="Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)",
-        ),
-        filter_gamify_exp_below: int | None = typer.Option(
-            None,
-            "--filter-gamify-exp-below",
-            metavar="N",
-            help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
+            "--filter-priority",
+            metavar="P",
+            help="Filter tasks where priority equals P",
         ),
         filter_level: int | None = typer.Option(
             None,
@@ -440,8 +433,7 @@ def register(app: typer.Typer) -> None:
             exclude_inline=None,
             todo_keys=todo_keys,
             done_keys=done_keys,
-            filter_gamify_exp_above=filter_gamify_exp_above,
-            filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_priority=filter_priority,
             filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
             filter_repeats_below=filter_repeats_below,
