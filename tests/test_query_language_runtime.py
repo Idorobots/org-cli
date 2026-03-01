@@ -345,6 +345,12 @@ def test_runtime_let_binding_without_previous_value_clears_variable_after_body()
     assert "temp" not in context.variables
 
 
+def test_runtime_let_binding_evaluates_per_input_item() -> None:
+    """let should bind values separately for each stream item."""
+    result = _execute(".[] | let . as $x in ($x * 2)", [1, 2, 3], None)
+    assert result == [2, 4, 6]
+
+
 def test_runtime_cast_and_match_validation_errors() -> None:
     """Cast and match functions should validate argument and input types."""
     with pytest.raises(QueryRuntimeError):
