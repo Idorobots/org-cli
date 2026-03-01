@@ -30,7 +30,7 @@ A query is an expression tree composed of these syntax classes:
 
 ### Literals
 
-- `123`, `-3`, `4.5`
+- `123`, `4.5`
 - `"text"`
 - `true`, `false`
 - `none`
@@ -39,9 +39,12 @@ Examples:
 
 ```text
 42
+-42
 "abc"
 none
 ```
+
+Negative values use unary minus (`-subquery`), which is evaluated as `0 - subquery`.
 
 ### Variables
 
@@ -169,13 +172,14 @@ Highest to lowest:
 
 1. Postfix access (`.field`, `[]`, `[i]`, `[a:b]`)
 2. Power (`**`, right-associative)
-3. Multiplicative (`*`, `/`, `mod`, `rem`, `quot`)
-4. Additive (`+`, `-`)
-5. Comparison (`==`, `!=`, `>`, `<`, `>=`, `<=`, `matches`, `in`)
-6. Boolean (`and`, `or`)
-7. Tuple (`,`)
-8. Binding (`as $name`)
-9. Pipeline (`|`)
+3. Unary minus (`-subquery`, evaluated as `0 - subquery`)
+4. Multiplicative (`*`, `/`, `mod`, `rem`, `quot`)
+5. Additive (`+`, `-`)
+6. Comparison (`==`, `!=`, `>`, `<`, `>=`, `<=`, `matches`, `in`)
+7. Boolean (`and`, `or`)
+8. Tuple (`,`)
+9. Binding (`as $name`)
+10. Pipeline (`|`)
 
 ## 5) Operators reference
 
@@ -232,6 +236,7 @@ none or "x" => "x"
 ### Arithmetic
 
 - `**`, `*`, `/`, `+`, `-`, `mod`, `rem`, `quot`
+- Unary minus: `-subquery` is evaluated as `0 - subquery`
 
 ```text
 2 ** 3    => 8

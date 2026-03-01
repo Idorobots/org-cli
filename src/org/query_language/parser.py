@@ -356,7 +356,7 @@ def _make_parser() -> Parser:
     """Create the full expression parser."""
     ws = regex(r"\s*")
     identifier = _lexeme(regex(r"[A-Za-z_][A-Za-z0-9_]*"))
-    number_token = _lexeme(regex(r"-?\d+(?:\.\d+)?"))
+    number_token = _lexeme(regex(r"\d+(?:\.\d+)?"))
     string_token = _lexeme(regex(r'"(?:[^"\\]|\\.)*"'))
 
     expr = forward_declaration()
@@ -393,11 +393,26 @@ def _make_parser() -> Parser:
     atom = _build_postfix_chain_parser(base_atom, identifier, bracket_postfix)
 
     power = _chain_right(atom, _symbol("**"), _binary_builder)
+
+    @generate
+    def unary() -> Generator[Parser, object, Expr]:
+        minuses_result = yield _symbol("-").many()
+        if not isinstance(minuses_result, list):
+            raise QueryParseError("Invalid unary minus expression")
+        value_result = yield power
+        if not isinstance(value_result, Expr):
+            raise QueryParseError("Invalid unary minus operand")
+
+        current: Expr = value_result
+        for _minus in minuses_result:
+            current = BinaryOp("-", NumberLiteral(0), current)
+        return current
+
     mult_op = _lexeme(
         string("*") | string("/") | _keyword("mod") | _keyword("rem") | _keyword("quot")
     )
     additive_op = _lexeme(string("+") | string("-"))
-    multiply = _chain_left(power, mult_op, _binary_builder)
+    multiply = _chain_left(unary, mult_op, _binary_builder)
     additive = _chain_left(multiply, additive_op, _binary_builder)
     index_expr.become(additive)
 

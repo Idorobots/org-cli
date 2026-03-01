@@ -256,6 +256,17 @@ def test_runtime_numeric_operators_and_slice_expression() -> None:
     assert sliced == [[20, 30]]
 
 
+def test_runtime_unary_minus_behavior() -> None:
+    """Unary minus should evaluate as subtraction from zero."""
+    negated_stream = _execute(".[] | -.", [1, 2, 3], None)
+    precedence = _execute("-2 ** 2", [None], None)
+    mixed = _execute("1 - -2", [None], None)
+
+    assert negated_stream == [-1, -2, -3]
+    assert precedence == [-4]
+    assert mixed == [3]
+
+
 def test_runtime_or_and_operator_semantics() -> None:
     """or/and should follow query truthiness semantics."""
     result = _execute('"foo" or "x", none or "x", "x" and none, "x" and 1', [None], None)

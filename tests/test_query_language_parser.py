@@ -14,6 +14,7 @@ from org.query_language.ast import (
     IfElse,
     LetBinding,
     NoneLiteral,
+    NumberLiteral,
     Pipe,
     Slice,
 )
@@ -55,6 +56,9 @@ from org.query_language.errors import QueryParseError
         "sha256",
         'match("(DONE|TODO)")',
         "uuid",
+        "-1",
+        "-.priority",
+        "1 - -2",
         "let .heading as $h in $h",
         'if .todo == "DONE" then .heading else "pending"',
         ". as $root | $root[]",
@@ -110,6 +114,15 @@ def test_parse_if_else_shape() -> None:
     """Parser should parse if-then-else nodes."""
     expr = parse_query('if .todo == "DONE" then .heading else "pending"')
     assert isinstance(expr, IfElse)
+
+
+def test_parse_unary_minus_shape() -> None:
+    """Parser should lower unary minus into subtraction from zero."""
+    expr = parse_query("-.priority")
+    assert isinstance(expr, BinaryOp)
+    assert expr.operator == "-"
+    assert isinstance(expr.left, NumberLiteral)
+    assert expr.left.value == 0
 
 
 def test_parse_fold_shape() -> None:
