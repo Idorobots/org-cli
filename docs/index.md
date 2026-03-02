@@ -29,6 +29,11 @@ Config uses four top-level sections:
 - `order-by`: custom `--order-by-<name>` query snippets.
 - `with`: custom `--with-<name>` query snippets.
 
+Custom switch argument handling:
+
+- If a custom query uses `$arg`, the associated generated switch requires exactly one argument.
+- If a custom query does not use `$arg`, the associated generated switch does not require an argument.
+
 Example:
 
 ```json

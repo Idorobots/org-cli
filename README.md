@@ -23,6 +23,11 @@ Top-level config sections:
 - `order-by` for custom `--order-by-<name>` query snippets
 - `with` for custom `--with-<name>` query snippets
 
+Custom switch argument handling:
+
+- If a custom query contains `$arg`, the generated CLI switch requires exactly one argument.
+- If `$arg` is not present, the generated switch does not require an argument.
+
 ```json
 {
   "defaults": {

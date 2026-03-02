@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 import pytest
+import typer
 
 
 @dataclass
@@ -385,6 +386,80 @@ def test_build_query_text_rejects_unknown_custom_switch(monkeypatch: pytest.Monk
 
     with pytest.raises(click.NoSuchOption, match="No such option"):
         build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+
+def test_build_query_text_custom_filter_requires_exactly_one_argument(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Custom filters using $arg should require exactly one argument."""
+    from org import config
+    from org.cli_common import build_query_text
+
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {"level-above": "select(.level > $arg)"})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {})
+
+    args = make_args(files=["file.org"])
+    argv = ["org", "tasks", "list", "--filter-level-above"]
+
+    with pytest.raises(
+        typer.BadParameter, match="--filter-level-above requires exactly one argument"
+    ):
+        build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+
+def test_build_query_text_custom_order_by_requires_exactly_one_argument(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Custom order-by switches using $arg should require exactly one argument."""
+    from org import config
+    from org.cli_common import build_query_text
+
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"weight": "sort_by($arg)"})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {})
+
+    args = make_args(files=["file.org"])
+    argv = ["org", "tasks", "list", "--order-by-weight"]
+
+    with pytest.raises(typer.BadParameter, match="--order-by-weight requires exactly one argument"):
+        build_query_text(args, argv, include_ordering=True, include_slice=False)
+
+
+def test_build_query_text_custom_with_requires_exactly_one_argument(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Custom enrichment switches using $arg should require exactly one argument."""
+    from org import config
+    from org.cli_common import build_query_text
+
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {"mark": '. + {"x": $arg}'})
+
+    args = make_args(files=["file.org"])
+    argv = ["org", "tasks", "list", "--with-mark"]
+
+    with pytest.raises(typer.BadParameter, match="--with-mark requires exactly one argument"):
+        build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+
+def test_normalize_cli_files_consumes_required_custom_path_like_argument(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Required custom arguments should consume path-like values."""
+    from org import config
+    from org.cli_common import normalize_cli_files_for_custom_switches
+
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {"value": "select(.todo == $arg)"})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {})
+
+    files = ["--filter-value", "README.md", "file.org"]
+
+    result = normalize_cli_files_for_custom_switches(files)
+
+    assert result == ["file.org"]
 
 
 def test_get_top_day_info_none() -> None:

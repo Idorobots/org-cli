@@ -99,3 +99,25 @@ def test_cli_runner_tasks_list_custom_filter_with_arg() -> None:
     finally:
         config.CONFIG_CUSTOM_FILTERS.clear()
         config.CONFIG_CUSTOM_FILTERS.update(original_filters)
+
+
+def test_cli_runner_tasks_list_custom_filter_required_arg_error() -> None:
+    """Custom filters with $arg should fail when the argument is missing."""
+    runner = CliRunner()
+    original_filters = dict(config.CONFIG_CUSTOM_FILTERS)
+
+    try:
+        config.CONFIG_CUSTOM_FILTERS.clear()
+        config.CONFIG_CUSTOM_FILTERS.update({"level-above": "select(.level > $arg)"})
+
+        result = runner.invoke(
+            app,
+            ["tasks", "list", "--no-color", "--filter-level-above"],
+        )
+
+        assert result.exit_code != 0
+        combined_output = result.stdout + result.stderr
+        assert "--filter-level-above requires exactly one argument" in combined_output
+    finally:
+        config.CONFIG_CUSTOM_FILTERS.clear()
+        config.CONFIG_CUSTOM_FILTERS.update(original_filters)

@@ -287,28 +287,37 @@ def _custom_option_name(option: str, prefix: str) -> str | None:
     return option[len(option_prefix) :]
 
 
-def _is_configured_custom_option(option: str) -> bool:
-    """Return True when option matches one configured custom switch."""
+def _query_uses_arg(query: str) -> bool:
+    """Return True when query contains the `$arg` variable."""
+    return bool(re.search(r"\$arg\b", query))
+
+
+def _resolve_custom_option(option: str) -> tuple[str, bool] | None:
+    """Resolve configured custom option to (query, requires_arg)."""
     filter_name = _custom_option_name(option, "filter")
-    if filter_name is not None and filter_name in config_module.CONFIG_CUSTOM_FILTERS:
-        return True
+    if filter_name is not None:
+        query = config_module.CONFIG_CUSTOM_FILTERS.get(filter_name)
+        if query is not None:
+            return (query, _query_uses_arg(query))
 
     order_name = _custom_option_name(option, "order-by")
-    if order_name is not None and order_name in config_module.CONFIG_CUSTOM_ORDER_BY:
-        return True
+    if order_name is not None:
+        query = config_module.CONFIG_CUSTOM_ORDER_BY.get(order_name)
+        if query is not None:
+            return (query, _query_uses_arg(query))
 
     with_name = _custom_option_name(option, "with")
-    return with_name is not None and with_name in config_module.CONFIG_CUSTOM_WITH
+    if with_name is not None:
+        query = config_module.CONFIG_CUSTOM_WITH.get(with_name)
+        if query is not None:
+            return (query, _query_uses_arg(query))
+
+    return None
 
 
-def _looks_like_path_token(token: str) -> bool:
-    """Return True when token resembles a file or directory path."""
-    return token in {".", ".."} or "/" in token or token.endswith(".org") or token.startswith("~")
-
-
-def _is_probable_custom_arg(token: str) -> bool:
-    """Return True when token is likely a custom switch argument, not a file path."""
-    return not Path(token).exists() and not _looks_like_path_token(token)
+def _required_custom_arg_error(option: str) -> typer.BadParameter:
+    """Return the standard required custom argument error."""
+    return typer.BadParameter(f"{option} requires exactly one argument")
 
 
 def normalize_cli_files_for_custom_switches(files: list[str] | None) -> list[str] | None:
@@ -326,21 +335,28 @@ def normalize_cli_files_for_custom_switches(files: list[str] | None) -> list[str
     while index < len(files):
         token = files[index]
         option = _extract_option_token(token)
-        if not _is_configured_custom_option(option):
+        custom_option = _resolve_custom_option(option)
+        if custom_option is None:
             normalized.append(token)
             index += 1
             continue
+
+        _, requires_arg = custom_option
 
         if token.startswith(f"{option}="):
             index += 1
             continue
 
-        next_index = index + 1
-        if next_index < len(files):
+        if requires_arg:
+            next_index = index + 1
+            if next_index >= len(files):
+                raise _required_custom_arg_error(option)
+
             next_token = files[next_index]
-            if not next_token.startswith("-") and _is_probable_custom_arg(next_token):
-                index += 2
-                continue
+            if next_token.startswith("-"):
+                raise _required_custom_arg_error(option)
+            index += 2
+            continue
 
         index += 1
 
@@ -350,20 +366,20 @@ def normalize_cli_files_for_custom_switches(files: list[str] | None) -> list[str
 def _consume_custom_optional_arg(
     argv: list[str],
     index: int,
-    files: list[str] | None,
+    option: str,
+    requires_arg: bool,
 ) -> tuple[str | None, int]:
-    """Consume an optional argument token for a custom switch occurrence."""
+    """Consume custom argument token for one custom switch occurrence."""
+    if not requires_arg:
+        return (None, index)
+
     next_index = index + 1
     if next_index >= len(argv):
-        return (None, index)
+        raise _required_custom_arg_error(option)
 
     next_token = argv[next_index]
     if next_token.startswith("-"):
-        return (None, index)
-
-    file_values = set(files or [])
-    if next_token in file_values:
-        return (None, index)
+        raise _required_custom_arg_error(option)
 
     return (next_token, next_index)
 
@@ -437,7 +453,7 @@ def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) ->
         {f"--with-{name}" for name in config_module.CONFIG_CUSTOM_WITH}
     )
 
-    for token in argv:
+    for index, token in enumerate(argv):
         option = _extract_option_token(token)
         if option.startswith("--filter-") and option not in allowed_filter_options:
             raise click.NoSuchOption(option)
@@ -445,6 +461,22 @@ def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) ->
             raise click.NoSuchOption(option)
         if option.startswith("--with-") and option not in allowed_with_options:
             raise click.NoSuchOption(option)
+
+        custom_option = _resolve_custom_option(option)
+        if custom_option is None:
+            continue
+
+        _, requires_arg = custom_option
+        if not requires_arg or token.startswith(f"{option}="):
+            continue
+
+        next_index = index + 1
+        if next_index >= len(argv):
+            raise _required_custom_arg_error(option)
+
+        next_token = argv[next_index]
+        if next_token.startswith("-"):
+            raise _required_custom_arg_error(option)
 
 
 def parse_order_values_from_argv(argv: list[str]) -> list[str]:
@@ -459,7 +491,6 @@ def parse_order_values_from_argv(argv: list[str]) -> list[str]:
 
 def parse_filter_entries_from_argv(
     argv: list[str],
-    files: list[str] | None,
 ) -> list[str | CustomStageInvocation]:
     """Parse built-in and custom filter switch occurrences in argv order."""
     entries: list[str | CustomStageInvocation] = []
@@ -480,6 +511,7 @@ def parse_filter_entries_from_argv(
             continue
 
         query = config_module.CONFIG_CUSTOM_FILTERS[name]
+        requires_arg = _query_uses_arg(query)
         if token.startswith(f"{option}="):
             entries.append(
                 _build_custom_invocation(
@@ -491,7 +523,12 @@ def parse_filter_entries_from_argv(
             index += 1
             continue
 
-        custom_arg, consumed_index = _consume_custom_optional_arg(argv, index, files)
+        custom_arg, consumed_index = _consume_custom_optional_arg(
+            argv,
+            index,
+            option,
+            requires_arg,
+        )
         entries.append(
             _build_custom_invocation(
                 name=name,
@@ -506,7 +543,6 @@ def parse_filter_entries_from_argv(
 
 def parse_order_entries_from_argv(
     argv: list[str],
-    files: list[str] | None,
     include_builtin_ordering: bool,
 ) -> list[str | CustomStageInvocation]:
     """Parse built-in and custom ordering switch occurrences in argv order."""
@@ -533,6 +569,7 @@ def parse_order_entries_from_argv(
             continue
 
         query = config_module.CONFIG_CUSTOM_ORDER_BY[name]
+        requires_arg = _query_uses_arg(query)
         if token.startswith(f"{option}="):
             entries.append(
                 _build_custom_invocation(
@@ -544,7 +581,12 @@ def parse_order_entries_from_argv(
             index += 1
             continue
 
-        custom_arg, consumed_index = _consume_custom_optional_arg(argv, index, files)
+        custom_arg, consumed_index = _consume_custom_optional_arg(
+            argv,
+            index,
+            option,
+            requires_arg,
+        )
         entries.append(
             _build_custom_invocation(
                 name=name,
@@ -559,7 +601,6 @@ def parse_order_entries_from_argv(
 
 def parse_with_entries_from_argv(
     argv: list[str],
-    files: list[str] | None,
 ) -> list[CustomStageInvocation]:
     """Parse custom enrichment switch occurrences in argv order."""
     entries: list[CustomStageInvocation] = []
@@ -577,6 +618,7 @@ def parse_with_entries_from_argv(
             continue
 
         query = config_module.CONFIG_CUSTOM_WITH[name]
+        requires_arg = _query_uses_arg(query)
         if token.startswith(f"{option}="):
             entries.append(
                 _build_custom_invocation(
@@ -588,7 +630,12 @@ def parse_with_entries_from_argv(
             index += 1
             continue
 
-        custom_arg, consumed_index = _consume_custom_optional_arg(argv, index, files)
+        custom_arg, consumed_index = _consume_custom_optional_arg(
+            argv,
+            index,
+            option,
+            requires_arg,
+        )
         entries.append(
             _build_custom_invocation(
                 name=name,
@@ -783,11 +830,10 @@ def extend_order_values_with_defaults(order_values: list[str], args: object) -> 
 def build_order_stages(
     args: object,
     argv: list[str],
-    files: list[str] | None,
     include_builtin_ordering: bool,
 ) -> list[str]:
     """Build query stages for ordering pipeline."""
-    order_entries = parse_order_entries_from_argv(argv, files, include_builtin_ordering)
+    order_entries = parse_order_entries_from_argv(argv, include_builtin_ordering)
     order_values: list[str | CustomStageInvocation]
     if include_builtin_ordering:
         builtin_order_values: list[str] = []
@@ -842,9 +888,9 @@ def _builtin_order_stages(value: str) -> list[str]:
     return order_stages.get(value, [])
 
 
-def build_with_stages(argv: list[str], files: list[str] | None) -> list[str]:
+def build_with_stages(argv: list[str]) -> list[str]:
     """Build query stages for custom enrichment pipeline."""
-    invocations = parse_with_entries_from_argv(argv, files)
+    invocations = parse_with_entries_from_argv(argv)
     stages: list[str] = []
     for invocation in invocations:
         stages.append(_custom_stage(invocation.query, invocation.arg_value))
@@ -870,14 +916,13 @@ def build_query_text(
     """Build query text for the configured filter/ordering pipeline."""
     validate_custom_switches(argv, include_ordering)
 
-    files = getattr(args, "files", None)
-    filter_order = parse_filter_entries_from_argv(argv, files)
+    filter_order = parse_filter_entries_from_argv(argv)
     filter_order = extend_filter_order_with_defaults(filter_order, args)
     filter_stages = build_filter_stages(args, filter_order)
-    with_stages = build_with_stages(argv, files)
+    with_stages = build_with_stages(argv)
 
     stages = [*with_stages, *filter_stages]
-    stages.extend(build_order_stages(args, argv, files, include_builtin_ordering=include_ordering))
+    stages.extend(build_order_stages(args, argv, include_builtin_ordering=include_ordering))
 
     pipeline_body = " | ".join(stages)
     base_query = f"[ .[] | {pipeline_body} ]" if pipeline_body else "[ .[] ]"
