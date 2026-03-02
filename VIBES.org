@@ -2899,15 +2899,312 @@ Refactor the =_prepare_output= function's binary file handling so that the code 
 
 Refactor the =_org_object_to_json_dict= to use "exported fields" lists instead of exclude lists for the different org objects. I want it to be explicit in which fields are exported.
 
+** REWORKED Custom filters/ordering/enrichment                                              :UX:CLI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-01 Sun 15:55] \\
+  Lots of rework needed.
+:END:
+*** DONE Normalized orderings                                                              :Cleanup:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-01 Sun 15:34]
+:END:
+I'd like to normalize how ordering parameters work in the CLI.
+
+Currently, these enabled with the =--order-by <ordering>= parameter, which is distinct to the =--filtery-*= and =--with-*= switches. We will be splitting these order-by options to be distinct CLI switches.
+
+Refactor how the =--order-by= CLI parameter is constructed to instead use multiple parameters:
+- =--order-by-level=
+- =--order-by-file-order=
+- =--order-by-file-order-reversed=
+- =--order-by-timestamp-asc=
+- =--order-by-timestamp-desc=
+- =--order-by-gamify-exp-asc=
+- =--order-by-gamify-exp-desc=
+
+It should be possible to specify each one of these switches multiple times on command line (just like the current behaviour). Orderings should be applied in the CLI args specification order after filtering.
+
+The original =--order-by= parameter sholud be remaved along with all the logic used to handle it. The new parameters should replace the whole functionality of ordering.
+Make sure that all commands that currently support =--order-by= do support all the orderings.
+
+Please update the test suite to use the new parameters instead of the old parameter.
+
+The new ordering parameters should not accept arguments. Just their order on the CLI determines the order in which they are applied.
+
+All of these should be configurable via the config file (replaces the current default ordering handling in the configuration file).
+
+*** DONE Config expansion                                                                   :Config:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-01 Sun 15:34]
+:END:
+I'd like to be able to define custom filters =--filter-*=, orderings =--order-by-*= and node enrichment =--with-*= via the configuration file.
+
+To do that, we need to expand the configuration file with extra sections for filters, ordering and enrichment:
+
+#+begin_src js
+{
+  "defaults": {
+    // Current configuration setup goes here
+    // ...
+  },
+  "filter": {
+    "<custom-filter-name>" : "<query>",
+    // ...
+  },
+  "order-by": {
+    "<custom-ordering-name>" : "<query>"
+  },
+  "with": {
+    "<custom-enrichment-name>" : "<query>"
+  }
+}
+#+end_src
+
+Please expand the config file handling to support the extra sections. All of the sections should be optional and applied only when provided in the configuration file.
+The =defaults= section will be formatted exactly as the whole current configuration format.
+The =filter=, =order-by= and =with= sections will be objects where the key defines the name of the specific custom filter/order/enrichment and the value is a query language query that will be applied whenever this custom filter is selected.
+
+Don't worry about the handling of the custom filters/orders/enrichment just yet, we will handle that in the next step. Focus on parsing the config file in entiriety and a suitable abstraction for these values.
+
+*** REWORKED Custom definitions                                                              :Query:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-01 Sun 15:34] \\
+  Needed some extra bugfixes.
+:END:
+Add handling of the configured custom filters/orderings/enrichments. These should become available as additional CLI switches:
+
+- =--filter-<custom-filter-name> <optional-arg>=
+- =--order-by-<custom-ordering-name> <optional-arg>=
+- =--with-<custom-enrichment-name> <optional-arg>=
+
+Each such custom switch should be formed with the name of the custom filter/ordering/enrichment and it should accept an optional argument.
+The argument will be defined in the query-language context under the name =$arg= with the default value being =none= when the argument is not provided.
+
+Here's an example of a config file:
+#+begin_src js
+{
+  "filter": {
+    "priority": "select(.priority == $arg)",
+    "priority-above": "select(.priority > $arg)",
+    "has-todo": "select(.todo != none)"
+  }
+}
+#+end_src
+
+This should result in three new, custom filters to be available via the CLI arguments:
+- =--filter-priority P= - applies the associated query filter with =$arg= set to the value of =P=,
+- =--filter-priority-above P=
+- =--filter-has-todo=
+
+For =$arg= typing, please attempt a simple parsing of =none=, =true=, =false= and number literals, falling back to string if the values doesn't match those formats. Numbers in the context should be numeric. The value should be added to the query execution context directly, not via the query.
+
+Similarly, the =order-by= and =with= sections should be treated the same way, with extra parameters made available for use.
+
+The existance of these config sections doesn't imply these filters should be applied during runtime, they just expose additional CLI switches that can be used by the user.
+When these additional CLI arguments are provided, the associated filters/orderings/enrichments should be applied to the data.
+
+The usual order of operation still applies - enrichment is applied first, then filtering and finally ordering.
+
+It would be ideal if these extra CLI switches could appear on the output of the =--help= string. It is OK if they don't, but they have to be specifiable via the CLI arguments.
+
+There's no need to be able to specifiy defaults for these custom switches via the configuration defaults.
+
+Unrecognized CLI options should be treated as before - with a nice message indicating that they are provided in error.
+
+*** DONE Filter parsing bug                                                                    :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-01 Sun 15:35]
+:END:
+
+When trying to use a custom filter defined in the configuration file I'm getting the following error:
+
+#+begin_src bash
+$ poetry run org tasks list --filter-has-todo
+Usage: org tasks list [OPTIONS] [FILE]
+Try 'org tasks list --help' for help.
+╭─ Error ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Invalid value: Path '--filter-has-todo' not found                                                                                                                                                               │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+#+end_src
+
+Please identify and fix the root cause.
+
+*** DONE Arg naming                                                                            :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-01 Sun 15:36]
+:END:
+Please update how the arguments for the custom options are passed:
+
+- these should be embedded in the query string,
+- before the custom filter stage, the argument should be injected into the context as follows: =., (<argument-value> as $arg) | .[0] | <custom filter>=, this way, the filter stage processes the data as passed to it while the argument remains available under the name specified in the filter query
+
+The same treatment should be done to the orderings and enrichments.
+
+Please log the query context in addition to the query before executing it (use the same logger stategy as for the query string itself).
+
+*** CANCELLED def variable language syntax function                                             :UX:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-03-01 Sun 15:04] \\
+  Decided not to do it, since the original hackaround is good enough.
+:END:
+Add the following syntax expression to the query language:
+
+A syntax form =with <subquery>= - executes the subquery but passes the input stream unchanged (only useful for side effects such as variable assignment).
+
+The semantics of the form should be roughly the same as the following query: =., (<subquery>) | .[0]=.
+
+Make extra sure that queries such as: ~2 | with 3 as $x | (2 + $x) == 5~ work as expected.
+
+Update the custom filter argument handling to use =with <arg-value> as $args= instead of the =., <...> | .[0]= trick.
+
+Update the query language documentation to include the new =with= syntax form.
+
+*** DONE Extra filters
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-01 Sun 15:36]
+:END:
+Please add the following CLI switches that are available by default (not via the config file custom sections):
+
+- =--filter-priority P= - filter by node's priority - =select(.priority == P)=
+- =--order-by priority= - order by the node's priority - =sort_by(.priority)=
+
+Additionally, please remove the following CLI options:
+- =--filter-gamify-exp-above=
+- =--filter-gamify-exp-below=
+- =--order-by-gamify-exp-asc=
+- =--order-by-gamify-exp-desc=
+
+Remove any code that was related to handling those options that is no longer in use and adjust the test suite accordingly.
+
+*** REWORKED Document the custom filters                                                      :Docs:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-01 Sun 15:55] \\
+  Needed some changes as the agent went overboard with the priority filters.
+:END:
+Please update the documentation to document the updated config file layout and the new ordering CLI parameters that are available by default.
+Please update all the examples in the documentation and the README.md file to use the updated CLI parameters.
+Please update the AGENTS.md file to also use the up-to-date information.
+
+** REWORKED Query language extensions                                                     :Query:UX:
+:PROPERTIES:
+:gamify_exp: 23
+:END:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-01 Sun 17:35] \\
+  Needed extra work.
+:END:
+
+Add the following syntax expressions to the query language:
+
+- =let <value-subquery> as <variable> in <body-subquery>= - evaluates the value subquery and binds it to the variable for the duration of evaluation of the body subquery. Variable is then cleared afterwards from the query execution context. The result of the expression should be the result of body subquery.
+- =if <condition-subquery> then <then-suquery> else <else-subquery>= - evaluates the condition subquery and depending on its truthiness either evaluates the =<then-subquery>= or the =<else-subquery>=. For example: ~2 | if . == 2 then "yes" else "no"~ should evaluate to the string "yes".
+
+Add the following functions to the query language:
+
+- =str(<subquery>)= - converts the results of the subquery to string, accepts any type,
+- =int(<subquery>)= - converts the results of the subquery to int, accepts ints and strings,
+- =float(<subquery>)= - converts the results of the subquery to float, accepts floats and strings,
+- =bool(<subquery>)= - converts the results of the subquery to boolan, accepts bools and strings,
+- =ts(<subquery>)= - converts the results of the subquery to an OrgDate, accepts dates and strings, strings are of the usual Org Mode format, i.e. ="[2026-03-01 Sun 10:00-12:00]"=
+
+- =sha256= - returns a sha256 hash of the input, should accept only strings,
+- =match(<subquery>)= - matches a string input against the regex passed via subquery and returns a list of matches or =none= if the string doesn't match the regex. The list of matches should represent results for the whole query and each of the capture groups within the query (if any provided).
+- =uuid= - returns a new UUIDv4 value.
+
+Update the custom filter/ordering/enrichment argument handling to use the newly introduced =let= form as follows: =let <argument-value> as $arg in (<filter-subquery>)=
+
+Update the query language documentation to include these new constructions & functions.
+
+*** REWORKED let should run per stream item
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-01 Sun 17:35] \\
+  AI made the let apply to the whole stream, not each element.
+:END:
+The =let= form should evaluate for each element of the input stream much like the =if= form.
+
+*** DONE Unary minus
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-01 Sun 17:35]
+:END:
+Add support for the unary minus operation to the query laguage:
+- =- <subquery>= not prepended by a subquery or a value evaluates to =0 - <subquery>=
+
+*** REWORKED Query support for mutation of dicts
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-01 Sun 21:16] \\
+  Needed some work to get arbitrary fields working.
+:END:
+Add the following construction to the query language:
+
+- ~<subquery>["field"] = <value-subquery>~ - allows setting/overwritting dictionary values assuming the subquery evaluates to a dictionary,
+- ~<subquery>.field = <value-subquery>~ - allows setting/overwritting dictionary values assuming the subquery evaluates to a dictionary
+
+Please make the ~<subquery>["field"] = <value-subquery>~ assignment form accept a field subquery, i.e. let the field name be computed.
+
+No need to support any other forms of assignment yet. We will extend this syntax form in the future to support arbitrary node modification.
+
+*** DONE Sequence point
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-01 Sun 22:25]
+:END:
+Add support for the following syntax form:
+- =<subquery>; <subquery>= - evaluates the first subquery for its side-effects, then ignores the result and evaluates the second subquery returning its result.
+
+*** DONE CLI config in query context
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-02 Mon 00:09]
+:END:
+The query execution context should include the value of =--category-property=. Name it =$category_property=.
+
+*** DONE elif
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-02 Mon 00:09]
+:END:
+Extend the syntax for the =if= syntax form in the query language to accept optional =elif= cases, that is:
+- =if <condition> then <then> else <else>= should be a valid invocation,
+- =if <condidiot> then <then> elif <condition> then <then> ... else <else>= should also be a valid invocation, with the =elif= cases potentially repeated multiple times.
+
+*** DONE debug function
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-02 Mon 00:10]
+:END:
+Add a =debug= query language function that returns its input unchanged, but logs the value to the console.
+
+*** DONE Remove enrichment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-02 Mon 09:55]
+:END:
+Please remove the following two CLI switches and all the support code and test that are related to these but unused:
+- =--with-gamify-category=
+- =--with-numeric-gamify-exp=
+
+*** REWORKED Code review fixes
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-02 Mon 11:44] \\
+  Some comments were small and better done manually.
+:END:
+Refactor the custom option argument handling to check the associated query for the occurance of =$arg=. If =$arg= occurs in the query, then the CLI option should require exactly one argument to be provided and report an error if that is not the case.
+
+Document the =$arg= handling of custom filters/orderings/enrichment - the documentation should be updated to state that an argument can be provided to the query using the =$arg= syntaxt that causes the associated CLI option to require exactly one argument.
+
+Please refactor the =test_runtime_cast_functions_convert_supported_values= test so that the sha256 case is a separate test case. Sha256 is not a conversion, but a function of its own.
+
 ** More Rich support & other output fixes
+*** General updates
+- derive the size of the viewport from the console window
+
+*** Stats layout
+- derive the --buckets property from the viewport size
+- top frequency value to be moved to top in the middle of the dates
 - columnar display on the stats summary - tasks section should be to the side of the histograms
-- scroll through task list
 - use boxes for the sections
 - Don't indent TAGS and GROUPS sections on summary
-- derive the size of the viewport from the console window
-- There are cases still that print =None= and Python class strings (stream of lists of values) - should be mended with a custom formatter for collections & values.
-- top frequency value to be moved to top in the middle of the dates
+
+*** Task list scroll
+- scroll through task list
 - unicode strings in heading cause misalignment of tags on task lists
+
+*** Bugfixes
+- There are cases still that print =None= and Python class strings (stream of lists of values) - should be mended with a custom formatter for collections & values.
 
 ** Mutable parse tree
 *** Use mutable orgparse
@@ -3018,6 +3315,8 @@ org task update --id "Foo" --todo REVIEW VIBES.org
 - ~--filter-not-blocked~ - in TODO state, all dependencies completed
 - ~--filter-blocked~ - in TODO state, not all dependencies completed
 
+- order by node relations (preserves tree order, but allows using the other stable sorting) (could replace the level ordering)
+
 *** More query language filters/ordering
 
 Redo all the filters & orderings in terms of the query language
@@ -3057,14 +3356,6 @@ Redo all the filters & orderings in terms of the query language
 *** --watch & --serve switches
 --watch for file watching and updating live on changes
 --serve to start a server showing a visualization of the data
-
-** Extra filters/ordering
-- filter by priority
-- order by priority
-- order by node relations (preserves tree order, but allows using the other stable sorting) (could replace the level ordering)
-- --with-priority-as-category
-- ability to define extra (all?) filters by a configuration file
-- move gamify specific filters to the config file.
 
 ** JavaScript visualization
 
