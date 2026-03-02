@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import cast
 
 import orgparse
 import pytest
-from orgparse.date import OrgDateClock, OrgDateRepeatedTask
+from orgparse.date import OrgDate, OrgDateClock, OrgDateRepeatedTask
 from orgparse.node import OrgRootNode
 
 from org.query_language import EvalContext, QueryRuntimeError, Stream, compile_query_text
@@ -256,6 +257,17 @@ def test_runtime_numeric_operators_and_slice_expression() -> None:
     assert sliced == [[20, 30]]
 
 
+def test_runtime_unary_minus_behavior() -> None:
+    """Unary minus should evaluate as subtraction from zero."""
+    negated_stream = _execute(".[] | -.", [1, 2, 3], None)
+    precedence = _execute("-2 ** 2", [None], None)
+    mixed = _execute("1 - -2", [None], None)
+
+    assert negated_stream == [-1, -2, -3]
+    assert precedence == [-4]
+    assert mixed == [3]
+
+
 def test_runtime_or_and_operator_semantics() -> None:
     """or/and should follow query truthiness semantics."""
     result = _execute('"foo" or "x", none or "x", "x" and none, "x" and 1', [None], None)
@@ -275,6 +287,127 @@ def test_runtime_not_function() -> None:
     nodes = _sample_nodes()
     result = _execute(".[] | not(.todo in $done_keys)", nodes, {"done_keys": ["DONE"]})
     assert result == [False, True, False, True]
+
+
+def test_runtime_uuid_function_returns_unique_uuidv4_strings() -> None:
+    """uuid should emit one UUIDv4 string per input item."""
+    result = _execute(".[] | uuid", [1, 2, 3], None)
+    assert len(result) == 3
+    assert len(set(result)) == 3
+    for value in result:
+        assert isinstance(value, str)
+        assert len(value) == 36
+
+
+def test_runtime_debug_function_logs_and_returns_input_unchanged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """debug should log values and pass through stream items unchanged."""
+    with caplog.at_level(logging.INFO, logger="org"):
+        result = _execute(".[0][] | debug", [[1, "x", None]], None)
+
+    assert result == [1, "x", None]
+    assert "1" in caplog.text
+    assert "x" in caplog.text
+    assert "None" in caplog.text
+
+
+def test_runtime_cast_functions_convert_supported_values() -> None:
+    """str/int/float/bool/ts should convert supported value types."""
+    converted = _execute(
+        'str(1), int("42"), float("3.5"), bool("true")',
+        [None],
+        None,
+    )
+    timestamp_value = _execute('ts("<2026-03-01 Sun 10:00-12:00>")', [None], None)
+
+    assert converted == [
+        (
+            "1",
+            42,
+            3.5,
+            True,
+        )
+    ]
+    assert len(timestamp_value) == 1
+    assert isinstance(timestamp_value[0], OrgDate)
+    assert str(timestamp_value[0]) == "<2026-03-01 Sun 10:00--12:00>"
+
+
+def test_runtime_sha256_function_hashes_supported_values() -> None:
+    """sha256 should hash supported string inputs."""
+    hashed = _execute('"abc" | sha256', [None], None)
+
+    assert hashed == ["ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"]
+
+
+def test_runtime_match_function_returns_full_match_and_capture_groups() -> None:
+    """match should return full match and capture groups for matching strings."""
+    result = _execute('.[] | match("(DONE)-([0-9]+)")', ["DONE-42", "TODO-7"], None)
+    assert result == [["DONE-42", "DONE", "42"], None]
+
+
+def test_runtime_if_expression_evaluates_selected_branch() -> None:
+    """if should evaluate then/else branch based on condition truthiness."""
+    direct = _execute('2 | if . == 2 then "yes" else "no"', [None], None)
+    nodes = _sample_nodes()
+    per_item = _execute('.[] | if .todo == "DONE" then .heading else "pending"', nodes, None)
+
+    assert direct == ["yes"]
+    assert per_item == ["Parent", "pending", "Zeta child", "pending"]
+
+
+def test_runtime_if_expression_supports_elif_branches() -> None:
+    """if should evaluate the first matching elif branch before else."""
+    result = _execute(
+        '.[0][] | if . == 1 then "one" elif . == 2 then "two" elif . == 3 then "three" else "other"',
+        [[1, 2, 3, 4]],
+        None,
+    )
+    assert result == ["one", "two", "three", "other"]
+
+
+def test_runtime_let_binding_scopes_variable_to_body_only() -> None:
+    """let should bind variables only while evaluating the body expression."""
+    context_vars: dict[str, object] = {"x": "outer"}
+    result = _execute("let . as $x in str($x)", 2, context_vars)
+
+    assert result == ["2"]
+    assert context_vars["x"] == "outer"
+
+
+def test_runtime_let_binding_without_previous_value_clears_variable_after_body() -> None:
+    """let should remove newly introduced variables after body evaluation."""
+    compiled = compile_query_text('let "v" as $temp in $temp')
+    context = EvalContext({})
+    result = compiled(Stream([None]), context)
+
+    assert result == ["v"]
+    assert "temp" not in context.variables
+
+
+def test_runtime_let_binding_evaluates_per_input_item() -> None:
+    """let should bind values separately for each stream item."""
+    result = _execute(".[] | let . as $x in ($x * 2)", [1, 2, 3], None)
+    assert result == [2, 4, 6]
+
+
+def test_runtime_cast_and_match_validation_errors() -> None:
+    """Cast and match functions should validate argument and input types."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("int(1.5)", [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute("float(1)", [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute('bool("yes")', [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute("1 | sha256", [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute('sha256("abc")', [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[] | match(1)", ["value"], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute('.[] | match("x")', [1], None)
 
 
 def test_runtime_timestamp_function_with_supported_arities() -> None:
@@ -657,6 +790,57 @@ def test_runtime_bracket_field_access_variants() -> None:
     assert dict_value == [7]
     assert node_value == ["Parent"]
     assert none_value == [None]
+
+
+def test_runtime_dict_assignment_sets_and_overwrites_values() -> None:
+    """Dictionary assignment should set and overwrite dictionary keys."""
+    values = [{"x": 1}, {}]
+    result = _execute('.[] | .["x"] = 2', values, None)
+
+    assert result == [{"x": 2}, {"x": 2}]
+    assert values == [{"x": 2}, {"x": 2}]
+
+
+def test_runtime_dict_assignment_with_dot_target() -> None:
+    """Dictionary assignment should work with dot field targets."""
+    values = [{"meta": {}}, {"meta": {"done": False}}]
+    result = _execute(".[] | .meta.done = true", values, None)
+
+    assert result == [{"done": True}, {"done": True}]
+    assert values == [{"meta": {"done": True}}, {"meta": {"done": True}}]
+
+
+def test_runtime_dict_assignment_with_dynamic_key_expression() -> None:
+    """Dictionary assignment should support computed bracket keys."""
+    values = [{"k": "done", "meta": {}}, {"k": "state", "meta": {}}]
+    result = _execute('.[] | .meta[.["k"]] = true; .meta', values, None)
+
+    assert result == [{"done": True}, {"state": True}]
+    assert values == [
+        {"k": "done", "meta": {"done": True}},
+        {"k": "state", "meta": {"state": True}},
+    ]
+
+
+def test_runtime_sequence_evaluates_side_effects_before_returning_right_value() -> None:
+    """Sequence should run left side effects and return right expression values."""
+    values = [{"x": 1}, {"x": 10}]
+    result = _execute('.[] | .["x"] = .["x"] + 1; .["x"]', values, None)
+
+    assert result == [2, 11]
+    assert values == [{"x": 2}, {"x": 11}]
+
+
+def test_runtime_dict_assignment_requires_dictionary_target() -> None:
+    """Dictionary assignment should fail for non-dictionary target values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('.[] | .["x"] = 1', [1], None)
+
+
+def test_runtime_dict_assignment_requires_string_key() -> None:
+    """Dictionary assignment should reject non-string key values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[] | .[$k] = 1", [{}], {"k": 1})
 
 
 def test_runtime_iterate_skips_none_values() -> None:

@@ -18,7 +18,7 @@ poetry run org stats tags [OPTIONS] [FILE ...]
 
 ## Available filters
 
-- `--filter-gamify-exp-above N`, `--filter-gamify-exp-below N` - Filter by `gamify_exp` thresholds.
+- `--filter-priority P` - Keep only tasks with priority equal to `P`.
 - `--filter-level N` - Keep only tasks at heading level `N`.
 - `--filter-repeats-above N`, `--filter-repeats-below N` - Filter by repeat count.
 - `--filter-date-from TS`, `--filter-date-until TS` - Keep tasks in a timestamp window.
@@ -37,7 +37,9 @@ poetry run org stats tags examples/ARCHIVE_small
 2) Inspect specific tags you care about
 
 ```bash
-poetry run org stats tags --show Debugging,Jira examples/ARCHIVE_small
+poetry run org stats tags \
+  --show Debugging,Jira \
+  examples/ARCHIVE_small
 ```
 
 3) Analyze frequent heading words instead of tags

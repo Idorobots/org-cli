@@ -6,18 +6,18 @@ import json
 import logging
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol, cast
 
+import click
 import orgparse
 import typer
 
 from org import config as config_module
 from org.analyze import TimeRange, normalize
 from org.filters import (
-    preprocess_gamify_categories,
-    preprocess_numeric_gamify_exp,
     preprocess_tags_as_category,
 )
 from org.parse import load_root_nodes
@@ -130,8 +130,7 @@ CATEGORY_NAMES = {"tags": "tags", "heading": "heading words", "body": "body word
 class FilterArgs(Protocol):
     """Protocol for filter-related CLI arguments."""
 
-    filter_gamify_exp_above: int | None
-    filter_gamify_exp_below: int | None
+    filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
     filter_repeats_below: int | None
@@ -210,8 +209,7 @@ def get_top_tasks(
 
 
 FILTER_OPTIONS_WITH_VALUE = {
-    "--filter-gamify-exp-above",
-    "--filter-gamify-exp-below",
+    "--filter-priority",
     "--filter-level",
     "--filter-repeats-above",
     "--filter-repeats-below",
@@ -228,28 +226,36 @@ FILTER_OPTIONS_FLAGS = {
     "--filter-not-completed",
 }
 
-ORDER_BY_OPTION = "--order-by"
+WITH_OPTIONS_FLAGS = {
+    "--with-tags-as-category",
+}
 
-ORDER_BY_VALUES = {
-    "file-order",
-    "file-order-reversed",
-    "level",
-    "timestamp-asc",
-    "timestamp-desc",
-    "gamify-exp-asc",
-    "gamify-exp-desc",
+ORDER_BY_OPTION_TO_VALUE = {
+    "--order-by-priority": "priority",
+    "--order-by-level": "level",
+    "--order-by-file-order": "file-order",
+    "--order-by-file-order-reversed": "file-order-reversed",
+    "--order-by-timestamp-asc": "timestamp-asc",
+    "--order-by-timestamp-desc": "timestamp-desc",
+}
+
+ORDER_BY_DEST_TO_VALUE = {
+    "order_by_priority": "priority",
+    "order_by_level": "level",
+    "order_by_file_order": "file-order",
+    "order_by_file_order_reversed": "file-order-reversed",
+    "order_by_timestamp_asc": "timestamp-asc",
+    "order_by_timestamp_desc": "timestamp-desc",
 }
 
 
-def _parse_option_order_from_argv(argv: list[str], option_name: str) -> list[str]:
-    """Extract option values in command-line order."""
-    values: list[str] = []
-    for index, token in enumerate(argv):
-        if token == option_name and index + 1 < len(argv):
-            values.append(argv[index + 1])
-        elif token.startswith(f"{option_name}="):
-            values.append(token.split("=", 1)[1])
-    return values
+@dataclass(frozen=True)
+class CustomStageInvocation:
+    """One custom switch occurrence parsed from CLI arguments."""
+
+    name: str
+    query: str
+    arg_value: object
 
 
 def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
@@ -266,25 +272,380 @@ def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
     return filter_order
 
 
-def normalize_order_by_values(order_by: str | list[str] | tuple[str, ...] | None) -> list[str]:
-    """Normalize order-by values into a list."""
-    if order_by is None:
-        return []
-    if isinstance(order_by, list):
-        return order_by
-    if isinstance(order_by, tuple):
-        return list(order_by)
-    return [order_by]
+def _extract_option_token(token: str) -> str:
+    """Return option token without inline assignment suffix."""
+    if token.startswith("--") and "=" in token:
+        return token.split("=", 1)[0]
+    return token
 
 
-def validate_order_by_values(order_by: list[str]) -> None:
-    """Validate order-by values."""
-    invalid = [value for value in order_by if value not in ORDER_BY_VALUES]
-    if not invalid:
-        return
-    supported = ", ".join(sorted(ORDER_BY_VALUES))
-    invalid_list = ", ".join(invalid)
-    raise typer.BadParameter(f"--order-by must be one of: {supported}\nGot: {invalid_list}")
+def _custom_option_name(option: str, prefix: str) -> str | None:
+    """Extract custom option name after a known prefix."""
+    option_prefix = f"--{prefix}-"
+    if not option.startswith(option_prefix):
+        return None
+    return option[len(option_prefix) :]
+
+
+def _query_uses_arg(query: str) -> bool:
+    """Return True when query contains the `$arg` variable."""
+    return bool(re.search(r"\$arg\b", query))
+
+
+def _resolve_custom_option(option: str) -> tuple[str, bool] | None:
+    """Resolve configured custom option to (query, requires_arg)."""
+    filter_name = _custom_option_name(option, "filter")
+    if filter_name is not None:
+        query = config_module.CONFIG_CUSTOM_FILTERS.get(filter_name)
+        if query is not None:
+            return (query, _query_uses_arg(query))
+
+    order_name = _custom_option_name(option, "order-by")
+    if order_name is not None:
+        query = config_module.CONFIG_CUSTOM_ORDER_BY.get(order_name)
+        if query is not None:
+            return (query, _query_uses_arg(query))
+
+    with_name = _custom_option_name(option, "with")
+    if with_name is not None:
+        query = config_module.CONFIG_CUSTOM_WITH.get(with_name)
+        if query is not None:
+            return (query, _query_uses_arg(query))
+
+    return None
+
+
+def _required_custom_arg_error(option: str) -> typer.BadParameter:
+    """Return the standard required custom argument error."""
+    return typer.BadParameter(f"{option} requires exactly one argument")
+
+
+def normalize_cli_files_for_custom_switches(files: list[str] | None) -> list[str] | None:
+    """Remove configured custom switch tokens from FILE argument values.
+
+    Commands use ``ignore_unknown_options`` to allow config-defined switches. Click still
+    parses those unknown switch tokens as FILE values first, so this helper strips them
+    before input path resolution.
+    """
+    if files is None:
+        return None
+
+    normalized: list[str] = []
+    index = 0
+    while index < len(files):
+        token = files[index]
+        option = _extract_option_token(token)
+        custom_option = _resolve_custom_option(option)
+        if custom_option is None:
+            normalized.append(token)
+            index += 1
+            continue
+
+        _, requires_arg = custom_option
+
+        if token.startswith(f"{option}="):
+            index += 1
+            continue
+
+        if requires_arg:
+            next_index = index + 1
+            if next_index >= len(files):
+                raise _required_custom_arg_error(option)
+
+            next_token = files[next_index]
+            if next_token.startswith("-"):
+                raise _required_custom_arg_error(option)
+            index += 2
+            continue
+
+        index += 1
+
+    return normalized
+
+
+def _consume_custom_optional_arg(
+    argv: list[str],
+    index: int,
+    option: str,
+    requires_arg: bool,
+) -> tuple[str | None, int]:
+    """Consume custom argument token for one custom switch occurrence."""
+    if not requires_arg:
+        return (None, index)
+
+    next_index = index + 1
+    if next_index >= len(argv):
+        raise _required_custom_arg_error(option)
+
+    next_token = argv[next_index]
+    if next_token.startswith("-"):
+        raise _required_custom_arg_error(option)
+
+    return (next_token, next_index)
+
+
+def _coerce_custom_arg_value(value: str | None) -> object:
+    """Parse optional custom argument into runtime query value."""
+    if value is None:
+        return None
+
+    lowered = value.lower()
+    value_map: dict[str, object] = {
+        "none": None,
+        "true": True,
+        "false": False,
+    }
+    if lowered in value_map:
+        return value_map[lowered]
+
+    if re.fullmatch(r"-?\d+", value):
+        parsed_value: object = int(value)
+    elif re.fullmatch(r"-?\d+\.\d+", value):
+        parsed_value = float(value)
+    else:
+        parsed_value = value
+    return parsed_value
+
+
+def _build_custom_invocation(
+    *,
+    name: str,
+    query: str,
+    raw_arg: str | None,
+) -> CustomStageInvocation:
+    """Build one parsed custom invocation with typed context binding."""
+    return CustomStageInvocation(
+        name=name,
+        query=query,
+        arg_value=_coerce_custom_arg_value(raw_arg),
+    )
+
+
+def _custom_stage(query: str, arg_value: object) -> str:
+    """Build one custom query stage preserving input item stream values."""
+    arg_literal = _query_literal(arg_value)
+    return f"let {arg_literal} as $arg in ({query})"
+
+
+def _query_literal(value: object) -> str:
+    """Render a Python value as a query-language literal."""
+    if value is None:
+        return "none"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        return str(value)
+    if isinstance(value, str):
+        return json.dumps(value)
+    return json.dumps(value)
+
+
+def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) -> None:
+    """Validate prefixed custom switches against configured/built-in options."""
+    builtin_order_options = set(ORDER_BY_OPTION_TO_VALUE) if include_builtin_ordering else set()
+    allowed_filter_options = FILTER_OPTIONS_WITH_VALUE.union(FILTER_OPTIONS_FLAGS).union(
+        {f"--filter-{name}" for name in config_module.CONFIG_CUSTOM_FILTERS}
+    )
+    allowed_order_options = builtin_order_options.union(
+        {f"--order-by-{name}" for name in config_module.CONFIG_CUSTOM_ORDER_BY}
+    )
+    allowed_with_options = WITH_OPTIONS_FLAGS.union(
+        {f"--with-{name}" for name in config_module.CONFIG_CUSTOM_WITH}
+    )
+
+    for index, token in enumerate(argv):
+        option = _extract_option_token(token)
+        if option.startswith("--filter-") and option not in allowed_filter_options:
+            raise click.NoSuchOption(option)
+        if option.startswith("--order-by-") and option not in allowed_order_options:
+            raise click.NoSuchOption(option)
+        if option.startswith("--with-") and option not in allowed_with_options:
+            raise click.NoSuchOption(option)
+
+        custom_option = _resolve_custom_option(option)
+        if custom_option is None:
+            continue
+
+        _, requires_arg = custom_option
+        if not requires_arg or token.startswith(f"{option}="):
+            continue
+
+        next_index = index + 1
+        if next_index >= len(argv):
+            raise _required_custom_arg_error(option)
+
+        next_token = argv[next_index]
+        if next_token.startswith("-"):
+            raise _required_custom_arg_error(option)
+
+
+def parse_order_values_from_argv(argv: list[str]) -> list[str]:
+    """Extract built-in ordering values in command-line argument order."""
+    values: list[str] = []
+    for token in argv:
+        value = ORDER_BY_OPTION_TO_VALUE.get(token)
+        if value is not None:
+            values.append(value)
+    return values
+
+
+def parse_filter_entries_from_argv(
+    argv: list[str],
+) -> list[str | CustomStageInvocation]:
+    """Parse built-in and custom filter switch occurrences in argv order."""
+    entries: list[str | CustomStageInvocation] = []
+    index = 0
+    builtins = FILTER_OPTIONS_WITH_VALUE.union(FILTER_OPTIONS_FLAGS)
+    while index < len(argv):
+        token = argv[index]
+        option = _extract_option_token(token)
+
+        if option in FILTER_OPTIONS_WITH_VALUE or option in FILTER_OPTIONS_FLAGS:
+            entries.append(option)
+            index += 1
+            continue
+
+        name = _custom_option_name(option, "filter")
+        if name is None or name not in config_module.CONFIG_CUSTOM_FILTERS or option in builtins:
+            index += 1
+            continue
+
+        query = config_module.CONFIG_CUSTOM_FILTERS[name]
+        requires_arg = _query_uses_arg(query)
+        if token.startswith(f"{option}="):
+            entries.append(
+                _build_custom_invocation(
+                    name=name,
+                    query=query,
+                    raw_arg=token.split("=", 1)[1],
+                )
+            )
+            index += 1
+            continue
+
+        custom_arg, consumed_index = _consume_custom_optional_arg(
+            argv,
+            index,
+            option,
+            requires_arg,
+        )
+        entries.append(
+            _build_custom_invocation(
+                name=name,
+                query=query,
+                raw_arg=custom_arg,
+            )
+        )
+        index = consumed_index + 1
+
+    return entries
+
+
+def parse_order_entries_from_argv(
+    argv: list[str],
+    include_builtin_ordering: bool,
+) -> list[str | CustomStageInvocation]:
+    """Parse built-in and custom ordering switch occurrences in argv order."""
+    entries: list[str | CustomStageInvocation] = []
+    index = 0
+    builtin_options = set(ORDER_BY_OPTION_TO_VALUE) if include_builtin_ordering else set()
+    while index < len(argv):
+        token = argv[index]
+        option = _extract_option_token(token)
+
+        builtin_value = ORDER_BY_OPTION_TO_VALUE.get(option)
+        if builtin_value is not None and include_builtin_ordering:
+            entries.append(builtin_value)
+            index += 1
+            continue
+
+        name = _custom_option_name(option, "order-by")
+        if (
+            name is None
+            or name not in config_module.CONFIG_CUSTOM_ORDER_BY
+            or option in builtin_options
+        ):
+            index += 1
+            continue
+
+        query = config_module.CONFIG_CUSTOM_ORDER_BY[name]
+        requires_arg = _query_uses_arg(query)
+        if token.startswith(f"{option}="):
+            entries.append(
+                _build_custom_invocation(
+                    name=name,
+                    query=query,
+                    raw_arg=token.split("=", 1)[1],
+                )
+            )
+            index += 1
+            continue
+
+        custom_arg, consumed_index = _consume_custom_optional_arg(
+            argv,
+            index,
+            option,
+            requires_arg,
+        )
+        entries.append(
+            _build_custom_invocation(
+                name=name,
+                query=query,
+                raw_arg=custom_arg,
+            )
+        )
+        index = consumed_index + 1
+
+    return entries
+
+
+def parse_with_entries_from_argv(
+    argv: list[str],
+) -> list[CustomStageInvocation]:
+    """Parse custom enrichment switch occurrences in argv order."""
+    entries: list[CustomStageInvocation] = []
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        option = _extract_option_token(token)
+        if option in WITH_OPTIONS_FLAGS:
+            index += 1
+            continue
+
+        name = _custom_option_name(option, "with")
+        if name is None or name not in config_module.CONFIG_CUSTOM_WITH:
+            index += 1
+            continue
+
+        query = config_module.CONFIG_CUSTOM_WITH[name]
+        requires_arg = _query_uses_arg(query)
+        if token.startswith(f"{option}="):
+            entries.append(
+                _build_custom_invocation(
+                    name=name,
+                    query=query,
+                    raw_arg=token.split("=", 1)[1],
+                )
+            )
+            index += 1
+            continue
+
+        custom_arg, consumed_index = _consume_custom_optional_arg(
+            argv,
+            index,
+            option,
+            requires_arg,
+        )
+        entries.append(
+            _build_custom_invocation(
+                name=name,
+                query=query,
+                raw_arg=custom_arg,
+            )
+        )
+        index = consumed_index + 1
+
+    return entries
 
 
 def count_filter_values(value: list[str] | None) -> int:
@@ -292,13 +653,14 @@ def count_filter_values(value: list[str] | None) -> int:
     return len(value) if value else 0
 
 
-def extend_filter_order_with_defaults(filter_order: list[str], args: FilterArgs) -> list[str]:
+def extend_filter_order_with_defaults(
+    filter_order: list[str | CustomStageInvocation], args: FilterArgs
+) -> list[str | CustomStageInvocation]:
     """Extend filter order to include config-provided filters."""
     filter_headings = getattr(args, "filter_headings", None)
     filter_bodies = getattr(args, "filter_bodies", None)
     expected_counts = {
-        "--filter-gamify-exp-above": 1 if args.filter_gamify_exp_above is not None else 0,
-        "--filter-gamify-exp-below": 1 if args.filter_gamify_exp_below is not None else 0,
+        "--filter-priority": 1 if args.filter_priority is not None else 0,
         "--filter-level": 1 if args.filter_level is not None else 0,
         "--filter-repeats-above": 1 if args.filter_repeats_above is not None else 0,
         "--filter-repeats-below": 1 if args.filter_repeats_below is not None else 0,
@@ -314,7 +676,7 @@ def extend_filter_order_with_defaults(filter_order: list[str], args: FilterArgs)
 
     full_order = list(filter_order)
     for arg_name, expected in expected_counts.items():
-        existing = full_order.count(arg_name)
+        existing = sum(1 for value in full_order if value == arg_name)
         missing = expected - existing
         if missing > 0:
             full_order.extend([arg_name] * missing)
@@ -341,12 +703,8 @@ def _quote_string(value: str) -> str:
 def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
     """Build query stage for non-indexed filter options."""
     stage: str | None = None
-    if arg_name == "--filter-gamify-exp-above" and args.filter_gamify_exp_above is not None:
-        threshold = args.filter_gamify_exp_above
-        stage = f'select(.properties["gamify_exp"] > {threshold})'
-    elif arg_name == "--filter-gamify-exp-below" and args.filter_gamify_exp_below is not None:
-        threshold = args.filter_gamify_exp_below
-        stage = f'select(.properties["gamify_exp"] < {threshold})'
+    if arg_name == "--filter-priority" and args.filter_priority is not None:
+        stage = f"select(.priority == {_quote_string(args.filter_priority)})"
     elif arg_name == "--filter-level" and args.filter_level is not None:
         stage = f"select(.level == {args.filter_level})"
     elif arg_name == "--filter-repeats-above" and args.filter_repeats_above is not None:
@@ -432,12 +790,19 @@ def _filter_stage(arg_name: str, args: FilterArgs, index_trackers: dict[str, int
     return _indexed_filter_stage(arg_name, args, index_trackers)
 
 
-def build_filter_stages(args: FilterArgs, filter_order: list[str]) -> list[str]:
+def build_filter_stages(
+    args: FilterArgs,
+    filter_order: list[str | CustomStageInvocation],
+) -> list[str]:
     """Build query stages for filter pipeline."""
     filter_stages: list[str] = []
     index_trackers = {"property": 0, "tag": 0, "heading": 0, "body": 0}
-    for arg_name in filter_order:
-        stage = _filter_stage(arg_name, args, index_trackers)
+    for entry in filter_order:
+        if isinstance(entry, CustomStageInvocation):
+            filter_stages.append(_custom_stage(entry.query, entry.arg_value))
+            continue
+
+        stage = _filter_stage(entry, args, index_trackers)
         if stage is not None:
             filter_stages.append(stage)
     return filter_stages
@@ -445,46 +810,101 @@ def build_filter_stages(args: FilterArgs, filter_order: list[str]) -> list[str]:
 
 def extend_order_values_with_defaults(order_values: list[str], args: object) -> list[str]:
     """Append config-provided orderings not present in argv order."""
-    desired = normalize_order_by_values(getattr(args, "order_by", None))
-    if not desired:
-        return order_values
+    expected_counts: dict[str, int] = dict.fromkeys(ORDER_BY_DEST_TO_VALUE.values(), 0)
+    for dest_name, value in ORDER_BY_DEST_TO_VALUE.items():
+        count = getattr(args, dest_name, 0)
+        if isinstance(count, bool):
+            expected_counts[value] += int(count)
+        elif isinstance(count, int) and count > 0:
+            expected_counts[value] += count
 
     full_order = list(order_values)
-    for value in desired:
-        if full_order.count(value) < desired.count(value):
-            full_order.append(value)
+    for value, expected in expected_counts.items():
+        existing = full_order.count(value)
+        missing = expected - existing
+        if missing > 0:
+            full_order.extend([value] * missing)
     return full_order
 
 
-def build_order_stages(args: object, argv: list[str]) -> list[str]:
+def build_order_stages(
+    args: object,
+    argv: list[str],
+    include_builtin_ordering: bool,
+) -> list[str]:
     """Build query stages for ordering pipeline."""
-    order_values = _parse_option_order_from_argv(argv, ORDER_BY_OPTION)
-    order_values = extend_order_values_with_defaults(order_values, args)
-    validate_order_by_values(order_values)
+    order_entries = parse_order_entries_from_argv(argv, include_builtin_ordering)
+    order_values: list[str | CustomStageInvocation]
+    if include_builtin_ordering:
+        builtin_order_values: list[str] = []
+        for entry in order_entries:
+            if isinstance(entry, str):
+                builtin_order_values.append(entry)
+
+        expected_builtins = extend_order_values_with_defaults(builtin_order_values, args)
+        remaining_builtin_counts: dict[str, int] = {}
+        for value in builtin_order_values:
+            remaining_builtin_counts[value] = remaining_builtin_counts.get(value, 0) + 1
+
+        missing_builtins: list[str] = []
+        for value in expected_builtins:
+            remaining = remaining_builtin_counts.get(value, 0)
+            if remaining > 0:
+                remaining_builtin_counts[value] = remaining - 1
+                continue
+            missing_builtins.append(value)
+
+        order_values = [*order_entries, *missing_builtins]
+        if not order_values:
+            order_values = ["timestamp-desc"]
+    else:
+        order_values = list(order_entries)
 
     order_stages: list[str] = []
-    for value in order_values:
-        if value == "file-order":
-            order_stages.append(".")
-        elif value == "file-order-reversed":
-            order_stages.append("reverse")
-        elif value == "level":
-            order_stages.append("sort_by(.level)")
-        elif value == "gamify-exp-asc":
-            key_expr = '.properties["gamify_exp"]'
-            order_stages.append(f"sort_by({key_expr})")
-            order_stages.append("reverse")
-            order_stages.append(f"sort_by(({key_expr}) != none)")
-        elif value == "gamify-exp-desc":
-            order_stages.append('sort_by(.properties["gamify_exp"])')
-        elif value == "timestamp-asc":
-            key_expr = ".repeated_tasks + .deadline + .closed + .scheduled | max"
-            order_stages.append(f"sort_by({key_expr})")
-            order_stages.append("reverse")
-            order_stages.append(f"sort_by(({key_expr}) != none)")
-        elif value == "timestamp-desc":
-            order_stages.append("sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)")
+    for order_value in order_values:
+        if isinstance(order_value, CustomStageInvocation):
+            order_stages.append(_custom_stage(order_value.query, order_value.arg_value))
+            continue
+
+        order_stages.extend(_builtin_order_stages(order_value))
     return order_stages
+
+
+def _builtin_order_stages(value: str) -> list[str]:
+    """Build query stages for one built-in ordering value."""
+    timestamp_key_expr = ".repeated_tasks + .deadline + .closed + .scheduled | max"
+    order_stages: dict[str, list[str]] = {
+        "file-order": ["."],
+        "file-order-reversed": ["reverse"],
+        "priority": ["sort_by(.priority)"],
+        "level": ["sort_by(.level)"],
+        "timestamp-asc": [
+            f"sort_by({timestamp_key_expr})",
+            "reverse",
+            f"sort_by(({timestamp_key_expr}) != none)",
+        ],
+        "timestamp-desc": ["sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"],
+    }
+    return order_stages.get(value, [])
+
+
+def build_with_stages(argv: list[str]) -> list[str]:
+    """Build query stages for custom enrichment pipeline."""
+    invocations = parse_with_entries_from_argv(argv)
+    stages: list[str] = []
+    for invocation in invocations:
+        stages.append(_custom_stage(invocation.query, invocation.arg_value))
+    return stages
+
+
+def collect_custom_context_vars(
+    argv: list[str],
+    files: list[str] | None,
+    include_builtin_ordering: bool,
+) -> dict[str, object]:
+    """Collect custom switch argument values for query evaluation context."""
+    del argv, files, include_builtin_ordering
+    return {}
 
 
 def build_query_text(
@@ -494,13 +914,15 @@ def build_query_text(
     include_slice: bool,
 ) -> str:
     """Build query text for the configured filter/ordering pipeline."""
-    filter_order = parse_filter_order_from_argv(argv)
+    validate_custom_switches(argv, include_ordering)
+
+    filter_order = parse_filter_entries_from_argv(argv)
     filter_order = extend_filter_order_with_defaults(filter_order, args)
     filter_stages = build_filter_stages(args, filter_order)
+    with_stages = build_with_stages(argv)
 
-    stages = [*filter_stages]
-    if include_ordering:
-        stages.extend(build_order_stages(args, argv))
+    stages = [*with_stages, *filter_stages]
+    stages.extend(build_order_stages(args, argv, include_builtin_ordering=include_ordering))
 
     pipeline_body = " | ".join(stages)
     base_query = f"[ .[] | {pipeline_body} ]" if pipeline_body else "[ .[] ]"
@@ -630,8 +1052,6 @@ class DataLoadArgs(FilterArgs, Protocol):
     files: list[str] | None
     todo_keys: str
     done_keys: str
-    with_gamify_category: bool
-    with_numeric_gamify_exp: bool
     with_tags_as_category: bool
     category_property: str
 
@@ -679,20 +1099,19 @@ def load_and_process_data(
     args: DataLoadArgs,
 ) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
     """Load nodes, preprocess, and apply query-based filters/ordering."""
+    include_ordering = hasattr(args, "order_by_level")
+    validate_custom_switches(sys.argv, include_ordering)
+
+    normalized_files = normalize_cli_files_for_custom_switches(args.files)
+    args.files = normalized_files
+
     todo_keys, done_keys = validate_global_arguments(args)
-    roots, todo_keys, done_keys = _load_roots_for_inputs(args.files, todo_keys, done_keys)
+    roots, todo_keys, done_keys = _load_roots_for_inputs(normalized_files, todo_keys, done_keys)
     nodes = [node for root in roots for node in root[1:]]
-
-    if args.with_numeric_gamify_exp:
-        nodes = preprocess_numeric_gamify_exp(nodes)
-
-    if args.with_gamify_category:
-        nodes = preprocess_gamify_categories(nodes, args.category_property)
 
     if args.with_tags_as_category:
         nodes = preprocess_tags_as_category(nodes, args.category_property)
 
-    include_ordering = hasattr(args, "order_by")
     include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
     query = build_query(
         args, sys.argv, include_ordering=include_ordering, include_slice=include_slice
@@ -701,11 +1120,15 @@ def load_and_process_data(
     context_vars: dict[str, object] = {
         "todo_keys": todo_keys,
         "done_keys": done_keys,
+        "category_property": args.category_property,
     }
+    context_vars.update(collect_custom_context_vars(sys.argv, normalized_files, include_ordering))
     if include_slice:
         sliced_args = cast(SlicedDataLoadArgs, args)
         context_vars["offset"] = sliced_args.offset
         context_vars["limit"] = sliced_args.max_results
+
+    logger.info("Query context: %s", context_vars)
 
     try:
         results = query(Stream([nodes]), EvalContext(context_vars))

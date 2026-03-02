@@ -30,8 +30,7 @@ def make_summary_args(files: list[str], **overrides: object) -> stats_summary.Su
         exclude_inline=None,
         todo_keys="TODO",
         done_keys="DONE",
-        filter_gamify_exp_above=None,
-        filter_gamify_exp_below=None,
+        filter_priority=None,
         filter_level=None,
         filter_repeats_above=None,
         filter_repeats_below=None,
@@ -47,8 +46,6 @@ def make_summary_args(files: list[str], **overrides: object) -> stats_summary.Su
         max_results=10,
         max_tags=5,
         use="tags",
-        with_numeric_gamify_exp=False,
-        with_gamify_category=False,
         with_tags_as_category=False,
         category_property="CATEGORY",
         max_relations=5,
@@ -72,8 +69,7 @@ def make_tags_args(files: list[str], **overrides: object) -> stats_tags.TagsArgs
         exclude_inline=None,
         todo_keys="TODO",
         done_keys="DONE",
-        filter_gamify_exp_above=None,
-        filter_gamify_exp_below=None,
+        filter_priority=None,
         filter_level=None,
         filter_repeats_above=None,
         filter_repeats_below=None,
@@ -90,8 +86,6 @@ def make_tags_args(files: list[str], **overrides: object) -> stats_tags.TagsArgs
         max_tags=5,
         use="tags",
         show=None,
-        with_numeric_gamify_exp=False,
-        with_gamify_category=False,
         with_tags_as_category=False,
         category_property="CATEGORY",
         max_relations=5,
@@ -115,8 +109,7 @@ def make_groups_args(files: list[str], **overrides: object) -> stats_groups.Grou
         exclude_inline=None,
         todo_keys="TODO",
         done_keys="DONE",
-        filter_gamify_exp_above=None,
-        filter_gamify_exp_below=None,
+        filter_priority=None,
         filter_level=None,
         filter_repeats_above=None,
         filter_repeats_below=None,
@@ -133,8 +126,6 @@ def make_groups_args(files: list[str], **overrides: object) -> stats_groups.Grou
         max_tags=5,
         use="tags",
         groups=None,
-        with_numeric_gamify_exp=False,
-        with_gamify_category=False,
         with_tags_as_category=False,
         category_property="CATEGORY",
         max_relations=5,
@@ -158,8 +149,7 @@ def make_tasks_args(files: list[str], **overrides: object) -> stats_tasks.TasksA
         exclude_inline=None,
         todo_keys="TODO",
         done_keys="DONE",
-        filter_gamify_exp_above=None,
-        filter_gamify_exp_below=None,
+        filter_priority=None,
         filter_level=None,
         filter_repeats_above=None,
         filter_repeats_below=None,
@@ -175,8 +165,6 @@ def make_tasks_args(files: list[str], **overrides: object) -> stats_tasks.TasksA
         max_results=10,
         max_tags=5,
         use="tags",
-        with_numeric_gamify_exp=False,
-        with_gamify_category=False,
         with_tags_as_category=False,
         category_property="CATEGORY",
         max_relations=5,
@@ -328,14 +316,13 @@ def test_run_stats_summary_no_results(
     assert "No results" in captured
 
 
-def test_run_stats_summary_preprocessors(
+def test_run_stats_summary_category_preprocessor(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Summary command should handle category preprocessors."""
+    """Summary command should handle tag-based category preprocessing."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_summary_args(
         [fixture_path],
-        with_gamify_category=True,
         with_tags_as_category=True,
     )
 

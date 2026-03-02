@@ -25,8 +25,7 @@ COMMAND_OPTION_NAMES = {
     "filter_completed",
     "filter_date_from",
     "filter_date_until",
-    "filter_gamify_exp_above",
-    "filter_gamify_exp_below",
+    "filter_priority",
     "filter_level",
     "filter_headings",
     "filter_not_completed",
@@ -44,11 +43,14 @@ COMMAND_OPTION_NAMES = {
     "out",
     "out_theme",
     "pandoc_args",
-    "order_by",
+    "order_by_file_order",
+    "order_by_file_order_reversed",
+    "order_by_priority",
+    "order_by_level",
+    "order_by_timestamp_asc",
+    "order_by_timestamp_desc",
     "todo_keys",
     "use",
-    "with_gamify_category",
-    "with_numeric_gamify_exp",
     "with_tags_as_category",
     "show",
     "groups",
@@ -59,6 +61,9 @@ COMMAND_OPTION_NAMES = {
 CONFIG_APPEND_DEFAULTS: dict[str, list[str]] = {}
 CONFIG_INLINE_DEFAULTS: dict[str, object] = {}
 CONFIG_DEFAULTS: dict[str, object] = {}
+CONFIG_CUSTOM_FILTERS: dict[str, str] = {}
+CONFIG_CUSTOM_ORDER_BY: dict[str, str] = {}
+CONFIG_CUSTOM_WITH: dict[str, str] = {}
 
 
 DEST_TO_OPTION_NAME: dict[str, str] = {
@@ -74,8 +79,7 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "filter_completed": "--filter-completed",
     "filter_date_from": "--filter-date-from",
     "filter_date_until": "--filter-date-until",
-    "filter_gamify_exp_above": "--filter-gamify-exp-above",
-    "filter_gamify_exp_below": "--filter-gamify-exp-below",
+    "filter_priority": "--filter-priority",
     "filter_headings": "--filter-heading",
     "filter_level": "--filter-level",
     "filter_not_completed": "--filter-not-completed",
@@ -95,13 +99,16 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "out": "--out",
     "out_theme": "--out-theme",
     "pandoc_args": "--pandoc-args",
-    "order_by": "--order-by",
+    "order_by_file_order": "--order-by-file-order",
+    "order_by_file_order_reversed": "--order-by-file-order-reversed",
+    "order_by_priority": "--order-by-priority",
+    "order_by_level": "--order-by-level",
+    "order_by_timestamp_asc": "--order-by-timestamp-asc",
+    "order_by_timestamp_desc": "--order-by-timestamp-desc",
     "show": "--show",
     "todo_keys": "--todo-keys",
     "use": "--use",
     "verbose": "--verbose",
-    "with_gamify_category": "--with-gamify-category",
-    "with_numeric_gamify_exp": "--with-numeric-gamify-exp",
     "with_tags_as_category": "--with-tags-as-category",
 }
 
@@ -195,6 +202,18 @@ class ConfigContext:
     stats_options: ConfigOptions
 
 
+@dataclass
+class LoadedCliConfig:
+    """Fully parsed CLI config payload."""
+
+    defaults: dict[str, object]
+    append_defaults: dict[str, list[str]]
+    inline_defaults: dict[str, object]
+    custom_filters: dict[str, str]
+    custom_order_by: dict[str, str]
+    custom_with: dict[str, str]
+
+
 class ConfigDefaultsTarget(Protocol):
     """Protocol for args that accept inline defaults."""
 
@@ -264,11 +283,6 @@ def is_string_list(value: object) -> TypeGuard[list[str]]:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
-def is_string_tuple(value: object) -> TypeGuard[tuple[str, ...]]:
-    """Check if value is tuple[str, ...]."""
-    return isinstance(value, tuple) and all(isinstance(item, str) for item in value)
-
-
 def is_string_dict(value: object) -> TypeGuard[dict[str, str]]:
     """Check if value is dict[str, str]."""
     return isinstance(value, dict) and all(
@@ -328,46 +342,18 @@ def validate_str_option(key: str, value: object) -> str | None:
     if not isinstance(value, str):
         return None
     stripped = value.strip()
-    if key in ("--config", "--show", "--out") and not stripped:
+    if key in ("--config", "--show", "--out", "--filter-priority") and not stripped:
         return None
 
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
-    invalid_order_by = key == "--order-by" and value not in {
-        "file-order",
-        "file-order-reversed",
-        "level",
-        "timestamp-asc",
-        "timestamp-desc",
-        "gamify-exp-asc",
-        "gamify-exp-desc",
-    }
     invalid_keys = key in ("--todo-keys", "--done-keys") and not is_valid_keys_string(value)
     invalid_dates = key in (
         "--filter-date-from",
         "--filter-date-until",
     ) and not is_valid_date_argument(value)
-    if invalid_use or invalid_order_by or invalid_keys or invalid_dates:
+    if invalid_use or invalid_keys or invalid_dates:
         return None
     return value
-
-
-def validate_order_by_option(value: object) -> str | list[str] | None:
-    """Validate order-by option value."""
-    allowed = {
-        "file-order",
-        "file-order-reversed",
-        "level",
-        "timestamp-asc",
-        "timestamp-desc",
-        "gamify-exp-asc",
-        "gamify-exp-desc",
-    }
-    if isinstance(value, str):
-        return value if value in allowed else None
-    if is_string_list(value) or is_string_tuple(value):
-        order_by_values = list(value)
-        return order_by_values if all(item in allowed for item in order_by_values) else None
-    return None
 
 
 def validate_list_option(key: str, value: object) -> list[str] | None:
@@ -442,13 +428,6 @@ def apply_str_option(
     defaults: dict[str, object],
 ) -> bool:
     """Apply string config option."""
-    if key == "--order-by":
-        order_by_value = validate_order_by_option(value)
-        if order_by_value is None:
-            return False
-        defaults[dest] = order_by_value
-        return True
-
     str_value = validate_str_option(key, value)
     if str_value is None:
         return False
@@ -522,6 +501,47 @@ def apply_config_entry(
     return False
 
 
+def parse_config_sections(
+    raw_config: dict[str, object],
+) -> tuple[dict[str, object], dict[str, str], dict[str, str], dict[str, str]] | None:
+    """Parse top-level config sections.
+
+    Accepted shape:
+      {
+        "defaults": { ... },
+        "filter": {"name": "query"},
+        "order-by": {"name": "query"},
+        "with": {"name": "query"}
+      }
+    """
+    allowed_keys = {"defaults", "filter", "order-by", "with"}
+    if any(key not in allowed_keys for key in raw_config):
+        return None
+
+    defaults_section = raw_config.get("defaults", {})
+    if not isinstance(defaults_section, dict):
+        return None
+
+    filter_section = raw_config.get("filter", {})
+    if not is_string_dict(filter_section):
+        return None
+
+    order_by_section = raw_config.get("order-by", {})
+    if not is_string_dict(order_by_section):
+        return None
+
+    with_section = raw_config.get("with", {})
+    if not is_string_dict(with_section):
+        return None
+
+    return (
+        cast(dict[str, object], defaults_section),
+        dict(filter_section),
+        dict(order_by_section),
+        dict(with_section),
+    )
+
+
 def build_config_defaults(
     config: dict[str, object],
 ) -> tuple[dict[str, object], dict[str, object], dict[str, list[str]]] | None:
@@ -553,8 +573,6 @@ def build_config_defaults(
     }
 
     global_int_options: dict[str, tuple[str, int | None]] = {
-        "--filter-gamify-exp-above": ("filter_gamify_exp_above", None),
-        "--filter-gamify-exp-below": ("filter_gamify_exp_below", None),
         "--filter-level": ("filter_level", None),
         "--filter-repeats-above": ("filter_repeats_above", None),
         "--filter-repeats-below": ("filter_repeats_below", None),
@@ -562,8 +580,6 @@ def build_config_defaults(
     }
 
     stats_bool_options: dict[str, str] = {
-        "--with-gamify-category": "with_gamify_category",
-        "--with-numeric-gamify-exp": "with_numeric_gamify_exp",
         "--with-tags-as-category": "with_tags_as_category",
     }
 
@@ -571,6 +587,12 @@ def build_config_defaults(
         "--details": "details",
         "--filter-completed": "filter_completed",
         "--filter-not-completed": "filter_not_completed",
+        "--order-by-file-order": "order_by_file_order",
+        "--order-by-file-order-reversed": "order_by_file_order_reversed",
+        "--order-by-level": "order_by_level",
+        "--order-by-priority": "order_by_priority",
+        "--order-by-timestamp-asc": "order_by_timestamp_asc",
+        "--order-by-timestamp-desc": "order_by_timestamp_desc",
         "--verbose": "verbose",
     }
 
@@ -585,10 +607,10 @@ def build_config_defaults(
         "--done-keys": "done_keys",
         "--filter-date-from": "filter_date_from",
         "--filter-date-until": "filter_date_until",
+        "--filter-priority": "filter_priority",
         "--out": "out",
         "--out-theme": "out_theme",
         "--pandoc-args": "pandoc_args",
-        "--order-by": "order_by",
         "--config": "config",
     }
 
@@ -646,9 +668,7 @@ def parse_config_argument(argv: list[str]) -> str:
     return default
 
 
-def load_cli_config(
-    argv: list[str],
-) -> tuple[dict[str, object], dict[str, list[str]], dict[str, object]]:
+def load_cli_config(argv: list[str]) -> LoadedCliConfig:
     """Load config defaults from the configured file path."""
     config_name = parse_config_argument(argv)
     config_path = Path(config_name)
@@ -659,7 +679,13 @@ def load_cli_config(
     if load_error:
         raise typer.BadParameter("Malformed config")
 
-    config_defaults = build_config_defaults(config)
+    config_sections = parse_config_sections(config)
+    if config_sections is None:
+        raise typer.BadParameter("Malformed config")
+
+    defaults_config, custom_filters, custom_order_by, custom_with = config_sections
+
+    config_defaults = build_config_defaults(defaults_config)
     if config_defaults is None:
         raise typer.BadParameter("Malformed config")
 
@@ -675,7 +701,14 @@ def load_cli_config(
         key: value for key, value in combined_defaults.items() if key in COMMAND_OPTION_NAMES
     }
 
-    return (filtered_defaults, append_defaults, inline_defaults)
+    return LoadedCliConfig(
+        defaults=filtered_defaults,
+        append_defaults=append_defaults,
+        inline_defaults=inline_defaults,
+        custom_filters=custom_filters,
+        custom_order_by=custom_order_by,
+        custom_with=custom_with,
+    )
 
 
 def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[str, object]]]:
@@ -699,12 +732,6 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     tasks_list_defaults = {
         key: value for key, value in defaults.items() if key not in task_command_disallowed
     }
-    order_by_default = tasks_list_defaults.get("order_by")
-    if isinstance(order_by_default, str):
-        tasks_list_defaults["order_by"] = [order_by_default]
-    elif is_string_tuple(order_by_default):
-        tasks_list_defaults["order_by"] = list(order_by_default)
-
     tags_defaults = {
         key: value
         for key, value in defaults.items()

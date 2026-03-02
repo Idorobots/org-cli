@@ -65,8 +65,6 @@ def test_build_config_defaults_applies_values() -> None:
         "--max-results": 25,
         "--max-tags": 3,
         "--filter-tag": ["work", "team"],
-        "--with-gamify-category": True,
-        "--with-numeric-gamify-exp": True,
         "--use": "heading",
         "--pandoc-args": "--wrap=none",
     }
@@ -77,8 +75,6 @@ def test_build_config_defaults_applies_values() -> None:
     default_values, stats_defaults, append_defaults = defaults
     assert stats_defaults["max_results"] == 25
     assert stats_defaults["max_tags"] == 3
-    assert stats_defaults["with_gamify_category"] is True
-    assert stats_defaults["with_numeric_gamify_exp"] is True
     assert stats_defaults["use"] == "heading"
     assert default_values["pandoc_args"] == "--wrap=none"
     assert append_defaults["filter_tags"] == ["work", "team"]
@@ -87,6 +83,32 @@ def test_build_config_defaults_applies_values() -> None:
 def test_build_config_defaults_rejects_invalid_entry() -> None:
     """Invalid values should cause config defaults to be rejected."""
     raw: dict[str, object] = {"--max-results": "not-a-number"}
+
+    defaults = config.build_config_defaults(raw)
+
+    assert defaults is None
+
+
+def test_build_config_defaults_accepts_ordering_flags() -> None:
+    """Ordering switches should support boolean config defaults."""
+    raw: dict[str, object] = {
+        "--order-by-priority": True,
+        "--order-by-level": True,
+        "--order-by-timestamp-desc": True,
+    }
+
+    defaults = config.build_config_defaults(raw)
+
+    assert defaults is not None
+    default_values, _stats_defaults, _append_defaults = defaults
+    assert default_values["order_by_priority"] is True
+    assert default_values["order_by_level"] is True
+    assert default_values["order_by_timestamp_desc"] is True
+
+
+def test_build_config_defaults_rejects_non_boolean_ordering_flags() -> None:
+    """Ordering switch defaults must be boolean values."""
+    raw: dict[str, object] = {"--order-by-level": "yes"}
 
     defaults = config.build_config_defaults(raw)
 
@@ -115,14 +137,63 @@ def test_parse_config_argument_default() -> None:
 def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """load_cli_config should load defaults from config file."""
     config_path = tmp_path / ".org-cli.json"
-    config_path.write_text(json.dumps({"--max-results": 7}), encoding="utf-8")
+    config_path.write_text(
+        json.dumps(
+            {
+                "defaults": {"--max-results": 7},
+                "filter": {"custom-filter": ".[]"},
+                "order-by": {"custom-order": "."},
+                "with": {"custom-with": "."},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     monkeypatch.chdir(config_path.parent)
-    defaults, append_defaults, inline_defaults = config.load_cli_config(["org"])
+    loaded = config.load_cli_config(["org"])
 
-    assert defaults["max_results"] == 7
-    assert append_defaults == {}
-    assert inline_defaults == {}
+    assert loaded.defaults["max_results"] == 7
+    assert loaded.append_defaults == {}
+    assert loaded.inline_defaults == {}
+    assert loaded.custom_filters == {"custom-filter": ".[]"}
+    assert loaded.custom_order_by == {"custom-order": "."}
+    assert loaded.custom_with == {"custom-with": "."}
+
+
+def test_load_cli_config_sections_are_optional(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only defaults section should be enough for valid config."""
+    config_path = tmp_path / ".org-cli.json"
+    config_path.write_text(json.dumps({"defaults": {"--max-results": 7}}), encoding="utf-8")
+
+    monkeypatch.chdir(config_path.parent)
+    loaded = config.load_cli_config(["org"])
+
+    assert loaded.defaults["max_results"] == 7
+    assert loaded.custom_filters == {}
+    assert loaded.custom_order_by == {}
+    assert loaded.custom_with == {}
+
+
+def test_load_cli_config_rejects_invalid_custom_section_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Custom sections must be object[string -> string]."""
+    config_path = tmp_path / ".org-cli.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "defaults": {"--max-results": 7},
+                "filter": {"custom-filter": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
 
 
 def test_load_cli_config_malformed_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -226,6 +297,20 @@ def test_build_default_map_keeps_tasks_list_buckets_default() -> None:
     assert default_map["tasks"]["list"]["buckets"] == 77
 
 
+def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
+    """Tasks list ordering defaults should remain boolean flags."""
+    default_map = config.build_default_map(
+        {
+            "order_by_level": True,
+            "order_by_timestamp_desc": False,
+        }
+    )
+
+    tasks_list_defaults = default_map["tasks"]["list"]
+    assert tasks_list_defaults["order_by_level"] is True
+    assert tasks_list_defaults["order_by_timestamp_desc"] is False
+
+
 def test_apply_config_defaults_applies_inline_and_append_defaults() -> None:
     """apply_config_defaults should fill append and inline values."""
     original_append = dict(config.CONFIG_APPEND_DEFAULTS)
@@ -296,7 +381,7 @@ def test_log_applied_config_defaults_logs_all_config_values(
 
 def test_log_command_arguments_logs_all_values(caplog: pytest.LogCaptureFixture) -> None:
     """Command argument logging should include all final argument values."""
-    args = SimpleNamespace(max_results=10, filter_tags=["work"], with_gamify_category=False)
+    args = SimpleNamespace(max_results=10, filter_tags=["work"])
 
     with caplog.at_level(logging.INFO, logger="org"):
         config.log_command_arguments(args, "stats summary")
@@ -304,4 +389,3 @@ def test_log_command_arguments_logs_all_values(caplog: pytest.LogCaptureFixture)
     assert "Command arguments (stats summary):" in caplog.text
     assert "max_results=10" in caplog.text
     assert "filter_tags=['work']" in caplog.text
-    assert "with_gamify_category=False" in caplog.text

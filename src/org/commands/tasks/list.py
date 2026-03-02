@@ -51,8 +51,7 @@ class ListArgs:
     exclude_inline: list[str] | None
     todo_keys: str
     done_keys: str
-    filter_gamify_exp_above: int | None
-    filter_gamify_exp_below: int | None
+    filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
     filter_repeats_below: int | None
@@ -68,9 +67,12 @@ class ListArgs:
     max_results: int
     details: bool
     offset: int
-    order_by: str | list[str] | tuple[str, ...]
-    with_numeric_gamify_exp: bool
-    with_gamify_category: bool
+    order_by_level: bool
+    order_by_file_order: bool
+    order_by_file_order_reversed: bool
+    order_by_priority: bool
+    order_by_timestamp_asc: bool
+    order_by_timestamp_desc: bool
     with_tags_as_category: bool
     category_property: str
     buckets: int
@@ -281,7 +283,10 @@ def run_tasks_list(args: ListArgs) -> None:
 def register(app: typer.Typer) -> None:
     """Register the tasks list command."""
 
-    @app.command("list")
+    @app.command(
+        "list",
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    )
     def tasks_list(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None, metavar="FILE", help="Org-mode archive files or directories to analyze"
@@ -316,17 +321,11 @@ def register(app: typer.Typer) -> None:
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
-        filter_gamify_exp_above: int | None = typer.Option(
+        filter_priority: str | None = typer.Option(
             None,
-            "--filter-gamify-exp-above",
-            metavar="N",
-            help="Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)",
-        ),
-        filter_gamify_exp_below: int | None = typer.Option(
-            None,
-            "--filter-gamify-exp-below",
-            metavar="N",
-            help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
+            "--filter-priority",
+            metavar="P",
+            help="Filter tasks where priority equals P",
         ),
         filter_level: int | None = typer.Option(
             None,
@@ -423,24 +422,35 @@ def register(app: typer.Typer) -> None:
             "--details",
             help="Show full org node details",
         ),
-        order_by: list[str] | None = typer.Option(  # noqa: B008
-            None,
-            "--order-by",
-            metavar="ORDER",
-            help=(
-                "Order tasks by: file-order, file-order-reversed, level, timestamp-asc, "
-                "timestamp-desc, gamify-exp-asc, gamify-exp-desc"
-            ),
-        ),
-        with_gamify_category: bool = typer.Option(
+        order_by_level: bool = typer.Option(
             False,
-            "--with-gamify-category",
-            help="Preprocess nodes to set category property based on gamify_exp value",
+            "--order-by-level",
+            help="Order tasks by heading level (repeatable)",
         ),
-        with_numeric_gamify_exp: bool = typer.Option(
+        order_by_file_order: bool = typer.Option(
             False,
-            "--with-numeric-gamify-exp",
-            help="Normalize gamify_exp property values to strict numeric form",
+            "--order-by-file-order",
+            help="Keep tasks in source file order (repeatable)",
+        ),
+        order_by_file_order_reversed: bool = typer.Option(
+            False,
+            "--order-by-file-order-reversed",
+            help="Reverse source file order (repeatable)",
+        ),
+        order_by_priority: bool = typer.Option(
+            False,
+            "--order-by-priority",
+            help="Order by priority (repeatable)",
+        ),
+        order_by_timestamp_asc: bool = typer.Option(
+            False,
+            "--order-by-timestamp-asc",
+            help="Order by oldest timestamp first (repeatable)",
+        ),
+        order_by_timestamp_desc: bool = typer.Option(
+            False,
+            "--order-by-timestamp-desc",
+            help="Order by newest timestamp first (repeatable)",
         ),
         with_tags_as_category: bool = typer.Option(
             False,
@@ -486,8 +496,7 @@ def register(app: typer.Typer) -> None:
             exclude_inline=None,
             todo_keys=todo_keys,
             done_keys=done_keys,
-            filter_gamify_exp_above=filter_gamify_exp_above,
-            filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_priority=filter_priority,
             filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
             filter_repeats_below=filter_repeats_below,
@@ -503,9 +512,12 @@ def register(app: typer.Typer) -> None:
             max_results=max_results,
             details=details,
             offset=offset,
-            order_by=order_by if order_by is not None else "timestamp-desc",
-            with_numeric_gamify_exp=with_numeric_gamify_exp,
-            with_gamify_category=with_gamify_category,
+            order_by_level=order_by_level,
+            order_by_file_order=order_by_file_order,
+            order_by_file_order_reversed=order_by_file_order_reversed,
+            order_by_priority=order_by_priority,
+            order_by_timestamp_asc=order_by_timestamp_asc,
+            order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
             buckets=buckets,

@@ -50,8 +50,7 @@ class SummaryArgs:
     exclude_inline: list[str] | None
     todo_keys: str
     done_keys: str
-    filter_gamify_exp_above: int | None
-    filter_gamify_exp_below: int | None
+    filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
     filter_repeats_below: int | None
@@ -67,8 +66,6 @@ class SummaryArgs:
     max_results: int
     max_tags: int
     use: str
-    with_numeric_gamify_exp: bool
-    with_gamify_category: bool
     with_tags_as_category: bool
     category_property: str
     max_relations: int
@@ -238,7 +235,10 @@ def run_stats(args: SummaryArgs) -> None:
 def register(app: typer.Typer) -> None:
     """Register the stats summary command."""
 
-    @app.command("summary")
+    @app.command(
+        "summary",
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    )
     def stats_summary(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None, metavar="FILE", help="Org-mode archive files or directories to analyze"
@@ -273,17 +273,11 @@ def register(app: typer.Typer) -> None:
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
-        filter_gamify_exp_above: int | None = typer.Option(
+        filter_priority: str | None = typer.Option(
             None,
-            "--filter-gamify-exp-above",
-            metavar="N",
-            help="Filter tasks where gamify_exp > N (non-inclusive, missing defaults to 10)",
-        ),
-        filter_gamify_exp_below: int | None = typer.Option(
-            None,
-            "--filter-gamify-exp-below",
-            metavar="N",
-            help="Filter tasks where gamify_exp < N (non-inclusive, missing defaults to 10)",
+            "--filter-priority",
+            metavar="P",
+            help="Filter tasks where priority equals P",
         ),
         filter_level: int | None = typer.Option(
             None,
@@ -381,16 +375,6 @@ def register(app: typer.Typer) -> None:
             metavar="CATEGORY",
             help="Category to display: tags, heading, or body",
         ),
-        with_gamify_category: bool = typer.Option(
-            False,
-            "--with-gamify-category",
-            help="Preprocess nodes to set category property based on gamify_exp value",
-        ),
-        with_numeric_gamify_exp: bool = typer.Option(
-            False,
-            "--with-numeric-gamify-exp",
-            help="Normalize gamify_exp property values to strict numeric form",
-        ),
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
@@ -437,8 +421,7 @@ def register(app: typer.Typer) -> None:
             exclude_inline=None,
             todo_keys=todo_keys,
             done_keys=done_keys,
-            filter_gamify_exp_above=filter_gamify_exp_above,
-            filter_gamify_exp_below=filter_gamify_exp_below,
+            filter_priority=filter_priority,
             filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
             filter_repeats_below=filter_repeats_below,
@@ -454,8 +437,6 @@ def register(app: typer.Typer) -> None:
             max_results=max_results,
             max_tags=max_tags,
             use=use,
-            with_numeric_gamify_exp=with_numeric_gamify_exp,
-            with_gamify_category=with_gamify_category,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
             max_relations=max_relations,

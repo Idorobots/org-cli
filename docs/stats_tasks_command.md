@@ -11,14 +11,12 @@ poetry run org stats tasks [OPTIONS] [FILE ...]
 ## Command-specific switches
 
 - `--category-property` - Property name used for category histogram.
-- `--with-gamify-category` - Derive category from `gamify_exp`.
 - `--with-tags-as-category` - Derive category from first tag.
-- `--with-numeric-gamify-exp` - Normalize `gamify_exp` before category logic.
 - `--buckets` - Control timeline/histogram resolution.
 
 ## Available filters
 
-- `--filter-gamify-exp-above N`, `--filter-gamify-exp-below N` - Filter by `gamify_exp` thresholds.
+- `--filter-priority P` - Keep only tasks with priority equal to `P`.
 - `--filter-level N` - Keep only tasks at heading level `N`.
 - `--filter-repeats-above N`, `--filter-repeats-below N` - Filter by repeat count.
 - `--filter-date-from TS`, `--filter-date-until TS` - Keep tasks in a timestamp window.
@@ -44,15 +42,7 @@ poetry run org stats tasks \
   examples/ARCHIVE_small
 ```
 
-3) Split workload by `gamify_exp` difficulty
-
-```bash
-poetry run org stats tasks \
-  --with-gamify-category \
-  examples/ARCHIVE_small
-```
-
-4) Group task categories by first tag
+3) Group task categories by first tag
 
 ```bash
 poetry run org stats tasks \
@@ -61,12 +51,13 @@ poetry run org stats tasks \
   examples/ARCHIVE_small
 ```
 
-5) Build a filtered, category-aware task report
+4) Build a filtered, category-aware task report
 
 ```bash
 poetry run org stats tasks \
-  --with-gamify-category \
+  --with-tags-as-category \
   --category-property CATEGORY \
+  --filter-priority B \
   --filter-date-from 2023-10-20 \
   --filter-date-until 2023-11-15 \
   examples/ARCHIVE_small

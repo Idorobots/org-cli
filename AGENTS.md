@@ -56,6 +56,17 @@ org-cli/
 - Entry point: `docs/index.md`
 - Query language reference: `docs/query_language.md`
 
+### Config Layout
+
+The default config file is `.org-cli.json` in the current working directory.
+
+Top-level sections:
+
+- `defaults` - default values for built-in CLI options (for example `--filter-priority`, `--order-by-priority`, `--buckets`)
+- `filter` - custom `--filter-<name>` query snippets
+- `order-by` - custom `--order-by-<name>` query snippets
+- `with` - custom `--with-<name>` query snippets
+
 ## Development Setup
 Several helpful Poetry tasks are defined in `pyproject.toml`  that automate running mundane tasks. These tasks should be used whenever possible instead of running individual commands.
 
@@ -74,10 +85,10 @@ poetry run org --help
 poetry run org query '.[][] | .heading' -n 5 examples/ARCHIVE_small
 
 # Summary stats
-poetry run org stats summary --max-tags 3 --max-groups 2 examples/ARCHIVE_small
+poetry run org stats summary --filter-priority A --max-tags 3 --max-groups 2 examples/ARCHIVE_small
 
-# Task-only stats with derived categories from gamify_exp
-poetry run org stats tasks --with-gamify-category examples/ARCHIVE_small
+# Task-only stats with derived categories from tags
+poetry run org stats tasks --with-tags-as-category --filter-priority B examples/ARCHIVE_small
 
 # Focused tag stats
 poetry run org stats tags --show Debugging,Jira --max-relations 3 examples/ARCHIVE_small
@@ -86,7 +97,7 @@ poetry run org stats tags --show Debugging,Jira --max-relations 3 examples/ARCHI
 poetry run org stats groups --group Debugging,Erlang --group ProjectManagement,Jira examples/ARCHIVE_small
 
 # Task listing with filters and ordering
-poetry run org tasks list --filter-not-completed --order-by level --order-by timestamp-asc examples/ARCHIVE_small
+poetry run org tasks list --filter-priority A --filter-not-completed --order-by-priority --order-by-timestamp-asc examples/ARCHIVE_small
 ```
 
 Command options evolve; use the generated help for exact flags:

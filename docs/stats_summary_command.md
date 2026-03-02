@@ -16,11 +16,11 @@ poetry run org stats summary [OPTIONS] [FILE ...]
 - `--min-group-size` - Skip small groups.
 - `--max-relations` - Limit relation entries per item.
 - `--buckets` - Control timeline/histogram resolution.
-- `--with-gamify-category`, `--with-tags-as-category`, `--category-property` - Control category derivation.
+- `--with-tags-as-category`, `--category-property` - Control category derivation.
 
 ## Available filters
 
-- `--filter-gamify-exp-above N`, `--filter-gamify-exp-below N` - Filter by `gamify_exp` thresholds.
+- `--filter-priority P` - Keep only tasks with priority equal to `P`.
 - `--filter-level N` - Keep only tasks at heading level `N`.
 - `--filter-repeats-above N`, `--filter-repeats-below N` - Filter by repeat count.
 - `--filter-date-from TS`, `--filter-date-until TS` - Keep tasks in a timestamp window.
@@ -60,7 +60,6 @@ poetry run org stats summary \
 
 ```bash
 poetry run org stats summary \
-  --with-gamify-category \
   --filter-date-from 2023-10-20 \
   --filter-date-until 2023-11-15 \
   --filter-not-completed \
@@ -76,7 +75,6 @@ poetry run org stats summary \
   --max-tags 3 \
   --max-groups 2 \
   --max-relations 3 \
-  --with-gamify-category \
   examples/ARCHIVE_small
 ```
 

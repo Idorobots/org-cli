@@ -8,12 +8,19 @@ from org.query_language import parse_query
 from org.query_language.ast import (
     AsBinding,
     BinaryOp,
+    DictAssignment,
     FieldAccess,
     Fold,
     FunctionCall,
+    IfElse,
+    LetBinding,
     NoneLiteral,
+    NumberLiteral,
     Pipe,
+    Sequence,
     Slice,
+    StringLiteral,
+    Variable,
 )
 from org.query_language.errors import QueryParseError
 
@@ -45,10 +52,29 @@ from org.query_language.errors import QueryParseError
         "clock(.closed, .scheduled, true)",
         'repeated_task(.closed, .todo, "DONE", none)',
         'not(.todo == "DONE")',
+        "str(.heading)",
+        'int("42")',
+        'float("3.14")',
+        'bool("true")',
+        'ts("<2026-03-01 Sun 10:00-12:00>")',
+        "sha256",
+        'match("(DONE|TODO)")',
+        "uuid",
+        "debug",
+        "-1",
+        "-.priority",
+        "1 - -2",
+        "let .heading as $h in $h",
+        'if .todo == "DONE" then .heading else "pending"',
+        'if .todo == "DONE" then .heading elif .todo == "TODO" then "todo" else "pending"',
         ". as $root | $root[]",
         '[ .[] | select(.todo == "DONE") ] | .[10:20]',
         "[]",
         "[1, 2, 3]",
+        '.properties["x"] = 1',
+        ".properties[$key] = 1",
+        ".properties.x = 1",
+        '.properties["x"] = 1; .properties["x"]',
     ],
 )
 def test_parse_query_examples(query: str) -> None:
@@ -87,10 +113,71 @@ def test_parse_as_binding_shape() -> None:
     assert expr.left.name == "root"
 
 
+def test_parse_let_binding_shape() -> None:
+    """Parser should parse let-binding nodes."""
+    expr = parse_query("let .heading as $h in $h")
+    assert isinstance(expr, LetBinding)
+    assert expr.name == "h"
+
+
+def test_parse_if_else_shape() -> None:
+    """Parser should parse if-then-else nodes."""
+    expr = parse_query('if .todo == "DONE" then .heading else "pending"')
+    assert isinstance(expr, IfElse)
+
+
+def test_parse_if_elif_else_shape() -> None:
+    """Parser should parse if-elif-else into nested IfElse nodes."""
+    expr = parse_query('if . == 1 then "one" elif . == 2 then "two" else "other"')
+    assert isinstance(expr, IfElse)
+    assert isinstance(expr.else_expr, IfElse)
+
+
+def test_parse_unary_minus_shape() -> None:
+    """Parser should lower unary minus into subtraction from zero."""
+    expr = parse_query("-.priority")
+    assert isinstance(expr, BinaryOp)
+    assert expr.operator == "-"
+    assert isinstance(expr.left, NumberLiteral)
+    assert expr.left.value == 0
+
+
 def test_parse_fold_shape() -> None:
     """Parser should parse fold expressions."""
     expr = parse_query("[ .[] | .heading ]")
     assert isinstance(expr, Fold)
+
+
+def test_parse_dict_assignment_shape() -> None:
+    """Parser should parse dictionary assignment expressions."""
+    expr = parse_query('.properties["done"] = true')
+    assert isinstance(expr, DictAssignment)
+    assert isinstance(expr.base, FieldAccess)
+    assert isinstance(expr.key_expr, StringLiteral)
+    assert expr.key_expr.value == "done"
+
+
+def test_parse_dict_assignment_dynamic_key_shape() -> None:
+    """Parser should parse assignments with computed bracket keys."""
+    expr = parse_query(".properties[$key] = true")
+    assert isinstance(expr, DictAssignment)
+    assert isinstance(expr.base, FieldAccess)
+    assert isinstance(expr.key_expr, Variable)
+
+
+def test_parse_dict_assignment_dot_target_lowering_shape() -> None:
+    """Parser should lower dot assignments into string-key assignments."""
+    expr = parse_query(".properties.done = true")
+    assert isinstance(expr, DictAssignment)
+    assert isinstance(expr.base, FieldAccess)
+    assert isinstance(expr.key_expr, StringLiteral)
+    assert expr.key_expr.value == "done"
+
+
+def test_parse_sequence_shape() -> None:
+    """Parser should parse sequence expressions."""
+    expr = parse_query('.properties["done"] = true; .properties["done"]')
+    assert isinstance(expr, Sequence)
 
 
 def test_parse_none_literal_is_not_identifier_string() -> None:
@@ -108,6 +195,9 @@ def test_parse_none_literal_is_not_identifier_string() -> None:
         ".[] | | .todo",
         "a +",
         ". as root",
+        "let . as root in .",
+        'if .todo == "DONE" then .heading',
+        ".[] = 1",
     ],
 )
 def test_parse_invalid_queries(query: str) -> None:

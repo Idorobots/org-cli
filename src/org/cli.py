@@ -75,16 +75,23 @@ app.add_typer(stats_app, name="stats")
 
 def main() -> None:
     """Main CLI entry point."""
-    defaults, append_defaults, inline_defaults = config.load_cli_config(sys.argv)
+    loaded_config = config.load_cli_config(sys.argv)
+    defaults = loaded_config.defaults
     if defaults is not None:
         DEFAULT_VERBOSE["value"] = bool(defaults.pop("verbose", False))
     config.CONFIG_APPEND_DEFAULTS.clear()
-    config.CONFIG_APPEND_DEFAULTS.update(append_defaults)
+    config.CONFIG_APPEND_DEFAULTS.update(loaded_config.append_defaults)
     config.CONFIG_INLINE_DEFAULTS.clear()
-    config.CONFIG_INLINE_DEFAULTS.update(inline_defaults)
+    config.CONFIG_INLINE_DEFAULTS.update(loaded_config.inline_defaults)
     config.CONFIG_DEFAULTS.clear()
     if defaults is not None:
         config.CONFIG_DEFAULTS.update(defaults)
+    config.CONFIG_CUSTOM_FILTERS.clear()
+    config.CONFIG_CUSTOM_FILTERS.update(loaded_config.custom_filters)
+    config.CONFIG_CUSTOM_ORDER_BY.clear()
+    config.CONFIG_CUSTOM_ORDER_BY.update(loaded_config.custom_order_by)
+    config.CONFIG_CUSTOM_WITH.clear()
+    config.CONFIG_CUSTOM_WITH.update(loaded_config.custom_with)
 
     command = typer.main.get_command(app)
     default_map = config.build_default_map(defaults) if defaults else None

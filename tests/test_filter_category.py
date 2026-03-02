@@ -1,6 +1,6 @@
 """Tests for filter_category function."""
 
-from org.filters import filter_category, preprocess_gamify_categories
+from org.filters import filter_category
 from tests.conftest import node_from_org
 
 
@@ -151,32 +151,6 @@ def test_filter_category_case_sensitive() -> None:
 
     assert len(filtered) == 1
     assert filtered[0].heading == "Task 2"
-
-
-def test_filter_category_with_preprocessed_nodes() -> None:
-    """Test filtering after preprocessing with gamify."""
-    nodes = node_from_org("""
-* DONE Task 1
-:PROPERTIES:
-:gamify_exp: 5
-:END:
-
-* DONE Task 2
-:PROPERTIES:
-:gamify_exp: 15
-:END:
-
-* DONE Task 3
-:PROPERTIES:
-:gamify_exp: 25
-:END:
-""")
-
-    preprocessed = preprocess_gamify_categories(nodes, "CATEGORY")
-    filtered = filter_category(preprocessed, "CATEGORY", "simple")
-
-    assert len(filtered) == 1
-    assert filtered[0].heading == "Task 1"
 
 
 def test_filter_category_empty_nodes() -> None:

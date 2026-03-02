@@ -1,6 +1,25 @@
 {
-  "--done-keys": "DONE,CANCELLED,DELEGATED",
-  "--buckets": 80,
-  "--mapping": "examples/mapping_example.json",
-  "--exclude": "examples/exclude_example.txt"
+  "defaults": {
+    "--done-keys": "DONE,CANCELLED,DELEGATED",
+    "--buckets": 80,
+    "--mapping": "examples/mapping_example.json",
+    "--exclude": "examples/exclude_example.txt"
+  },
+  "filter": {
+    "level-above": "select(.level > $arg)",
+    "level-below": "select(.level < $arg)",
+    "gamify-exp-above": "select(.properties.gamify_exp > $arg)",
+    "gamify-exp-below": "select(.properties.gamify_exp < $arg)"
+  },
+  "order-by": {
+    "gamify-exp-asc": "sort_by(.properties.gamify_exp) | reverse | sort_by(.properties.gamify_exp != none)",
+    "gamify-exp-desc": "sort_by(.properties.gamify_exp)"
+  },
+  "with": {
+    "numeric-gamify-exp": "(let .properties as $p in (if $p and $p.gamify_exp then $p.gamify_exp = int($p.gamify_exp | match(\"^\\\\s*([+-]?[0-9]+)\\\\s*|\\\\(\\\\s*([+-]?[0-9]+)\\\\s+[+-]?[0-9]+\\\\s*\\\\)$\") as $m | $m[1] or $m[2]) else $p)); .",
+
+    "gamify-category": "(let .properties as $p in (if $p and $p.gamify_exp then $p[$category_property] = (if $p.gamify_exp < 10 then \"simple\" elif $p.gamify_exp >= 20 then \"hard\" else \"regular\") else $p[$category_property] = \"regular\")); .",
+
+    "tags-as-category2": "(if .properties and .tags then .properties[$category_property] = [.tags[]][0] else none); ."
+  }
 }

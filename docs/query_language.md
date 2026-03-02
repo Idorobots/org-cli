@@ -22,15 +22,16 @@ A query is an expression tree composed of these syntax classes:
 
 - **Primary values**: literals, variables, identity, grouped expressions.
 - **Postfix accessors**: field access, bracket key/index/slice, iteration.
-- **Function calls**: built-ins like `select(...)`, `sort_by(...)`, `sum`.
+- **Function calls**: built-ins like `select(...)`, `sort_by(...)`, `sum`, `uuid`.
 - **Operators**: arithmetic, comparison, boolean, membership, regex match.
-- **Combinators**: tuple (`,`), variable binding (`as`), pipeline (`|`), fold (`[ ... ]`).
+- **Combinators**: tuple (`,`), variable binding (`as`), scoped binding (`let ... in`), conditional (`if ... then ... else ...`), pipeline (`|`), fold (`[ ... ]`).
+  sequencing (`;`), dictionary assignment (`=`, limited forms).
 
 ## 3) Syntax reference
 
 ### Literals
 
-- `123`, `-3`, `4.5`
+- `123`, `4.5`
 - `"text"`
 - `true`, `false`
 - `none`
@@ -39,13 +40,19 @@ Examples:
 
 ```text
 42
+-42
 "abc"
 none
 ```
 
+Negative values use unary minus (`-subquery`), which is evaluated as `0 - subquery`.
+
 ### Variables
 
 Variables are referenced as `$name`.
+
+Common CLI-provided context variables include `$todo_keys`, `$done_keys`, `$offset`, `$limit`, and
+`$category_property`.
 
 ```text
 .[] | select(.todo in $done_keys)
@@ -126,6 +133,31 @@ Bind stage output to a variable:
 . as $root | $root[]
 ```
 
+### Scoped `let` binding
+
+`let <value-subquery> as $name in <body-subquery>` evaluates the value subquery, binds `$name`
+while evaluating the body, then restores/clears the variable afterwards.
+
+```text
+let .heading as $h in ("The heading: " + $h
+let "DONE" as $state in select(.todo == $state)
+```
+
+### Conditional expression
+
+`if <condition-subquery> then <then-subquery> else <else-subquery>` evaluates the condition and
+runs either branch based on truthiness.
+
+`elif` branches are also supported and can repeat:
+
+`if <condition> then <then> elif <condition> then <then> ... else <else>`
+
+```text
+2 | if . == 2 then "yes" else "no"
+.[] | if .todo == "DONE" then .heading else "pending"
+.[] | if .todo == "DONE" then .heading elif .todo == "TODO" then "todo" else "pending"
+```
+
 ### Fold expression
 
 `[ subquery ]` collects subquery output into a list, per input item.
@@ -135,6 +167,25 @@ Bind stage output to a variable:
 []
 ```
 
+### Dictionary assignment
+
+Assignment is currently supported only for dictionary field writes:
+
+- `<subquery>.field = <value-subquery>`
+- `<subquery>[<field-subquery>] = <value-subquery>`
+
+The target subquery must evaluate to dictionaries at runtime. For bracket assignment, the key subquery
+must evaluate to a string. Assignment mutates those dictionaries and returns the mutated dictionary
+stream.
+
+```text
+.properties.done = true
+.properties["priority"] = "A"
+.properties[$field_name] = "A"
+```
+
+No other assignment target forms are supported yet.
+
 ### Pipeline
 
 `left | right` feeds left output stream into right stage.
@@ -143,19 +194,31 @@ Bind stage output to a variable:
 .[] | select(.todo == "DONE") | .heading
 ```
 
+### Sequence
+
+`left; right` evaluates `left` for side effects, ignores its output, then evaluates `right` and returns
+`right` output.
+
+```text
+.properties["seen"] = true; .properties["seen"]
+```
+
 ## 4) Operator precedence and associativity
 
 Highest to lowest:
 
 1. Postfix access (`.field`, `[]`, `[i]`, `[a:b]`)
 2. Power (`**`, right-associative)
-3. Multiplicative (`*`, `/`, `mod`, `rem`, `quot`)
-4. Additive (`+`, `-`)
-5. Comparison (`==`, `!=`, `>`, `<`, `>=`, `<=`, `matches`, `in`)
-6. Boolean (`and`, `or`)
-7. Tuple (`,`)
-8. Binding (`as $name`)
-9. Pipeline (`|`)
+3. Unary minus (`-subquery`, evaluated as `0 - subquery`)
+4. Multiplicative (`*`, `/`, `mod`, `rem`, `quot`)
+5. Additive (`+`, `-`)
+6. Comparison (`==`, `!=`, `>`, `<`, `>=`, `<=`, `matches`, `in`)
+7. Boolean (`and`, `or`)
+8. Tuple (`,`)
+9. Binding (`as $name`)
+10. Assignment (`=`)
+11. Sequence (`;`)
+12. Pipeline (`|`)
 
 ## 5) Operators reference
 
@@ -212,6 +275,7 @@ none or "x" => "x"
 ### Arithmetic
 
 - `**`, `*`, `/`, `+`, `-`, `mod`, `rem`, `quot`
+- Unary minus: `-subquery` is evaluated as `0 - subquery`
 
 ```text
 2 ** 3    => 8
@@ -239,6 +303,86 @@ Collection `+`/`-` preserve left-hand collection type (`list`, `tuple`, `set`).
 
 ```text
 reverse                 # [1,2,3] => [3,2,1]
+```
+
+### `str(subquery)`
+
+- Converts each subquery result to string.
+
+```text
+str(.priority)
+```
+
+### `int(subquery)`
+
+- Converts each subquery result to int.
+- Accepts integer and string values.
+
+```text
+int("42")
+```
+
+### `float(subquery)`
+
+- Converts each subquery result to float.
+- Accepts float and string values.
+
+```text
+float("3.14")
+```
+
+### `bool(subquery)`
+
+- Converts each subquery result to bool.
+- Accepts boolean and string values (`"true"` / `"false"`, case-insensitive).
+
+```text
+bool("true")
+```
+
+### `ts(subquery)`
+
+- Converts each subquery result to `OrgDate`.
+- Accepts existing org-date values and org timestamp strings.
+
+```text
+ts("[2026-03-01 Sun 10:00-12:00]")
+```
+
+### `sha256`
+
+- No args.
+- Returns a SHA-256 hex digest for each input string value.
+
+```text
+"abc" | sha256
+```
+
+### `match(subquery)`
+
+- Matches each string input item against regex from subquery.
+- Returns `[full_match, group1, group2, ...]` on match, else `none`.
+
+```text
+.[] | match("(DONE)-(\\d+)")
+```
+
+### `uuid`
+
+- No args.
+- Emits a new UUIDv4 string for each input item.
+
+```text
+uuid
+```
+
+### `debug`
+
+- No args.
+- Logs each input value to stdout via the CLI logger and returns values unchanged.
+
+```text
+.[] | debug
 ```
 
 ### `unique`

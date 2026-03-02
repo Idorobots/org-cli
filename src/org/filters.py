@@ -10,9 +10,6 @@ import orgparse
 from org.timestamp import extract_timestamp_any
 
 
-_GAMIFY_EXP_TUPLE_PATTERN = re.compile(r"^\(\s*([+-]?\d+)\s+([+-]?\d+)\s*\)$")
-
-
 class _FilteredOrgNode(orgparse.node.OrgNode):
     """Wrapper for OrgNode that overrides repeated_tasks without copying the entire node.
 
@@ -77,132 +74,6 @@ class _PropertyRewrittenOrgNode(orgparse.node.OrgNode):
         return getattr(self._original_node, name)
 
 
-def _parse_strict_numeric_gamify_exp(value: str) -> int | None:
-    """Parse gamify_exp from a string into a strict integer value."""
-    stripped = value.strip()
-    if not stripped:
-        return None
-
-    try:
-        return int(stripped)
-    except ValueError:
-        pass
-
-    match = _GAMIFY_EXP_TUPLE_PATTERN.fullmatch(stripped)
-    if match is None:
-        return None
-    return int(match.group(1))
-
-
-def preprocess_numeric_gamify_exp(
-    nodes: list[orgparse.node.OrgNode],
-) -> list[orgparse.node.OrgNode]:
-    """Normalize gamify_exp property values to strict numeric form.
-
-    Rules:
-    - Numeric values stay unchanged
-    - "(X Y)" values where both X and Y are numeric become X
-    - Any other value removes gamify_exp from properties
-    """
-    normalized_nodes: list[orgparse.node.OrgNode] = []
-
-    for node in nodes:
-        if "gamify_exp" not in node.properties:
-            normalized_nodes.append(node)
-            continue
-
-        raw_value = node.properties["gamify_exp"]
-        if isinstance(raw_value, int) and not isinstance(raw_value, bool):
-            normalized_nodes.append(node)
-            continue
-
-        normalized_value: int | None = None
-        if isinstance(raw_value, str):
-            normalized_value = _parse_strict_numeric_gamify_exp(raw_value)
-
-        rewritten_properties = dict(node.properties)
-        if normalized_value is None:
-            rewritten_properties.pop("gamify_exp", None)
-        else:
-            rewritten_properties["gamify_exp"] = normalized_value
-
-        normalized_nodes.append(_PropertyRewrittenOrgNode(node, rewritten_properties))
-
-    return normalized_nodes
-
-
-def parse_gamify_exp(gamify_exp_value: str | None) -> int | None:
-    """Parse gamify_exp property and return the numeric value.
-
-    Args:
-        gamify_exp_value: The gamify_exp property value (string or None)
-
-    Returns:
-        Integer value if parseable, None if missing or invalid
-
-    Rules:
-    - If None or empty: return None (default to regular)
-    - If integer string: return that integer
-    - If "(X Y)" format: return X
-    - Otherwise: return None (default to regular)
-    """
-    if gamify_exp_value is None or gamify_exp_value.strip() == "":
-        return None
-
-    value = gamify_exp_value.strip()
-
-    try:
-        return int(value)
-    except ValueError:
-        pass
-
-    if value.startswith("(") and value.endswith(")"):
-        inner = value[1:-1].strip()
-        parts = inner.split()
-        if len(parts) >= 2:
-            try:
-                return int(parts[0])
-            except ValueError:
-                pass
-
-    return None
-
-
-def get_gamify_exp(node: orgparse.node.OrgNode) -> int | None:
-    """Extract gamify_exp value from an org-mode node.
-
-    Args:
-        node: Org-mode node to extract gamify_exp from
-
-    Returns:
-        Integer value of gamify_exp, or None if not present or invalid
-    """
-    gamify_exp_raw = node.properties.get("gamify_exp", None)
-    gamify_exp_str = str(gamify_exp_raw) if gamify_exp_raw is not None else None
-    return parse_gamify_exp(gamify_exp_str)
-
-
-def get_gamify_category(node: orgparse.node.OrgNode) -> str:
-    """Extract gamify_exp value from an org-mode node and decide what category it belongs to.
-
-    Args:
-        node: Org-mode node to extract gamify_exp from
-
-    Returns:
-        String representing the category
-    """
-
-    exp_value = get_gamify_exp(node)
-
-    if exp_value is None:
-        return "regular"
-    if exp_value < 10:
-        return "simple"
-    if exp_value < 20:
-        return "regular"
-    return "hard"
-
-
 def get_repeat_count(node: orgparse.node.OrgNode) -> int:
     """Get total repeat count for a node.
 
@@ -243,40 +114,6 @@ def _filter_node_repeats(
         return None
 
     return _FilteredOrgNode(node, matching_repeats)
-
-
-def filter_gamify_exp_above(
-    nodes: list[orgparse.node.OrgNode], threshold: int
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes where gamify_exp > threshold (non-inclusive).
-
-    Missing gamify_exp defaults to 10.
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        threshold: Threshold value
-
-    Returns:
-        Filtered list of nodes
-    """
-    return [node for node in nodes if (get_gamify_exp(node) or 10) > threshold]
-
-
-def filter_gamify_exp_below(
-    nodes: list[orgparse.node.OrgNode], threshold: int
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes where gamify_exp < threshold (non-inclusive).
-
-    Missing gamify_exp defaults to 10.
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        threshold: Threshold value
-
-    Returns:
-        Filtered list of nodes
-    """
-    return [node for node in nodes if (get_gamify_exp(node) or 10) < threshold]
 
 
 def filter_repeats_above(
@@ -574,35 +411,6 @@ def filter_category(
         node
         for node in nodes
         if category_value == (node.properties.get(category_property) or "none")
-    ]
-
-
-def preprocess_gamify_categories(
-    nodes: list[orgparse.node.OrgNode],
-    category_property: str,
-) -> list[orgparse.node.OrgNode]:
-    """Add category property to nodes based on gamify_exp value.
-
-    For each node, computes category from gamify_exp and wraps the node
-    to include the category property.
-
-    Args:
-        nodes: List of nodes to preprocess
-        category_property: Name of property to set (e.g., "CATEGORY")
-
-    Returns:
-        List of wrapped nodes with category property set
-    """
-    # FIXME This is pretty slow, should be refactored in the future.
-    return [
-        _PropertyRewrittenOrgNode(
-            node,
-            {
-                **node.properties,
-                category_property: get_gamify_category(node),
-            },
-        )
-        for node in nodes
     ]
 
 

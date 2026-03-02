@@ -13,17 +13,21 @@ from org.query_language.ast import (
     BinaryOp,
     BoolLiteral,
     BracketFieldAccess,
+    DictAssignment,
     Expr,
     FieldAccess,
     Fold,
     FunctionCall,
     Group,
     Identity,
+    IfElse,
     Index,
     Iterate,
+    LetBinding,
     NoneLiteral,
     NumberLiteral,
     Pipe,
+    Sequence,
     Slice,
     StringLiteral,
     TupleExpr,
@@ -33,6 +37,9 @@ from org.query_language.errors import QueryParseError
 
 
 KNOWN_FUNCTIONS = {
+    "bool",
+    "float",
+    "int",
     "reverse",
     "unique",
     "select",
@@ -43,11 +50,17 @@ KNOWN_FUNCTIONS = {
     "min",
     "join",
     "map",
+    "match",
+    "sha256",
+    "str",
+    "ts",
     "type",
     "timestamp",
     "clock",
     "repeated_task",
+    "uuid",
     "not",
+    "debug",
 }
 
 type FieldPostfix = tuple[Literal["field"], str]
@@ -258,6 +271,72 @@ def _build_fold_parser(expr: Parser) -> Parser:
     return fold
 
 
+def _build_let_binding_parser(value_expr: Parser, body_expr: Parser, identifier: Parser) -> Parser:
+    """Build parser for scoped let binding expressions."""
+
+    @generate
+    def let_binding() -> Generator[Parser, object, LetBinding]:
+        yield _lexeme(_keyword("let"))
+        value_result = yield value_expr
+        if not isinstance(value_result, Expr):
+            raise QueryParseError("Invalid let value expression")
+        yield _lexeme(_keyword("as"))
+        yield _symbol("$")
+        name_result = yield identifier
+        if not isinstance(name_result, str):
+            raise QueryParseError("Invalid let variable name")
+        body_result = yield (_lexeme(_keyword("in")) >> body_expr)
+        if not isinstance(body_result, Expr):
+            raise QueryParseError("Invalid let body expression")
+        return LetBinding(value_result, name_result, body_result)
+
+    return let_binding
+
+
+def _build_if_else_parser(expr: Parser) -> Parser:
+    """Build parser for conditional if-then-elif-else expressions."""
+
+    elif_clause = seq(
+        _lexeme(_keyword("elif")) >> (expr << _lexeme(_keyword("then"))),
+        expr,
+    )
+
+    @generate
+    def if_else() -> Generator[Parser, object, IfElse]:
+        yield _lexeme(_keyword("if"))
+        condition_result = yield (expr << _lexeme(_keyword("then")))
+        if not isinstance(condition_result, Expr):
+            raise QueryParseError("Invalid if condition expression")
+        then_result = yield expr
+        if not isinstance(then_result, Expr):
+            raise QueryParseError("Invalid then expression")
+
+        elif_clauses_result = yield elif_clause.many()
+        if not isinstance(elif_clauses_result, list):
+            raise QueryParseError("Invalid elif clauses")
+        elif_clauses = cast(list[tuple[object, object]], elif_clauses_result)
+
+        yield _lexeme(_keyword("else"))
+        else_result = yield expr
+        if not isinstance(else_result, Expr):
+            raise QueryParseError("Invalid else expression")
+
+        branches: list[tuple[Expr, Expr]] = [(condition_result, then_result)]
+        for elif_condition, elif_then in elif_clauses:
+            if not isinstance(elif_condition, Expr):
+                raise QueryParseError("Invalid elif condition expression")
+            if not isinstance(elif_then, Expr):
+                raise QueryParseError("Invalid elif then expression")
+            branches.append((elif_condition, elif_then))
+
+        current_else: Expr = else_result
+        for branch_condition, branch_then in reversed(branches):
+            current_else = IfElse(branch_condition, branch_then, current_else)
+        return cast(IfElse, current_else)
+
+    return if_else
+
+
 def _build_postfix_chain_parser(
     base_parser: Parser,
     identifier: Parser,
@@ -300,11 +379,32 @@ def _pipe_builder(_operator: str, left: Expr, right: Expr) -> Expr:
     return Pipe(left, right)
 
 
+def _sequence_builder(_operator: str, left: Expr, right: Expr) -> Expr:
+    """Construct sequencing expression."""
+    return Sequence(left, right)
+
+
+def _assignment_builder(_operator: str, left: Expr, right: Expr) -> Expr:
+    """Construct dictionary assignment expression."""
+    return _build_assignment_expr(left, right)
+
+
+def _build_assignment_expr(left: Expr, right: Expr) -> Expr:
+    """Build assignment expression from supported assignment targets."""
+    if isinstance(left, FieldAccess):
+        return DictAssignment(left.base, StringLiteral(left.field), right)
+    if isinstance(left, Index):
+        return DictAssignment(left.base, left.index_expr, right)
+    if isinstance(left, BracketFieldAccess):
+        return DictAssignment(left.base, left.key_expr, right)
+    raise QueryParseError("Assignment target must be .field or [<field-subquery>] access")
+
+
 def _make_parser() -> Parser:
     """Create the full expression parser."""
     ws = regex(r"\s*")
     identifier = _lexeme(regex(r"[A-Za-z_][A-Za-z0-9_]*"))
-    number_token = _lexeme(regex(r"-?\d+(?:\.\d+)?"))
+    number_token = _lexeme(regex(r"\d+(?:\.\d+)?"))
     string_token = _lexeme(regex(r'"(?:[^"\\]|\\.)*"'))
 
     expr = forward_declaration()
@@ -323,11 +423,13 @@ def _make_parser() -> Parser:
     dot_expression = _build_dot_expression_parser(identifier, bracket_postfix)
     grouped = _build_grouped_parser(expr)
     fold = _build_fold_parser(expr)
+    if_else = _build_if_else_parser(expr)
 
     base_atom = (
         dot_expression
         | grouped
         | fold
+        | if_else
         | true_literal
         | false_literal
         | none_literal
@@ -339,11 +441,26 @@ def _make_parser() -> Parser:
     atom = _build_postfix_chain_parser(base_atom, identifier, bracket_postfix)
 
     power = _chain_right(atom, _symbol("**"), _binary_builder)
+
+    @generate
+    def unary() -> Generator[Parser, object, Expr]:
+        minuses_result = yield _symbol("-").many()
+        if not isinstance(minuses_result, list):
+            raise QueryParseError("Invalid unary minus expression")
+        value_result = yield power
+        if not isinstance(value_result, Expr):
+            raise QueryParseError("Invalid unary minus operand")
+
+        current: Expr = value_result
+        for _minus in minuses_result:
+            current = BinaryOp("-", NumberLiteral(0), current)
+        return current
+
     mult_op = _lexeme(
         string("*") | string("/") | _keyword("mod") | _keyword("rem") | _keyword("quot")
     )
     additive_op = _lexeme(string("+") | string("-"))
-    multiply = _chain_left(power, mult_op, _binary_builder)
+    multiply = _chain_left(unary, mult_op, _binary_builder)
     additive = _chain_left(multiply, additive_op, _binary_builder)
     index_expr.become(additive)
 
@@ -363,8 +480,11 @@ def _make_parser() -> Parser:
     boolean = _chain_left(comparison, bool_op, _binary_builder)
     comma = _chain_comma(boolean)
 
-    as_binding = _build_as_binding_parser(comma, identifier)
-    pipe = _chain_left(as_binding, _symbol("|"), _pipe_builder)
+    let_binding = _build_let_binding_parser(comma, expr, identifier)
+    as_binding = _build_as_binding_parser(let_binding | comma, identifier)
+    assignment = _chain_right(as_binding, _symbol("="), _assignment_builder)
+    sequence = _chain_left(assignment, _symbol(";"), _sequence_builder)
+    pipe = _chain_left(sequence, _symbol("|"), _pipe_builder)
 
     expr.become(pipe)
     return ws >> expr << ws << eof
