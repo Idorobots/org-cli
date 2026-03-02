@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -116,7 +117,8 @@ def test_cli_runner_tasks_list_custom_filter_required_arg_error() -> None:
         )
 
         assert result.exit_code != 0
-        combined_output = result.stdout + result.stderr
+        # FIXME This is only required on CI for some reason.
+        combined_output = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout + result.stderr)
         assert "--filter-level-above requires exactly one argument" in combined_output
     finally:
         config.CONFIG_CUSTOM_FILTERS.clear()
