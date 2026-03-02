@@ -40,7 +40,6 @@ poetry run org stats summary examples/ARCHIVE_small
 
 ```bash
 poetry run org stats summary \
-  --filter-priority B \
   --max-results 3 \
   --max-tags 2 \
   --max-groups 1 \
@@ -61,8 +60,6 @@ poetry run org stats summary \
 
 ```bash
 poetry run org stats summary \
-  --with-tags-as-category \
-  --filter-priority A \
   --filter-date-from 2023-10-20 \
   --filter-date-until 2023-11-15 \
   --filter-not-completed \
@@ -78,7 +75,6 @@ poetry run org stats summary \
   --max-tags 3 \
   --max-groups 2 \
   --max-relations 3 \
-  --with-tags-as-category \
   examples/ARCHIVE_small
 ```
 

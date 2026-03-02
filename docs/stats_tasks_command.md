@@ -36,7 +36,6 @@ poetry run org stats tasks examples/ARCHIVE_small
 
 ```bash
 poetry run org stats tasks \
-  --filter-priority A \
   --filter-date-from 2023-10-20 \
   --filter-date-until 2023-11-15 \
   --filter-completed \

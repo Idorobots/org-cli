@@ -139,7 +139,7 @@ Bind stage output to a variable:
 while evaluating the body, then restores/clears the variable afterwards.
 
 ```text
-let .heading as $h in $h
+let .heading as $h in ("The heading: " + $h
 let "DONE" as $state in select(.todo == $state)
 ```
 

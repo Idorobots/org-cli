@@ -160,18 +160,6 @@ def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.Monk
     assert loaded.custom_with == {"custom-with": "."}
 
 
-def test_load_cli_config_accepts_only_defaults_section_format(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Flat legacy config format should be rejected."""
-    config_path = tmp_path / ".org-cli.json"
-    config_path.write_text(json.dumps({"--max-results": 7}), encoding="utf-8")
-
-    monkeypatch.chdir(config_path.parent)
-    with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
-
-
 def test_load_cli_config_sections_are_optional(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -39,7 +39,6 @@ poetry run org stats tags examples/ARCHIVE_small
 ```bash
 poetry run org stats tags \
   --show Debugging,Jira \
-  --filter-priority A \
   examples/ARCHIVE_small
 ```
 

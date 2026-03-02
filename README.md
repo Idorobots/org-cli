@@ -45,7 +45,7 @@ Custom switch argument handling:
     "recent-first": "sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"
   },
   "with": {
-    "priority-value": ". + {\"priority_value\": .priority }"
+    "priority-value": ".properties.priority_value = .priority"
   }
 }
 ```

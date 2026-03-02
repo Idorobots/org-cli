@@ -175,22 +175,20 @@ def _evaluate_as_binding(expr: AsBinding, stream: Stream, context: EvalContext) 
 def _evaluate_let_binding(expr: LetBinding, stream: Stream, context: EvalContext) -> Stream:
     """Evaluate let-binding with scoped variable lifetime."""
     output = _stream()
+    had_previous = expr.name in context.variables
+    previous_value = context.variables.get(expr.name)
+
     for item in stream:
         bound_values = evaluate_expr(expr.value, _stream([item]), context)
         bound_value: object = bound_values[0] if len(bound_values) == 1 else bound_values
 
-        had_previous = expr.name in context.variables
-        previous_value = context.variables.get(expr.name)
-
         context.variables[expr.name] = bound_value
-        try:
-            output.extend(evaluate_expr(expr.body, _stream([item]), context))
-        finally:
-            if had_previous:
-                context.variables[expr.name] = previous_value
-            else:
-                context.variables.pop(expr.name, None)
+        output.extend(evaluate_expr(expr.body, _stream([item]), context))
 
+    if had_previous:
+        context.variables[expr.name] = previous_value
+    else:
+        context.variables.pop(expr.name, None)
     return output
 
 
@@ -741,7 +739,7 @@ def _func_debug(stream: Stream) -> Stream:
     """Log each input value and return the input stream unchanged."""
     for value in stream:
         logger.info("%s", value)
-    return _stream(stream)
+    return stream
 
 
 def _func_str(stream: Stream, argument: Expr, context: EvalContext) -> Stream:

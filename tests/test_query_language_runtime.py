@@ -313,9 +313,9 @@ def test_runtime_debug_function_logs_and_returns_input_unchanged(
 
 
 def test_runtime_cast_functions_convert_supported_values() -> None:
-    """str/int/float/bool/ts/sha256 should convert supported value types."""
+    """str/int/float/bool/ts should convert supported value types."""
     converted = _execute(
-        'str(1), int("42"), float("3.5"), bool("true"), ("abc" | sha256)',
+        'str(1), int("42"), float("3.5"), bool("true")',
         [None],
         None,
     )
@@ -327,12 +327,18 @@ def test_runtime_cast_functions_convert_supported_values() -> None:
             42,
             3.5,
             True,
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
         )
     ]
     assert len(timestamp_value) == 1
     assert isinstance(timestamp_value[0], OrgDate)
     assert str(timestamp_value[0]) == "<2026-03-01 Sun 10:00--12:00>"
+
+
+def test_runtime_sha256_function_hashes_supported_values() -> None:
+    """sha256 should hash supported string inputs."""
+    hashed = _execute('"abc" | sha256', [None], None)
+
+    assert hashed == ["ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"]
 
 
 def test_runtime_match_function_returns_full_match_and_capture_groups() -> None:

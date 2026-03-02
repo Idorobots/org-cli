@@ -60,7 +60,6 @@ poetry run org tasks list --filter-not-completed examples/ARCHIVE_small
 
 ```bash
 poetry run org tasks list \
-  --filter-priority A \
   --filter-not-completed \
   --order-by-priority \
   --order-by-level \
@@ -69,11 +68,10 @@ poetry run org tasks list \
   examples/ARCHIVE_small
 ```
 
-4) Fetch completed priority-C tasks for a specific day window with paging
+4) Fetch completed tasks for a specific day window with paging
 
 ```bash
 poetry run org tasks list \
-  --filter-priority C \
   --filter-completed \
   --filter-date-from 2023-11-01 \
   --filter-date-until 2023-11-01 \
