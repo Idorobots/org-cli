@@ -6,14 +6,21 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from io import StringIO
 
 import orgparse
 import typer
+from rich.console import Console
+from rich.layout import Layout
+from rich.panel import Panel
+from rich.text import Text
 
 from org import config as config_module
 from org.analyze import AnalysisResult, Tag, TimeRange, analyze, clean
+from org.analyze import Group as TagGroup
 from org.cli_common import (
     CATEGORY_NAMES,
+    get_top_tasks,
     load_and_process_data,
     resolve_date_filters,
     resolve_exclude_set,
@@ -22,12 +29,14 @@ from org.cli_common import (
 from org.commands.stats.tasks import format_tasks_summary
 from org.tui import (
     TagBlockConfig,
+    TaskLineConfig,
     TimelineFormatConfig,
     TopTasksSectionConfig,
     apply_indent,
     build_console,
     format_groups_section,
     format_tag_block,
+    format_task_line,
     format_top_tasks_section,
     lines_to_text,
     print_output,
@@ -72,6 +81,27 @@ class SummaryArgs:
     max_relations: int
     min_group_size: int
     max_groups: int
+
+
+@dataclass(frozen=True)
+class _TaskDisplayConfig:
+    """Configuration for rendering task rows in summary layout."""
+
+    color_enabled: bool
+    done_keys: list[str]
+    todo_keys: list[str]
+    line_width: int
+
+
+@dataclass(frozen=True)
+class _GroupsDisplayConfig:
+    """Configuration for rendering groups body in summary layout."""
+
+    plot_width: int
+    date_from: datetime | None
+    date_until: datetime | None
+    global_timerange: TimeRange
+    color_enabled: bool
 
 
 def format_tags_section(
@@ -204,34 +234,402 @@ def format_stats_summary_output(
     )
 
 
+def _line_count(text: str) -> int:
+    """Return visual line count for preformatted text blocks."""
+    normalized = text.strip("\n")
+    if not normalized:
+        return 1
+    return len(normalized.splitlines())
+
+
+def _panel_body(text: str, color_enabled: bool) -> Text:
+    """Return non-wrapping panel body text."""
+    panel_text = Text.from_markup(text) if color_enabled else Text(text)
+    panel_text.no_wrap = True
+    panel_text.overflow = "ignore"
+    return panel_text
+
+
+def _dedent_section_body(text: str, *, drop_title: bool) -> str:
+    """Normalize section body lines and optionally drop title line."""
+    lines = text.splitlines()
+    body_lines = lines[1:] if lines and not lines[0].strip() else lines
+    if drop_title and body_lines:
+        body_lines = body_lines[1:]
+    unindented_lines = [line.lstrip() if line else "" for line in body_lines]
+    if not unindented_lines:
+        return ""
+    return "\n".join(unindented_lines) + "\n"
+
+
+def _format_tasks_body(
+    nodes: list[orgparse.node.OrgNode],
+    max_results: int,
+    config: _TaskDisplayConfig,
+) -> str:
+    """Return tasks body text without section header."""
+    top_tasks = get_top_tasks(nodes, max_results)
+    if not top_tasks:
+        return "No results\n"
+
+    lines = [
+        format_task_line(
+            node,
+            TaskLineConfig(
+                color_enabled=config.color_enabled,
+                done_keys=config.done_keys,
+                todo_keys=config.todo_keys,
+                line_width=config.line_width,
+            ),
+            indent="",
+        )
+        for node in top_tasks
+    ]
+    return lines_to_text(lines)
+
+
+def _select_task_count_for_height(
+    nodes: list[orgparse.node.OrgNode],
+    max_results: int,
+    target_lines: int,
+    config: _TaskDisplayConfig,
+) -> int:
+    """Return top-task count whose body height best matches target lines."""
+    best_count = 0
+    best_delta = target_lines
+
+    for count in range(max_results + 1):
+        tasks_body = _format_tasks_body(nodes, count, config)
+        delta = abs(_line_count(tasks_body) - target_lines)
+        if delta <= best_delta:
+            best_delta = delta
+            best_count = count
+
+    return best_count
+
+
+_TWO_COLUMN_MIN_WIDTH = 120
+
+
+def _resolve_two_column_panel_content_width(console_width: int) -> int:
+    """Resolve per-column panel body width for two-column summary layout."""
+    left_column_width = max(25, console_width // 2)
+    right_column_width = max(25, console_width - left_column_width)
+    min_column_width = min(left_column_width, right_column_width)
+
+    # Rich Panel uses one-cell borders and one-cell horizontal padding on each side.
+    panel_chrome_width = 4
+    return max(20, min_column_width - panel_chrome_width)
+
+
+def _resolve_single_column_panel_content_width(console_width: int) -> int:
+    """Resolve panel body width for single-column summary layout."""
+    panel_chrome_width = 4
+    return max(20, console_width - panel_chrome_width)
+
+
+def _render_single_column_summary_layout(
+    result: AnalysisResult,
+    nodes: list[orgparse.node.OrgNode],
+    args: SummaryArgs,
+    display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
+    console_width: int,
+) -> tuple[Layout, int]:
+    """Build a single-column summary layout with vertically stacked sections."""
+    exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled = display_config
+    panel_content_width = _resolve_single_column_panel_content_width(console_width)
+    task_display_config = _TaskDisplayConfig(
+        color_enabled=color_enabled,
+        done_keys=done_keys,
+        todo_keys=todo_keys,
+        line_width=panel_content_width,
+    )
+
+    summary_body = format_tasks_summary(
+        result,
+        (date_from, date_until, done_keys, todo_keys, color_enabled),
+        panel_content_width,
+    ).lstrip("\n")
+    tasks_body = _format_tasks_body(nodes, args.max_results, task_display_config)
+
+    def order_by_total(item: tuple[str, Tag]) -> int:
+        """Sort by total count (descending)."""
+        return -item[1].total_tasks
+
+    category_name = CATEGORY_NAMES[args.use]
+    sections: list[tuple[str, str]] = [
+        ("SUMMARY", summary_body.rstrip("\n") or "No results"),
+        ("TASKS", tasks_body.rstrip("\n") or "No results"),
+    ]
+
+    if args.max_tags != 0:
+        tags_body_raw = format_tags_section(
+            category_name,
+            result.tags,
+            (
+                args.max_results,
+                args.max_relations,
+                panel_content_width,
+                date_from,
+                date_until,
+                result.timerange,
+                args.max_tags,
+                exclude_set,
+                color_enabled,
+            ),
+            order_by_total,
+            indent="",
+        )
+        tags_body = _dedent_section_body(tags_body_raw, drop_title=args.use == "tags")
+        sections.append(("TAGS", tags_body.rstrip("\n") or "No results"))
+
+    if args.max_groups != 0:
+        groups_body = _format_groups_body(
+            result.tag_groups,
+            exclude_set,
+            args.min_group_size,
+            args.max_groups,
+            _GroupsDisplayConfig(
+                plot_width=panel_content_width,
+                date_from=date_from,
+                date_until=date_until,
+                global_timerange=result.timerange,
+                color_enabled=color_enabled,
+            ),
+        )
+        sections.append(("GROUPS", groups_body.rstrip("\n") or "No results"))
+
+    root = Layout(name="root")
+    section_heights = [_line_count(body) + 2 for _, body in sections]
+    section_layouts = [
+        Layout(
+            Panel(
+                _panel_body(body, color_enabled),
+                title=title,
+                expand=True,
+                height=height,
+            ),
+            size=height,
+        )
+        for (title, body), height in zip(sections, section_heights, strict=True)
+    ]
+    total_height = sum(section_heights)
+    root.size = total_height
+    root.split_column(*section_layouts)
+    return root, total_height
+
+
+def render_stats_summary_layout(
+    console: Console,
+    result: AnalysisResult,
+    nodes: list[orgparse.node.OrgNode],
+    args: SummaryArgs,
+    display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
+) -> tuple[Layout, int]:
+    """Build a two-column summary layout using Rich Layout and Panels."""
+    if console.width < _TWO_COLUMN_MIN_WIDTH:
+        return _render_single_column_summary_layout(
+            result, nodes, args, display_config, console.width
+        )
+
+    exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled = display_config
+
+    panel_content_width = _resolve_two_column_panel_content_width(console.width)
+    task_display_config = _TaskDisplayConfig(
+        color_enabled=color_enabled,
+        done_keys=done_keys,
+        todo_keys=todo_keys,
+        line_width=panel_content_width,
+    )
+
+    summary_body = format_tasks_summary(
+        result,
+        (date_from, date_until, done_keys, todo_keys, color_enabled),
+        panel_content_width,
+    ).lstrip("\n")
+
+    tasks_count = _select_task_count_for_height(
+        nodes,
+        args.max_results,
+        _line_count(summary_body),
+        task_display_config,
+    )
+    tasks_body = _format_tasks_body(nodes, tasks_count, task_display_config)
+
+    def order_by_total(item: tuple[str, Tag]) -> int:
+        """Sort by total count (descending)."""
+        return -item[1].total_tasks
+
+    category_name = CATEGORY_NAMES[args.use]
+    top_panel_height = max(_line_count(summary_body), _line_count(tasks_body)) + 2
+
+    top_layout = Layout(name="top")
+    top_layout.size = top_panel_height
+    top_layout.split_row(
+        Layout(
+            Panel(
+                _panel_body(summary_body.rstrip("\n") or "No results", color_enabled),
+                title="SUMMARY",
+                expand=True,
+                height=top_panel_height,
+            ),
+            ratio=1,
+        ),
+        Layout(
+            Panel(
+                _panel_body(tasks_body.rstrip("\n") or "No results", color_enabled),
+                title="TASKS",
+                expand=True,
+                height=top_panel_height,
+            ),
+            ratio=1,
+        ),
+    )
+
+    tags_panel: Panel | None = None
+    groups_panel: Panel | None = None
+    tags_panel_height = 0
+    groups_panel_height = 0
+
+    if args.max_tags != 0:
+        tags_body_raw = format_tags_section(
+            category_name,
+            result.tags,
+            (
+                args.max_results,
+                args.max_relations,
+                panel_content_width,
+                date_from,
+                date_until,
+                result.timerange,
+                args.max_tags,
+                exclude_set,
+                color_enabled,
+            ),
+            order_by_total,
+            indent="",
+        )
+        tags_body = _dedent_section_body(tags_body_raw, drop_title=args.use == "tags")
+        tags_panel_height = _line_count(tags_body) + 2
+        tags_panel = Panel(
+            _panel_body(tags_body.rstrip("\n") or "No results", color_enabled),
+            title="TAGS",
+            expand=True,
+            height=tags_panel_height,
+        )
+
+    if args.max_groups != 0:
+        groups_body = _format_groups_body(
+            result.tag_groups,
+            exclude_set,
+            args.min_group_size,
+            args.max_groups,
+            _GroupsDisplayConfig(
+                plot_width=panel_content_width,
+                date_from=date_from,
+                date_until=date_until,
+                global_timerange=result.timerange,
+                color_enabled=color_enabled,
+            ),
+        )
+        groups_panel_height = _line_count(groups_body) + 2
+        groups_panel = Panel(
+            _panel_body(groups_body.rstrip("\n") or "No results", color_enabled),
+            title="GROUPS",
+            expand=True,
+            height=groups_panel_height,
+        )
+
+    if tags_panel is None and groups_panel is None:
+        root = Layout(name="root")
+        root.size = top_panel_height
+        root.update(top_layout)
+        return root, top_panel_height
+
+    bottom_layout = Layout(name="bottom")
+    bottom_layout.size = max(tags_panel_height, groups_panel_height)
+    bottom_layout.split_row(
+        Layout(tags_panel or "", ratio=1),
+        Layout(groups_panel or "", ratio=1),
+    )
+
+    total_height = top_panel_height + bottom_layout.size
+    root = Layout(name="root")
+    root.size = total_height
+    root.split_column(top_layout, bottom_layout)
+    return root, total_height
+
+
+def _format_groups_body(
+    groups: list[TagGroup],
+    exclude_set: set[str],
+    min_group_size: int,
+    max_groups: int,
+    config: _GroupsDisplayConfig,
+) -> str:
+    """Return groups body without section header and without content indentation."""
+    if max_groups == 0:
+        return ""
+
+    groups_output = format_groups_section(
+        groups,
+        exclude_set,
+        (
+            min_group_size,
+            config.plot_width,
+            config.date_from,
+            config.date_until,
+            config.global_timerange,
+            config.color_enabled,
+        ),
+        max_groups,
+        indent="",
+    )
+    body = _dedent_section_body(groups_output, drop_title=True)
+    return body or "No results\n"
+
+
 def run_stats(args: SummaryArgs) -> None:
     """Run the stats command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
     validate_stats_arguments(args)
+    layout: Layout | None = None
+    layout_height = 0
 
     with processing_status(console, color_enabled):
         mapping = resolve_mapping(args)
         exclude_set = resolve_exclude_set(args)
         nodes, todo_keys, done_keys = load_and_process_data(args)
-        if not nodes:
-            output = None
-        else:
+        if nodes:
             result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
             date_from, date_until = resolve_date_filters(args)
-            output = format_stats_summary_output(
+            layout, layout_height = render_stats_summary_layout(
+                console,
                 result,
                 nodes,
                 args,
                 (exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled),
-                console.width,
             )
 
     if not nodes:
         console.print("No results", markup=False)
         return
-    if output:
-        print_output(console, output, color_enabled, end="")
+    if layout is None:
+        console.print("No results", markup=False)
+        return
+
+    render_console = Console(
+        no_color=not color_enabled,
+        force_terminal=color_enabled,
+        width=console.width,
+        height=max(layout_height, 1),
+        record=True,
+        file=StringIO(),
+    )
+    render_console.print(layout)
+    rendered_output = render_console.export_text(styles=color_enabled)
+    print_output(console, rendered_output, color_enabled, end="")
 
 
 def register(app: typer.Typer) -> None:

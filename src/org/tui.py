@@ -486,13 +486,14 @@ def format_groups_section(
 def format_top_tasks_section(
     nodes: list[orgparse.node.OrgNode],
     config: TopTasksSectionConfig,
+    include_header: bool = True,
 ) -> str:
     """Return formatted output for the top tasks section."""
     top_tasks = get_top_tasks(nodes, config.max_results)
     if not top_tasks:
         return ""
 
-    lines = section_header_lines("TASKS", config.color_enabled)
+    lines = section_header_lines("TASKS", config.color_enabled) if include_header else []
     for node in top_tasks:
         lines.append(
             format_task_line(
@@ -516,10 +517,11 @@ def format_histogram_section(
     config: HistogramSectionConfig,
 ) -> list[str]:
     lines = section_header_lines(title, config.render_config.color_enabled)
+    histogram_plot_width = max(3, config.plot_width - 2)
     histogram_lines = render_histogram(
         histogram,
         HistogramRenderConfig(
-            plot_width=config.plot_width,
+            plot_width=histogram_plot_width,
             category_order=config.order,
             style=config.render_config,
         ),

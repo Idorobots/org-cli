@@ -347,6 +347,49 @@ def test_run_stats_summary_omits_groups_when_disabled(
     assert "GROUPS" not in captured
 
 
+def test_resolve_two_column_panel_content_width_accounts_for_panel_chrome() -> None:
+    """Panel content width should subtract borders and horizontal padding."""
+    assert stats_summary._resolve_two_column_panel_content_width(80) == 36
+
+
+def test_resolve_two_column_panel_content_width_respects_layout_floor() -> None:
+    """Panel content width should respect the two-column minimum split."""
+    assert stats_summary._resolve_two_column_panel_content_width(40) == 21
+
+
+def test_resolve_single_column_panel_content_width_accounts_for_panel_chrome() -> None:
+    """Single-column panel width should subtract borders and horizontal padding."""
+    assert stats_summary._resolve_single_column_panel_content_width(80) == 76
+
+
+def test_run_stats_summary_narrow_layout_orders_sections_vertically(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Narrow viewport should render SUMMARY, TASKS, TAGS, GROUPS in order."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_summary_args([fixture_path], width=119, max_results=3, max_tags=3, max_groups=3)
+
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary", "--width", "119"])
+    stats_summary.run_stats(args)
+    captured = capsys.readouterr().out
+
+    summary_index = captured.find("SUMMARY")
+    tasks_index = captured.find("TASKS")
+    tags_index = captured.find("TAGS")
+    groups_index = captured.find("GROUPS")
+
+    assert summary_index != -1
+    assert tasks_index != -1
+    assert tags_index != -1
+    assert groups_index != -1
+    assert summary_index < tasks_index < tags_index < groups_index
+
+
+def test_summary_two_column_breakpoint() -> None:
+    """Two-column layout should activate at width 120 and above."""
+    assert stats_summary._TWO_COLUMN_MIN_WIDTH == 120
+
+
 def test_format_tags_shows_requested_tags() -> None:
     """format_tags should show selected tags only."""
     tags = {
