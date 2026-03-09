@@ -24,7 +24,7 @@ from org.color import (
     should_use_color,
 )
 from org.histogram import Histogram, RenderConfig, render_histogram, visual_len
-from org.plot import render_timeline_chart
+from org.plot import TimelineRenderConfig, render_timeline_chart
 
 
 def select_earliest_date(
@@ -136,6 +136,14 @@ class TimelineFormatConfig:
     num_buckets: int
     color_enabled: bool
     indent: str
+    plot_width: int | None = None
+
+
+def resolve_timeline_plot_width(config: TimelineFormatConfig) -> int:
+    """Resolve visual timeline plot width from config."""
+    if config.plot_width is not None:
+        return config.plot_width
+    return config.num_buckets + 2
 
 
 @dataclass(frozen=True)
@@ -306,12 +314,15 @@ def format_timeline_lines(
     latest_date: date,
     config: TimelineFormatConfig,
 ) -> list[str]:
+    plot_width = resolve_timeline_plot_width(config)
     date_line, chart_line, underline = render_timeline_chart(
         timeline,
         earliest_date,
         latest_date,
-        config.num_buckets,
-        config.color_enabled,
+        TimelineRenderConfig(
+            plot_width=plot_width,
+            color_enabled=config.color_enabled,
+        ),
     )
     return apply_indent([date_line, chart_line, underline], config.indent)
 

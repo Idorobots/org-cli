@@ -1,8 +1,17 @@
 """Timeline chart rendering functions."""
 
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from org.color import bright_blue, dim_white, magenta
+
+
+@dataclass(frozen=True)
+class TimelineRenderConfig:
+    """Configuration for timeline chart rendering."""
+
+    plot_width: int
+    color_enabled: bool = False
 
 
 def expand_timeline(timeline: dict[date, int], earliest: date, latest: date) -> dict[date, int]:
@@ -90,8 +99,7 @@ def render_timeline_chart(
     timeline: dict[date, int],
     earliest: date,
     latest: date,
-    num_buckets: int,
-    color_enabled: bool = False,
+    config: TimelineRenderConfig,
 ) -> tuple[str, str, str]:
     """Create ASCII bar chart from timeline data.
 
@@ -99,23 +107,23 @@ def render_timeline_chart(
         timeline: Timeline dict mapping dates to activity counts
         earliest: First date in the range
         latest: Last date in the range
-        num_buckets: Number of buckets (bars) in the chart
-        color_enabled: Whether to apply colors to the output
+        config: Timeline chart rendering configuration
 
     Returns:
         Tuple of (date_line, chart_line, underline)
     """
     expanded = expand_timeline(timeline, earliest, latest)
+    num_buckets = max(1, config.plot_width - 2)
     buckets = bucket_timeline(expanded, num_buckets)
     max_value = max(buckets) if buckets else 0
 
     bars = "".join(_map_value_to_bar(value, max_value) for value in buckets)
-    colored_bars = bright_blue(bars, color_enabled)
+    colored_bars = bright_blue(bars, config.color_enabled)
 
     start_date_str = earliest.isoformat()
     end_date_str = latest.isoformat()
 
-    chart_width = len(bars) + 2
+    chart_width = config.plot_width
     padding_spaces = chart_width - len(start_date_str) - len(end_date_str)
     date_padding = " " * max(0, padding_spaces)
     date_line = f"{start_date_str}{date_padding}{end_date_str}"
@@ -127,11 +135,21 @@ def render_timeline_chart(
     else:
         top_day_str = "0"
 
-    colored_top_day = magenta(top_day_str, color_enabled)
-    delimiter = dim_white("┊", color_enabled)
+    delimiter = dim_white("┊", config.color_enabled)
 
-    chart_line = f"{delimiter}{colored_bars}{delimiter} {colored_top_day}"
+    top_day_start = (chart_width - len(top_day_str)) // 2
+    top_day_end = top_day_start + len(top_day_str)
+    end_date_start = chart_width - len(end_date_str)
+    has_left_gap = top_day_start > len(start_date_str)
+    has_right_gap = top_day_end < end_date_start
+    if has_left_gap and has_right_gap:
+        left_padding = " " * (top_day_start - len(start_date_str))
+        middle_padding = " " * (end_date_start - top_day_end)
+        centered_top = magenta(top_day_str, config.color_enabled)
+        date_line = f"{start_date_str}{left_padding}{centered_top}{middle_padding}{end_date_str}"
 
-    underline = dim_white("‾" * chart_width, color_enabled)
+    chart_line = f"{delimiter}{colored_bars}{delimiter}"
+
+    underline = dim_white("‾" * chart_width, config.color_enabled)
 
     return (date_line, chart_line, underline)

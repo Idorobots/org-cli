@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from org.plot import _map_value_to_bar, render_timeline_chart
+from org.plot import TimelineRenderConfig, _map_value_to_bar, render_timeline_chart
 
 
 def test_map_value_to_bar_zero_max() -> None:
@@ -48,9 +48,12 @@ def test_render_chart_all_zeros() -> None:
         date(2023, 10, 24): 0,
     }
     date_line, chart_line, underline = render_timeline_chart(
-        timeline, date(2023, 10, 22), date(2023, 10, 24), 3
+        timeline,
+        date(2023, 10, 22),
+        date(2023, 10, 24),
+        TimelineRenderConfig(plot_width=5),
     )
-    assert chart_line == "┊   ┊ 0 (2023-10-22)"
+    assert chart_line == "┊   ┊"
     assert date_line == "2023-10-222023-10-24"
     assert underline == "‾‾‾‾‾"
 
@@ -63,9 +66,12 @@ def test_render_chart_all_equal() -> None:
         date(2023, 10, 24): 5,
     }
     date_line, chart_line, underline = render_timeline_chart(
-        timeline, date(2023, 10, 22), date(2023, 10, 24), 3
+        timeline,
+        date(2023, 10, 22),
+        date(2023, 10, 24),
+        TimelineRenderConfig(plot_width=5),
     )
-    assert chart_line == "┊███┊ 5 (2023-10-22)"
+    assert chart_line == "┊███┊"
     assert date_line == "2023-10-222023-10-24"
     assert underline == "‾‾‾‾‾"
 
@@ -78,10 +84,13 @@ def test_render_chart_single_peak() -> None:
         date(2023, 10, 24): 1,
     }
     date_line, chart_line, underline = render_timeline_chart(
-        timeline, date(2023, 10, 22), date(2023, 10, 24), 3
+        timeline,
+        date(2023, 10, 22),
+        date(2023, 10, 24),
+        TimelineRenderConfig(plot_width=5),
     )
     assert "█" in chart_line
-    assert "┊ 10 (2023-10-23)" in chart_line
+    assert "10 (2023-10-23)" not in chart_line
     assert "‾" in underline
 
 
@@ -89,10 +98,13 @@ def test_render_chart_format() -> None:
     """Test chart format structure."""
     timeline = {date(2023, 10, 22): 5}
     date_line, chart_line, underline = render_timeline_chart(
-        timeline, date(2023, 10, 22), date(2023, 10, 22), 5
+        timeline,
+        date(2023, 10, 22),
+        date(2023, 10, 22),
+        TimelineRenderConfig(plot_width=7),
     )
     assert chart_line.startswith("┊")
-    assert "┊ 5 (2023-10-22)" in chart_line
+    assert "5 (2023-10-22)" not in chart_line
     assert date_line.startswith("2023-10-22")
     assert date_line.endswith("2023-10-22")
     assert all(c == "‾" for c in underline)
@@ -107,7 +119,7 @@ def test_render_chart_width() -> None:
         timeline,
         date(2023, 10, 22),
         date(2023, 10, 22) + __import__("datetime").timedelta(days=99),
-        50,
+        TimelineRenderConfig(plot_width=52),
     )
     bars = chart_line.split("┊")[1]
     assert len(bars) == 50
@@ -117,7 +129,10 @@ def test_render_chart_date_strings() -> None:
     """Test date formatting in output."""
     timeline = {date(2023, 1, 5): 1, date(2023, 12, 25): 1}
     date_line, chart_line, underline = render_timeline_chart(
-        timeline, date(2023, 1, 5), date(2023, 12, 25), 20
+        timeline,
+        date(2023, 1, 5),
+        date(2023, 12, 25),
+        TimelineRenderConfig(plot_width=22),
     )
     assert date_line.startswith("2023-01-05")
     assert date_line.endswith("2023-12-25")
@@ -130,12 +145,15 @@ def test_render_chart_with_gaps() -> None:
         date(2023, 10, 26): 4,
     }
     date_line, chart_line, underline = render_timeline_chart(
-        timeline, date(2023, 10, 22), date(2023, 10, 26), 5
+        timeline,
+        date(2023, 10, 22),
+        date(2023, 10, 26),
+        TimelineRenderConfig(plot_width=7),
     )
     assert "┊" in chart_line
     assert date_line.startswith("2023-10-22")
     assert date_line.endswith("2023-10-26")
-    assert "┊ 4 (2023-10-26)" in chart_line
+    assert "4 (2023-10-26)" not in chart_line
     assert all(c == "‾" for c in underline)
 
 
@@ -143,11 +161,14 @@ def test_render_chart_single_day() -> None:
     """Test rendering chart for a single day."""
     timeline = {date(2023, 10, 22): 7}
     date_line, chart_line, underline = render_timeline_chart(
-        timeline, date(2023, 10, 22), date(2023, 10, 22), 20
+        timeline,
+        date(2023, 10, 22),
+        date(2023, 10, 22),
+        TimelineRenderConfig(plot_width=22),
     )
     assert date_line.startswith("2023-10-22")
     assert date_line.endswith("2023-10-22")
-    assert "┊ 7 (2023-10-22)" in chart_line
+    assert "7 (2023-10-22)" not in chart_line
 
 
 def test_render_chart_handles_missing_data() -> None:
@@ -157,7 +178,10 @@ def test_render_chart_handles_missing_data() -> None:
         date(2023, 10, 25): 3,
     }
     date_line, chart_line, underline = render_timeline_chart(
-        timeline, date(2023, 10, 22), date(2023, 10, 26), 5
+        timeline,
+        date(2023, 10, 22),
+        date(2023, 10, 26),
+        TimelineRenderConfig(plot_width=7),
     )
     assert date_line.startswith("2023-10-22")
     assert date_line.endswith("2023-10-26")
@@ -172,6 +196,47 @@ def test_render_chart_max_value_displayed() -> None:
         date(2023, 10, 24): 30,
     }
     date_line, chart_line, underline = render_timeline_chart(
-        timeline, date(2023, 10, 22), date(2023, 10, 24), 3
+        timeline,
+        date(2023, 10, 22),
+        date(2023, 10, 24),
+        TimelineRenderConfig(plot_width=40),
     )
-    assert chart_line.endswith("┊ 30 (2023-10-24)")
+    assert "30 (2023-10-24)" in date_line
+
+
+def test_render_chart_omits_top_day_when_plot_too_narrow() -> None:
+    """Top frequency label should be omitted when date line has no room."""
+    timeline = {
+        date(2023, 10, 22): 1,
+        date(2023, 10, 23): 10,
+        date(2023, 10, 24): 1,
+    }
+    date_line, _, _ = render_timeline_chart(
+        timeline,
+        date(2023, 10, 22),
+        date(2023, 10, 24),
+        TimelineRenderConfig(plot_width=5),
+    )
+
+    assert "10 (2023-10-23)" not in date_line
+
+
+def test_render_chart_centers_top_day_when_space_allows() -> None:
+    """Top frequency label should be centered between start and end dates."""
+    timeline = {
+        date(2023, 10, 22): 1,
+        date(2023, 10, 23): 10,
+        date(2023, 10, 24): 1,
+    }
+    date_line, _, _ = render_timeline_chart(
+        timeline,
+        date(2023, 10, 22),
+        date(2023, 10, 24),
+        TimelineRenderConfig(plot_width=50),
+    )
+    top = "10 (2023-10-23)"
+    top_start = date_line.index(top)
+    top_center = top_start + (len(top) // 2)
+    line_center = len(date_line) // 2
+
+    assert abs(top_center - line_center) <= 1
