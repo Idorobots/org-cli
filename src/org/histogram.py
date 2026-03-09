@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 
+from rich.cells import cell_len
 from rich.text import Text
 
 from org.color import bright_blue, colorize, dim_white, get_state_color
@@ -16,7 +17,7 @@ def visual_len(text: str) -> int:
     Returns:
         Visual length of the text
     """
-    return len(Text.from_markup(text).plain)
+    return cell_len(Text.from_markup(text).plain)
 
 
 @dataclass

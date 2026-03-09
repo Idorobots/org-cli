@@ -220,9 +220,30 @@ class _TaskLineParts:
 
 def _truncate_filename(filename: str, width: int = 15) -> str:
     """Truncate or pad filename to fixed-width column."""
-    if len(filename) >= width:
-        return filename[:width]
-    return f"{filename:<{width}}"
+    truncated = _truncate_to_visual_width(filename, width)
+    return _pad_to_visual_width(truncated, width)
+
+
+def _truncate_to_visual_width(text: str, max_width: int) -> str:
+    """Return text truncated to visual display width."""
+    if max_width <= 0:
+        return ""
+
+    current = ""
+    for char in text:
+        candidate = f"{current}{char}"
+        if visual_len(candidate) > max_width:
+            break
+        current = candidate
+    return current
+
+
+def _pad_to_visual_width(text: str, width: int) -> str:
+    """Right-pad text to target visual display width."""
+    missing_width = width - visual_len(text)
+    if missing_width <= 0:
+        return text
+    return f"{text}{' ' * missing_width}"
 
 
 def _build_task_line_parts(node: orgparse.node.OrgNode, config: TaskLineConfig) -> _TaskLineParts:
@@ -288,15 +309,14 @@ def _add_tags_to_line(
 
     line_width = _resolve_task_line_width(config, line)
     line_visual_len = visual_len(line)
-    tags_visual_len = len(tags_text)
+    tags_visual_len = visual_len(tags_text)
     available_space = line_width - tags_visual_len
 
     if line_visual_len > available_space:
-        target_heading_len = len(parts.heading) - (line_visual_len - available_space)
-        if target_heading_len > 0:
-            truncated_heading = parts.heading[:target_heading_len]
-            if config.color_enabled:
-                truncated_heading = escape_text(truncated_heading, config.color_enabled)
+        heading_visual_len = visual_len(parts.heading)
+        target_heading_visual_len = heading_visual_len - (line_visual_len - available_space)
+        if target_heading_visual_len > 0:
+            truncated_heading = _truncate_to_visual_width(parts.heading, target_heading_visual_len)
             truncated_parts = _TaskLineParts(
                 parts.colored_filename,
                 parts.level_prefix,

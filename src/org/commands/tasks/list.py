@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
+from io import StringIO
 from typing import Protocol
 
 import click
@@ -65,7 +66,7 @@ class ListArgs:
     filter_not_completed: bool
     color_flag: bool | None
     width: int | None
-    max_results: int
+    max_results: int | None
     details: bool
     offset: int
     order_by_level: bool
@@ -235,14 +236,51 @@ def get_tasks_list_formatter(
     return PandocTasksListOutputFormatter(normalized_output, pandoc_args)
 
 
+def _resolve_tasks_limit(max_results: int | None, console_height: int) -> int:
+    """Resolve effective tasks limit, defaulting to all available tasks."""
+    del console_height
+    if max_results is None:
+        return sys.maxsize
+    return max_results
+
+
+def _render_prepared_output_text(
+    prepared_output: PreparedOutput, *, color_enabled: bool, width: int
+) -> str:
+    """Render prepared output to text for pagination sizing."""
+    render_console = Console(
+        no_color=not color_enabled,
+        force_terminal=color_enabled,
+        width=width,
+        record=True,
+        file=StringIO(),
+    )
+    print_prepared_output(render_console, prepared_output)
+    return render_console.export_text(styles=color_enabled)
+
+
+def _line_count(text: str) -> int:
+    """Return visual line count for a rendered text block."""
+    if not text:
+        return 0
+    return len(text.splitlines())
+
+
 def run_tasks_list(args: ListArgs) -> None:
     """Run the tasks list command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
-    if args.max_results < 0:
+    if args.max_results is not None and args.max_results < 0:
         raise typer.BadParameter("--limit must be non-negative")
+    requested_limit = args.max_results
+    args.max_results = _resolve_tasks_limit(args.max_results, console.height)
+
+    output_format = args.out.strip().lower()
+    should_use_pager = output_format == OutputFormat.ORG and (
+        requested_limit is None or requested_limit >= console.height
+    )
     try:
         formatter = get_tasks_list_formatter(args.out, args.pandoc_args)
     except OutputFormatError as exc:
@@ -264,6 +302,15 @@ def run_tasks_list(args: ListArgs) -> None:
             )
         except OutputFormatError as exc:
             raise click.UsageError(str(exc)) from exc
+
+    if should_use_pager:
+        rendered_text = _render_prepared_output_text(
+            prepared_output, color_enabled=color_enabled, width=console.width
+        )
+        if _line_count(rendered_text) > console.height:
+            with console.pager(styles=color_enabled):
+                print_prepared_output(console, prepared_output)
+            return
 
     print_prepared_output(console, prepared_output)
 
@@ -399,12 +446,12 @@ def register(app: typer.Typer) -> None:
             min=50,
             help="Override auto-derived console width (minimum: 50)",
         ),
-        max_results: int = typer.Option(
-            10,
+        max_results: int | None = typer.Option(
+            None,
             "--limit",
             "-n",
             metavar="N",
-            help="Maximum number of results to display",
+            help="Maximum number of results to display (defaults to all results)",
         ),
         offset: int = typer.Option(
             0,
