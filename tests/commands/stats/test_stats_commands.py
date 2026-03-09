@@ -430,3 +430,106 @@ def test_format_tasks_summary_renders_histograms() -> None:
     assert "Task states:" in output
     assert "Task categories:" in output
     assert "Task occurrence by day of week:" in output
+
+
+def test_format_tasks_summary_orders_task_states_by_group_alphabetically() -> None:
+    """Task states should be done-sorted, todo-sorted, then remaining-sorted."""
+    result = AnalysisResult(
+        total_tasks=6,
+        unique_tasks=6,
+        task_states=Histogram(
+            values={
+                "ZDONE": 1,
+                "ADONE": 1,
+                "ZTODO": 1,
+                "ATODO": 1,
+                "bbb": 1,
+                "AAA": 1,
+            }
+        ),
+        task_categories=Histogram(values={"none": 6}),
+        task_priorities=Histogram(values={"none": 6}),
+        task_days=Histogram(values={}),
+        timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
+        tags={},
+        tag_groups=[],
+    )
+
+    class Args:
+        buckets = 20
+
+    output = stats_tasks.format_tasks_summary(
+        result,
+        Args(),
+        (None, None, ["ZDONE", "ADONE"], ["ZTODO", "ATODO"], False),
+    )
+
+    state_section = output.split("Task states:\n", maxsplit=1)[1].split(
+        "\n\nTask priorities:", maxsplit=1
+    )[0]
+    state_names = [line.split("┊", maxsplit=1)[0].strip() for line in state_section.splitlines()]
+
+    assert state_names == ["ADONE", "ZDONE", "ATODO", "ZTODO", "AAA", "bbb"]
+
+
+def test_format_tasks_summary_omits_none_state_when_zero() -> None:
+    """State 'none' should not be rendered when it has zero count."""
+    result = AnalysisResult(
+        total_tasks=2,
+        unique_tasks=2,
+        task_states=Histogram(values={"DONE": 2, "none": 0}),
+        task_categories=Histogram(values={"none": 2}),
+        task_priorities=Histogram(values={"none": 2}),
+        task_days=Histogram(values={}),
+        timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
+        tags={},
+        tag_groups=[],
+    )
+
+    class Args:
+        buckets = 20
+
+    output = stats_tasks.format_tasks_summary(
+        result, Args(), (None, None, ["DONE"], ["TODO"], False)
+    )
+
+    state_section = output.split("Task states:\n", maxsplit=1)[1].split(
+        "\n\nTask priorities:", maxsplit=1
+    )[0]
+    assert "none" not in state_section
+
+
+def test_format_tasks_summary_keeps_none_state_when_present() -> None:
+    """State 'none' should be rendered when it has a positive count."""
+    result = AnalysisResult(
+        total_tasks=2,
+        unique_tasks=2,
+        task_states=Histogram(values={"DONE": 1, "none": 1}),
+        task_categories=Histogram(values={"none": 2}),
+        task_priorities=Histogram(values={"none": 2}),
+        task_days=Histogram(values={}),
+        timerange=TimeRange(),
+        avg_tasks_per_day=0.0,
+        max_single_day_count=0,
+        max_repeat_count=0,
+        tags={},
+        tag_groups=[],
+    )
+
+    class Args:
+        buckets = 20
+
+    output = stats_tasks.format_tasks_summary(
+        result, Args(), (None, None, ["DONE"], ["TODO"], False)
+    )
+
+    state_section = output.split("Task states:\n", maxsplit=1)[1].split(
+        "\n\nTask priorities:", maxsplit=1
+    )[0]
+    assert "none" in state_section

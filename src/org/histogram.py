@@ -56,33 +56,58 @@ class RenderConfig:
     todo_keys: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class HistogramRenderConfig:
+    """Configuration for histogram layout and style."""
+
+    total_blocks: int
+    category_order: list[str] | None
+    style: RenderConfig = field(default_factory=RenderConfig)
+
+
 def render_histogram(
     histogram: Histogram,
-    total_blocks: int,
-    category_order: list[str] | None,
-    config: RenderConfig | None = None,
+    config: HistogramRenderConfig | int,
+    category_order: list[str] | None = None,
+    style: RenderConfig | None = None,
 ) -> list[str]:
     """Render histogram as visual bar chart.
 
     Args:
         histogram: Histogram object to render
-        total_blocks: Number of blocks for 100% width (e.g., args.buckets)
-        category_order: Optional list specifying display order of categories
-        config: Rendering configuration (color, type, done/todo keys)
+        config: Histogram rendering configuration or block width
+        category_order: Optional category order (legacy call style)
+        style: Optional style config (legacy call style)
 
     Returns:
         List of formatted strings, one per category
     """
-    render_config = config or RenderConfig()
+    render_config_input: HistogramRenderConfig
+    if isinstance(config, HistogramRenderConfig):
+        render_config_input = config
+    else:
+        render_config_input = HistogramRenderConfig(
+            total_blocks=config,
+            category_order=category_order,
+            style=style or RenderConfig(),
+        )
+
+    render_config = render_config_input.style
 
     total_sum = sum(histogram.values.values())
-    categories = category_order if category_order is not None else sorted(histogram.values.keys())
+    categories = (
+        render_config_input.category_order
+        if render_config_input.category_order is not None
+        else sorted(histogram.values.keys())
+    )
 
     lines = []
     for category in categories:
         value = histogram.values.get(category, 0)
         display_name = category[:8] + "." if len(category) > 9 else category
-        bar_length = int((value / total_sum) * total_blocks) if total_sum > 0 else 0
+        bar_length = (
+            int((value / total_sum) * render_config_input.total_blocks) if total_sum > 0 else 0
+        )
         bars = "█" * bar_length
 
         if render_config.histogram_type == "task_states":

@@ -23,7 +23,7 @@ from org.analyze import (
 )
 from org.cli_common import load_and_process_data, resolve_date_filters
 from org.color import magenta
-from org.histogram import RenderConfig
+from org.histogram import Histogram, RenderConfig
 from org.tui import (
     HistogramSectionConfig,
     TimelineFormatConfig,
@@ -82,6 +82,18 @@ class TaskDisplayArgs(Protocol):
     buckets: int
 
 
+def _build_task_state_order(
+    task_states: Histogram, done_keys: list[str], todo_keys: list[str]
+) -> list[str]:
+    """Build task-state histogram order grouped and alphabetized."""
+    present_states = {state for state, count in task_states.values.items() if count > 0}
+    sorted_done = [state for state in sorted(done_keys) if state in present_states]
+    sorted_todo = [state for state in sorted(todo_keys) if state in present_states]
+    grouped = set(sorted_done).union(set(sorted_todo))
+    remaining_states = sorted(state for state in present_states if state not in grouped)
+    return sorted_done + sorted_todo + remaining_states
+
+
 def format_tasks_summary(
     result: AnalysisResult,
     args: TaskDisplayArgs,
@@ -123,10 +135,7 @@ def format_tasks_summary(
         lines.append(f"Max tasks on a single day: {max_single_value}")
         lines.append(f"Max repeats of a single task: {max_repeat_value}")
 
-    remaining_states = sorted(
-        set(result.task_states.values.keys()) - set(done_keys) - set(todo_keys)
-    )
-    state_order = done_keys + todo_keys + remaining_states
+    state_order = _build_task_state_order(result.task_states, done_keys, todo_keys)
     lines.extend(
         format_histogram_section(
             "Task states:",

@@ -23,7 +23,13 @@ from org.color import (
     magenta,
     should_use_color,
 )
-from org.histogram import Histogram, RenderConfig, render_histogram, visual_len
+from org.histogram import (
+    Histogram,
+    HistogramRenderConfig,
+    RenderConfig,
+    render_histogram,
+    visual_len,
+)
 from org.plot import TimelineRenderConfig, render_timeline_chart
 
 
@@ -496,9 +502,11 @@ def format_histogram_section(
     lines = section_header_lines(title, config.render_config.color_enabled)
     histogram_lines = render_histogram(
         histogram,
-        config.buckets,
-        config.order,
-        config.render_config,
+        HistogramRenderConfig(
+            total_blocks=config.buckets,
+            category_order=config.order,
+            style=config.render_config,
+        ),
     )
     lines.extend([f"  {line}" for line in histogram_lines])
     return apply_indent(lines, config.indent)
