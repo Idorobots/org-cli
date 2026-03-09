@@ -55,6 +55,7 @@ COMMAND_OPTION_NAMES = {
     "show",
     "groups",
     "verbose",
+    "width",
 }
 
 
@@ -110,6 +111,7 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "use": "--use",
     "verbose": "--verbose",
     "with_tags_as_category": "--with-tags-as-category",
+    "width": "--width",
 }
 
 
@@ -577,6 +579,7 @@ def build_config_defaults(
         "--filter-repeats-above": ("filter_repeats_above", None),
         "--filter-repeats-below": ("filter_repeats_below", None),
         "--offset": ("offset", 0),
+        "--width": ("width", 50),
     }
 
     stats_bool_options: dict[str, str] = {

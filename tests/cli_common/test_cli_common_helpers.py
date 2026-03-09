@@ -61,7 +61,22 @@ def test_resolve_input_paths_from_directory(tmp_path: Path) -> None:
 
 
 def test_resolve_input_paths_missing(tmp_path: Path) -> None:
-    """Missing paths should error."""
+    """All-missing paths should error."""
     missing = tmp_path / "missing"
-    with pytest.raises(typer.BadParameter, match="not found"):
+    with pytest.raises(typer.BadParameter, match="All input paths are missing"):
         resolve_input_paths([str(missing)])
+
+
+def test_resolve_input_paths_warns_and_keeps_existing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Missing paths should warn while existing files are still processed."""
+    existing = tmp_path / "one.org"
+    missing = tmp_path / "missing.org"
+    existing.write_text("* DONE Test", encoding="utf-8")
+
+    resolved = resolve_input_paths([str(missing), str(existing)])
+    captured = capsys.readouterr()
+
+    assert resolved == [str(existing)]
+    assert f"Warning: Path '{missing}' not found" in captured.err

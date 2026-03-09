@@ -17,6 +17,7 @@ class GlobalArgs(Protocol):
     filter_tags: list[str] | None
     filter_headings: list[str] | None
     filter_bodies: list[str] | None
+    width: int | None
 
 
 class StatsArgs(Protocol):
@@ -198,6 +199,9 @@ def validate_global_arguments(args: GlobalArgs) -> tuple[list[str], list[str]]:
     if args.filter_bodies:
         for pattern in args.filter_bodies:
             validate_pattern(pattern, "--filter-body", use_multiline=True)
+
+    if args.width is not None and args.width < 50:
+        raise typer.BadParameter("--width must be at least 50")
 
     return (todo_keys, done_keys)
 

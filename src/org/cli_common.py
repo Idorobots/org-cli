@@ -1001,12 +1001,14 @@ def resolve_input_paths(inputs: list[str] | None) -> list[str]:
     """
     resolved_files: list[str] = []
     searched_dirs: list[Path] = []
+    missing_paths: list[str] = []
 
     targets = inputs or ["."]
     for raw_path in targets:
         path = Path(raw_path)
         if not path.exists():
-            raise typer.BadParameter(f"Path '{raw_path}' not found")
+            missing_paths.append(raw_path)
+            continue
 
         if path.is_dir():
             searched_dirs.append(path)
@@ -1019,7 +1021,13 @@ def resolve_input_paths(inputs: list[str] | None) -> list[str]:
 
         raise typer.BadParameter(f"Path '{raw_path}' is not a file or directory")
 
+    for raw_path in missing_paths:
+        typer.echo(f"Warning: Path '{raw_path}' not found", err=True)
+
     if not resolved_files:
+        if missing_paths:
+            missing_list = ", ".join(missing_paths)
+            raise typer.BadParameter(f"All input paths are missing: {missing_list}")
         if searched_dirs:
             searched_list = ", ".join(str(path) for path in searched_dirs)
             raise typer.BadParameter(f"No .org files found in: {searched_list}")
@@ -1052,6 +1060,7 @@ class DataLoadArgs(FilterArgs, Protocol):
     files: list[str] | None
     todo_keys: str
     done_keys: str
+    width: int | None
     with_tags_as_category: bool
     category_property: str
 

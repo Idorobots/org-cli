@@ -36,6 +36,7 @@ class FilterArgsStub:
     max_results: int = 10
     todo_keys: str = "TODO"
     done_keys: str = "DONE"
+    width: int | None = None
     with_tags_as_category: bool = False
     category_property: str = "CATEGORY"
 

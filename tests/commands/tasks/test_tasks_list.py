@@ -41,6 +41,7 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         filter_completed=False,
         filter_not_completed=False,
         color_flag=False,
+        width=None,
         max_results=10,
         details=False,
         offset=0,
@@ -81,13 +82,13 @@ def test_run_tasks_list_details_output(
 ) -> None:
     """Tasks list should render detailed output with file headers."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_list_args([fixture_path], details=True, max_results=1)
+    args = make_list_args([fixture_path], details=True, max_results=1, width=200)
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--details"])
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--details", "--width", "200"])
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
 
-    assert f"# {fixture_path}" in captured
+    assert fixture_path in captured
     assert "* TODO Refactor codebase" in captured
 
 

@@ -64,6 +64,7 @@ class TasksArgs:
     filter_completed: bool
     filter_not_completed: bool
     color_flag: bool | None
+    width: int | None
     max_results: int
     max_tags: int
     use: str
@@ -201,7 +202,7 @@ def format_tasks_summary(
 def run_stats_tasks(args: TasksArgs) -> None:
     """Run the stats tasks command."""
     color_enabled = setup_output(args)
-    console = build_console(color_enabled)
+    console = build_console(color_enabled, args.width)
     validate_stats_arguments(args)
     with processing_status(console, color_enabled):
         nodes, todo_keys, done_keys = load_and_process_data(args)
@@ -369,6 +370,13 @@ def register(app: typer.Typer) -> None:
             "--color/--no-color",
             help="Force colored output",
         ),
+        width: int | None = typer.Option(
+            None,
+            "--width",
+            metavar="N",
+            min=50,
+            help="Override auto-derived console width (minimum: 50)",
+        ),
         max_results: int = typer.Option(
             10,
             "--max-results",
@@ -417,6 +425,7 @@ def register(app: typer.Typer) -> None:
             filter_completed=filter_completed,
             filter_not_completed=filter_not_completed,
             color_flag=color_flag,
+            width=width,
             max_results=max_results,
             max_tags=5,
             use="tags",

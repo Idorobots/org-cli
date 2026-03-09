@@ -197,6 +197,7 @@ class QueryArgs:
     todo_keys: str
     done_keys: str
     color_flag: bool | None
+    width: int | None
     max_results: int
     offset: int
     out: str
@@ -207,7 +208,7 @@ class QueryArgs:
 def run_query(args: QueryArgs) -> None:
     """Run the query command."""
     color_enabled = setup_output(args)
-    console = build_console(color_enabled)
+    console = build_console(color_enabled, args.width)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
     if args.max_results < 0:
@@ -299,6 +300,13 @@ def register(app: typer.Typer) -> None:
             "--color/--no-color",
             help="Force colored output",
         ),
+        width: int | None = typer.Option(
+            None,
+            "--width",
+            metavar="N",
+            min=50,
+            help="Override auto-derived console width (minimum: 50)",
+        ),
         max_results: int = typer.Option(
             10,
             "--max-results",
@@ -341,6 +349,7 @@ def register(app: typer.Typer) -> None:
             todo_keys=todo_keys,
             done_keys=done_keys,
             color_flag=color_flag,
+            width=width,
             max_results=max_results,
             offset=offset,
             out=out,

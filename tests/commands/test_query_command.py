@@ -29,6 +29,7 @@ def _make_args(files: list[str], query: str, **overrides: object) -> QueryArgs:
         todo_keys="TODO",
         done_keys="DONE",
         color_flag=False,
+        width=None,
         max_results=10,
         offset=0,
         out=OutputFormat.ORG,

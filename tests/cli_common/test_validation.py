@@ -51,6 +51,7 @@ def test_validate_global_arguments_invalid_regex() -> None:
         filter_tags=["["],
         filter_headings=None,
         filter_bodies=None,
+        width=None,
     )
 
     with pytest.raises(typer.BadParameter, match="Invalid regex pattern"):
@@ -98,3 +99,18 @@ def test_validate_stats_arguments_errors(override: str, message: str) -> None:
 
     with pytest.raises(typer.BadParameter, match=message):
         validate_stats_arguments(cast(StatsArgs, args))
+
+
+def test_validate_global_arguments_rejects_too_small_width() -> None:
+    """validate_global_arguments should reject widths below 50."""
+    args = SimpleNamespace(
+        todo_keys="TODO",
+        done_keys="DONE",
+        filter_tags=None,
+        filter_headings=None,
+        filter_bodies=None,
+        width=40,
+    )
+
+    with pytest.raises(typer.BadParameter, match="--width must be at least 50"):
+        validate_global_arguments(cast(GlobalArgs, args))

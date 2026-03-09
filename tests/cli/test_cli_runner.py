@@ -123,3 +123,39 @@ def test_cli_runner_tasks_list_custom_filter_required_arg_error() -> None:
     finally:
         config.CONFIG_CUSTOM_FILTERS.clear()
         config.CONFIG_CUSTOM_FILTERS.update(original_filters)
+
+
+def test_cli_runner_allows_missing_files_when_some_exist() -> None:
+    """Missing file paths should warn while command still succeeds."""
+    runner = CliRunner()
+    fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
+    missing_path = str((FIXTURES_DIR / "missing.org").resolve())
+
+    result = runner.invoke(app, ["query", ".[] | .children | length", missing_path, fixture_path])
+
+    assert result.exit_code == 0
+    assert "3" in result.stdout
+    assert f"Warning: Path '{missing_path}' not found" in result.stderr
+
+
+def test_cli_runner_accepts_width_override() -> None:
+    """Commands should accept --width values at or above 50."""
+    runner = CliRunner()
+    fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
+
+    result = runner.invoke(app, ["query", "1", "--width", "50", fixture_path])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "1"
+
+
+def test_cli_runner_rejects_width_below_minimum() -> None:
+    """Commands should reject --width values below 50."""
+    runner = CliRunner()
+    fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
+
+    result = runner.invoke(app, ["query", "1", "--width", "49", fixture_path])
+
+    assert result.exit_code != 0
+    combined_output = result.stdout + result.stderr
+    assert "Invalid value for '--width'" in combined_output

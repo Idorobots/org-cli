@@ -88,9 +88,11 @@ def setup_output(args: object) -> bool:
     return should_use_color(getattr(args, "color_flag", None))
 
 
-def build_console(color_enabled: bool) -> Console:
+def build_console(color_enabled: bool, width: int | None = None) -> Console:
     """Create a Rich console configured for colored output."""
-    return Console(no_color=not color_enabled, force_terminal=color_enabled, width=200)
+    if width is None:
+        return Console(no_color=not color_enabled, force_terminal=color_enabled)
+    return Console(no_color=not color_enabled, force_terminal=color_enabled, width=width)
 
 
 def print_output(console: Console, text: str, color_enabled: bool, *, end: str = "\n") -> None:
@@ -99,12 +101,12 @@ def print_output(console: Console, text: str, color_enabled: bool, *, end: str =
         rich_text = Text.from_markup(text)
         rich_text.no_wrap = True
         rich_text.overflow = "ignore"
-        console.print(rich_text, end=end)
+        console.print(rich_text, end=end, soft_wrap=True)
         return
     plain_text = Text(text)
     plain_text.no_wrap = True
     plain_text.overflow = "ignore"
-    console.print(plain_text, end=end, markup=False)
+    console.print(plain_text, end=end, markup=False, soft_wrap=True)
 
 
 @contextmanager
