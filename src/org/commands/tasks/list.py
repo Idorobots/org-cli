@@ -93,6 +93,7 @@ class TasksListRenderInput:
     todo_keys: list[str]
     details: bool
     buckets: int
+    line_width: int | None
     out_theme: str
 
 
@@ -106,25 +107,20 @@ class TasksListOutputFormatter(Protocol):
         ...
 
 
-def _format_short_task_list(
-    nodes: list[orgparse.node.OrgNode],
-    done_keys: list[str],
-    todo_keys: list[str],
-    color_enabled: bool,
-    buckets: int,
-) -> str:
+def _format_short_task_list(data: TasksListRenderInput) -> str:
     """Return formatted short list of tasks."""
     lines = [
         format_task_line(
             node,
             TaskLineConfig(
-                color_enabled=color_enabled,
-                done_keys=done_keys,
-                todo_keys=todo_keys,
-                buckets=buckets,
+                color_enabled=data.color_enabled,
+                done_keys=data.done_keys,
+                todo_keys=data.todo_keys,
+                buckets=data.buckets,
+                line_width=data.line_width,
             ),
         )
-        for node in nodes
+        for node in data.nodes
     ]
     return lines_to_text(lines)
 
@@ -166,13 +162,7 @@ class OrgTasksListOutputFormatter:
         if data.details:
             return _prepare_detailed_task_list(data.nodes, data.out_theme)
 
-        output = _format_short_task_list(
-            data.nodes,
-            data.done_keys,
-            data.todo_keys,
-            data.color_enabled,
-            data.buckets,
-        )
+        output = _format_short_task_list(data)
         if output:
             return PreparedOutput(
                 operations=(
@@ -272,6 +262,7 @@ def run_tasks_list(args: ListArgs) -> None:
                     todo_keys=todo_keys,
                     details=args.details,
                     buckets=args.buckets,
+                    line_width=args.width,
                     out_theme=args.out_theme,
                 )
             )

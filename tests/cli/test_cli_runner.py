@@ -74,7 +74,8 @@ def test_cli_runner_tasks_list_custom_filter_without_arg() -> None:
         )
 
         assert result.exit_code == 0
-        assert "Refactor codebase" in result.stdout
+        assert "* TODO Refactor" in result.stdout
+        assert ":Maintenance:" in result.stdout
     finally:
         config.CONFIG_CUSTOM_FILTERS.clear()
         config.CONFIG_CUSTOM_FILTERS.update(original_filters)
@@ -96,7 +97,8 @@ def test_cli_runner_tasks_list_custom_filter_with_arg() -> None:
         )
 
         assert result.exit_code == 0
-        assert "Refactor codebase" in result.stdout
+        assert "* TODO Refactor" in result.stdout
+        assert ":Maintenance:" in result.stdout
     finally:
         config.CONFIG_CUSTOM_FILTERS.clear()
         config.CONFIG_CUSTOM_FILTERS.update(original_filters)

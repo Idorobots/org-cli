@@ -165,6 +165,7 @@ def format_stats_summary_output(
                     done_keys=done_keys,
                     todo_keys=todo_keys,
                     buckets=args.buckets,
+                    line_width=args.width,
                     indent="",
                 ),
             ),

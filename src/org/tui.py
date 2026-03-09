@@ -198,6 +198,7 @@ class TopTasksSectionConfig:
     todo_keys: list[str]
     buckets: int
     indent: str
+    line_width: int | None = None
 
 
 @dataclass(frozen=True)
@@ -208,6 +209,7 @@ class TaskLineConfig:
     done_keys: list[str]
     todo_keys: list[str]
     buckets: int = 0
+    line_width: int | None = None
 
 
 @dataclass(frozen=True)
@@ -221,10 +223,18 @@ class _TaskLineParts:
     heading: str
 
 
+def _truncate_filename(filename: str, width: int = 15) -> str:
+    """Truncate or pad filename to fixed-width column."""
+    if len(filename) >= width:
+        return filename[:width]
+    return f"{filename:<{width}}"
+
+
 def _build_task_line_parts(node: orgparse.node.OrgNode, config: TaskLineConfig) -> _TaskLineParts:
     """Extract and format task line components."""
     filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
-    colored_filename = dim_white(f"{filename}:", config.color_enabled)
+    filename_cell = _truncate_filename(filename)
+    colored_filename = dim_white(filename_cell, config.color_enabled)
     todo_state = node.todo if node.todo else ""
     heading = node.heading if node.heading else ""
     level = node.level if node.level is not None else 0
@@ -257,10 +267,22 @@ def _build_task_line_parts(node: orgparse.node.OrgNode, config: TaskLineConfig) 
 def _format_line_with_parts(parts: _TaskLineParts) -> str:
     """Build formatted line from components."""
     if parts.colored_state:
-        return f"{parts.colored_filename} {parts.level_prefix} {parts.colored_state}{parts.priority_text} {parts.heading}".strip()
+        body = f"{parts.level_prefix} {parts.colored_state}{parts.priority_text} {parts.heading}".strip()
+        return f"{parts.colored_filename}{body}"
     if parts.priority_text:
-        return f"{parts.colored_filename} {parts.level_prefix}{parts.priority_text} {parts.heading}".strip()
-    return f"{parts.colored_filename} {parts.level_prefix} {parts.heading}".strip()
+        body = f"{parts.level_prefix}{parts.priority_text} {parts.heading}".strip()
+        return f"{parts.colored_filename}{body}"
+    body = f"{parts.level_prefix} {parts.heading}".strip()
+    return f"{parts.colored_filename}{body}"
+
+
+def _resolve_task_line_width(config: TaskLineConfig, line: str) -> int:
+    """Resolve task line width used for right-aligned tags."""
+    if config.line_width is not None:
+        return config.line_width
+    if config.buckets > 0:
+        return config.buckets
+    return visual_len(line)
 
 
 def _add_tags_to_line(
@@ -271,9 +293,10 @@ def _add_tags_to_line(
     tags_text = f":{':'.join(sorted_tags)}:"
     colored_tags = dim_white(tags_text, config.color_enabled)
 
+    line_width = _resolve_task_line_width(config, line)
     line_visual_len = visual_len(line)
     tags_visual_len = len(tags_text)
-    available_space = config.buckets - tags_visual_len
+    available_space = line_width - tags_visual_len
 
     if line_visual_len > available_space:
         target_heading_len = len(parts.heading) - (line_visual_len - available_space)
@@ -291,8 +314,8 @@ def _add_tags_to_line(
             line = _format_line_with_parts(truncated_parts)
 
     line_visual_len = visual_len(line)
-    if line_visual_len < config.buckets:
-        padding = " " * (config.buckets - line_visual_len - tags_visual_len)
+    if line_visual_len < line_width:
+        padding = " " * (line_width - line_visual_len - tags_visual_len)
         return f"{line}{padding}{colored_tags}"
     return f"{line} {colored_tags}"
 
@@ -306,7 +329,7 @@ def format_task_line(
     parts = _build_task_line_parts(node, config)
     line = _format_line_with_parts(parts)
 
-    if node.tags and config.buckets > 0:
+    if node.tags and (config.line_width is not None or config.buckets > 0):
         line = _add_tags_to_line(line, node, parts, config)
 
     if indent:
@@ -486,6 +509,7 @@ def format_top_tasks_section(
                     done_keys=config.done_keys,
                     todo_keys=config.todo_keys,
                     buckets=config.buckets,
+                    line_width=config.line_width,
                 ),
                 indent="  ",
             )

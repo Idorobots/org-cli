@@ -104,8 +104,9 @@ def test_run_tasks_list_short_output(
     captured = capsys.readouterr().out
 
     lines = [line for line in captured.splitlines() if line.strip()]
-    assert lines[0] == f"{fixture_path}: * TODO Refactor codebase"
-    assert lines[1] == f"{fixture_path}: * DONE Fix bug in parser"
+    filename_cell = f"{fixture_path[:15]:15s}"
+    assert lines[0] == f"{filename_cell}* TODO Refactor codebase"
+    assert lines[1] == f"{filename_cell}* DONE Fix bug in parser"
 
 
 def test_run_tasks_list_offset_applied(
@@ -120,7 +121,44 @@ def test_run_tasks_list_offset_applied(
     captured = capsys.readouterr().out
 
     lines = [line for line in captured.splitlines() if line.strip()]
-    assert lines == [f"{fixture_path}: * DONE Fix bug in parser"]
+    filename_cell = f"{fixture_path[:15]:15s}"
+    assert lines == [f"{filename_cell}* DONE Fix bug in parser"]
+
+
+def test_run_tasks_list_short_output_aligns_tags_to_width(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Short list should right-align tags to configured width."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], max_results=1, width=60)
+
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--width", "60"])
+    tasks_list.run_tasks_list(args)
+    captured = capsys.readouterr().out
+
+    lines = [line for line in captured.splitlines() if line.strip()]
+    assert lines
+    assert len(lines[0]) == 60
+    assert lines[0].endswith(":Maintenance:")
+
+
+def test_run_tasks_list_short_output_truncates_filename_and_heading_for_tags(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Short list should keep 15-column filename and truncate heading when needed."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], max_results=1, width=50)
+
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--width", "50"])
+    tasks_list.run_tasks_list(args)
+    captured = capsys.readouterr().out
+
+    lines = [line for line in captured.splitlines() if line.strip()]
+    assert lines
+    line = lines[0]
+    assert len(line) == 50
+    assert line[15] == "*"
+    assert line.endswith(":Maintenance:")
 
 
 def test_run_tasks_list_offset_no_results(
