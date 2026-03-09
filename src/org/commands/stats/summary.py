@@ -448,13 +448,7 @@ def render_stats_summary_layout(
         panel_content_width,
     ).lstrip("\n")
 
-    tasks_count = _select_task_count_for_height(
-        nodes,
-        args.max_results,
-        _line_count(summary_body),
-        task_display_config,
-    )
-    tasks_body = _format_tasks_body(nodes, tasks_count, task_display_config)
+    tasks_body = _format_tasks_body(nodes, args.max_results, task_display_config)
 
     def order_by_total(item: tuple[str, Tag]) -> int:
         """Sort by total count (descending)."""
