@@ -29,7 +29,6 @@ class StatsArgs(Protocol):
     max_tags: int
     max_groups: int
     min_group_size: int
-    buckets: int
 
 
 def parse_date_argument(date_str: str, arg_name: str) -> datetime:
@@ -157,14 +156,6 @@ def validate_pattern(pattern: str, option_name: str, use_multiline: bool = False
         ) from err
 
 
-def parse_show_values(value: str) -> list[str]:
-    """Parse comma-separated show values."""
-    values = [item.strip() for item in value.split(",") if item.strip()]
-    if not values:
-        raise typer.BadParameter("--show cannot be empty")
-    return values
-
-
 def parse_group_values(value: str) -> list[str]:
     """Parse comma-separated group values."""
     values = [item.strip() for item in value.split(",") if item.strip()]
@@ -212,7 +203,7 @@ def validate_stats_arguments(args: StatsArgs) -> None:
         raise typer.BadParameter("--use must be one of: tags, heading, body")
 
     if args.max_results < 0:
-        raise typer.BadParameter("--max-results must be non-negative")
+        raise typer.BadParameter("--limit must be non-negative")
 
     if args.max_relations < 0:
         raise typer.BadParameter("--max-relations must be non-negative")
@@ -225,6 +216,3 @@ def validate_stats_arguments(args: StatsArgs) -> None:
 
     if args.min_group_size < 0:
         raise typer.BadParameter("--min-group-size must be non-negative")
-
-    if args.buckets < 20:
-        raise typer.BadParameter("--buckets must be at least 20")

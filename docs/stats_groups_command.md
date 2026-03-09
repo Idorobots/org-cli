@@ -11,10 +11,9 @@ poetry run org stats groups [OPTIONS] [FILE ...]
 ## Command-specific switches
 
 - `--group TAG1,TAG2,...` - Add explicit groups (repeat option for multiple groups).
-- `--max-results`, `-n` - Limit rendered groups.
+- `--limit`, `-n` - Limit rendered groups.
 - `--max-relations` - Controls relation depth when auto-discovering groups.
 - `--use tags|heading|body` - Choose analysis source.
-- `--buckets` - Control timeline resolution.
 
 ## Available filters
 
@@ -59,8 +58,7 @@ poetry run org stats groups \
 poetry run org stats groups \
   --group Debugging,Erlang \
   --group ProjectManagement,Jira \
-  --max-results 2 \
-  --buckets 60 \
+  --limit 2 \
   examples/ARCHIVE_small
 ```
 

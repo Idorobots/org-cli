@@ -76,7 +76,6 @@ class GroupsArgs:
     max_relations: int
     min_group_size: int
     max_groups: int
-    buckets: int
 
 
 def format_group_list(
@@ -87,7 +86,7 @@ def format_group_list(
     """Return formatted output for group stats without a section header."""
     (
         max_results,
-        num_buckets,
+        plot_width,
         date_from,
         date_until,
         global_timerange,
@@ -120,9 +119,9 @@ def format_group_list(
                     date_until=date_until,
                     global_timerange=global_timerange,
                     timeline=TimelineFormatConfig(
-                        num_buckets=num_buckets,
                         color_enabled=color_enabled,
                         indent="",
+                        plot_width=plot_width,
                     ),
                     name_indent="",
                     stats_indent="  ",
@@ -173,7 +172,7 @@ def run_stats_groups(args: GroupsArgs) -> None:
                 groups,
                 (
                     args.max_results,
-                    args.buckets,
+                    console.width,
                     date_from,
                     date_until,
                     global_timerange,
@@ -322,7 +321,7 @@ def register(app: typer.Typer) -> None:
         ),
         max_results: int = typer.Option(
             10,
-            "--max-results",
+            "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
@@ -355,12 +354,6 @@ def register(app: typer.Typer) -> None:
             "--max-relations",
             metavar="N",
             help="Maximum number of relations to consider per item (use 0 to omit sections)",
-        ),
-        buckets: int = typer.Option(
-            50,
-            "--buckets",
-            metavar="N",
-            help="Number of time buckets for timeline charts (minimum: 20)",
         ),
     ) -> None:
         """Show tag groups for selected groups or top results."""
@@ -396,7 +389,6 @@ def register(app: typer.Typer) -> None:
             max_relations=max_relations,
             min_group_size=0,
             max_groups=0,
-            buckets=buckets,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "stats groups")

@@ -72,7 +72,6 @@ class SummaryArgs:
     max_relations: int
     min_group_size: int
     max_groups: int
-    buckets: int
 
 
 def format_tags_section(
@@ -86,7 +85,7 @@ def format_tags_section(
     (
         _max_results,
         max_relations,
-        num_buckets,
+        plot_width,
         date_from,
         date_until,
         global_timerange,
@@ -121,9 +120,9 @@ def format_tags_section(
                     date_until=date_until,
                     global_timerange=global_timerange,
                     timeline=TimelineFormatConfig(
-                        num_buckets=num_buckets,
                         color_enabled=color_enabled,
                         indent="  ",
+                        plot_width=plot_width,
                     ),
                     name_indent="  ",
                     stats_indent="    ",
@@ -139,6 +138,7 @@ def format_stats_summary_output(
     nodes: list[orgparse.node.OrgNode],
     args: SummaryArgs,
     display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
+    plot_width: int,
 ) -> str:
     """Return formatted output for the stats summary command."""
     exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled = display_config
@@ -154,8 +154,8 @@ def format_stats_summary_output(
         for section in (
             format_tasks_summary(
                 result,
-                args,
                 (date_from, date_until, done_keys, todo_keys, color_enabled),
+                plot_width,
             ),
             format_top_tasks_section(
                 nodes,
@@ -164,8 +164,7 @@ def format_stats_summary_output(
                     color_enabled=color_enabled,
                     done_keys=done_keys,
                     todo_keys=todo_keys,
-                    buckets=args.buckets,
-                    line_width=args.width,
+                    line_width=plot_width,
                     indent="",
                 ),
             ),
@@ -175,7 +174,7 @@ def format_stats_summary_output(
                 (
                     args.max_results,
                     args.max_relations,
-                    args.buckets,
+                    plot_width,
                     date_from,
                     date_until,
                     result.timerange,
@@ -191,7 +190,7 @@ def format_stats_summary_output(
                 exclude_set,
                 (
                     args.min_group_size,
-                    args.buckets,
+                    plot_width,
                     date_from,
                     date_until,
                     result.timerange,
@@ -225,6 +224,7 @@ def run_stats(args: SummaryArgs) -> None:
                 nodes,
                 args,
                 (exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled),
+                console.width,
             )
 
     if not nodes:
@@ -367,7 +367,7 @@ def register(app: typer.Typer) -> None:
         ),
         max_results: int = typer.Option(
             10,
-            "--max-results",
+            "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
@@ -413,12 +413,6 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Maximum number of tag groups to display (use 0 to omit section)",
         ),
-        buckets: int = typer.Option(
-            50,
-            "--buckets",
-            metavar="N",
-            help="Number of time buckets for timeline charts (minimum: 20)",
-        ),
     ) -> None:
         """Show overall task stats."""
         args = SummaryArgs(
@@ -452,7 +446,6 @@ def register(app: typer.Typer) -> None:
             max_relations=max_relations,
             min_group_size=min_group_size,
             max_groups=max_groups,
-            buckets=buckets,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "stats summary")

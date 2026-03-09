@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
 
 import typer
 
@@ -73,13 +72,6 @@ class TasksArgs:
     max_relations: int
     min_group_size: int
     max_groups: int
-    buckets: int
-
-
-class TaskDisplayArgs(Protocol):
-    """Protocol for display arguments used in task summary output."""
-
-    buckets: int
 
 
 def _build_task_state_order(
@@ -96,8 +88,8 @@ def _build_task_state_order(
 
 def format_tasks_summary(
     result: AnalysisResult,
-    args: TaskDisplayArgs,
     display_config: tuple[datetime | None, datetime | None, list[str], list[str], bool],
+    plot_width: int,
     indent: str = "",
 ) -> str:
     """Return formatted global task statistics without tag/group sections."""
@@ -114,9 +106,9 @@ def format_tasks_summary(
                 earliest_date,
                 latest_date,
                 TimelineFormatConfig(
-                    num_buckets=args.buckets,
                     color_enabled=color_enabled,
                     indent="",
+                    plot_width=plot_width,
                 ),
             )
         )
@@ -141,7 +133,7 @@ def format_tasks_summary(
             "Task states:",
             result.task_states,
             HistogramSectionConfig(
-                buckets=args.buckets,
+                plot_width=plot_width,
                 order=state_order,
                 render_config=RenderConfig(
                     color_enabled=color_enabled,
@@ -160,7 +152,7 @@ def format_tasks_summary(
             "Task priorities:",
             result.task_priorities,
             HistogramSectionConfig(
-                buckets=args.buckets,
+                plot_width=plot_width,
                 order=priority_order,
                 render_config=RenderConfig(color_enabled=color_enabled),
                 indent="",
@@ -174,7 +166,7 @@ def format_tasks_summary(
             "Task categories:",
             result.task_categories,
             HistogramSectionConfig(
-                buckets=args.buckets,
+                plot_width=plot_width,
                 order=category_order,
                 render_config=RenderConfig(color_enabled=color_enabled),
                 indent="",
@@ -197,7 +189,7 @@ def format_tasks_summary(
             "Task occurrence by day of week:",
             result.task_days,
             HistogramSectionConfig(
-                buckets=args.buckets,
+                plot_width=plot_width,
                 order=day_order,
                 render_config=RenderConfig(color_enabled=color_enabled),
                 indent="",
@@ -244,8 +236,8 @@ def run_stats_tasks(args: TasksArgs) -> None:
 
             output = format_tasks_summary(
                 result,
-                args,
                 (date_from, date_until, done_keys, todo_keys, color_enabled),
+                console.width,
             )
 
     if not nodes:
@@ -388,7 +380,7 @@ def register(app: typer.Typer) -> None:
         ),
         max_results: int = typer.Option(
             10,
-            "--max-results",
+            "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
@@ -403,12 +395,6 @@ def register(app: typer.Typer) -> None:
             "--category-property",
             metavar="PROPERTY",
             help="Property name to use for category histogram and filtering",
-        ),
-        buckets: int = typer.Option(
-            50,
-            "--buckets",
-            metavar="N",
-            help="Number of time buckets for timeline charts (minimum: 20)",
         ),
     ) -> None:
         """Show overall task stats without tag sections."""
@@ -443,7 +429,6 @@ def register(app: typer.Typer) -> None:
             max_relations=5,
             min_group_size=2,
             max_groups=5,
-            buckets=buckets,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "stats tasks")

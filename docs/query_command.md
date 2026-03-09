@@ -12,7 +12,7 @@ poetry run org query [OPTIONS] QUERY [FILE ...]
 
 ## Command-specific switches
 
-- `--max-results`, `-n` - Limit emitted values.
+- `--limit`, `-n` - Limit emitted values.
 - `--offset` - Skip first N emitted values.
 - `--todo-keys`, `--done-keys` - Define completion key sets visible to query variables.
 - `--color/--no-color` - Force color mode.
@@ -20,7 +20,7 @@ poetry run org query [OPTIONS] QUERY [FILE ...]
 - `--out-theme` - Pygments syntax-highlighting theme for renderable output formats (default: `github-dark`).
 - `--pandoc-args` - Extra arguments forwarded to Pandoc during conversion.
 
-When you use `--offset` or `--max-results`, include `$offset` and `$limit` in the query expression.
+When you use `--offset` or `--limit`, include `$offset` and `$limit` in the query expression.
 
 ## Examples
 
@@ -50,7 +50,7 @@ Prepare a document for team onboarding to Ejabberd.
 ```bash
 poetry run org query '[ .[][] | .heading ][ $offset : $offset + $limit ]' \
   --offset 5 \
-  --max-results 5 \
+  --limit 5 \
   examples/ARCHIVE_small
 ```
 
@@ -59,7 +59,7 @@ poetry run org query '[ .[][] | .heading ][ $offset : $offset + $limit ]' \
 ```bash
 poetry run org query '[ .[][] | select("Debugging" in .tags) | .heading ][ $offset : $offset + $limit ]' \
   --offset 2 \
-  --max-results 8 \
+  --limit 8 \
   examples/ARCHIVE_small
 ```
 
@@ -68,7 +68,7 @@ poetry run org query '[ .[][] | select("Debugging" in .tags) | .heading ][ $offs
 ```bash
 poetry run org query '[ .[][] | select(not(.todo in $done_keys)) ][ $offset : $offset + $limit ]' \
   --offset 0 \
-  --max-results 5 \
+  --limit 5 \
   examples/ARCHIVE_small
 ```
 

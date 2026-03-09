@@ -1,7 +1,6 @@
 {
   "defaults": {
     "--done-keys": "DONE,CANCELLED,DELEGATED",
-    "--buckets": 80,
     "--mapping": "examples/mapping_example.json",
     "--exclude": "examples/exclude_example.txt"
   },

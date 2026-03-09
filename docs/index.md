@@ -24,7 +24,7 @@ For query syntax details, use [query_language.md](query_language.md).
 
 Config uses four top-level sections:
 
-- `defaults`: built-in option defaults (for example `--done-keys`, `--buckets`, `--filter-priority`, `--order-by-priority`).
+- `defaults`: built-in option defaults (for example `--done-keys`, `--limit`, `--filter-priority`, `--order-by-priority`).
 - `filter`: custom `--filter-<name>` query snippets.
 - `order-by`: custom `--order-by-<name>` query snippets.
 - `with`: custom `--with-<name>` query snippets.
@@ -40,7 +40,7 @@ Example:
 {
   "defaults": {
     "--done-keys": "DONE,CANCELLED,DELEGATED",
-    "--buckets": 80,
+    "--limit": 10,
     "--mapping": "examples/mapping_example.json",
     "--exclude": "examples/exclude_example.txt",
     "--filter-priority": "A"
@@ -62,8 +62,8 @@ Most analysis commands accept many `--filter-*` switches. Ordering controls are 
 
 Built-in argument defaults:
 
-- Global: `--max-results 10`, `--offset 0`, `--todo-keys TODO`, `--done-keys DONE`.
-- Stats: `--use tags`, `--max-tags 5` (summary), `--max-relations 5`, `--max-groups 5` (summary), `--min-group-size 2` (summary), `--buckets 50`.
+- Global: `--limit 10`, `--offset 0`, `--todo-keys TODO`, `--done-keys DONE`.
+- Stats: `--use tags`, `--max-tags 5` (summary), `--max-relations 5`, `--max-groups 5` (summary), `--min-group-size 2` (summary).
 - Built-in filter additions: `--filter-priority P`.
 - Tasks list built-in ordering: `--order-by-priority`, `--order-by-level`, `--order-by-file-order`, `--order-by-file-order-reversed`, `--order-by-timestamp-asc`, `--order-by-timestamp-desc`.
 - Tasks list default ordering remains timestamp-desc (same as `--order-by-timestamp-desc`).
@@ -71,7 +71,7 @@ Built-in argument defaults:
 Repository-local defaults may override built-ins. In this repository, `.org-cli.json` sets:
 
 - `--done-keys DONE,CANCELLED,DELEGATED`
-- `--buckets 80`
+- `--limit 10`
 - `--mapping examples/mapping_example.json`
 - `--exclude examples/exclude_example.txt`
 

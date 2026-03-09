@@ -12,7 +12,6 @@ poetry run org stats tasks [OPTIONS] [FILE ...]
 
 - `--category-property` - Property name used for category histogram.
 - `--with-tags-as-category` - Derive category from first tag.
-- `--buckets` - Control timeline/histogram resolution.
 
 ## Available filters
 

@@ -76,7 +76,6 @@ class ListArgs:
     order_by_timestamp_desc: bool
     with_tags_as_category: bool
     category_property: str
-    buckets: int
     out: str
     out_theme: str
     pandoc_args: str | None
@@ -92,7 +91,6 @@ class TasksListRenderInput:
     done_keys: list[str]
     todo_keys: list[str]
     details: bool
-    buckets: int
     line_width: int | None
     out_theme: str
 
@@ -116,7 +114,6 @@ def _format_short_task_list(data: TasksListRenderInput) -> str:
                 color_enabled=data.color_enabled,
                 done_keys=data.done_keys,
                 todo_keys=data.todo_keys,
-                buckets=data.buckets,
                 line_width=data.line_width,
             ),
         )
@@ -245,7 +242,7 @@ def run_tasks_list(args: ListArgs) -> None:
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
     if args.max_results < 0:
-        raise typer.BadParameter("--max-results must be non-negative")
+        raise typer.BadParameter("--limit must be non-negative")
     try:
         formatter = get_tasks_list_formatter(args.out, args.pandoc_args)
     except OutputFormatError as exc:
@@ -261,8 +258,7 @@ def run_tasks_list(args: ListArgs) -> None:
                     done_keys=done_keys,
                     todo_keys=todo_keys,
                     details=args.details,
-                    buckets=args.buckets,
-                    line_width=args.width,
+                    line_width=console.width,
                     out_theme=args.out_theme,
                 )
             )
@@ -405,7 +401,7 @@ def register(app: typer.Typer) -> None:
         ),
         max_results: int = typer.Option(
             10,
-            "--max-results",
+            "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
@@ -462,12 +458,6 @@ def register(app: typer.Typer) -> None:
             metavar="PROPERTY",
             help="Property name to use for category histogram and filtering",
         ),
-        buckets: int = typer.Option(
-            50,
-            "--buckets",
-            metavar="N",
-            help="Number of time buckets for timeline charts and tag alignment column",
-        ),
         out: str = typer.Option(
             OutputFormat.ORG,
             "--out",
@@ -520,7 +510,6 @@ def register(app: typer.Typer) -> None:
             order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
-            buckets=buckets,
             out=out,
             out_theme=out_theme,
             pandoc_args=pandoc_args,

@@ -60,7 +60,7 @@ class RenderConfig:
 class HistogramRenderConfig:
     """Configuration for histogram layout and style."""
 
-    total_blocks: int
+    plot_width: int
     category_order: list[str] | None
     style: RenderConfig = field(default_factory=RenderConfig)
 
@@ -75,19 +75,21 @@ def render_histogram(
 
     Args:
         histogram: Histogram object to render
-        config: Histogram rendering configuration or block width
-        category_order: Optional category order (legacy call style)
-        style: Optional style config (legacy call style)
+        config: Histogram rendering configuration
+        category_order: Deprecated legacy argument
+        style: Deprecated legacy argument
 
     Returns:
         List of formatted strings, one per category
     """
     render_config_input: HistogramRenderConfig
+    legacy_total_blocks: int | None = None
     if isinstance(config, HistogramRenderConfig):
         render_config_input = config
     else:
+        legacy_total_blocks = config
         render_config_input = HistogramRenderConfig(
-            total_blocks=config,
+            plot_width=config,
             category_order=category_order,
             style=style or RenderConfig(),
         )
@@ -105,11 +107,6 @@ def render_histogram(
     for category in categories:
         value = histogram.values.get(category, 0)
         display_name = category[:8] + "." if len(category) > 9 else category
-        bar_length = (
-            int((value / total_sum) * render_config_input.total_blocks) if total_sum > 0 else 0
-        )
-        bars = "█" * bar_length
-
         if render_config.histogram_type == "task_states":
             state_style = get_state_color(
                 category,
@@ -121,19 +118,30 @@ def render_histogram(
                 colored_name = colorize(display_name, state_style, render_config.color_enabled)
             else:
                 colored_name = display_name
-            colored_bars = bright_blue(bars, render_config.color_enabled)
         else:
             colored_name = dim_white(display_name, render_config.color_enabled)
-            colored_bars = bright_blue(bars, render_config.color_enabled)
 
         delimiter = dim_white("┊", render_config.color_enabled)
+        value_text = f" {value}"
 
         if render_config.color_enabled:
             visual_width = visual_len(colored_name)
             padding = " " * (9 - visual_width)
-            line = f"{colored_name}{padding}{delimiter}{colored_bars} {value}"
+            prefix = f"{colored_name}{padding}{delimiter}"
         else:
-            line = f"{colored_name:9s}{delimiter}{colored_bars} {value}"
+            prefix = f"{colored_name:9s}{delimiter}"
+
+        if legacy_total_blocks is not None:
+            available_blocks = legacy_total_blocks
+        else:
+            available_blocks = max(
+                0, render_config_input.plot_width - visual_len(prefix) - len(value_text)
+            )
+        bar_length = int((value / total_sum) * available_blocks) if total_sum > 0 else 0
+        bars = "█" * bar_length
+        colored_bars = bright_blue(bars, render_config.color_enabled)
+
+        line = f"{prefix}{colored_bars}{value_text}"
 
         lines.append(line)
 

@@ -62,7 +62,7 @@ def test_parse_color_defaults_invalid_value() -> None:
 def test_build_config_defaults_applies_values() -> None:
     """Config defaults should populate summary/task defaults and append defaults."""
     raw: dict[str, object] = {
-        "--max-results": 25,
+        "--limit": 25,
         "--max-tags": 3,
         "--filter-tag": ["work", "team"],
         "--use": "heading",
@@ -82,7 +82,7 @@ def test_build_config_defaults_applies_values() -> None:
 
 def test_build_config_defaults_rejects_invalid_entry() -> None:
     """Invalid values should cause config defaults to be rejected."""
-    raw: dict[str, object] = {"--max-results": "not-a-number"}
+    raw: dict[str, object] = {"--limit": "not-a-number"}
 
     defaults = config.build_config_defaults(raw)
 
@@ -140,7 +140,7 @@ def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.Monk
     config_path.write_text(
         json.dumps(
             {
-                "defaults": {"--max-results": 7},
+                "defaults": {"--limit": 7},
                 "filter": {"custom-filter": ".[]"},
                 "order-by": {"custom-order": "."},
                 "with": {"custom-with": "."},
@@ -165,7 +165,7 @@ def test_load_cli_config_sections_are_optional(
 ) -> None:
     """Only defaults section should be enough for valid config."""
     config_path = tmp_path / ".org-cli.json"
-    config_path.write_text(json.dumps({"defaults": {"--max-results": 7}}), encoding="utf-8")
+    config_path.write_text(json.dumps({"defaults": {"--limit": 7}}), encoding="utf-8")
 
     monkeypatch.chdir(config_path.parent)
     loaded = config.load_cli_config(["org"])
@@ -184,7 +184,7 @@ def test_load_cli_config_rejects_invalid_custom_section_values(
     config_path.write_text(
         json.dumps(
             {
-                "defaults": {"--max-results": 7},
+                "defaults": {"--limit": 7},
                 "filter": {"custom-filter": 1},
             }
         ),
@@ -263,20 +263,20 @@ def test_build_default_map_strips_command_specific_values() -> None:
         "max_groups": 1,
         "min_group_size": 2,
         "use": "tags",
-        "show": "one",
+        "tags": ["one"],
         "groups": ["a,b"],
     }
 
     default_map = config.build_default_map(defaults)
 
     summary_defaults = default_map["stats"]["summary"]
-    assert "show" not in summary_defaults
+    assert "tags" not in summary_defaults
     assert "groups" not in summary_defaults
 
     tasks_defaults = default_map["stats"]["tasks"]
     assert "max_tags" not in tasks_defaults
     assert "max_relations" not in tasks_defaults
-    assert "show" not in tasks_defaults
+    assert "tags" not in tasks_defaults
     assert "groups" not in tasks_defaults
 
     tags_defaults = default_map["stats"]["tags"]
@@ -287,14 +287,7 @@ def test_build_default_map_strips_command_specific_values() -> None:
 
     groups_defaults = default_map["stats"]["groups"]
     assert "max_tags" not in groups_defaults
-    assert "show" not in groups_defaults
-
-
-def test_build_default_map_keeps_tasks_list_buckets_default() -> None:
-    """tasks list default map should include buckets from config."""
-    default_map = config.build_default_map({"buckets": 77})
-
-    assert default_map["tasks"]["list"]["buckets"] == 77
+    assert "tags" not in groups_defaults
 
 
 def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
@@ -347,13 +340,12 @@ def test_log_applied_config_defaults_logs_all_config_values(
         config.CONFIG_APPEND_DEFAULTS.clear()
         config.CONFIG_INLINE_DEFAULTS.clear()
 
-        config.CONFIG_DEFAULTS.update({"max_results": 10, "buckets": 33})
+        config.CONFIG_DEFAULTS.update({"max_results": 10})
         config.CONFIG_APPEND_DEFAULTS.update({"filter_tags": ["work"]})
         config.CONFIG_INLINE_DEFAULTS.update({"mapping_inline": {"foo": "bar"}})
 
         args = SimpleNamespace(
             max_results=10,
-            buckets=33,
             filter_tags=["work"],
             mapping_inline={"foo": "bar"},
         )
@@ -361,13 +353,12 @@ def test_log_applied_config_defaults_logs_all_config_values(
         with caplog.at_level(logging.INFO, logger="org"):
             config.log_applied_config_defaults(
                 args,
-                ["stats", "summary", "--max-results", "20"],
+                ["stats", "summary", "--limit", "20"],
                 "stats summary",
             )
 
         assert "Config defaults applied (stats summary):" in caplog.text
-        assert "--max-results=10" in caplog.text
-        assert "--buckets=33" in caplog.text
+        assert "--limit=10" in caplog.text
         assert "--filter-tag=['work']" in caplog.text
         assert "--mapping='<Value ellided...>'" in caplog.text
     finally:

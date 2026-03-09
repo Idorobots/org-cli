@@ -52,7 +52,6 @@ def make_summary_args(files: list[str], **overrides: object) -> stats_summary.Su
         max_relations=5,
         min_group_size=2,
         max_groups=5,
-        buckets=50,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -87,13 +86,12 @@ def make_tags_args(files: list[str], **overrides: object) -> stats_tags.TagsArgs
         max_results=10,
         max_tags=5,
         use="tags",
-        show=None,
+        tags=None,
         with_tags_as_category=False,
         category_property="CATEGORY",
         max_relations=5,
         min_group_size=2,
         max_groups=5,
-        buckets=50,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -134,7 +132,6 @@ def make_groups_args(files: list[str], **overrides: object) -> stats_groups.Grou
         max_relations=5,
         min_group_size=2,
         max_groups=5,
-        buckets=50,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -174,7 +171,6 @@ def make_tasks_args(files: list[str], **overrides: object) -> stats_tasks.TasksA
         max_relations=5,
         min_group_size=2,
         max_groups=5,
-        buckets=50,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -232,7 +228,7 @@ def test_run_stats_summary_negative_max_results_raises_bad_parameter() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_summary_args([fixture_path], max_results=-1)
 
-    with pytest.raises(typer.BadParameter, match="--max-results must be non-negative"):
+    with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
         stats_summary.run_stats(args)
 
 
@@ -241,7 +237,7 @@ def test_run_stats_tasks_negative_max_results_raises_bad_parameter() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_tasks_args([fixture_path], max_results=-1)
 
-    with pytest.raises(typer.BadParameter, match="--max-results must be non-negative"):
+    with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
         stats_tasks.run_stats_tasks(args)
 
 
@@ -250,7 +246,7 @@ def test_run_stats_tags_negative_max_results_raises_bad_parameter() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_tags_args([fixture_path], max_results=-1)
 
-    with pytest.raises(typer.BadParameter, match="--max-results must be non-negative"):
+    with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
         stats_tags.run_stats_tags(args)
 
 
@@ -259,18 +255,18 @@ def test_run_stats_groups_negative_max_results_raises_bad_parameter() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_groups_args([fixture_path], max_results=-1)
 
-    with pytest.raises(typer.BadParameter, match="--max-results must be non-negative"):
+    with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
         stats_groups.run_stats_groups(args)
 
 
-def test_run_stats_tags_respects_show_filter(
+def test_run_stats_tags_respects_tag_filter(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Tags command should filter to selected tags when --show is used."""
+    """Tags command should filter to selected tags when --tag is used."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_tags_args([fixture_path], show="Test")
+    args = make_tags_args([fixture_path], tags=["Test"])
 
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "tags", "--show", "Test"])
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "tags", "--tag", "Test"])
     stats_tags.run_stats_tags(args)
     captured = capsys.readouterr().out
 
@@ -278,14 +274,14 @@ def test_run_stats_tags_respects_show_filter(
     assert "Debugging" not in captured
 
 
-def test_run_stats_tags_show_heading(
+def test_run_stats_tags_tag_heading(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Tags command should normalize --show for heading usage."""
+    """Tags command should normalize --tag for heading usage."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
-    args = make_tags_args([fixture_path], use="heading", show="Simple")
+    args = make_tags_args([fixture_path], use="heading", tags=["Simple"])
 
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "tags", "--show", "Simple"])
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "tags", "--tag", "Simple"])
     stats_tags.run_stats_tags(args)
     captured = capsys.readouterr().out
 
@@ -420,12 +416,7 @@ def test_format_tasks_summary_renders_histograms() -> None:
         tag_groups=[],
     )
 
-    class Args:
-        buckets = 20
-
-    args = Args()
-
-    output = stats_tasks.format_tasks_summary(result, args, (None, None, ["DONE"], ["TODO"], False))
+    output = stats_tasks.format_tasks_summary(result, (None, None, ["DONE"], ["TODO"], False), 80)
 
     assert "Task states:" in output
     assert "Task categories:" in output
@@ -458,13 +449,10 @@ def test_format_tasks_summary_orders_task_states_by_group_alphabetically() -> No
         tag_groups=[],
     )
 
-    class Args:
-        buckets = 20
-
     output = stats_tasks.format_tasks_summary(
         result,
-        Args(),
         (None, None, ["ZDONE", "ADONE"], ["ZTODO", "ATODO"], False),
+        80,
     )
 
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(
@@ -492,12 +480,7 @@ def test_format_tasks_summary_omits_none_state_when_zero() -> None:
         tag_groups=[],
     )
 
-    class Args:
-        buckets = 20
-
-    output = stats_tasks.format_tasks_summary(
-        result, Args(), (None, None, ["DONE"], ["TODO"], False)
-    )
+    output = stats_tasks.format_tasks_summary(result, (None, None, ["DONE"], ["TODO"], False), 80)
 
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(
         "\n\nTask priorities:", maxsplit=1
@@ -522,12 +505,7 @@ def test_format_tasks_summary_keeps_none_state_when_present() -> None:
         tag_groups=[],
     )
 
-    class Args:
-        buckets = 20
-
-    output = stats_tasks.format_tasks_summary(
-        result, Args(), (None, None, ["DONE"], ["TODO"], False)
-    )
+    output = stats_tasks.format_tasks_summary(result, (None, None, ["DONE"], ["TODO"], False), 80)
 
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(
         "\n\nTask priorities:", maxsplit=1

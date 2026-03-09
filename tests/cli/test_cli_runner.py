@@ -25,12 +25,12 @@ def test_cli_runner_summary() -> None:
     assert "Total tasks:" in result.stdout
 
 
-def test_cli_runner_tags_show() -> None:
-    """CliRunner should filter tags with --show."""
+def test_cli_runner_tags_tag() -> None:
+    """CliRunner should filter tags with --tag."""
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
 
-    result = runner.invoke(app, ["stats", "tags", "--no-color", "--show", "Test", fixture_path])
+    result = runner.invoke(app, ["stats", "tags", "--no-color", "--tag", "Test", fixture_path])
 
     assert result.exit_code == 0
     assert "Test" in result.stdout

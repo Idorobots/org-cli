@@ -53,7 +53,6 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         order_by_timestamp_desc=False,
         with_tags_as_category=False,
         category_property="CATEGORY",
-        buckets=50,
         out=OutputFormat.ORG,
         out_theme="github-dark",
         pandoc_args=None,
@@ -97,7 +96,7 @@ def test_run_tasks_list_short_output(
 ) -> None:
     """Tasks list should render short output lines in order."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_list_args([fixture_path], max_results=2, buckets=0)
+    args = make_list_args([fixture_path], max_results=2)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list"])
     tasks_list.run_tasks_list(args)
@@ -105,8 +104,10 @@ def test_run_tasks_list_short_output(
 
     lines = [line for line in captured.splitlines() if line.strip()]
     filename_cell = f"{fixture_path[:15]:15s}"
-    assert lines[0] == f"{filename_cell}* TODO Refactor codebase"
-    assert lines[1] == f"{filename_cell}* DONE Fix bug in parser"
+    assert lines[0].startswith(f"{filename_cell}* TODO Refactor codebase")
+    assert lines[0].endswith(":Maintenance:")
+    assert lines[1].startswith(f"{filename_cell}* DONE Fix bug in parser")
+    assert lines[1].endswith(":Debugging:SysAdmin:")
 
 
 def test_run_tasks_list_offset_applied(
@@ -114,7 +115,7 @@ def test_run_tasks_list_offset_applied(
 ) -> None:
     """Tasks list should apply offset before max results."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_list_args([fixture_path], max_results=1, offset=1, buckets=0)
+    args = make_list_args([fixture_path], max_results=1, offset=1)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--offset", "1"])
     tasks_list.run_tasks_list(args)
@@ -122,7 +123,8 @@ def test_run_tasks_list_offset_applied(
 
     lines = [line for line in captured.splitlines() if line.strip()]
     filename_cell = f"{fixture_path[:15]:15s}"
-    assert lines == [f"{filename_cell}* DONE Fix bug in parser"]
+    assert lines[0].startswith(f"{filename_cell}* DONE Fix bug in parser")
+    assert lines[0].endswith(":Debugging:SysAdmin:")
 
 
 def test_run_tasks_list_short_output_aligns_tags_to_width(
@@ -180,7 +182,7 @@ def test_run_tasks_list_negative_max_results_raises_bad_parameter() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_list_args([fixture_path], max_results=-1)
 
-    with pytest.raises(typer.BadParameter, match="--max-results must be non-negative"):
+    with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
         tasks_list.run_tasks_list(args)
 
 

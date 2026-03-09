@@ -13,13 +13,7 @@ from org.cli_common import (
     resolve_group_values,
     resolve_input_paths,
 )
-from org.validation import parse_group_values, parse_show_values
-
-
-def test_parse_show_values_rejects_empty() -> None:
-    """Empty show values should exit with error."""
-    with pytest.raises(typer.BadParameter, match="--show cannot be empty"):
-        parse_show_values("  , ")
+from org.validation import parse_group_values
 
 
 def test_normalize_show_value_applies_mapping() -> None:

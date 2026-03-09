@@ -235,7 +235,6 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
             done_keys=["DONE"],
             todo_keys=["TODO"],
             details=False,
-            buckets=10,
             line_width=None,
             out_theme="monokai",
         )
@@ -264,7 +263,6 @@ def test_json_tasks_formatter_uses_json_syntax_when_color_enabled() -> None:
             done_keys=["DONE"],
             todo_keys=["TODO"],
             details=False,
-            buckets=10,
             line_width=None,
             out_theme="monokai",
         )

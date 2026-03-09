@@ -18,7 +18,7 @@ poetry run org tasks list [OPTIONS] [FILE ...]
 - `--order-by-timestamp-asc` - Sort by task timestamp ascending (repeatable).
 - `--order-by-timestamp-desc` - Sort by task timestamp descending (repeatable).
 - `--offset` - Skip first N results.
-- `--max-results`, `-n` - Limit displayed tasks.
+- `--limit`, `-n` - Limit displayed tasks.
 - `--out` - Output format (`org`, `json`, or any Pandoc writer format such as `gfm`, `html5`, `rst`, `pdf`).
 - `--out-theme` - Pygments syntax-highlighting theme for renderable output formats (default: `github-dark`).
 - `--pandoc-args` - Extra arguments forwarded to Pandoc during conversion.
@@ -64,7 +64,7 @@ poetry run org tasks list \
   --order-by-priority \
   --order-by-level \
   --order-by-timestamp-asc \
-  --max-results 5 \
+  --limit 5 \
   examples/ARCHIVE_small
 ```
 
@@ -77,7 +77,7 @@ poetry run org tasks list \
   --filter-date-until 2023-11-01 \
   --order-by-level \
   --order-by-timestamp-asc \
-  --max-results 5 \
+  --limit 5 \
   --offset 20 \
   examples/ARCHIVE_small
 ```
@@ -85,7 +85,7 @@ poetry run org tasks list \
 5) Fetch full Org blocks for manual review
 
 ```bash
-poetry run org tasks list --details --max-results 2 examples/ARCHIVE_small
+poetry run org tasks list --details --limit 2 examples/ARCHIVE_small
 ```
 
 Example output (ellided):

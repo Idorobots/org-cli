@@ -212,7 +212,7 @@ def run_query(args: QueryArgs) -> None:
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
     if args.max_results < 0:
-        raise typer.BadParameter("--max-results must be non-negative")
+        raise typer.BadParameter("--limit must be non-negative")
     try:
         formatter = get_query_formatter(args.out, args.pandoc_args)
     except OutputFormatError as exc:
@@ -309,7 +309,7 @@ def register(app: typer.Typer) -> None:
         ),
         max_results: int = typer.Option(
             10,
-            "--max-results",
+            "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",

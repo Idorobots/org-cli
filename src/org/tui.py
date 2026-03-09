@@ -139,17 +139,14 @@ def section_header_lines(title: str, color_enabled: bool) -> list[str]:
 class TimelineFormatConfig:
     """Configuration for rendering timeline charts."""
 
-    num_buckets: int
     color_enabled: bool
     indent: str
-    plot_width: int | None = None
+    plot_width: int
 
 
 def resolve_timeline_plot_width(config: TimelineFormatConfig) -> int:
     """Resolve visual timeline plot width from config."""
-    if config.plot_width is not None:
-        return config.plot_width
-    return config.num_buckets + 2
+    return max(3, config.plot_width)
 
 
 @dataclass(frozen=True)
@@ -182,7 +179,7 @@ class GroupBlockConfig:
 class HistogramSectionConfig:
     """Configuration for rendering histogram sections."""
 
-    buckets: int
+    plot_width: int
     order: list[str]
     render_config: RenderConfig
     indent: str
@@ -196,7 +193,6 @@ class TopTasksSectionConfig:
     color_enabled: bool
     done_keys: list[str]
     todo_keys: list[str]
-    buckets: int
     indent: str
     line_width: int | None = None
 
@@ -208,7 +204,6 @@ class TaskLineConfig:
     color_enabled: bool
     done_keys: list[str]
     todo_keys: list[str]
-    buckets: int = 0
     line_width: int | None = None
 
 
@@ -280,8 +275,6 @@ def _resolve_task_line_width(config: TaskLineConfig, line: str) -> int:
     """Resolve task line width used for right-aligned tags."""
     if config.line_width is not None:
         return config.line_width
-    if config.buckets > 0:
-        return config.buckets
     return visual_len(line)
 
 
@@ -329,7 +322,7 @@ def format_task_line(
     parts = _build_task_line_parts(node, config)
     line = _format_line_with_parts(parts)
 
-    if node.tags and (config.line_width is not None or config.buckets > 0):
+    if node.tags and config.line_width is not None:
         line = _add_tags_to_line(line, node, parts, config)
 
     if indent:
@@ -448,7 +441,7 @@ def format_groups_section(
     if max_groups == 0:
         return ""
 
-    min_group_size, num_buckets, date_from, date_until, global_timerange, color_enabled = config
+    min_group_size, plot_width, date_from, date_until, global_timerange, color_enabled = config
 
     filtered_groups = []
     for group in groups:
@@ -477,9 +470,9 @@ def format_groups_section(
                     date_until=date_until,
                     global_timerange=global_timerange,
                     timeline=TimelineFormatConfig(
-                        num_buckets=num_buckets,
                         color_enabled=color_enabled,
                         indent="  ",
+                        plot_width=plot_width,
                     ),
                     name_indent="  ",
                     stats_indent="    ",
@@ -508,7 +501,6 @@ def format_top_tasks_section(
                     color_enabled=config.color_enabled,
                     done_keys=config.done_keys,
                     todo_keys=config.todo_keys,
-                    buckets=config.buckets,
                     line_width=config.line_width,
                 ),
                 indent="  ",
@@ -527,7 +519,7 @@ def format_histogram_section(
     histogram_lines = render_histogram(
         histogram,
         HistogramRenderConfig(
-            total_blocks=config.buckets,
+            plot_width=config.plot_width,
             category_order=config.order,
             style=config.render_config,
         ),

@@ -62,12 +62,11 @@ def test_validate_global_arguments_invalid_regex() -> None:
     ("override", "message"),
     [
         ("use", "--use must be one of"),
-        ("max_results", "--max-results must be non-negative"),
+        ("max_results", "--limit must be non-negative"),
         ("max_relations", "--max-relations must be non-negative"),
         ("max_tags", "--max-tags must be non-negative"),
         ("max_groups", "--max-groups must be non-negative"),
         ("min_group_size", "--min-group-size must be non-negative"),
-        ("buckets", "--buckets must be at least 20"),
     ],
 )
 def test_validate_stats_arguments_errors(override: str, message: str) -> None:
@@ -79,7 +78,6 @@ def test_validate_stats_arguments_errors(override: str, message: str) -> None:
         max_tags=1,
         max_groups=1,
         min_group_size=1,
-        buckets=20,
     )
 
     if override == "use":
@@ -94,9 +92,6 @@ def test_validate_stats_arguments_errors(override: str, message: str) -> None:
         args.max_groups = -1
     elif override == "min_group_size":
         args.min_group_size = -1
-    elif override == "buckets":
-        args.buckets = 10
-
     with pytest.raises(typer.BadParameter, match=message):
         validate_stats_arguments(cast(StatsArgs, args))
 

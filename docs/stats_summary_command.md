@@ -15,7 +15,6 @@ poetry run org stats summary [OPTIONS] [FILE ...]
 - `--max-groups` - Limit GROUPS section items (`0` hides section).
 - `--min-group-size` - Skip small groups.
 - `--max-relations` - Limit relation entries per item.
-- `--buckets` - Control timeline/histogram resolution.
 - `--with-tags-as-category`, `--category-property` - Control category derivation.
 
 ## Available filters
@@ -40,7 +39,7 @@ poetry run org stats summary examples/ARCHIVE_small
 
 ```bash
 poetry run org stats summary \
-  --max-results 3 \
+  --limit 3 \
   --max-tags 2 \
   --max-groups 1 \
   examples/ARCHIVE_small
@@ -71,7 +70,7 @@ poetry run org stats summary \
 ```bash
 poetry run org stats summary \
   --use tags \
-  --max-results 5 \
+  --limit 5 \
   --max-tags 3 \
   --max-groups 2 \
   --max-relations 3 \

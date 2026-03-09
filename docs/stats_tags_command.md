@@ -10,11 +10,10 @@ poetry run org stats tags [OPTIONS] [FILE ...]
 
 ## Command-specific switches
 
-- `--show TAG1,TAG2,...` - Show explicit tags (comma-separated).
+- `--tag TAG` - Show explicit tags (repeat option for multiple tags).
 - `--use tags|heading|body` - Choose analysis source.
 - `--max-relations` - Limit relation entries per tag.
-- `--max-results`, `-n` - Limit how many tags are rendered.
-- `--buckets` - Control timeline resolution.
+- `--limit`, `-n` - Limit how many tags are rendered.
 
 ## Available filters
 
@@ -38,7 +37,8 @@ poetry run org stats tags examples/ARCHIVE_small
 
 ```bash
 poetry run org stats tags \
-  --show Debugging,Jira \
+  --tag Debugging \
+  --tag Jira \
   examples/ARCHIVE_small
 ```
 
@@ -47,7 +47,7 @@ poetry run org stats tags \
 ```bash
 poetry run org stats tags \
   --use heading \
-  --max-results 5 \
+  --limit 5 \
   --max-relations 2 \
   examples/ARCHIVE_small
 ```
@@ -56,7 +56,8 @@ poetry run org stats tags \
 
 ```bash
 poetry run org stats tags \
-  --show Debugging,Jira \
+  --tag Debugging \
+  --tag Jira \
   --max-relations 3 \
   --filter-not-completed \
   examples/ARCHIVE_small
