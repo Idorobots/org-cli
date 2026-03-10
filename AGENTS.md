@@ -9,7 +9,7 @@ This document provides essential information for AI coding agents working in the
 Top-level commands:
 
 - `org query`
-- `org stats summary`
+- `org stats all`
 - `org stats tasks`
 - `org stats tags`
 - `org stats groups`
@@ -38,7 +38,7 @@ org-cli/
 │       └── commands/
 │           ├── query.py
 │           ├── stats/
-│           │   ├── summary.py
+│           │   ├── all.py
 │           │   ├── tasks.py
 │           │   ├── tags.py
 │           │   └── groups.py
@@ -85,7 +85,7 @@ poetry run org --help
 poetry run org query '.[][] | .heading' -n 5 examples/ARCHIVE_small
 
 # Summary stats
-poetry run org stats summary --filter-priority A --max-tags 3 --max-groups 2 examples/ARCHIVE_small
+poetry run org stats all --filter-priority A --max-tags 3 --max-groups 2 examples/ARCHIVE_small
 
 # Task-only stats with derived categories from tags
 poetry run org stats tasks --with-tags-as-category --filter-priority B examples/ARCHIVE_small
@@ -106,7 +106,7 @@ Command options evolve; use the generated help for exact flags:
 poetry run org --help
 poetry run org query --help
 poetry run org stats --help
-poetry run org stats summary --help
+poetry run org stats all --help
 poetry run org stats tasks --help
 poetry run org stats tags --help
 poetry run org stats groups --help

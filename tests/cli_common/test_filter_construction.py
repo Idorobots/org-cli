@@ -104,7 +104,7 @@ def test_build_query_text_filters_only() -> None:
     from org.cli_common import build_query_text
 
     args = make_args(filter_tags=["simple"])
-    argv = ["org", "stats", "summary", "--filter-tag", "simple", "file.org"]
+    argv = ["org", "stats", "all", "--filter-tag", "simple", "file.org"]
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
@@ -168,7 +168,7 @@ def test_build_query_text_with_property_filter() -> None:
     from org.cli_common import build_query_text
 
     args = make_args(filter_properties=["priority=A"])
-    argv = ["org", "stats", "summary", "--filter-property", "priority=A", "file.org"]
+    argv = ["org", "stats", "all", "--filter-property", "priority=A", "file.org"]
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
@@ -206,7 +206,7 @@ def test_build_query_logs_query_before_compile(caplog: pytest.LogCaptureFixture)
     from org.cli_common import build_query
 
     args = make_args(filter_tags=["simple"])
-    argv = ["org", "stats", "summary", "--filter-tag", "simple", "file.org"]
+    argv = ["org", "stats", "all", "--filter-tag", "simple", "file.org"]
 
     with caplog.at_level(logging.INFO, logger="org"):
         build_query(args, argv, include_ordering=False, include_slice=False)
@@ -322,7 +322,7 @@ def test_build_query_text_custom_ordering_for_stats(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"weight": "sort_by(.priority)"})
 
     args = make_args(files=["file.org"])
-    argv = ["org", "stats", "summary", "--order-by-weight", "file.org"]
+    argv = ["org", "stats", "all", "--order-by-weight", "file.org"]
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 

@@ -1,4 +1,4 @@
-"""Stats summary command."""
+"""Stats all command."""
 
 from __future__ import annotations
 
@@ -48,8 +48,8 @@ from org.validation import validate_stats_arguments
 
 
 @dataclass
-class SummaryArgs:
-    """Arguments for the stats summary command."""
+class StatsAllArgs:
+    """Arguments for the stats all command."""
 
     files: list[str] | None
     config: str
@@ -85,7 +85,7 @@ class SummaryArgs:
 
 @dataclass(frozen=True)
 class _TaskDisplayConfig:
-    """Configuration for rendering task rows in summary layout."""
+    """Configuration for rendering task rows in stats all layout."""
 
     color_enabled: bool
     done_keys: list[str]
@@ -95,7 +95,7 @@ class _TaskDisplayConfig:
 
 @dataclass(frozen=True)
 class _GroupsDisplayConfig:
-    """Configuration for rendering groups body in summary layout."""
+    """Configuration for rendering groups body in stats all layout."""
 
     plot_width: int
     date_from: datetime | None
@@ -163,14 +163,14 @@ def format_tags_section(
     return lines_to_text(apply_indent(lines, indent))
 
 
-def format_stats_summary_output(
+def format_stats_all_output(
     result: AnalysisResult,
     nodes: list[orgparse.node.OrgNode],
-    args: SummaryArgs,
+    args: StatsAllArgs,
     display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
     plot_width: int,
 ) -> str:
-    """Return formatted output for the stats summary command."""
+    """Return formatted output for the stats all command."""
     exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled = display_config
 
     def order_by_total(item: tuple[str, Tag]) -> int:
@@ -312,7 +312,7 @@ _TWO_COLUMN_MIN_WIDTH = 120
 
 
 def _resolve_two_column_panel_content_width(console_width: int) -> int:
-    """Resolve per-column panel body width for two-column summary layout."""
+    """Resolve per-column panel body width for two-column stats all layout."""
     left_column_width = max(25, console_width // 2)
     right_column_width = max(25, console_width - left_column_width)
     min_column_width = min(left_column_width, right_column_width)
@@ -323,19 +323,19 @@ def _resolve_two_column_panel_content_width(console_width: int) -> int:
 
 
 def _resolve_single_column_panel_content_width(console_width: int) -> int:
-    """Resolve panel body width for single-column summary layout."""
+    """Resolve panel body width for single-column stats all layout."""
     panel_chrome_width = 4
     return max(20, console_width - panel_chrome_width)
 
 
-def _render_single_column_summary_layout(
+def _render_single_column_stats_all_layout(
     result: AnalysisResult,
     nodes: list[orgparse.node.OrgNode],
-    args: SummaryArgs,
+    args: StatsAllArgs,
     display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
     console_width: int,
 ) -> tuple[Layout, int]:
-    """Build a single-column summary layout with vertically stacked sections."""
+    """Build a single-column stats all layout with vertically stacked sections."""
     exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled = display_config
     panel_content_width = _resolve_single_column_panel_content_width(console_width)
     task_display_config = _TaskDisplayConfig(
@@ -419,16 +419,16 @@ def _render_single_column_summary_layout(
     return root, total_height
 
 
-def render_stats_summary_layout(
+def render_stats_all_layout(
     console: Console,
     result: AnalysisResult,
     nodes: list[orgparse.node.OrgNode],
-    args: SummaryArgs,
+    args: StatsAllArgs,
     display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
 ) -> tuple[Layout, int]:
-    """Build a two-column summary layout using Rich Layout and Panels."""
+    """Build a two-column stats all layout using Rich Layout and Panels."""
     if console.width < _TWO_COLUMN_MIN_WIDTH:
-        return _render_single_column_summary_layout(
+        return _render_single_column_stats_all_layout(
             result, nodes, args, display_config, console.width
         )
 
@@ -583,7 +583,7 @@ def _format_groups_body(
     return body or "No results\n"
 
 
-def run_stats(args: SummaryArgs) -> None:
+def run_stats(args: StatsAllArgs) -> None:
     """Run the stats command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
@@ -598,7 +598,7 @@ def run_stats(args: SummaryArgs) -> None:
         if nodes:
             result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
             date_from, date_until = resolve_date_filters(args)
-            layout, layout_height = render_stats_summary_layout(
+            layout, layout_height = render_stats_all_layout(
                 console,
                 result,
                 nodes,
@@ -627,13 +627,10 @@ def run_stats(args: SummaryArgs) -> None:
 
 
 def register(app: typer.Typer) -> None:
-    """Register the stats summary command."""
+    """Register the stats all command."""
 
-    @app.command(
-        "summary",
-        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-    )
-    def stats_summary(  # noqa: PLR0913
+    @app.command("all", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+    def stats_all(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None, metavar="FILE", help="Org-mode archive files or directories to analyze"
         ),
@@ -807,7 +804,7 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Show overall task stats."""
-        args = SummaryArgs(
+        args = StatsAllArgs(
             files=files,
             config=config,
             exclude=exclude,
@@ -840,6 +837,6 @@ def register(app: typer.Typer) -> None:
             max_groups=max_groups,
         )
         config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats summary")
-        config_module.log_command_arguments(args, "stats summary")
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats all")
+        config_module.log_command_arguments(args, "stats all")
         run_stats(args)

@@ -117,21 +117,21 @@ def test_build_config_defaults_rejects_non_boolean_ordering_flags() -> None:
 
 def test_parse_config_argument_prefers_cli_value() -> None:
     """--config argument should override default config name."""
-    argv = ["org", "stats", "summary", "--config", "custom.json"]
+    argv = ["org", "stats", "all", "--config", "custom.json"]
 
     assert config.parse_config_argument(argv) == "custom.json"
 
 
 def test_parse_config_argument_supports_equals_form() -> None:
     """--config=FILE format should be parsed."""
-    argv = ["org", "stats", "summary", "--config=inline.json"]
+    argv = ["org", "stats", "all", "--config=inline.json"]
 
     assert config.parse_config_argument(argv) == "inline.json"
 
 
 def test_parse_config_argument_default() -> None:
     """Default config name should be used when not specified."""
-    assert config.parse_config_argument(["org", "stats", "summary"]) == ".org-cli.json"
+    assert config.parse_config_argument(["org", "stats", "all"]) == ".org-cli.json"
 
 
 def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -269,7 +269,7 @@ def test_build_default_map_strips_command_specific_values() -> None:
 
     default_map = config.build_default_map(defaults)
 
-    summary_defaults = default_map["stats"]["summary"]
+    summary_defaults = default_map["stats"]["all"]
     assert "tags" not in summary_defaults
     assert "groups" not in summary_defaults
 
@@ -353,11 +353,11 @@ def test_log_applied_config_defaults_logs_all_config_values(
         with caplog.at_level(logging.INFO, logger="org"):
             config.log_applied_config_defaults(
                 args,
-                ["stats", "summary", "--limit", "20"],
-                "stats summary",
+                ["stats", "all", "--limit", "20"],
+                "stats all",
             )
 
-        assert "Config defaults applied (stats summary):" in caplog.text
+        assert "Config defaults applied (stats all):" in caplog.text
         assert "--limit=10" in caplog.text
         assert "--filter-tag=['work']" in caplog.text
         assert "--mapping='<Value ellided...>'" in caplog.text
@@ -375,8 +375,8 @@ def test_log_command_arguments_logs_all_values(caplog: pytest.LogCaptureFixture)
     args = SimpleNamespace(max_results=10, filter_tags=["work"])
 
     with caplog.at_level(logging.INFO, logger="org"):
-        config.log_command_arguments(args, "stats summary")
+        config.log_command_arguments(args, "stats all")
 
-    assert "Command arguments (stats summary):" in caplog.text
+    assert "Command arguments (stats all):" in caplog.text
     assert "max_results=10" in caplog.text
     assert "filter_tags=['work']" in caplog.text

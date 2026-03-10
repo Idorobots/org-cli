@@ -9,8 +9,8 @@ import pytest
 import typer
 
 from org.analyze import AnalysisResult, Group, Tag, TimeRange
+from org.commands.stats import all as stats_all_command
 from org.commands.stats import groups as stats_groups
-from org.commands.stats import summary as stats_summary
 from org.commands.stats import tags as stats_tags
 from org.commands.stats import tasks as stats_tasks
 from org.histogram import Histogram
@@ -19,9 +19,9 @@ from org.histogram import Histogram
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
 
 
-def make_summary_args(files: list[str], **overrides: object) -> stats_summary.SummaryArgs:
-    """Build SummaryArgs with defaults and overrides."""
-    args = stats_summary.SummaryArgs(
+def make_stats_all_args(files: list[str], **overrides: object) -> stats_all_command.StatsAllArgs:
+    """Build StatsAllArgs with defaults and overrides."""
+    args = stats_all_command.StatsAllArgs(
         files=files,
         config=".org-cli.json",
         exclude=None,
@@ -177,15 +177,15 @@ def make_tasks_args(files: list[str], **overrides: object) -> stats_tasks.TasksA
     return args
 
 
-def test_run_stats_summary_outputs_sections(
+def test_run_stats_all_outputs_sections(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Summary command should output totals and sections."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_summary_args([fixture_path])
+    args = make_stats_all_args([fixture_path])
 
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary"])
-    stats_summary.run_stats(args)
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "all"])
+    stats_all_command.run_stats(args)
     captured = capsys.readouterr().out
 
     assert "Total tasks:" in captured
@@ -223,13 +223,13 @@ def test_run_stats_tasks_no_results(
     assert "No results" in captured
 
 
-def test_run_stats_summary_negative_max_results_raises_bad_parameter() -> None:
+def test_run_stats_all_negative_max_results_raises_bad_parameter() -> None:
     """Summary command should reject negative max-results values."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_summary_args([fixture_path], max_results=-1)
+    args = make_stats_all_args([fixture_path], max_results=-1)
 
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        stats_summary.run_stats(args)
+        stats_all_command.run_stats(args)
 
 
 def test_run_stats_tasks_negative_max_results_raises_bad_parameter() -> None:
@@ -302,52 +302,52 @@ def test_run_stats_groups_explicit_group(
     assert "python, programming" in captured
 
 
-def test_run_stats_summary_no_results(
+def test_run_stats_all_no_results(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Summary command should print No results when filtered away."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_summary_args([fixture_path], filter_tags=["nomatch$"])
+    args = make_stats_all_args([fixture_path], filter_tags=["nomatch$"])
 
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary"])
-    stats_summary.run_stats(args)
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "all"])
+    stats_all_command.run_stats(args)
     captured = capsys.readouterr().out
 
     assert "No results" in captured
 
 
-def test_run_stats_summary_category_preprocessor(
+def test_run_stats_all_category_preprocessor(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Summary command should handle tag-based category preprocessing."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_summary_args(
+    args = make_stats_all_args(
         [fixture_path],
         with_tags_as_category=True,
     )
 
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary"])
-    stats_summary.run_stats(args)
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "all"])
+    stats_all_command.run_stats(args)
     captured = capsys.readouterr().out
 
     assert "Task categories:" in captured
 
 
-def test_run_stats_summary_omits_groups_when_disabled(
+def test_run_stats_all_omits_groups_when_disabled(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Summary command should omit groups when max_groups is zero."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_summary_args([fixture_path], max_groups=0)
+    args = make_stats_all_args([fixture_path], max_groups=0)
 
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary"])
-    stats_summary.run_stats(args)
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "all"])
+    stats_all_command.run_stats(args)
     captured = capsys.readouterr().out
 
     assert "GROUPS" not in captured
 
 
-def test_run_stats_summary_tasks_panel_grows_with_task_list(
+def test_run_stats_all_tasks_panel_grows_with_task_list(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: os.PathLike[str]
 ) -> None:
     """Summary TASKS panel should include all requested task rows in wide layout."""
@@ -359,9 +359,9 @@ def test_run_stats_summary_tasks_panel_grows_with_task_list(
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write("\n\n".join(lines) + "\n")
 
-    args = make_summary_args([fixture_path], width=120, max_results=40, max_tags=0, max_groups=0)
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary", "--width", "120", "--limit", "40"])
-    stats_summary.run_stats(args)
+    args = make_stats_all_args([fixture_path], width=120, max_results=40, max_tags=0, max_groups=0)
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "all", "--width", "120", "--limit", "40"])
+    stats_all_command.run_stats(args)
     captured = capsys.readouterr().out
 
     assert captured.count("Task-") == 40
@@ -369,28 +369,28 @@ def test_run_stats_summary_tasks_panel_grows_with_task_list(
 
 def test_resolve_two_column_panel_content_width_accounts_for_panel_chrome() -> None:
     """Panel content width should subtract borders and horizontal padding."""
-    assert stats_summary._resolve_two_column_panel_content_width(80) == 36
+    assert stats_all_command._resolve_two_column_panel_content_width(80) == 36
 
 
 def test_resolve_two_column_panel_content_width_respects_layout_floor() -> None:
     """Panel content width should respect the two-column minimum split."""
-    assert stats_summary._resolve_two_column_panel_content_width(40) == 21
+    assert stats_all_command._resolve_two_column_panel_content_width(40) == 21
 
 
 def test_resolve_single_column_panel_content_width_accounts_for_panel_chrome() -> None:
     """Single-column panel width should subtract borders and horizontal padding."""
-    assert stats_summary._resolve_single_column_panel_content_width(80) == 76
+    assert stats_all_command._resolve_single_column_panel_content_width(80) == 76
 
 
-def test_run_stats_summary_narrow_layout_orders_sections_vertically(
+def test_run_stats_all_narrow_layout_orders_sections_vertically(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Narrow viewport should render SUMMARY, TASKS, TAGS, GROUPS in order."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_summary_args([fixture_path], width=119, max_results=3, max_tags=3, max_groups=3)
+    args = make_stats_all_args([fixture_path], width=119, max_results=3, max_tags=3, max_groups=3)
 
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary", "--width", "119"])
-    stats_summary.run_stats(args)
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "all", "--width", "119"])
+    stats_all_command.run_stats(args)
     captured = capsys.readouterr().out
 
     summary_index = captured.find("SUMMARY")
@@ -405,9 +405,9 @@ def test_run_stats_summary_narrow_layout_orders_sections_vertically(
     assert summary_index < tasks_index < tags_index < groups_index
 
 
-def test_summary_two_column_breakpoint() -> None:
+def test_stats_all_two_column_breakpoint() -> None:
     """Two-column layout should activate at width 120 and above."""
-    assert stats_summary._TWO_COLUMN_MIN_WIDTH == 120
+    assert stats_all_command._TWO_COLUMN_MIN_WIDTH == 120
 
 
 def test_format_tags_shows_requested_tags() -> None:

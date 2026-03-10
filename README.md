@@ -73,12 +73,12 @@ Replace the humidity/temperature sensors on the inside sensor with CO sensor.
 
 Query language reference: [docs/query_language.md](docs/query_language.md)
 
-### `org stats summary`
+### `org stats all`
 
 Show a full overview: global task stats, top tasks, top tags, and groups.
 
 ```bash
-poetry run org stats summary \
+poetry run org stats all \
   --use tags \
   --max-results 5 \
   --max-tags 3 \

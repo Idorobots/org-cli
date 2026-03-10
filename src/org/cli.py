@@ -9,7 +9,8 @@ import typer
 
 from org import config, logging_config
 from org.commands import query
-from org.commands.stats import groups, summary, tags
+from org.commands.stats import all as stats_all
+from org.commands.stats import groups, tags
 from org.commands.stats import tasks as stats_tasks
 from org.commands.tasks import command as tasks_command
 
@@ -63,7 +64,7 @@ def stats_callback(
     logging_config.configure_logging(_resolve_verbose(verbose))
 
 
-summary.register(stats_app)
+stats_all.register(stats_app)
 tags.register(stats_app)
 groups.register(stats_app)
 stats_tasks.register(stats_app)

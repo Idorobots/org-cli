@@ -15,11 +15,11 @@ FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 
 
 def test_cli_runner_summary() -> None:
-    """CliRunner should execute stats summary."""
+    """CliRunner should execute stats all."""
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
 
-    result = runner.invoke(app, ["stats", "summary", "--no-color", fixture_path])
+    result = runner.invoke(app, ["stats", "all", "--no-color", fixture_path])
 
     assert result.exit_code == 0
     assert "Total tasks:" in result.stdout

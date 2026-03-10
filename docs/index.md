@@ -5,7 +5,7 @@
 ## Commands
 
 - `org query` - Run jq-style queries over loaded Org data. See [query_command.md](query_command.md).
-- `org stats summary` - Full stats view (tasks + tags + groups). See [stats_summary_command.md](stats_summary_command.md).
+- `org stats all` - Full stats view (tasks + tags + groups). See [stats_all_command.md](stats_all_command.md).
 - `org stats tasks` - Task-only stats and histograms. See [stats_tasks_command.md](stats_tasks_command.md).
 - `org stats tags` - Focused stats for selected/top tags. See [stats_tags_command.md](stats_tags_command.md).
 - `org stats groups` - Stats for explicit or discovered tag groups. See [stats_groups_command.md](stats_groups_command.md).
@@ -63,7 +63,7 @@ Most analysis commands accept many `--filter-*` switches. Ordering controls are 
 Built-in argument defaults:
 
 - Global: `--limit 10`, `--offset 0`, `--todo-keys TODO`, `--done-keys DONE`.
-- Stats: `--use tags`, `--max-tags 5` (summary), `--max-relations 5`, `--max-groups 5` (summary), `--min-group-size 2` (summary).
+- Stats: `--use tags`, `--max-tags 5` (all), `--max-relations 5`, `--max-groups 5` (all), `--min-group-size 2` (all).
 - Built-in filter additions: `--filter-priority P`.
 - Tasks list built-in ordering: `--order-by-priority`, `--order-by-level`, `--order-by-file-order`, `--order-by-file-order-reversed`, `--order-by-timestamp-asc`, `--order-by-timestamp-desc`.
 - Tasks list default ordering remains timestamp-desc (same as `--order-by-timestamp-desc`).

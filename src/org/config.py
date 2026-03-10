@@ -712,9 +712,7 @@ def load_cli_config(argv: list[str]) -> LoadedCliConfig:
 
 def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[str, object]]]:
     """Build Click default_map for Typer commands."""
-    summary_defaults = {
-        key: value for key, value in defaults.items() if key not in {"tags", "groups"}
-    }
+    all_defaults = {key: value for key, value in defaults.items() if key not in {"tags", "groups"}}
 
     task_command_disallowed = {
         "max_tags",
@@ -745,7 +743,7 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
 
     return {
         "stats": {
-            "summary": summary_defaults,
+            "all": all_defaults,
             "tasks": stats_tasks_defaults,
             "tags": tags_defaults,
             "groups": groups_defaults,

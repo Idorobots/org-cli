@@ -1,11 +1,11 @@
-# `org stats summary`
+# `org stats all`
 
 Show a compact full report: task-level stats, top tasks, top tags, and tag groups.
 
 ## Usage
 
 ```bash
-poetry run org stats summary [OPTIONS] [FILE ...]
+poetry run org stats all [OPTIONS] [FILE ...]
 ```
 
 ## Command-specific switches
@@ -32,13 +32,13 @@ poetry run org stats summary [OPTIONS] [FILE ...]
 1) Get a quick project health snapshot
 
 ```bash
-poetry run org stats summary examples/ARCHIVE_small
+poetry run org stats all examples/ARCHIVE_small
 ```
 
 2) Get a compact summary for dashboards or reports
 
 ```bash
-poetry run org stats summary \
+poetry run org stats all \
   --limit 3 \
   --max-tags 2 \
   --max-groups 1 \
@@ -48,7 +48,7 @@ poetry run org stats summary \
 3) Analyze heading vocabulary trends
 
 ```bash
-poetry run org stats summary \
+poetry run org stats all \
   --use heading \
   --max-tags 5 \
   --max-relations 2 \
@@ -58,7 +58,7 @@ poetry run org stats summary \
 4) Review unfinished work in a date window
 
 ```bash
-poetry run org stats summary \
+poetry run org stats all \
   --filter-date-from 2023-10-20 \
   --filter-date-until 2023-11-15 \
   --filter-not-completed \
@@ -68,7 +68,7 @@ poetry run org stats summary \
 5) Build a focused summary with tuned section sizes
 
 ```bash
-poetry run org stats summary \
+poetry run org stats all \
   --use tags \
   --limit 5 \
   --max-tags 3 \
