@@ -3188,26 +3188,167 @@ Document the =$arg= handling of custom filters/orderings/enrichment - the docume
 
 Please refactor the =test_runtime_cast_functions_convert_supported_values= test so that the sha256 case is a separate test case. Sha256 is not a conversion, but a function of its own.
 
-** More Rich support & other output fixes
-*** General updates
-- derive the size of the viewport from the console window
+** DONE More Rich support & other output fixes
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-10 Tue 11:08]
+:END:
+*** DONE General
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-09 Mon 18:01]
+:END:
+Make the console with automatically derived.
 
-*** Stats layout
-- derive the --buckets property from the viewport size
-- top frequency value to be moved to top in the middle of the dates
-- columnar display on the stats summary - tasks section should be to the side of the histograms
-- use boxes for the sections
-- Don't indent TAGS and GROUPS sections on summary
+Add a new CLI parameter =--width= that will override the automatically derived console width with a value passed by the user. The accepted range is 50+.
 
-*** Task list scroll
-- scroll through task list
-- unicode strings in heading cause misalignment of tags on task lists
+When some of the files passed via the CLI arguments are missing, still run the command but log the missing files as warning to the stderr. If all files are missing, then report a command error.
 
-*** Bugfixes
-- There are cases still that print =None= and Python class strings (stream of lists of values) - should be mended with a custom formatter for collections & values.
+*** DONE Frequency plots
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-09 Mon 18:20]
+:END:
+Modify the frequency plot so that the top frequency value is displyed on the top in the middle of the dates. It should be center-aligned.
+
+If the plot size is so small that there's not enough space to show all three dates and the top value, the whole top frequency should be omitted.
+
+The plot size should be configurable. We will make use of that in the next tasks.
+
+*** DONE Histogram plots
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-09 Mon 18:30]
+:END:
+The plot size should be configurable. We will make use of that in the next tasks.
+
+The categories in the task state histogram should be ordered alphabetically within their respective groups (sorted =done_keys=, then sorted =todo_keys=, then everything else). The =none= category should only show up on the plot if it's actually represented in the data. If not (count of 0) it should not show up.
+
+*** DONE Short form task list
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-09 Mon 18:49]
+:END:
+The width of the short-form task list should be made configurable. We will use that in the next tasks.
+
+The tasks stars, todo state and heading should start at column 16. Tags should be right aligned to the width. If heading overflows the tags, it sholud be truncated.
+
+The filenames should be truncated to fit in 15 columns.
+
+*** DONE Stats tags, groups & tasks
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-09 Mon 21:52]
+:END:
+Refactor the =--show= CLI parameter to instead be named =--tag= and accept just a single tag to be displayed by the =stats tags= command. The =--tag= parameter can be specified multiple times, much like the analogous =--group= parameter in =stats groups= command.
+
+Rename the =--max-results= CLI parameter to =--limit=.
+
+The frequency plot size should be derived from the console width. Ideally, the plots would occupy the whole width of the viewport.
+
+The =--buckets= CLI parameter can be removed (no longer serving a purpose).
+
+*** CANCELLED Stats groups
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-03-09 Mon 21:55] \\
+  Done as part of the previous task.
+:END:
+The frequency plot size should be derived from the console width. Ideally, the plots would occupy the whole width of the viewport.
+
+Rename the =--max-results= CLI parameter to =--limit=.
+
+The =--buckets= CLI parameter can be removed (no longer serving a purpose).
+
+The frequency plot size should be derived from the console width. Ideally, the plots would occupy the whole width of the viewport.
+
+*** CANCELLED Stats tasks
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-03-09 Mon 21:55] \\
+  Done as part of the previous task.
+:END:
+Rename the =--max-results= CLI parameter to =--limit=.
+
+The frequency plot size should be derived from the console width. Ideally, the plots would occupy the whole width of the viewport.
+
+*** REWORKED Stats summary
+:LOGBOOK:
+- State "REWORKED"   from "DONE"       [2026-03-10 Tue 11:09] \\
+  Required some fiddling with the layout.
+- State "DONE"       from "TODO"       [2026-03-09 Mon 23:06]
+:END:
+Refactor the stats summary output with a layout overhaul. It is OK to change all aspects of the current layout in order to implement the following design:
+
+Use columnar layout via Rich's =Layout=:
+- Two equal-width columns should be defined.
+- The global timerange, global stats and histograms are displayed in the left column.
+- The right column shows the short-form list of tasks. The number of tasks should be selected such that it's equal in height to the global timerange, stats and histograms output.
+- The tags frequencies should follow the histograms on the left column.
+- The group frequencies should follow the tasks list on the right column.
+
+The widths of the plots should be selected such that they fit their respective columns.
+
+Don't indent TAGS, TASKS or GROUPS sections.
+
+Use Rich's =Panel= for the different sections: =SUMMARY=, =TASKS=, =TAGS= and =GROUPS=
+
+The panel's height should match the contents they wrap, the layouting is secondary to that (second row is aligned to start on the same line, but panels should match closer to their contents length).
+
+The histogram chart values should also count towards the width of the chart.
+
+Do not indent the TAGS or GROUPS section contents - they are now separated visually by the panels.
+TAGS and GROUPS panels should follow closely the SUMMARY and TASKS panels, both should start immediately after the longer of the two. There should be no blank lines between the first row and the second row.
+
+Omit the "TAGS" string from the tags panel. It's already present on the panel title itself.
+
+The two-columns layout should only apply when the viewport width is at least 120 characters. When it is smaller, the layout should be a single column with sections presented in order: SUMMARY, TASKS, TAGS, GROUPS.
+
+The stats summary TASKS panel doesn't grow together with the contents. Please adjust the code so that the TASKS panel is as tall as the list content within dictates.
+
+*** DONE Tasks list
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-09 Mon 23:28]
+:END:
+The width of the short-form task list should match the console width. Tags should be right aligned.
+
+The width of the detailed taks list display should also match the console width. Text lines longer than the width should wrap around.
+
+By default, when limit is not provided, the command should use console height for the number of tasks to list.
+
+When the output length in lines is greater than the console height (for example, when provided a custom =--limit=) the output should be made scrollable via Rich =Pager=.
+
+There seems to be a bug where unicode strings in the heading cause misalignment of tags, likely due to the improper count of bytes vs display characters in unicode.
+
+The pager looks good, display all tasks by default with paging. Pager can be omitted when the requested limit is lower than the console height.
+
+*** DONE Query
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-10 Tue 10:32]
+:END:
+There are cases still that print =None= and Python class strings. I'd like to improve the Query command output, to work as follows:
+
+- When the output consists solely of =OrgNode='s or =OrgDate='s or other Org objects, the org formatter should be used.
+- When the autput consists solely of strings, the plain formatter should be used.
+- Otherwise, the JSON formatter should be used.
+
+The =--out json= semantics stay the same - if requested, the entire output should be displayed as JSON.
+
+Rename the =none= value to =null= in the parser, filters, documentation and all usages.
+
+*** CANCELLED "Native" markdown display
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-03-10 Tue 10:32] \\
+  No need to do that.
+:END:
+Use Rich's =Markdown= renderer to display Markdown documents (when requested with the =--out= option and the syntax highlighting would use the =markdown= language).
+
+*** REWORKED stats all & stats summary
+:LOGBOOK:
+- State "REWORKED"   from "DONE"       [2026-03-10 Tue 11:09] \\
+  Needed some reprompting.
+- State "DONE"       from "TODO"       [2026-03-10 Tue 11:08]
+:END:
+Rename the =stats summary= command to =stats all=.
+
+Rename the =stats tasks= command to =stats summary=.
+
+Update the documentation, README & AGENTS.md to reflect these new command names.
 
 ** Mutable parse tree
-*** Use mutable orgparse
+*** Use org_parser
 - Bump the library version
 - Use it for repeated task filtering - =select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys) | .repeated_tasks = [.repeated_tasks[] | select(.after in $done_keys)]=
 - Use it for property additions
@@ -3220,6 +3361,9 @@ Please refactor the =test_runtime_cast_functions_convert_supported_values= test 
 - ~properties.foo = none~ set/delete property
 - update the documentation in docs/query_language.md
 
+*** org_parser.text.RichText support
+
+** Tasks CRUD
 *** Tasks C**D
 - Adding new nodes
 - Removing nodes
@@ -3234,6 +3378,22 @@ Please refactor the =test_runtime_cast_functions_convert_supported_values= test 
 - Modifying the heading
 - Modifying the body
 
+** Agenda command
+Like Org Agenta, but CLI.
+
+- accept a date, default to today
+- select what the agenda shows, exclusions for deadlines, overdue etc.
+
+- Tasks to do on a given day including timestamp, state, heading and tags.
+- Tasks done on a given day
+- Tasks that are overdue
+- Deadlines that are overdue
+- Upcomming deadlines
+
+- ability to refile tasks to another file
+
+** Kanband board
+- Shows tasks organized into kanban lanes
 ** Workflow command
 
 Break down next task:
@@ -3349,14 +3509,6 @@ Redo all the filters & orderings in terms of the query language
 - Loop
 
 *** Gantt chart
-** Dashboard command
-- Reads a dashboard config and shows a visualization on a server.
-- Live updating.
-
-*** --watch & --serve switches
---watch for file watching and updating live on changes
---serve to start a server showing a visualization of the data
-
 ** JavaScript visualization
 
 *** D3 visualization - tag cloud
@@ -3368,21 +3520,19 @@ Node size is how many tasks are related to a tag. Closeness is how related these
 Allow selecting specific tags or top tags.
 
 ** File watching and updated display
-** Agenda command
-Like Org Agenta, but CLI.
+*** TODO --watch support
+Add a new CLI parameter =--watch= that will watch the =FILES= for changes and rerun the selected command to update the display.
+It should apply to each of the available commands. This parameter should be made optional. When not provided the command should exit after printing the output.
 
-- accept a date, default to today
-- select what the agenda shows, exclusions for deadlines, overdue etc.
+** Dashboard command
+- Reads a dashboard config and shows a visualization on a server.
+- Live updating.
 
-- Tasks to do on a given day including timestamp, state, heading and tags.
-- Tasks done on a given day
-- Tasks that are overdue
-- Deadlines that are overdue
-- Upcomming deadlines
+*** --watch & --serve switches
+--watch for file watching and updating live on changes
+--serve to start a server showing a visualization of the data
 
-- ability to refile tasks to another file
-
-** Format command
+** Lint/Format command
 Like linting and formatting.
 ** Documentation
 - Document the CLI
