@@ -1,4 +1,4 @@
-"""Stats tasks command."""
+"""Stats summary command."""
 
 from __future__ import annotations
 
@@ -39,8 +39,8 @@ from org.validation import validate_stats_arguments
 
 
 @dataclass
-class TasksArgs:
-    """Arguments for the stats tasks command."""
+class SummaryArgs:
+    """Arguments for the stats summary command."""
 
     files: list[str] | None
     config: str
@@ -200,8 +200,8 @@ def format_tasks_summary(
     return lines_to_text(apply_indent(lines, indent))
 
 
-def run_stats_tasks(args: TasksArgs) -> None:
-    """Run the stats tasks command."""
+def run_stats_summary(args: SummaryArgs) -> None:
+    """Run the stats summary command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
     validate_stats_arguments(args)
@@ -248,13 +248,13 @@ def run_stats_tasks(args: TasksArgs) -> None:
 
 
 def register(app: typer.Typer) -> None:
-    """Register the stats tasks command."""
+    """Register the stats summary command."""
 
     @app.command(
-        "tasks",
+        "summary",
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
     )
-    def stats_tasks(  # noqa: PLR0913
+    def stats_summary(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None, metavar="FILE", help="Org-mode archive files or directories to analyze"
         ),
@@ -398,7 +398,7 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Show overall task stats without tag sections."""
-        args = TasksArgs(
+        args = SummaryArgs(
             files=files,
             config=config,
             exclude=exclude,
@@ -431,6 +431,6 @@ def register(app: typer.Typer) -> None:
             max_groups=5,
         )
         config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats tasks")
-        config_module.log_command_arguments(args, "stats tasks")
-        run_stats_tasks(args)
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats summary")
+        config_module.log_command_arguments(args, "stats summary")
+        run_stats_summary(args)

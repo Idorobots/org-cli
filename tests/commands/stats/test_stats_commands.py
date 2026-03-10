@@ -11,8 +11,8 @@ import typer
 from org.analyze import AnalysisResult, Group, Tag, TimeRange
 from org.commands.stats import all as stats_all_command
 from org.commands.stats import groups as stats_groups
+from org.commands.stats import summary as stats_summary_command
 from org.commands.stats import tags as stats_tags
-from org.commands.stats import tasks as stats_tasks
 from org.histogram import Histogram
 
 
@@ -138,9 +138,9 @@ def make_groups_args(files: list[str], **overrides: object) -> stats_groups.Grou
     return args
 
 
-def make_tasks_args(files: list[str], **overrides: object) -> stats_tasks.TasksArgs:
-    """Build TasksArgs with defaults and overrides."""
-    args = stats_tasks.TasksArgs(
+def make_summary_args(files: list[str], **overrides: object) -> stats_summary_command.SummaryArgs:
+    """Build SummaryArgs with defaults and overrides."""
+    args = stats_summary_command.SummaryArgs(
         files=files,
         config=".org-cli.json",
         exclude=None,
@@ -193,15 +193,15 @@ def test_run_stats_all_outputs_sections(
     assert "TAGS" in captured
 
 
-def test_run_stats_tasks_excludes_tag_sections(
+def test_run_stats_summary_excludes_tag_sections(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Tasks command should omit TAGS/GROUPS output."""
+    """Summary command should omit TAGS/GROUPS output."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_tasks_args([fixture_path])
+    args = make_summary_args([fixture_path])
 
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "tasks"])
-    stats_tasks.run_stats_tasks(args)
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary"])
+    stats_summary_command.run_stats_summary(args)
     captured = capsys.readouterr().out
 
     assert "Task states:" in captured
@@ -209,15 +209,15 @@ def test_run_stats_tasks_excludes_tag_sections(
     assert "GROUPS" not in captured
 
 
-def test_run_stats_tasks_no_results(
+def test_run_stats_summary_no_results(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Tasks command should report when filters return no results."""
+    """Summary command should report when filters return no results."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_tasks_args([fixture_path], filter_tags=["nomatch$"])
+    args = make_summary_args([fixture_path], filter_tags=["nomatch$"])
 
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "tasks"])
-    stats_tasks.run_stats_tasks(args)
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary"])
+    stats_summary_command.run_stats_summary(args)
     captured = capsys.readouterr().out
 
     assert "No results" in captured
@@ -232,13 +232,13 @@ def test_run_stats_all_negative_max_results_raises_bad_parameter() -> None:
         stats_all_command.run_stats(args)
 
 
-def test_run_stats_tasks_negative_max_results_raises_bad_parameter() -> None:
-    """Tasks command should reject negative max-results values."""
+def test_run_stats_summary_negative_max_results_raises_bad_parameter() -> None:
+    """Summary command should reject negative max-results values."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_tasks_args([fixture_path], max_results=-1)
+    args = make_summary_args([fixture_path], max_results=-1)
 
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        stats_tasks.run_stats_tasks(args)
+        stats_summary_command.run_stats_summary(args)
 
 
 def test_run_stats_tags_negative_max_results_raises_bad_parameter() -> None:
@@ -479,7 +479,9 @@ def test_format_tasks_summary_renders_histograms() -> None:
         tag_groups=[],
     )
 
-    output = stats_tasks.format_tasks_summary(result, (None, None, ["DONE"], ["TODO"], False), 80)
+    output = stats_summary_command.format_tasks_summary(
+        result, (None, None, ["DONE"], ["TODO"], False), 80
+    )
 
     assert "Task states:" in output
     assert "Task categories:" in output
@@ -512,7 +514,7 @@ def test_format_tasks_summary_orders_task_states_by_group_alphabetically() -> No
         tag_groups=[],
     )
 
-    output = stats_tasks.format_tasks_summary(
+    output = stats_summary_command.format_tasks_summary(
         result,
         (None, None, ["ZDONE", "ADONE"], ["ZTODO", "ATODO"], False),
         80,
@@ -543,7 +545,9 @@ def test_format_tasks_summary_omits_none_state_when_zero() -> None:
         tag_groups=[],
     )
 
-    output = stats_tasks.format_tasks_summary(result, (None, None, ["DONE"], ["TODO"], False), 80)
+    output = stats_summary_command.format_tasks_summary(
+        result, (None, None, ["DONE"], ["TODO"], False), 80
+    )
 
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(
         "\n\nTask priorities:", maxsplit=1
@@ -568,7 +572,9 @@ def test_format_tasks_summary_keeps_none_state_when_present() -> None:
         tag_groups=[],
     )
 
-    output = stats_tasks.format_tasks_summary(result, (None, None, ["DONE"], ["TODO"], False), 80)
+    output = stats_summary_command.format_tasks_summary(
+        result, (None, None, ["DONE"], ["TODO"], False), 80
+    )
 
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(
         "\n\nTask priorities:", maxsplit=1

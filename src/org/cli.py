@@ -11,7 +11,7 @@ from org import config, logging_config
 from org.commands import query
 from org.commands.stats import all as stats_all
 from org.commands.stats import groups, tags
-from org.commands.stats import tasks as stats_tasks
+from org.commands.stats import summary as stats_summary
 from org.commands.tasks import command as tasks_command
 
 
@@ -67,7 +67,7 @@ def stats_callback(
 stats_all.register(stats_app)
 tags.register(stats_app)
 groups.register(stats_app)
-stats_tasks.register(stats_app)
+stats_summary.register(stats_app)
 tasks_command.register(app)
 query.register(app)
 

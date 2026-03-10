@@ -26,7 +26,7 @@ from org.cli_common import (
     resolve_exclude_set,
     resolve_mapping,
 )
-from org.commands.stats.tasks import format_tasks_summary
+from org.commands.stats.summary import format_tasks_summary
 from org.tui import (
     TagBlockConfig,
     TaskLineConfig,

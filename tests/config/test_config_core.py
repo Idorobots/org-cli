@@ -273,11 +273,11 @@ def test_build_default_map_strips_command_specific_values() -> None:
     assert "tags" not in summary_defaults
     assert "groups" not in summary_defaults
 
-    tasks_defaults = default_map["stats"]["tasks"]
-    assert "max_tags" not in tasks_defaults
-    assert "max_relations" not in tasks_defaults
-    assert "tags" not in tasks_defaults
-    assert "groups" not in tasks_defaults
+    summary_defaults = default_map["stats"]["summary"]
+    assert "max_tags" not in summary_defaults
+    assert "max_relations" not in summary_defaults
+    assert "tags" not in summary_defaults
+    assert "groups" not in summary_defaults
 
     tags_defaults = default_map["stats"]["tags"]
     assert "max_tags" not in tags_defaults

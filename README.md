@@ -106,12 +106,12 @@ Task states:
 ...
 ```
 
-### `org stats tasks`
+### `org stats summary`
 
 Show task-only metrics and histograms.
 
 ```bash
-poetry run org stats tasks \
+poetry run org stats summary \
   --category-property CATEGORY \
   --with-tags-as-category \
   --filter-date-from 2023-10-20 \

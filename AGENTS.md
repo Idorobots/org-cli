@@ -10,7 +10,7 @@ Top-level commands:
 
 - `org query`
 - `org stats all`
-- `org stats tasks`
+- `org stats summary`
 - `org stats tags`
 - `org stats groups`
 - `org tasks list`
@@ -88,7 +88,7 @@ poetry run org query '.[][] | .heading' -n 5 examples/ARCHIVE_small
 poetry run org stats all --filter-priority A --max-tags 3 --max-groups 2 examples/ARCHIVE_small
 
 # Task-only stats with derived categories from tags
-poetry run org stats tasks --with-tags-as-category --filter-priority B examples/ARCHIVE_small
+poetry run org stats summary --with-tags-as-category --filter-priority B examples/ARCHIVE_small
 
 # Focused tag stats
 poetry run org stats tags --show Debugging,Jira --max-relations 3 examples/ARCHIVE_small
@@ -107,7 +107,7 @@ poetry run org --help
 poetry run org query --help
 poetry run org stats --help
 poetry run org stats all --help
-poetry run org stats tasks --help
+poetry run org stats summary --help
 poetry run org stats tags --help
 poetry run org stats groups --help
 poetry run org tasks --help

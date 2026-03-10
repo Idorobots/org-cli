@@ -744,7 +744,7 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     return {
         "stats": {
             "all": all_defaults,
-            "tasks": stats_tasks_defaults,
+            "summary": stats_tasks_defaults,
             "tags": tags_defaults,
             "groups": groups_defaults,
         },

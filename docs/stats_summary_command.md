@@ -1,11 +1,11 @@
-# `org stats tasks`
+# `org stats summary`
 
 Show task-only statistics and histograms (no tag/group sections).
 
 ## Usage
 
 ```bash
-poetry run org stats tasks [OPTIONS] [FILE ...]
+poetry run org stats summary [OPTIONS] [FILE ...]
 ```
 
 ## Command-specific switches
@@ -28,13 +28,13 @@ poetry run org stats tasks [OPTIONS] [FILE ...]
 1) Get a task-only status overview
 
 ```bash
-poetry run org stats tasks examples/ARCHIVE_small
+poetry run org stats summary examples/ARCHIVE_small
 ```
 
 2) Analyze tasks completed within a date range
 
 ```bash
-poetry run org stats tasks \
+poetry run org stats summary \
   --filter-date-from 2023-10-20 \
   --filter-date-until 2023-11-15 \
   --filter-completed \
@@ -44,7 +44,7 @@ poetry run org stats tasks \
 3) Group task categories by first tag
 
 ```bash
-poetry run org stats tasks \
+poetry run org stats summary \
   --category-property CATEGORY \
   --with-tags-as-category \
   examples/ARCHIVE_small
@@ -53,7 +53,7 @@ poetry run org stats tasks \
 4) Build a filtered, category-aware task report
 
 ```bash
-poetry run org stats tasks \
+poetry run org stats summary \
   --with-tags-as-category \
   --category-property CATEGORY \
   --filter-priority B \

@@ -52,12 +52,12 @@ def test_cli_summary_multiple_files_smoke() -> None:
     assert result.stdout.count("Processing") == 2
 
 
-def test_cli_stats_tasks_smoke() -> None:
-    """Ensure stats tasks runs via CLI without tag sections."""
+def test_cli_stats_summary_smoke() -> None:
+    """Ensure stats summary runs via CLI without tag sections."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "tasks", "--no-color", fixture_path],
+        [sys.executable, "-m", "org", "stats", "summary", "--no-color", fixture_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
