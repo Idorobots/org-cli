@@ -252,8 +252,9 @@ def _panel_body(text: str, color_enabled: bool) -> Text:
 
 def _dedent_section_body(text: str, *, drop_title: bool) -> str:
     """Normalize section body lines and optionally drop title line."""
-    lines = text.splitlines()
-    body_lines = lines[1:] if lines and not lines[0].strip() else lines
+    body_lines = text.splitlines()
+    while body_lines and not body_lines[0].strip():
+        body_lines = body_lines[1:]
     if drop_title and body_lines:
         body_lines = body_lines[1:]
     unindented_lines = [line.lstrip() if line else "" for line in body_lines]
@@ -286,26 +287,6 @@ def _format_tasks_body(
         for node in top_tasks
     ]
     return lines_to_text(lines)
-
-
-def _select_task_count_for_height(
-    nodes: list[orgparse.node.OrgNode],
-    max_results: int,
-    target_lines: int,
-    config: _TaskDisplayConfig,
-) -> int:
-    """Return top-task count whose body height best matches target lines."""
-    best_count = 0
-    best_delta = target_lines
-
-    for count in range(max_results + 1):
-        tasks_body = _format_tasks_body(nodes, count, config)
-        delta = abs(_line_count(tasks_body) - target_lines)
-        if delta <= best_delta:
-            best_delta = delta
-            best_count = count
-
-    return best_count
 
 
 _TWO_COLUMN_MIN_WIDTH = 120

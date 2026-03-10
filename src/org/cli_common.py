@@ -1078,6 +1078,7 @@ class RootDataLoadArgs(Protocol):
     files: list[str] | None
     todo_keys: str
     done_keys: str
+    width: int | None
 
 
 def _resolve_and_load_roots(

@@ -35,7 +35,6 @@ from org.tui import (
     processing_status,
     setup_output,
 )
-from org.validation import validate_stats_arguments
 
 
 @dataclass
@@ -65,13 +64,14 @@ class SummaryArgs:
     color_flag: bool | None
     width: int | None
     max_results: int
-    max_tags: int
-    use: str
     with_tags_as_category: bool
     category_property: str
-    max_relations: int
-    min_group_size: int
-    max_groups: int
+
+
+def _validate_summary_arguments(args: SummaryArgs) -> None:
+    """Validate summary-specific arguments."""
+    if args.max_results < 0:
+        raise typer.BadParameter("--limit must be non-negative")
 
 
 def _build_task_state_order(
@@ -204,7 +204,7 @@ def run_stats_summary(args: SummaryArgs) -> None:
     """Run the stats summary command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
-    validate_stats_arguments(args)
+    _validate_summary_arguments(args)
     with processing_status(console, color_enabled):
         nodes, todo_keys, done_keys = load_and_process_data(args)
 
@@ -422,13 +422,8 @@ def register(app: typer.Typer) -> None:
             color_flag=color_flag,
             width=width,
             max_results=max_results,
-            max_tags=5,
-            use="tags",
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
-            max_relations=5,
-            min_group_size=2,
-            max_groups=5,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "stats summary")

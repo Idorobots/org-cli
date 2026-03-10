@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 import click
 import orgparse
@@ -87,7 +87,7 @@ class OrgQueryOutputFormatter:
             return self._prepare_org_values(values, out_theme)
 
         if all(isinstance(value, str) for value in values):
-            string_values = [value for value in values if isinstance(value, str)]
+            string_values = cast(list[str], values)
             return PreparedOutput(
                 operations=tuple(
                     OutputOperation(kind="console_print", text=value, markup=False)

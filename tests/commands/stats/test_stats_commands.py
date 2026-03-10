@@ -164,13 +164,8 @@ def make_summary_args(files: list[str], **overrides: object) -> stats_summary_co
         color_flag=False,
         width=None,
         max_results=10,
-        max_tags=5,
-        use="tags",
         with_tags_as_category=False,
         category_property="CATEGORY",
-        max_relations=5,
-        min_group_size=2,
-        max_groups=5,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -380,6 +375,24 @@ def test_resolve_two_column_panel_content_width_respects_layout_floor() -> None:
 def test_resolve_single_column_panel_content_width_accounts_for_panel_chrome() -> None:
     """Single-column panel width should subtract borders and horizontal padding."""
     assert stats_all_command._resolve_single_column_panel_content_width(80) == 76
+
+
+def test_dedent_section_body_drops_leading_blank_and_title() -> None:
+    """Section body normalization should remove leading blank line and title."""
+    text = "\nTask states:\n  TODO 2\n"
+
+    body = stats_all_command._dedent_section_body(text, drop_title=True)
+
+    assert body == "TODO 2\n"
+
+
+def test_dedent_section_body_handles_non_blank_first_line() -> None:
+    """Section body normalization should still drop title when first line is non-blank."""
+    text = "Task states:\n  TODO 2\n"
+
+    body = stats_all_command._dedent_section_body(text, drop_title=True)
+
+    assert body == "TODO 2\n"
 
 
 def test_run_stats_all_narrow_layout_orders_sections_vertically(
