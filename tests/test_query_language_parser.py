@@ -50,7 +50,7 @@ from org.query_language.errors import QueryParseError
         "type",
         "timestamp(.closed)",
         "clock(.closed, .scheduled, true)",
-        'repeated_task(.closed, .todo, "DONE", none)',
+        'repeated_task(.closed, .todo, "DONE", null)',
         'not(.todo == "DONE")',
         "str(.heading)",
         'int("42")',
@@ -181,8 +181,8 @@ def test_parse_sequence_shape() -> None:
 
 
 def test_parse_none_literal_is_not_identifier_string() -> None:
-    """none should parse as NoneLiteral in comparisons."""
-    expr = parse_query(".todo != none")
+    """null should parse as NoneLiteral in comparisons."""
+    expr = parse_query(".todo != null")
     assert isinstance(expr, BinaryOp)
     assert isinstance(expr.right, NoneLiteral)
 

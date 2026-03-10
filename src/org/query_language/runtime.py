@@ -268,7 +268,7 @@ def _resolve_bracket_key(base: object, key: object) -> object:
 
 
 def _normalize_org_date_value(value: object) -> object:
-    """Normalize empty org date objects to none."""
+    """Normalize empty org date objects to null."""
     if isinstance(value, OrgDate) and not bool(value):
         return None
     return value
@@ -344,9 +344,9 @@ def _evaluate_slice(expr: Slice, stream: Stream, context: EvalContext) -> Stream
 def _slice_one(base_value: object, start_value: object, end_value: object) -> object:
     """Apply one slice operation."""
     if start_value is not None and not isinstance(start_value, int):
-        raise QueryRuntimeError("Slice start must be an integer or none")
+        raise QueryRuntimeError("Slice start must be an integer or null")
     if end_value is not None and not isinstance(end_value, int):
-        raise QueryRuntimeError("Slice end must be an integer or none")
+        raise QueryRuntimeError("Slice end must be an integer or null")
     if isinstance(base_value, OrgRootNode):
         nodes = list(base_value[1:])
         return nodes[start_value:end_value]
@@ -650,7 +650,7 @@ def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext)
 def _type_name(value: object) -> str:
     """Return user-facing type name for query values."""
     if value is None:
-        return "none"
+        return "null"
     return type(value).__name__
 
 
@@ -688,7 +688,7 @@ def _parse_org_date(value: object) -> OrgDate:
     if isinstance(value, OrgDate):
         return value
     if not isinstance(value, str):
-        raise QueryRuntimeError("timestamp values must evaluate to string, OrgDate, or none")
+        raise QueryRuntimeError("timestamp values must evaluate to string, OrgDate, or null")
 
     parsed_values = OrgDate.list_from_str(value)
     if parsed_values:
@@ -701,28 +701,28 @@ def _parse_org_date(value: object) -> OrgDate:
 
 
 def _as_org_date_or_none(value: object) -> OrgDate | None:
-    """Convert optional timestamp value into OrgDate or none."""
+    """Convert optional timestamp value into OrgDate or null."""
     if value is None:
         return None
     return _parse_org_date(value)
 
 
 def _as_active_or_none(value: object) -> bool | None:
-    """Convert optional active value into bool or none."""
+    """Convert optional active value into bool or null."""
     if value is None:
         return None
     if isinstance(value, bool):
         return value
-    raise QueryRuntimeError("active value must evaluate to boolean or none")
+    raise QueryRuntimeError("active value must evaluate to boolean or null")
 
 
 def _as_state_or_none(value: object, field_name: str) -> str | None:
-    """Convert optional state value into string or none."""
+    """Convert optional state value into string or null."""
     if value is None:
         return None
     if isinstance(value, str):
         return value
-    raise QueryRuntimeError(f"{field_name} value must evaluate to string or none")
+    raise QueryRuntimeError(f"{field_name} value must evaluate to string or null")
 
 
 def _func_type(stream: Stream) -> Stream:
@@ -900,7 +900,7 @@ def _func_clock(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
         start_date = _parse_org_date(arguments[0])
         end_date = _as_org_date_or_none(arguments[1])
         if end_date is None:
-            raise QueryRuntimeError("clock end value cannot be none")
+            raise QueryRuntimeError("clock end value cannot be null")
         clock_ctor: Callable[..., OrgDateClock] = OrgDateClock
         if len(arguments) == 2:
             output.append(clock_ctor(start_date.start, end_date.start))

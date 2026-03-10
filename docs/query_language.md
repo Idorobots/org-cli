@@ -34,7 +34,7 @@ A query is an expression tree composed of these syntax classes:
 - `123`, `4.5`
 - `"text"`
 - `true`, `false`
-- `none`
+- `null`
 
 Examples:
 
@@ -42,7 +42,7 @@ Examples:
 42
 -42
 "abc"
-none
+null
 ```
 
 Negative values use unary minus (`-subquery`), which is evaluated as `0 - subquery`.
@@ -84,7 +84,7 @@ Bracket field access (dynamic/static key):
 .properties[$key]
 ```
 
-Missing fields resolve to `none`.
+Missing fields resolve to `null`.
 
 ### Iteration, index, slice
 
@@ -230,18 +230,18 @@ Examples below are minimal and syntactically valid. Output is shown as query-val
 - Numeric and string operands compare directly.
 - When both operands are org date values (`OrgDate`, `OrgDateClock`, `OrgDateRepeatedTask`),
   comparisons use their `start` values.
-- For ordering operators with `none`:
-  - `a > none`, `a < none`, `none > a`, `none < a` are always `false`
-  - `a >= none` and `a <= none` are `true` only when both sides are `none`
+- For ordering operators with `null`:
+  - `a > null`, `a < null`, `null > a`, `null < a` are always `false`
+  - `a >= null` and `a <= null` are `true` only when both sides are `null`
 
 ```text
 "b" > "a"             => true
 2 <= 2                => true
 .todo == "DONE"       => true/false per item
 timestamp("<2025-01-02 Thu>") < clock("<2025-01-03 Fri>", "<2025-01-03 Fri>") => true
-timestamp("<2025-01-02 Thu>") > none => false
-none <= none => true
-1 >= none => false
+timestamp("<2025-01-02 Thu>") > null => false
+null <= null => true
+1 >= null => false
 ```
 
 ### Regex match
@@ -269,7 +269,7 @@ none <= none => true
 
 ```text
 "x" and 1   => true
-none or "x" => "x"
+null or "x" => "x"
 ```
 
 ### Arithmetic
@@ -361,7 +361,7 @@ ts("[2026-03-01 Sun 10:00-12:00]")
 ### `match(subquery)`
 
 - Matches each string input item against regex from subquery.
-- Returns `[full_match, group1, group2, ...]` on match, else `none`.
+- Returns `[full_match, group1, group2, ...]` on match, else `null`.
 
 ```text
 .[] | match("(DONE)-(\\d+)")
@@ -397,10 +397,10 @@ uuid
 ### `length`
 
 - No args.
-- Emits size for each value (`list`, `tuple`, `dict`, `set`, `string`, org root). Else `none`.
+- Emits size for each value (`list`, `tuple`, `dict`, `set`, `string`, org root). Else `null`.
 
 ```text
-.[] | length            # [[1],"ab",10] => [1,2,none]
+.[] | length            # [[1],"ab",10] => [1,2,null]
 ```
 
 ### `sum`
@@ -416,8 +416,8 @@ sum                    # [1,2,3] => 6
 
 - No args.
 - Expects collection with comparable values of one category (numbers, strings, dates).
-- Ignores `none` entries.
-- For empty collections or all-`none` values returns `none`.
+- Ignores `null` entries.
+- For empty collections or all-`null` values returns `null`.
 
 ```text
 max                    # [1,9,3] => 9
@@ -435,8 +435,8 @@ min                    # ["z","a"] => "a"
 ### `sort_by(key_expr)`
 
 - Sorts items by evaluated key in descending order.
-- `none` keys are placed last.
-- Non-`none` keys must be one comparable category.
+- `null` keys are placed last.
+- Non-`null` keys must be one comparable category.
 
 ```text
 .[] | sort_by(.heading)         # ["b","a"] => ["b","a"] (desc)
@@ -463,10 +463,10 @@ map(. * 2)             # [1,2,3] => [2,4,6]
 ### `type`
 
 - No args.
-- Emits runtime type name (`none`, `int`, `str`, `OrgNode`, `OrgDate`, ...).
+- Emits runtime type name (`null`, `int`, `str`, `OrgNode`, `OrgDate`, ...).
 
 ```text
-.[] | type             # [none,1,"x"] => ["none","int","str"]
+.[] | type             # [null,1,"x"] => ["null","int","str"]
 ```
 
 ### `not(condition)`
@@ -482,13 +482,13 @@ map(. * 2)             # [1,2,3] => [2,4,6]
 - Arity: 1, 2, or 3.
 - Forms:
   - `timestamp(start)`
-  - `timestamp(start, end_or_none)`
-  - `timestamp(start, end_or_none, active_or_none)`
+  - `timestamp(start, end_or_null)`
+  - `timestamp(start, end_or_null, active_or_null)`
 
 ```text
 timestamp("<2025-01-02 Thu>")
 timestamp("<2025-01-02 Thu>", "<2025-01-03 Fri>")
-timestamp("<2025-01-02 Thu>", none, false)
+timestamp("<2025-01-02 Thu>", null, false)
 # => <2025-01-02 Thu>, <2025-01-02 Thu>--<2025-01-03 Fri>, [2025-01-02 Thu]
 ```
 
@@ -497,7 +497,7 @@ timestamp("<2025-01-02 Thu>", none, false)
 - Arity: 2 or 3.
 - Forms:
   - `clock(start, end)`
-  - `clock(start, end, active_or_none)`
+  - `clock(start, end, active_or_null)`
 
 ```text
 clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:30>")
@@ -508,12 +508,12 @@ clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:30>")
 
 - Arity: 3 or 4.
 - Forms:
-  - `repeated_task(timestamp, before_or_none, after_or_none)`
-  - `repeated_task(timestamp, before_or_none, after_or_none, active_or_none)`
+  - `repeated_task(timestamp, before_or_null, after_or_null)`
+  - `repeated_task(timestamp, before_or_null, after_or_null, active_or_null)`
 
 ```text
 repeated_task("<2025-01-02 Thu>", "TODO", "DONE")
-repeated_task("<2025-01-02 Thu>", none, "DONE", true)
+repeated_task("<2025-01-02 Thu>", null, "DONE", true)
 # => [2025-01-02 Thu], <2025-01-02 Thu>
 ```
 
@@ -521,13 +521,13 @@ repeated_task("<2025-01-02 Thu>", none, "DONE", true)
 
 Runtime values accepted/produced include:
 
-- Scalars: `none`, `bool`, `int`, `float`, `str`
+- Scalars: `null`, `bool`, `int`, `float`, `str`
 - Collections: `list`, `tuple`, `set`, `dict`
 - Org values: `OrgNode`, `OrgRootNode`, `OrgDate`, `OrgDateClock`, `OrgDateRepeatedTask`
 
 ```text
 # scalar values
-none
+null
 1
 1.5
 "abc"
@@ -544,8 +544,8 @@ timestamp("<2025-01-02 Thu>")
 
 Notes:
 
-- Missing field access yields `none`.
-- Empty org-date fields normalize to `none`.
+- Missing field access yields `null`.
+- Empty org-date fields normalize to `null`.
 - Many collection operators/functions require collection inputs and fail on scalars.
 
 ## 8) End-to-end examples

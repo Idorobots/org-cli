@@ -468,8 +468,8 @@ def test_format_tasks_summary_renders_histograms() -> None:
         total_tasks=2,
         unique_tasks=2,
         task_states=Histogram(values={"DONE": 1, "TODO": 1}),
-        task_categories=Histogram(values={"none": 2}),
-        task_priorities=Histogram(values={"none": 2}),
+        task_categories=Histogram(values={"null": 2}),
+        task_priorities=Histogram(values={"null": 2}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
@@ -501,8 +501,8 @@ def test_format_tasks_summary_orders_task_states_by_group_alphabetically() -> No
                 "AAA": 1,
             }
         ),
-        task_categories=Histogram(values={"none": 6}),
-        task_priorities=Histogram(values={"none": 6}),
+        task_categories=Histogram(values={"null": 6}),
+        task_priorities=Histogram(values={"null": 6}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
@@ -527,13 +527,13 @@ def test_format_tasks_summary_orders_task_states_by_group_alphabetically() -> No
 
 
 def test_format_tasks_summary_omits_none_state_when_zero() -> None:
-    """State 'none' should not be rendered when it has zero count."""
+    """State 'null' should not be rendered when it has zero count."""
     result = AnalysisResult(
         total_tasks=2,
         unique_tasks=2,
-        task_states=Histogram(values={"DONE": 2, "none": 0}),
-        task_categories=Histogram(values={"none": 2}),
-        task_priorities=Histogram(values={"none": 2}),
+        task_states=Histogram(values={"DONE": 2, "null": 0}),
+        task_categories=Histogram(values={"null": 2}),
+        task_priorities=Histogram(values={"null": 2}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
@@ -548,17 +548,17 @@ def test_format_tasks_summary_omits_none_state_when_zero() -> None:
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(
         "\n\nTask priorities:", maxsplit=1
     )[0]
-    assert "none" not in state_section
+    assert "null" not in state_section
 
 
 def test_format_tasks_summary_keeps_none_state_when_present() -> None:
-    """State 'none' should be rendered when it has a positive count."""
+    """State 'null' should be rendered when it has a positive count."""
     result = AnalysisResult(
         total_tasks=2,
         unique_tasks=2,
-        task_states=Histogram(values={"DONE": 1, "none": 1}),
-        task_categories=Histogram(values={"none": 2}),
-        task_priorities=Histogram(values={"none": 2}),
+        task_states=Histogram(values={"DONE": 1, "null": 1}),
+        task_categories=Histogram(values={"null": 2}),
+        task_priorities=Histogram(values={"null": 2}),
         task_days=Histogram(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
@@ -573,4 +573,4 @@ def test_format_tasks_summary_keeps_none_state_when_present() -> None:
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(
         "\n\nTask priorities:", maxsplit=1
     )[0]
-    assert "none" in state_section
+    assert "null" in state_section

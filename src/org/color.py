@@ -187,7 +187,7 @@ def get_state_color(state: str, done_keys: list[str], todo_keys: list[str], enab
             return "bold red"
         return "bold green"
 
-    if state in todo_keys or state == "" or state.lower() == "none":
+    if state in todo_keys or state == "" or state.lower() == "null":
         return "dim white"
 
     return "bold yellow"

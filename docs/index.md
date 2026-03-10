@@ -47,7 +47,7 @@ Example:
   },
   "filter": {
     "level-above": "select(.level > $arg)",
-    "has-todo": "select(.todo != none)"
+    "has-todo": "select(.todo != null)"
   },
   "order-by": {
     "recent-first": "sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"

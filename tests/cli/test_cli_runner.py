@@ -66,7 +66,7 @@ def test_cli_runner_tasks_list_custom_filter_without_arg() -> None:
 
     try:
         config.CONFIG_CUSTOM_FILTERS.clear()
-        config.CONFIG_CUSTOM_FILTERS.update({"has-todo": "select(.todo != none)"})
+        config.CONFIG_CUSTOM_FILTERS.update({"has-todo": "select(.todo != null)"})
 
         result = runner.invoke(
             app,

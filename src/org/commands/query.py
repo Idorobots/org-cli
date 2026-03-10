@@ -65,18 +65,7 @@ def _format_org_block(value: object) -> str:
         node_text = str(value).rstrip()
         return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
     if isinstance(value, OrgDate) and not bool(value):
-        return "none"
-    return str(value)
-
-
-def _format_query_value(value: object) -> str:
-    """Format one query result value for output."""
-    if isinstance(value, orgparse.node.OrgNode):
-        return str(value).rstrip()
-    if value is None:
-        return "none"
-    if isinstance(value, bool):
-        return "true" if value else "false"
+        return "null"
     return str(value)
 
 
@@ -89,20 +78,28 @@ class OrgQueryOutputFormatter:
         self, values: list[object], console: Console, color_enabled: bool, out_theme: str
     ) -> PreparedOutput:
         del console
-        del color_enabled
-        if values and all(_is_org_object(value) for value in values):
-            return self._prepare_org_values(values, out_theme)
-
-        lines = [_format_query_value(value) for value in values]
-        if not lines:
+        if not values:
             return PreparedOutput(
                 operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
             )
 
-        return PreparedOutput(
-            operations=tuple(
-                OutputOperation(kind="console_print", text=line, markup=False) for line in lines
+        if values and all(_is_org_object(value) for value in values):
+            return self._prepare_org_values(values, out_theme)
+
+        if all(isinstance(value, str) for value in values):
+            string_values = [value for value in values if isinstance(value, str)]
+            return PreparedOutput(
+                operations=tuple(
+                    OutputOperation(kind="console_print", text=value, markup=False)
+                    for value in string_values
+                )
             )
+
+        return _prepare_output(
+            json.dumps(_json_output_payload(values), ensure_ascii=True),
+            color_enabled,
+            OutputFormat.JSON,
+            out_theme,
         )
 
     def _prepare_org_values(self, values: list[object], out_theme: str) -> PreparedOutput:

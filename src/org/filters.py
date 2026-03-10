@@ -401,16 +401,16 @@ def filter_category(
     Args:
         nodes: List of nodes to filter
         category_property: Name of property to check
-        category_value: Value to match (empty string matches "", "none" matches missing property)
+        category_value: Value to match (empty string matches "", "null" matches missing property)
 
     Returns:
         Filtered list of nodes
     """
     return [
-        # NOTE "" category is treated as "none" to avoid weird display behaviour.
+        # NOTE "" category is treated as "null" to avoid weird display behaviour.
         node
         for node in nodes
-        if category_value == (node.properties.get(category_property) or "none")
+        if category_value == (node.properties.get(category_property) or "null")
     ]
 
 

@@ -328,10 +328,10 @@ def compute_task_state_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogra
     for node in nodes:
         if node.repeated_tasks:
             for repeated_task in node.repeated_tasks:
-                repeat_state = repeated_task.after or "none"
+                repeat_state = repeated_task.after or "null"
                 task_states.update(repeat_state, 1)
         else:
-            node_state = node.todo or "none"
+            node_state = node.todo or "null"
             task_states.update(node_state, 1)
 
     return task_states
@@ -371,7 +371,7 @@ def compute_category_histogram(
     """Compute histogram based on category property value.
 
     Reads category from node.properties[category_property].
-    If the property doesn't exist or is empty, categorizes as "none".
+    If the property doesn't exist or is empty, categorizes as "null".
 
     Args:
         nodes: List of org-mode nodes
@@ -386,7 +386,7 @@ def compute_category_histogram(
         count = max(1, len(node.repeated_tasks))
         category_value = node.properties.get(category_property)
         if category_value is None or str(category_value) == "":
-            category = "none"
+            category = "null"
         else:
             category = str(category_value)
         task_categories.update(category, count)
@@ -398,7 +398,7 @@ def compute_priority_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogram:
     """Compute histogram of task priorities across all nodes.
 
     Counts priorities from all tasks (including repeats).
-    Tasks without priority are counted as "none".
+    Tasks without priority are counted as "null".
 
     Args:
         nodes: List of org-mode nodes
@@ -411,7 +411,7 @@ def compute_priority_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogram:
     for node in nodes:
         count = max(1, len(node.repeated_tasks))
         priority = node.priority
-        priority_key = "none" if priority is None or str(priority) == "" else str(priority)
+        priority_key = "null" if priority is None or str(priority) == "" else str(priority)
         task_priorities.update(priority_key, count)
 
     return task_priorities

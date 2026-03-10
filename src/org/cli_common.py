@@ -391,7 +391,7 @@ def _coerce_custom_arg_value(value: str | None) -> object:
 
     lowered = value.lower()
     value_map: dict[str, object] = {
-        "none": None,
+        "null": None,
         "true": True,
         "false": False,
     }
@@ -430,7 +430,7 @@ def _custom_stage(query: str, arg_value: object) -> str:
 def _query_literal(value: object) -> str:
     """Render a Python value as a query-language literal."""
     if value is None:
-        return "none"
+        return "null"
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int | float):
@@ -881,7 +881,7 @@ def _builtin_order_stages(value: str) -> list[str]:
         "timestamp-asc": [
             f"sort_by({timestamp_key_expr})",
             "reverse",
-            f"sort_by(({timestamp_key_expr}) != none)",
+            f"sort_by(({timestamp_key_expr}) != null)",
         ],
         "timestamp-desc": ["sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"],
     }

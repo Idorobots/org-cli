@@ -26,7 +26,7 @@ def test_compute_priority_histogram_with_priorities() -> None:
 
 
 def test_compute_priority_histogram_without_priorities() -> None:
-    """compute_priority_histogram should count tasks without priorities as none."""
+    """compute_priority_histogram should count tasks without priorities as null."""
     nodes = node_from_org(
         """
 * TODO Task without priority
@@ -37,7 +37,7 @@ def test_compute_priority_histogram_without_priorities() -> None:
 
     histogram = compute_priority_histogram(nodes)
 
-    assert histogram.values.get("none") == 2
+    assert histogram.values.get("null") == 2
 
 
 def test_format_task_line_with_priority() -> None:
