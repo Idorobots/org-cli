@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -74,3 +75,23 @@ def test_resolve_input_paths_warns_and_keeps_existing(
 
     assert resolved == [str(existing)]
     assert f"Warning: Path '{missing}' not found" in captured.err
+
+
+def test_resolve_input_paths_skips_missing_globbed_files_in_verbose(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Missing files discovered from directory glob should be logged and skipped."""
+    existing = tmp_path / "one.org"
+    broken = tmp_path / ".#one.org"
+    missing_target = tmp_path / "missing-target.org"
+    existing.write_text("* DONE Test", encoding="utf-8")
+    try:
+        broken.symlink_to(missing_target)
+    except OSError:
+        pytest.skip("symlinks are not supported on this platform")
+
+    with caplog.at_level(logging.INFO, logger="org"):
+        resolved = resolve_input_paths([str(tmp_path)])
+
+    assert resolved == [str(existing)]
+    assert f"Warning: Path '{broken}' not found" in caplog.text

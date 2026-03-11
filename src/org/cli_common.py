@@ -1012,7 +1012,11 @@ def resolve_input_paths(inputs: list[str] | None) -> list[str]:
 
         if path.is_dir():
             searched_dirs.append(path)
-            resolved_files.extend(str(file_path) for file_path in sorted(path.glob("*.org")))
+            for file_path in sorted(path.glob("*.org")):
+                if file_path.exists():
+                    resolved_files.append(str(file_path))
+                else:
+                    logger.info("Warning: Path '%s' not found", file_path)
             continue
 
         if path.is_file():
