@@ -377,22 +377,67 @@ def test_resolve_single_column_panel_content_width_accounts_for_panel_chrome() -
     assert stats_all_command._resolve_single_column_panel_content_width(80) == 76
 
 
-def test_dedent_section_body_drops_leading_blank_and_title() -> None:
-    """Section body normalization should remove leading blank line and title."""
-    text = "\nTask states:\n  TODO 2\n"
+def test_format_tags_body_matches_stats_tags_indentation() -> None:
+    """Stats all TAGS panel body should match stats tags indentation."""
+    tags = {
+        "alpha": Tag(
+            name="alpha",
+            total_tasks=3,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+            relations={"beta": 2},
+            time_range=TimeRange(),
+        )
+    }
+    args = make_stats_all_args([], max_tags=1, max_relations=1)
 
-    body = stats_all_command._dedent_section_body(text, drop_title=True)
+    body = stats_all_command._format_tags_body(
+        tags,
+        args,
+        stats_all_command._TagsDisplayConfig(
+            exclude_set=set(),
+            date_from=None,
+            date_until=None,
+            global_timerange=TimeRange(),
+            plot_width=80,
+            color_enabled=False,
+        ),
+    )
 
-    assert body == "TODO 2\n"
+    assert body.startswith("alpha\n")
+    assert "\n  Total tasks: 3\n" in body
+    assert "\n  Top relations:\n" in body
+    assert "\n    beta (2)\n" in body
 
 
-def test_dedent_section_body_handles_non_blank_first_line() -> None:
-    """Section body normalization should still drop title when first line is non-blank."""
-    text = "Task states:\n  TODO 2\n"
+def test_format_groups_body_matches_stats_groups_indentation() -> None:
+    """Stats all GROUPS panel body should match stats groups indentation."""
+    groups = [
+        Group(
+            tags=["alpha", "beta"],
+            time_range=TimeRange(),
+            total_tasks=2,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        )
+    ]
 
-    body = stats_all_command._dedent_section_body(text, drop_title=True)
+    body = stats_all_command._format_groups_body(
+        groups,
+        set(),
+        2,
+        5,
+        stats_all_command._GroupsDisplayConfig(
+            plot_width=80,
+            date_from=None,
+            date_until=None,
+            global_timerange=TimeRange(),
+            color_enabled=False,
+        ),
+    )
 
-    assert body == "TODO 2\n"
+    assert body.startswith("alpha, beta\n")
+    assert "\n  Total tasks: 2\n" in body
 
 
 def test_run_stats_all_narrow_layout_orders_sections_vertically(

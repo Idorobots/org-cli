@@ -3347,11 +3347,17 @@ Rename the =stats tasks= command to =stats summary=.
 
 Update the documentation, README & AGENTS.md to reflect these new command names.
 
-** DONE Handle save files
+*** DONE Handle save files
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-03-11 Wed 23:25]
 :END:
 Sometimes editors create savefiles for Org documents that are reported as "not found" in org-cli when searching a directory for such files. It would be nice to handle that situation similarly to the explicitly passed files - log the missing file so that it's visible on the =--verbose= output and skip it.
+
+*** DONE Dedent handling
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-12 Thu 11:50]
+:END:
+Don't dedent tags and groups on the =stats all= command output - these should show up the same way as on =stats tags= and =stats groups=, except be displayed within their respective panels.
 
 ** Mutable parse tree
 *** Use org_parser

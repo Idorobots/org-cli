@@ -28,12 +28,14 @@ from org.cli_common import (
 )
 from org.commands.stats.summary import format_tasks_summary
 from org.tui import (
+    GroupBlockConfig,
     TagBlockConfig,
     TaskLineConfig,
     TimelineFormatConfig,
     TopTasksSectionConfig,
     apply_indent,
     build_console,
+    format_group_block,
     format_groups_section,
     format_tag_block,
     format_task_line,
@@ -101,6 +103,18 @@ class _GroupsDisplayConfig:
     date_from: datetime | None
     date_until: datetime | None
     global_timerange: TimeRange
+    color_enabled: bool
+
+
+@dataclass(frozen=True)
+class _TagsDisplayConfig:
+    """Configuration for rendering tags body in stats all layout."""
+
+    exclude_set: set[str]
+    date_from: datetime | None
+    date_until: datetime | None
+    global_timerange: TimeRange
+    plot_width: int
     color_enabled: bool
 
 
@@ -250,19 +264,6 @@ def _panel_body(text: str, color_enabled: bool) -> Text:
     return panel_text
 
 
-def _dedent_section_body(text: str, *, drop_title: bool) -> str:
-    """Normalize section body lines and optionally drop title line."""
-    body_lines = text.splitlines()
-    while body_lines and not body_lines[0].strip():
-        body_lines = body_lines[1:]
-    if drop_title and body_lines:
-        body_lines = body_lines[1:]
-    unindented_lines = [line.lstrip() if line else "" for line in body_lines]
-    if not unindented_lines:
-        return ""
-    return "\n".join(unindented_lines) + "\n"
-
-
 def _format_tasks_body(
     nodes: list[orgparse.node.OrgNode],
     max_results: int,
@@ -309,6 +310,55 @@ def _resolve_single_column_panel_content_width(console_width: int) -> int:
     return max(20, console_width - panel_chrome_width)
 
 
+def _format_tags_body(
+    tags: dict[str, Tag],
+    args: StatsAllArgs,
+    config: _TagsDisplayConfig,
+) -> str:
+    """Return tags body without section header."""
+    if args.max_tags == 0:
+        return ""
+
+    cleaned = clean(config.exclude_set, tags)
+    sorted_items = sorted(cleaned.items(), key=lambda item: -item[1].total_tasks)[0 : args.max_tags]
+    lines: list[str] = []
+    if args.use != "tags":
+        lines.append(CATEGORY_NAMES[args.use].upper())
+        lines.append("")
+
+    if not sorted_items:
+        lines.append("No results")
+        return lines_to_text(lines)
+
+    for idx, (name, tag) in enumerate(sorted_items):
+        if lines and lines[-1] != "":
+            lines.append("")
+        if idx > 0:
+            lines.append("")
+        lines.extend(
+            format_tag_block(
+                name,
+                tag,
+                TagBlockConfig(
+                    max_relations=args.max_relations,
+                    exclude_set=config.exclude_set,
+                    date_from=config.date_from,
+                    date_until=config.date_until,
+                    global_timerange=config.global_timerange,
+                    timeline=TimelineFormatConfig(
+                        color_enabled=config.color_enabled,
+                        indent="",
+                        plot_width=config.plot_width,
+                    ),
+                    name_indent="",
+                    stats_indent="  ",
+                ),
+            )
+        )
+
+    return lines_to_text(lines)
+
+
 def _render_single_column_stats_all_layout(
     result: AnalysisResult,
     nodes: list[orgparse.node.OrgNode],
@@ -333,35 +383,24 @@ def _render_single_column_stats_all_layout(
     ).lstrip("\n")
     tasks_body = _format_tasks_body(nodes, args.max_results, task_display_config)
 
-    def order_by_total(item: tuple[str, Tag]) -> int:
-        """Sort by total count (descending)."""
-        return -item[1].total_tasks
-
-    category_name = CATEGORY_NAMES[args.use]
     sections: list[tuple[str, str]] = [
         ("SUMMARY", summary_body.rstrip("\n") or "No results"),
         ("TASKS", tasks_body.rstrip("\n") or "No results"),
     ]
 
     if args.max_tags != 0:
-        tags_body_raw = format_tags_section(
-            category_name,
+        tags_body = _format_tags_body(
             result.tags,
-            (
-                args.max_results,
-                args.max_relations,
-                panel_content_width,
-                date_from,
-                date_until,
-                result.timerange,
-                args.max_tags,
-                exclude_set,
-                color_enabled,
+            args,
+            _TagsDisplayConfig(
+                exclude_set=exclude_set,
+                date_from=date_from,
+                date_until=date_until,
+                global_timerange=result.timerange,
+                plot_width=panel_content_width,
+                color_enabled=color_enabled,
             ),
-            order_by_total,
-            indent="",
         )
-        tags_body = _dedent_section_body(tags_body_raw, drop_title=args.use == "tags")
         sections.append(("TAGS", tags_body.rstrip("\n") or "No results"))
 
     if args.max_groups != 0:
@@ -431,11 +470,6 @@ def render_stats_all_layout(
 
     tasks_body = _format_tasks_body(nodes, args.max_results, task_display_config)
 
-    def order_by_total(item: tuple[str, Tag]) -> int:
-        """Sort by total count (descending)."""
-        return -item[1].total_tasks
-
-    category_name = CATEGORY_NAMES[args.use]
     top_panel_height = max(_line_count(summary_body), _line_count(tasks_body)) + 2
 
     top_layout = Layout(name="top")
@@ -467,24 +501,18 @@ def render_stats_all_layout(
     groups_panel_height = 0
 
     if args.max_tags != 0:
-        tags_body_raw = format_tags_section(
-            category_name,
+        tags_body = _format_tags_body(
             result.tags,
-            (
-                args.max_results,
-                args.max_relations,
-                panel_content_width,
-                date_from,
-                date_until,
-                result.timerange,
-                args.max_tags,
-                exclude_set,
-                color_enabled,
+            args,
+            _TagsDisplayConfig(
+                exclude_set=exclude_set,
+                date_from=date_from,
+                date_until=date_until,
+                global_timerange=result.timerange,
+                plot_width=panel_content_width,
+                color_enabled=color_enabled,
             ),
-            order_by_total,
-            indent="",
         )
-        tags_body = _dedent_section_body(tags_body_raw, drop_title=args.use == "tags")
         tags_panel_height = _line_count(tags_body) + 2
         tags_panel = Panel(
             _panel_body(tags_body.rstrip("\n") or "No results", color_enabled),
@@ -542,26 +570,45 @@ def _format_groups_body(
     max_groups: int,
     config: _GroupsDisplayConfig,
 ) -> str:
-    """Return groups body without section header and without content indentation."""
+    """Return groups body without section header."""
     if max_groups == 0:
         return ""
 
-    groups_output = format_groups_section(
-        groups,
-        exclude_set,
-        (
-            min_group_size,
-            config.plot_width,
-            config.date_from,
-            config.date_until,
-            config.global_timerange,
-            config.color_enabled,
-        ),
-        max_groups,
-        indent="",
-    )
-    body = _dedent_section_body(groups_output, drop_title=True)
-    return body or "No results\n"
+    filtered_groups: list[tuple[list[str], TagGroup]] = []
+    for group in groups:
+        filtered_tags = [tag for tag in group.tags if tag not in exclude_set]
+        if len(filtered_tags) >= min_group_size:
+            filtered_groups.append((filtered_tags, group))
+
+    filtered_groups.sort(key=lambda item: len(item[0]), reverse=True)
+    filtered_groups = filtered_groups[:max_groups]
+    if not filtered_groups:
+        return "No results\n"
+
+    lines: list[str] = []
+    for idx, (group_tags, group) in enumerate(filtered_groups):
+        if idx > 0:
+            lines.append("")
+        lines.extend(
+            format_group_block(
+                group_tags,
+                group,
+                GroupBlockConfig(
+                    date_from=config.date_from,
+                    date_until=config.date_until,
+                    global_timerange=config.global_timerange,
+                    timeline=TimelineFormatConfig(
+                        color_enabled=config.color_enabled,
+                        indent="",
+                        plot_width=config.plot_width,
+                    ),
+                    name_indent="",
+                    stats_indent="  ",
+                ),
+            )
+        )
+
+    return lines_to_text(lines)
 
 
 def run_stats(args: StatsAllArgs) -> None:
