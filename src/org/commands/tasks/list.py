@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
-from io import StringIO
 from typing import Protocol
 
 import click
@@ -244,26 +243,37 @@ def _resolve_tasks_limit(max_results: int | None, console_height: int) -> int:
     return max_results
 
 
-def _render_prepared_output_text(
-    prepared_output: PreparedOutput, *, color_enabled: bool, width: int
-) -> str:
-    """Render prepared output to text for pagination sizing."""
-    render_console = Console(
-        no_color=not color_enabled,
-        force_terminal=color_enabled,
-        width=width,
-        record=True,
-        file=StringIO(),
-    )
-    print_prepared_output(render_console, prepared_output)
-    return render_console.export_text(styles=color_enabled)
-
-
 def _line_count(text: str) -> int:
     """Return visual line count for a rendered text block."""
     if not text:
         return 0
     return len(text.splitlines())
+
+
+def _should_page_prepared_output(
+    prepared_output: PreparedOutput, *, details: bool, console_height: int
+) -> bool:
+    """Estimate whether prepared output should be displayed via pager."""
+    if details:
+        return True
+
+    estimated_lines = 0
+    for operation in prepared_output.operations:
+        if operation.kind == "print_output" and operation.text is not None:
+            estimated_lines += _line_count(operation.text)
+            continue
+
+        if operation.kind == "plain_write" and operation.text is not None:
+            estimated_lines += max(1, _line_count(operation.text))
+            continue
+
+        if operation.kind == "console_print":
+            if operation.renderable is not None:
+                return True
+            if operation.text is not None:
+                estimated_lines += max(1, _line_count(operation.text))
+
+    return estimated_lines > console_height
 
 
 def run_tasks_list(args: ListArgs) -> None:
@@ -303,14 +313,14 @@ def run_tasks_list(args: ListArgs) -> None:
         except OutputFormatError as exc:
             raise click.UsageError(str(exc)) from exc
 
-    if should_use_pager:
-        rendered_text = _render_prepared_output_text(
-            prepared_output, color_enabled=color_enabled, width=console.width
-        )
-        if _line_count(rendered_text) > console.height:
-            with console.pager(styles=color_enabled):
-                print_prepared_output(console, prepared_output)
-            return
+    if should_use_pager and _should_page_prepared_output(
+        prepared_output,
+        details=args.details,
+        console_height=console.height,
+    ):
+        with console.pager(styles=color_enabled):
+            print_prepared_output(console, prepared_output)
+        return
 
     print_prepared_output(console, prepared_output)
 

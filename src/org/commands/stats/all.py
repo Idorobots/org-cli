@@ -6,7 +6,6 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from io import StringIO
 
 import orgparse
 import typer
@@ -41,7 +40,6 @@ from org.tui import (
     format_task_line,
     format_top_tasks_section,
     lines_to_text,
-    print_output,
     processing_status,
     section_header_lines,
     setup_output,
@@ -652,17 +650,8 @@ def run_stats(args: StatsAllArgs) -> None:
         console.print("No results", markup=False)
         return
 
-    render_console = Console(
-        no_color=not color_enabled,
-        force_terminal=color_enabled,
-        width=console.width,
-        height=max(layout_height, 1),
-        record=True,
-        file=StringIO(),
-    )
-    render_console.print(layout)
-    rendered_output = render_console.export_text(styles=color_enabled)
-    print_output(console, rendered_output, color_enabled, end="")
+    console.height = max(layout_height, 1)
+    console.print(layout)
 
 
 def register(app: typer.Typer) -> None:
