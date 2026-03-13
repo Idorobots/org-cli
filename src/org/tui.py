@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import textwrap
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -437,8 +438,16 @@ def format_group_block(
             )
         )
 
-    display_tags = ", ".join(escape_text(tag, color_enabled) for tag in group_tags)
-    lines.append(f"{config.name_indent}{display_tags}")
+    max_name_width = max(1, config.timeline.plot_width - visual_len(config.name_indent))
+    display_tags = ", ".join(group_tags)
+    wrapped_tags = textwrap.wrap(
+        display_tags,
+        width=max_name_width,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    for wrapped_line in wrapped_tags or [""]:
+        lines.append(f"{config.name_indent}{escape_text(wrapped_line, color_enabled)}")
     total_tasks_value = magenta(str(group.total_tasks), color_enabled)
     avg_value = magenta(f"{group.avg_tasks_per_day:.2f}", color_enabled)
     max_value = magenta(str(group.max_single_day_count), color_enabled)

@@ -440,6 +440,38 @@ def test_format_groups_body_matches_stats_groups_indentation() -> None:
     assert "\n  Total tasks: 2\n" in body
 
 
+def test_format_groups_body_wraps_long_group_tag_headers() -> None:
+    """Groups body should wrap long tag headers so all members remain visible."""
+    groups = [
+        Group(
+            tags=["alpha", "beta", "gamma", "delta", "epsilon", "zeta"],
+            time_range=TimeRange(),
+            total_tasks=6,
+            avg_tasks_per_day=0.0,
+            max_single_day_count=0,
+        )
+    ]
+
+    body = stats_all_command._format_groups_body(
+        groups,
+        set(),
+        2,
+        5,
+        stats_all_command._GroupsDisplayConfig(
+            plot_width=20,
+            date_from=None,
+            date_until=None,
+            global_timerange=TimeRange(),
+            color_enabled=False,
+        ),
+    )
+
+    assert "alpha, beta, gamma" in body
+    assert "delta, epsilon" in body
+    assert "zeta" in body
+    assert "\n  Total tasks: 6\n" in body
+
+
 def test_run_stats_all_narrow_layout_orders_sections_vertically(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
