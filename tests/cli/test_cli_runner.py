@@ -158,5 +158,5 @@ def test_cli_runner_rejects_width_below_minimum() -> None:
     result = runner.invoke(app, ["query", "1", "--width", "49", fixture_path])
 
     assert result.exit_code != 0
-    combined_output = result.stdout + result.stderr
+    combined_output = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout + result.stderr)
     assert "Invalid value for '--width'" in combined_output
