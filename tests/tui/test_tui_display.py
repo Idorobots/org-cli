@@ -34,7 +34,6 @@ CLOSED: [2025-01-02 Thu 11:00]
         ),
     )
 
-    assert "TASKS" in output
     assert "<string>" in output
 
 

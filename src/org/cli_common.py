@@ -1016,7 +1016,7 @@ def resolve_input_paths(inputs: list[str] | None) -> list[str]:
                 if file_path.exists():
                     resolved_files.append(str(file_path))
                 else:
-                    logger.info("Warning: Path '%s' not found", file_path)
+                    missing_paths.append(str(file_path))
             continue
 
         if path.is_file():
@@ -1026,7 +1026,7 @@ def resolve_input_paths(inputs: list[str] | None) -> list[str]:
         raise typer.BadParameter(f"Path '{raw_path}' is not a file or directory")
 
     for raw_path in missing_paths:
-        typer.echo(f"Warning: Path '{raw_path}' not found", err=True)
+        logger.info("Warning: file '%s' not found", raw_path)
 
     if not resolved_files:
         if missing_paths:

@@ -77,32 +77,35 @@ class TagsArgs:
     max_groups: int
 
 
+@dataclass(frozen=True)
+class TagsDisplayConfig:
+    """Configuration for rendering tag blocks."""
+
+    max_results: int
+    max_relations: int
+    plot_width: int
+    date_from: datetime | None
+    date_until: datetime | None
+    global_timerange: TimeRange
+    exclude_set: set[str]
+    color_enabled: bool
+
+
 def format_tags(
     tags: dict[str, Tag],
     selected_tags: list[str] | None,
-    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange, set[str], bool],
+    config: TagsDisplayConfig,
     indent: str = "",
 ) -> str:
     """Return formatted output for selected tags without a section header."""
-    (
-        max_results,
-        max_relations,
-        plot_width,
-        date_from,
-        date_until,
-        global_timerange,
-        exclude_set,
-        color_enabled,
-    ) = config
-
-    cleaned = clean(exclude_set, tags)
+    cleaned = clean(config.exclude_set, tags)
 
     if selected_tags is not None:
         selected_items = [(name, cleaned[name]) for name in selected_tags if name in cleaned]
-        selected_items = selected_items[:max_results]
+        selected_items = selected_items[: config.max_results]
     else:
         selected_items = sorted(cleaned.items(), key=lambda item: -item[1].total_tasks)[
-            0:max_results
+            0 : config.max_results
         ]
 
     if not selected_items:
@@ -117,15 +120,15 @@ def format_tags(
                 name,
                 tag,
                 TagBlockConfig(
-                    max_relations=max_relations,
-                    exclude_set=exclude_set,
-                    date_from=date_from,
-                    date_until=date_until,
-                    global_timerange=global_timerange,
+                    max_relations=config.max_relations,
+                    exclude_set=config.exclude_set,
+                    date_from=config.date_from,
+                    date_until=config.date_until,
+                    global_timerange=config.global_timerange,
                     timeline=TimelineFormatConfig(
-                        color_enabled=color_enabled,
+                        color_enabled=config.color_enabled,
                         indent="",
-                        plot_width=plot_width,
+                        plot_width=config.plot_width,
                     ),
                     name_indent="",
                     stats_indent="  ",
@@ -183,15 +186,15 @@ def run_stats_tags(args: TagsArgs) -> None:
             output = format_tags(
                 tags,
                 tag_values,
-                (
-                    args.max_results,
-                    args.max_relations,
-                    console.width,
-                    date_from,
-                    date_until,
-                    global_timerange,
-                    exclude_set,
-                    color_enabled,
+                TagsDisplayConfig(
+                    max_results=args.max_results,
+                    max_relations=args.max_relations,
+                    plot_width=console.width,
+                    date_from=date_from,
+                    date_until=date_until,
+                    global_timerange=global_timerange,
+                    exclude_set=exclude_set,
+                    color_enabled=color_enabled,
                 ),
             )
 

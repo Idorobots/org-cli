@@ -136,8 +136,7 @@ def test_cli_runner_allows_missing_files_when_some_exist() -> None:
     result = runner.invoke(app, ["query", ".[] | .children | length", missing_path, fixture_path])
 
     assert result.exit_code == 0
-    assert "3" in result.stdout
-    assert f"Warning: Path '{missing_path}' not found" in result.stderr
+    assert result.stdout.strip() == "3"
 
 
 def test_cli_runner_accepts_width_override() -> None:

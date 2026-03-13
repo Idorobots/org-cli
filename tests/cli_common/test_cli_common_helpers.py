@@ -63,18 +63,18 @@ def test_resolve_input_paths_missing(tmp_path: Path) -> None:
 
 
 def test_resolve_input_paths_warns_and_keeps_existing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Missing paths should warn while existing files are still processed."""
     existing = tmp_path / "one.org"
     missing = tmp_path / "missing.org"
     existing.write_text("* DONE Test", encoding="utf-8")
 
-    resolved = resolve_input_paths([str(missing), str(existing)])
-    captured = capsys.readouterr()
+    with caplog.at_level(logging.INFO, logger="org"):
+        resolved = resolve_input_paths([str(missing), str(existing)])
 
     assert resolved == [str(existing)]
-    assert f"Warning: Path '{missing}' not found" in captured.err
+    assert f"Warning: file '{missing}' not found" in caplog.text
 
 
 def test_resolve_input_paths_skips_missing_globbed_files_in_verbose(
@@ -94,4 +94,4 @@ def test_resolve_input_paths_skips_missing_globbed_files_in_verbose(
         resolved = resolve_input_paths([str(tmp_path)])
 
     assert resolved == [str(existing)]
-    assert f"Warning: Path '{broken}' not found" in caplog.text
+    assert f"Warning: file '{broken}' not found" in caplog.text

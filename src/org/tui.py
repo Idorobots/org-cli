@@ -96,8 +96,6 @@ def setup_output(args: object) -> bool:
 
 def build_console(color_enabled: bool, width: int | None = None) -> Console:
     """Create a Rich console configured for colored output."""
-    if width is None:
-        return Console(no_color=not color_enabled, force_terminal=color_enabled)
     return Console(no_color=not color_enabled, force_terminal=color_enabled, width=width)
 
 
@@ -218,7 +216,7 @@ class _TaskLineParts:
     heading: str
 
 
-def _truncate_filename(filename: str, width: int = 15) -> str:
+def _truncate_filename(filename: str, width: int) -> str:
     """Truncate or pad filename to fixed-width column."""
     truncated = _truncate_to_visual_width(filename, width)
     return _pad_to_visual_width(truncated, width)
@@ -249,7 +247,7 @@ def _pad_to_visual_width(text: str, width: int) -> str:
 def _build_task_line_parts(node: orgparse.node.OrgNode, config: TaskLineConfig) -> _TaskLineParts:
     """Extract and format task line components."""
     filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
-    filename_cell = _truncate_filename(filename)
+    filename_cell = _truncate_filename(filename, 15)
     colored_filename = dim_white(filename_cell, config.color_enabled)
     todo_state = node.todo if node.todo else ""
     heading = node.heading if node.heading else ""
@@ -506,14 +504,13 @@ def format_groups_section(
 def format_top_tasks_section(
     nodes: list[orgparse.node.OrgNode],
     config: TopTasksSectionConfig,
-    include_header: bool = True,
 ) -> str:
     """Return formatted output for the top tasks section."""
     top_tasks = get_top_tasks(nodes, config.max_results)
     if not top_tasks:
         return ""
 
-    lines = section_header_lines("TASKS", config.color_enabled) if include_header else []
+    lines = []
     for node in top_tasks:
         lines.append(
             format_task_line(

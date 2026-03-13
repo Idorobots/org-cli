@@ -492,7 +492,16 @@ def test_format_tags_shows_requested_tags() -> None:
     output = stats_tags.format_tags(
         tags,
         ["beta"],
-        (10, 0, 20, None, None, TimeRange(), set(), False),
+        stats_tags.TagsDisplayConfig(
+            max_results=10,
+            max_relations=0,
+            plot_width=20,
+            date_from=None,
+            date_until=None,
+            global_timerange=TimeRange(),
+            exclude_set=set(),
+            color_enabled=False,
+        ),
     )
 
     assert "beta" in output
@@ -513,7 +522,15 @@ def test_format_group_list_excludes_tags() -> None:
 
     output = stats_groups.format_group_list(
         groups,
-        (10, 20, None, None, TimeRange(), {"beta"}, False),
+        stats_groups.GroupListDisplayConfig(
+            max_results=10,
+            plot_width=20,
+            date_from=None,
+            date_until=None,
+            global_timerange=TimeRange(),
+            exclude_set={"beta"},
+            color_enabled=False,
+        ),
     )
 
     assert "alpha" in output
@@ -538,7 +555,15 @@ def test_format_tasks_summary_renders_histograms() -> None:
     )
 
     output = stats_summary_command.format_tasks_summary(
-        result, (None, None, ["DONE"], ["TODO"], False), 80
+        result,
+        stats_summary_command.SummaryDisplayConfig(
+            date_from=None,
+            date_until=None,
+            done_keys=["DONE"],
+            todo_keys=["TODO"],
+            color_enabled=False,
+        ),
+        80,
     )
 
     assert "Task states:" in output
@@ -574,7 +599,13 @@ def test_format_tasks_summary_orders_task_states_by_group_alphabetically() -> No
 
     output = stats_summary_command.format_tasks_summary(
         result,
-        (None, None, ["ZDONE", "ADONE"], ["ZTODO", "ATODO"], False),
+        stats_summary_command.SummaryDisplayConfig(
+            date_from=None,
+            date_until=None,
+            done_keys=["ZDONE", "ADONE"],
+            todo_keys=["ZTODO", "ATODO"],
+            color_enabled=False,
+        ),
         80,
     )
 
@@ -604,7 +635,15 @@ def test_format_tasks_summary_omits_none_state_when_zero() -> None:
     )
 
     output = stats_summary_command.format_tasks_summary(
-        result, (None, None, ["DONE"], ["TODO"], False), 80
+        result,
+        stats_summary_command.SummaryDisplayConfig(
+            date_from=None,
+            date_until=None,
+            done_keys=["DONE"],
+            todo_keys=["TODO"],
+            color_enabled=False,
+        ),
+        80,
     )
 
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(
@@ -631,7 +670,15 @@ def test_format_tasks_summary_keeps_none_state_when_present() -> None:
     )
 
     output = stats_summary_command.format_tasks_summary(
-        result, (None, None, ["DONE"], ["TODO"], False), 80
+        result,
+        stats_summary_command.SummaryDisplayConfig(
+            date_from=None,
+            date_until=None,
+            done_keys=["DONE"],
+            todo_keys=["TODO"],
+            color_enabled=False,
+        ),
+        80,
     )
 
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(

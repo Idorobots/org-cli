@@ -26,7 +26,7 @@ from org.cli_common import (
     resolve_exclude_set,
     resolve_mapping,
 )
-from org.commands.stats.summary import format_tasks_summary
+from org.commands.stats.summary import SummaryDisplayConfig, format_tasks_summary
 from org.tui import (
     GroupBlockConfig,
     TagBlockConfig,
@@ -118,33 +118,47 @@ class _TagsDisplayConfig:
     color_enabled: bool
 
 
+@dataclass(frozen=True)
+class _TagsSectionConfig:
+    """Configuration for rendering a single tags section."""
+
+    max_relations: int
+    plot_width: int
+    date_from: datetime | None
+    date_until: datetime | None
+    global_timerange: TimeRange
+    max_items: int
+    exclude_set: set[str]
+    color_enabled: bool
+
+
+@dataclass(frozen=True)
+class _StatsAllDisplayConfig:
+    """Configuration shared across stats all layout sections."""
+
+    exclude_set: set[str]
+    date_from: datetime | None
+    date_until: datetime | None
+    done_keys: list[str]
+    todo_keys: list[str]
+    color_enabled: bool
+
+
 def format_tags_section(
     category_name: str,
     tags: dict[str, Tag],
-    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange, int, set[str], bool],
+    config: _TagsSectionConfig,
     order_fn: Callable[[tuple[str, Tag]], int],
     indent: str = "",
 ) -> str:
     """Return formatted output for a single tags section."""
-    (
-        _max_results,
-        max_relations,
-        plot_width,
-        date_from,
-        date_until,
-        global_timerange,
-        max_items,
-        exclude_set,
-        color_enabled,
-    ) = config
-
-    if max_items == 0:
+    if config.max_items == 0:
         return ""
 
-    cleaned = clean(exclude_set, tags)
-    sorted_items = sorted(cleaned.items(), key=order_fn)[0:max_items]
+    cleaned = clean(config.exclude_set, tags)
+    sorted_items = sorted(cleaned.items(), key=order_fn)[0 : config.max_items]
 
-    lines = section_header_lines(category_name.upper(), color_enabled)
+    lines = section_header_lines(category_name.upper(), config.color_enabled)
 
     if not sorted_items:
         lines.append("  No results")
@@ -158,15 +172,15 @@ def format_tags_section(
                 name,
                 tag,
                 TagBlockConfig(
-                    max_relations=max_relations,
-                    exclude_set=exclude_set,
-                    date_from=date_from,
-                    date_until=date_until,
-                    global_timerange=global_timerange,
+                    max_relations=config.max_relations,
+                    exclude_set=config.exclude_set,
+                    date_from=config.date_from,
+                    date_until=config.date_until,
+                    global_timerange=config.global_timerange,
                     timeline=TimelineFormatConfig(
-                        color_enabled=color_enabled,
+                        color_enabled=config.color_enabled,
                         indent="  ",
-                        plot_width=plot_width,
+                        plot_width=config.plot_width,
                     ),
                     name_indent="  ",
                     stats_indent="    ",
@@ -181,11 +195,10 @@ def format_stats_all_output(
     result: AnalysisResult,
     nodes: list[orgparse.node.OrgNode],
     args: StatsAllArgs,
-    display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
+    display_config: _StatsAllDisplayConfig,
     plot_width: int,
 ) -> str:
     """Return formatted output for the stats all command."""
-    exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled = display_config
 
     def order_by_total(item: tuple[str, Tag]) -> int:
         """Sort by total count (descending)."""
@@ -198,16 +211,22 @@ def format_stats_all_output(
         for section in (
             format_tasks_summary(
                 result,
-                (date_from, date_until, done_keys, todo_keys, color_enabled),
+                SummaryDisplayConfig(
+                    date_from=display_config.date_from,
+                    date_until=display_config.date_until,
+                    done_keys=display_config.done_keys,
+                    todo_keys=display_config.todo_keys,
+                    color_enabled=display_config.color_enabled,
+                ),
                 plot_width,
             ),
             format_top_tasks_section(
                 nodes,
                 TopTasksSectionConfig(
                     max_results=args.max_results,
-                    color_enabled=color_enabled,
-                    done_keys=done_keys,
-                    todo_keys=todo_keys,
+                    color_enabled=display_config.color_enabled,
+                    done_keys=display_config.done_keys,
+                    todo_keys=display_config.todo_keys,
                     line_width=plot_width,
                     indent="",
                 ),
@@ -215,30 +234,29 @@ def format_stats_all_output(
             format_tags_section(
                 category_name,
                 result.tags,
-                (
-                    args.max_results,
-                    args.max_relations,
-                    plot_width,
-                    date_from,
-                    date_until,
-                    result.timerange,
-                    args.max_tags,
-                    exclude_set,
-                    color_enabled,
+                _TagsSectionConfig(
+                    max_relations=args.max_relations,
+                    plot_width=plot_width,
+                    date_from=display_config.date_from,
+                    date_until=display_config.date_until,
+                    global_timerange=result.timerange,
+                    max_items=args.max_tags,
+                    exclude_set=display_config.exclude_set,
+                    color_enabled=display_config.color_enabled,
                 ),
                 order_by_total,
                 indent="  ",
             ),
             format_groups_section(
                 result.tag_groups,
-                exclude_set,
+                display_config.exclude_set,
                 (
                     args.min_group_size,
                     plot_width,
-                    date_from,
-                    date_until,
+                    display_config.date_from,
+                    display_config.date_until,
                     result.timerange,
-                    color_enabled,
+                    display_config.color_enabled,
                 ),
                 args.max_groups,
                 indent="  ",
@@ -322,9 +340,6 @@ def _format_tags_body(
     cleaned = clean(config.exclude_set, tags)
     sorted_items = sorted(cleaned.items(), key=lambda item: -item[1].total_tasks)[0 : args.max_tags]
     lines: list[str] = []
-    if args.use != "tags":
-        lines.append(CATEGORY_NAMES[args.use].upper())
-        lines.append("")
 
     if not sorted_items:
         lines.append("No results")
@@ -363,22 +378,27 @@ def _render_single_column_stats_all_layout(
     result: AnalysisResult,
     nodes: list[orgparse.node.OrgNode],
     args: StatsAllArgs,
-    display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
+    display_config: _StatsAllDisplayConfig,
     console_width: int,
 ) -> tuple[Layout, int]:
     """Build a single-column stats all layout with vertically stacked sections."""
-    exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled = display_config
     panel_content_width = _resolve_single_column_panel_content_width(console_width)
     task_display_config = _TaskDisplayConfig(
-        color_enabled=color_enabled,
-        done_keys=done_keys,
-        todo_keys=todo_keys,
+        color_enabled=display_config.color_enabled,
+        done_keys=display_config.done_keys,
+        todo_keys=display_config.todo_keys,
         line_width=panel_content_width,
     )
 
     summary_body = format_tasks_summary(
         result,
-        (date_from, date_until, done_keys, todo_keys, color_enabled),
+        SummaryDisplayConfig(
+            date_from=display_config.date_from,
+            date_until=display_config.date_until,
+            done_keys=display_config.done_keys,
+            todo_keys=display_config.todo_keys,
+            color_enabled=display_config.color_enabled,
+        ),
         panel_content_width,
     ).lstrip("\n")
     tasks_body = _format_tasks_body(nodes, args.max_results, task_display_config)
@@ -393,28 +413,28 @@ def _render_single_column_stats_all_layout(
             result.tags,
             args,
             _TagsDisplayConfig(
-                exclude_set=exclude_set,
-                date_from=date_from,
-                date_until=date_until,
+                exclude_set=display_config.exclude_set,
+                date_from=display_config.date_from,
+                date_until=display_config.date_until,
                 global_timerange=result.timerange,
                 plot_width=panel_content_width,
-                color_enabled=color_enabled,
+                color_enabled=display_config.color_enabled,
             ),
         )
-        sections.append(("TAGS", tags_body.rstrip("\n") or "No results"))
+        sections.append((CATEGORY_NAMES[args.use].upper(), tags_body.rstrip("\n") or "No results"))
 
     if args.max_groups != 0:
         groups_body = _format_groups_body(
             result.tag_groups,
-            exclude_set,
+            display_config.exclude_set,
             args.min_group_size,
             args.max_groups,
             _GroupsDisplayConfig(
                 plot_width=panel_content_width,
-                date_from=date_from,
-                date_until=date_until,
+                date_from=display_config.date_from,
+                date_until=display_config.date_until,
                 global_timerange=result.timerange,
-                color_enabled=color_enabled,
+                color_enabled=display_config.color_enabled,
             ),
         )
         sections.append(("GROUPS", groups_body.rstrip("\n") or "No results"))
@@ -424,7 +444,7 @@ def _render_single_column_stats_all_layout(
     section_layouts = [
         Layout(
             Panel(
-                _panel_body(body, color_enabled),
+                _panel_body(body, display_config.color_enabled),
                 title=title,
                 expand=True,
                 height=height,
@@ -444,7 +464,7 @@ def render_stats_all_layout(
     result: AnalysisResult,
     nodes: list[orgparse.node.OrgNode],
     args: StatsAllArgs,
-    display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
+    display_config: _StatsAllDisplayConfig,
 ) -> tuple[Layout, int]:
     """Build a two-column stats all layout using Rich Layout and Panels."""
     if console.width < _TWO_COLUMN_MIN_WIDTH:
@@ -452,19 +472,23 @@ def render_stats_all_layout(
             result, nodes, args, display_config, console.width
         )
 
-    exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled = display_config
-
     panel_content_width = _resolve_two_column_panel_content_width(console.width)
     task_display_config = _TaskDisplayConfig(
-        color_enabled=color_enabled,
-        done_keys=done_keys,
-        todo_keys=todo_keys,
+        color_enabled=display_config.color_enabled,
+        done_keys=display_config.done_keys,
+        todo_keys=display_config.todo_keys,
         line_width=panel_content_width,
     )
 
     summary_body = format_tasks_summary(
         result,
-        (date_from, date_until, done_keys, todo_keys, color_enabled),
+        SummaryDisplayConfig(
+            date_from=display_config.date_from,
+            date_until=display_config.date_until,
+            done_keys=display_config.done_keys,
+            todo_keys=display_config.todo_keys,
+            color_enabled=display_config.color_enabled,
+        ),
         panel_content_width,
     ).lstrip("\n")
 
@@ -477,7 +501,9 @@ def render_stats_all_layout(
     top_layout.split_row(
         Layout(
             Panel(
-                _panel_body(summary_body.rstrip("\n") or "No results", color_enabled),
+                _panel_body(
+                    summary_body.rstrip("\n") or "No results", display_config.color_enabled
+                ),
                 title="SUMMARY",
                 expand=True,
                 height=top_panel_height,
@@ -486,7 +512,7 @@ def render_stats_all_layout(
         ),
         Layout(
             Panel(
-                _panel_body(tasks_body.rstrip("\n") or "No results", color_enabled),
+                _panel_body(tasks_body.rstrip("\n") or "No results", display_config.color_enabled),
                 title="TASKS",
                 expand=True,
                 height=top_panel_height,
@@ -505,18 +531,18 @@ def render_stats_all_layout(
             result.tags,
             args,
             _TagsDisplayConfig(
-                exclude_set=exclude_set,
-                date_from=date_from,
-                date_until=date_until,
+                exclude_set=display_config.exclude_set,
+                date_from=display_config.date_from,
+                date_until=display_config.date_until,
                 global_timerange=result.timerange,
                 plot_width=panel_content_width,
-                color_enabled=color_enabled,
+                color_enabled=display_config.color_enabled,
             ),
         )
         tags_panel_height = _line_count(tags_body) + 2
         tags_panel = Panel(
-            _panel_body(tags_body.rstrip("\n") or "No results", color_enabled),
-            title="TAGS",
+            _panel_body(tags_body.rstrip("\n") or "No results", display_config.color_enabled),
+            title=CATEGORY_NAMES[args.use].upper(),
             expand=True,
             height=tags_panel_height,
         )
@@ -524,20 +550,20 @@ def render_stats_all_layout(
     if args.max_groups != 0:
         groups_body = _format_groups_body(
             result.tag_groups,
-            exclude_set,
+            display_config.exclude_set,
             args.min_group_size,
             args.max_groups,
             _GroupsDisplayConfig(
                 plot_width=panel_content_width,
-                date_from=date_from,
-                date_until=date_until,
+                date_from=display_config.date_from,
+                date_until=display_config.date_until,
                 global_timerange=result.timerange,
-                color_enabled=color_enabled,
+                color_enabled=display_config.color_enabled,
             ),
         )
         groups_panel_height = _line_count(groups_body) + 2
         groups_panel = Panel(
-            _panel_body(groups_body.rstrip("\n") or "No results", color_enabled),
+            _panel_body(groups_body.rstrip("\n") or "No results", display_config.color_enabled),
             title="GROUPS",
             expand=True,
             height=groups_panel_height,
@@ -631,13 +657,17 @@ def run_stats(args: StatsAllArgs) -> None:
                 result,
                 nodes,
                 args,
-                (exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled),
+                _StatsAllDisplayConfig(
+                    exclude_set=exclude_set,
+                    date_from=date_from,
+                    date_until=date_until,
+                    done_keys=done_keys,
+                    todo_keys=todo_keys,
+                    color_enabled=color_enabled,
+                ),
             )
 
-    if not nodes:
-        console.print("No results", markup=False)
-        return
-    if layout is None:
+    if not nodes or layout is None:
         console.print("No results", markup=False)
         return
 

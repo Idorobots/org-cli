@@ -78,30 +78,33 @@ class GroupsArgs:
     max_groups: int
 
 
+@dataclass(frozen=True)
+class GroupListDisplayConfig:
+    """Configuration for rendering group blocks."""
+
+    max_results: int
+    plot_width: int
+    date_from: datetime | None
+    date_until: datetime | None
+    global_timerange: TimeRange
+    exclude_set: set[str]
+    color_enabled: bool
+
+
 def format_group_list(
     groups: list[Group],
-    config: tuple[int, int, datetime | None, datetime | None, TimeRange, set[str], bool],
+    config: GroupListDisplayConfig,
     indent: str = "",
 ) -> str:
     """Return formatted output for group stats without a section header."""
-    (
-        max_results,
-        plot_width,
-        date_from,
-        date_until,
-        global_timerange,
-        exclude_set,
-        color_enabled,
-    ) = config
-
-    exclude_lower = {value.lower() for value in exclude_set}
+    exclude_lower = {value.lower() for value in config.exclude_set}
     filtered_groups = []
     for group in groups:
         display_tags = [tag for tag in group.tags if tag.lower() not in exclude_lower]
         if display_tags:
             filtered_groups.append((display_tags, group))
 
-    filtered_groups = filtered_groups[:max_results]
+    filtered_groups = filtered_groups[: config.max_results]
 
     if not filtered_groups:
         return lines_to_text(apply_indent(["No results"], indent))
@@ -115,13 +118,13 @@ def format_group_list(
                 group_tags,
                 group,
                 GroupBlockConfig(
-                    date_from=date_from,
-                    date_until=date_until,
-                    global_timerange=global_timerange,
+                    date_from=config.date_from,
+                    date_until=config.date_until,
+                    global_timerange=config.global_timerange,
                     timeline=TimelineFormatConfig(
-                        color_enabled=color_enabled,
+                        color_enabled=config.color_enabled,
                         indent="",
-                        plot_width=plot_width,
+                        plot_width=config.plot_width,
                     ),
                     name_indent="",
                     stats_indent="  ",
@@ -170,14 +173,14 @@ def run_stats_groups(args: GroupsArgs) -> None:
 
             output = format_group_list(
                 groups,
-                (
-                    args.max_results,
-                    console.width,
-                    date_from,
-                    date_until,
-                    global_timerange,
-                    exclude_set,
-                    color_enabled,
+                GroupListDisplayConfig(
+                    max_results=args.max_results,
+                    plot_width=console.width,
+                    date_from=date_from,
+                    date_until=date_until,
+                    global_timerange=global_timerange,
+                    exclude_set=exclude_set,
+                    color_enabled=color_enabled,
                 ),
             )
 

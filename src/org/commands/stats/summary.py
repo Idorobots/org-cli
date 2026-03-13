@@ -68,6 +68,17 @@ class SummaryArgs:
     category_property: str
 
 
+@dataclass(frozen=True)
+class SummaryDisplayConfig:
+    """Configuration for rendering the summary section."""
+
+    date_from: datetime | None
+    date_until: datetime | None
+    done_keys: list[str]
+    todo_keys: list[str]
+    color_enabled: bool
+
+
 def _validate_summary_arguments(args: SummaryArgs) -> None:
     """Validate summary-specific arguments."""
     if args.max_results < 0:
@@ -88,12 +99,16 @@ def _build_task_state_order(
 
 def format_tasks_summary(
     result: AnalysisResult,
-    display_config: tuple[datetime | None, datetime | None, list[str], list[str], bool],
+    display_config: SummaryDisplayConfig,
     plot_width: int,
     indent: str = "",
 ) -> str:
     """Return formatted global task statistics without tag/group sections."""
-    date_from, date_until, done_keys, todo_keys, color_enabled = display_config
+    date_from = display_config.date_from
+    date_until = display_config.date_until
+    done_keys = display_config.done_keys
+    todo_keys = display_config.todo_keys
+    color_enabled = display_config.color_enabled
 
     lines: list[str] = []
     if result.timerange.earliest and result.timerange.latest and result.timerange.timeline:
@@ -236,7 +251,13 @@ def run_stats_summary(args: SummaryArgs) -> None:
 
             output = format_tasks_summary(
                 result,
-                (date_from, date_until, done_keys, todo_keys, color_enabled),
+                SummaryDisplayConfig(
+                    date_from=date_from,
+                    date_until=date_until,
+                    done_keys=done_keys,
+                    todo_keys=todo_keys,
+                    color_enabled=color_enabled,
+                ),
                 console.width,
             )
 
