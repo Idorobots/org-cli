@@ -66,6 +66,44 @@ class HistogramRenderConfig:
     style: RenderConfig = field(default_factory=RenderConfig)
 
 
+def _resolve_render_config(
+    config: HistogramRenderConfig | int,
+    category_order: list[str] | None,
+    style: RenderConfig | None,
+) -> tuple[HistogramRenderConfig, int | None]:
+    """Resolve legacy and current render configuration arguments."""
+    if isinstance(config, HistogramRenderConfig):
+        return config, None
+
+    return (
+        HistogramRenderConfig(
+            plot_width=config,
+            category_order=category_order,
+            style=style or RenderConfig(),
+        ),
+        config,
+    )
+
+
+def _resolve_categories(histogram: Histogram, category_order: list[str] | None) -> list[str]:
+    """Resolve final category sequence for rendering."""
+    occurring_categories = set(histogram.values.keys())
+    if category_order is None:
+        return sorted(occurring_categories)
+
+    seen: set[str] = set()
+    ordered_categories = []
+    for category in category_order:
+        if category not in seen:
+            seen.add(category)
+            ordered_categories.append(category)
+
+    remaining_categories = sorted(
+        category for category in occurring_categories if category not in seen
+    )
+    return ordered_categories + remaining_categories
+
+
 def render_histogram(
     histogram: Histogram,
     config: HistogramRenderConfig | int,
@@ -83,26 +121,12 @@ def render_histogram(
     Returns:
         List of formatted strings, one per category
     """
-    render_config_input: HistogramRenderConfig
-    legacy_total_blocks: int | None = None
-    if isinstance(config, HistogramRenderConfig):
-        render_config_input = config
-    else:
-        legacy_total_blocks = config
-        render_config_input = HistogramRenderConfig(
-            plot_width=config,
-            category_order=category_order,
-            style=style or RenderConfig(),
-        )
+    render_config_input, legacy_total_blocks = _resolve_render_config(config, category_order, style)
 
     render_config = render_config_input.style
 
     total_sum = sum(histogram.values.values())
-    categories = (
-        render_config_input.category_order
-        if render_config_input.category_order is not None
-        else sorted(histogram.values.keys())
-    )
+    categories = _resolve_categories(histogram, render_config_input.category_order)
 
     lines = []
     for category in categories:

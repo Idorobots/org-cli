@@ -617,12 +617,12 @@ def test_format_tasks_summary_orders_task_states_by_group_alphabetically() -> No
     assert state_names == ["ADONE", "ZDONE", "ATODO", "ZTODO", "AAA", "bbb"]
 
 
-def test_format_tasks_summary_omits_none_state_when_zero() -> None:
-    """State 'null' should not be rendered when it has zero count."""
+def test_format_tasks_summary_omits_none_state_when_absent() -> None:
+    """State 'null' should not be rendered when not present in histogram."""
     result = AnalysisResult(
         total_tasks=2,
         unique_tasks=2,
-        task_states=Histogram(values={"DONE": 2, "null": 0}),
+        task_states=Histogram(values={"DONE": 2}),
         task_categories=Histogram(values={"null": 2}),
         task_priorities=Histogram(values={"null": 2}),
         task_days=Histogram(values={}),

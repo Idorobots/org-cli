@@ -197,7 +197,6 @@ def format_tasks_summary(
         "Friday",
         "Saturday",
         "Sunday",
-        "unknown",
     ]
     lines.extend(
         format_histogram_section(
