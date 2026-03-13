@@ -114,7 +114,6 @@ def format_tasks_summary(
     if result.timerange.earliest and result.timerange.latest and result.timerange.timeline:
         earliest_date = date_from.date() if date_from else result.timerange.earliest.date()
         latest_date = date_until.date() if date_until else result.timerange.latest.date()
-        lines.append("")
         lines.extend(
             format_timeline_lines(
                 result.timerange.timeline,

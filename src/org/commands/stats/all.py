@@ -144,6 +144,14 @@ class _StatsAllDisplayConfig:
     color_enabled: bool
 
 
+@dataclass(frozen=True)
+class _StatsAllPanelSection:
+    """Panel section content for stats all layouts."""
+
+    title: str
+    body: str
+
+
 def format_tags_section(
     category_name: str,
     tags: dict[str, Tag],
@@ -282,6 +290,105 @@ def _panel_body(text: str, color_enabled: bool) -> Text:
     return panel_text
 
 
+def _normalize_panel_body(text: str) -> str:
+    """Normalize section body text for panel rendering."""
+    return text.rstrip("\n") or "No results"
+
+
+def _section_height(section: _StatsAllPanelSection) -> int:
+    """Return panel height for a section body."""
+    return _line_count(section.body) + 2
+
+
+def _build_panel(
+    section: _StatsAllPanelSection, color_enabled: bool, height: int | None = None
+) -> Panel:
+    """Create a Panel for a section using shared config."""
+    panel_height = _section_height(section) if height is None else height
+    return Panel(
+        _panel_body(section.body, color_enabled),
+        title=section.title,
+        expand=True,
+        height=panel_height,
+    )
+
+
+def _build_stats_all_panel_sections(
+    result: AnalysisResult,
+    nodes: list[orgparse.node.OrgNode],
+    args: StatsAllArgs,
+    display_config: _StatsAllDisplayConfig,
+    panel_content_width: int,
+) -> list[_StatsAllPanelSection]:
+    """Build panel sections shared by both stats all layout modes."""
+    summary_body = format_tasks_summary(
+        result,
+        SummaryDisplayConfig(
+            date_from=display_config.date_from,
+            date_until=display_config.date_until,
+            done_keys=display_config.done_keys,
+            todo_keys=display_config.todo_keys,
+            color_enabled=display_config.color_enabled,
+        ),
+        panel_content_width,
+    )
+    tasks_body = _format_tasks_body(
+        nodes,
+        args.max_results,
+        _TaskDisplayConfig(
+            color_enabled=display_config.color_enabled,
+            done_keys=display_config.done_keys,
+            todo_keys=display_config.todo_keys,
+            line_width=panel_content_width,
+        ),
+    )
+
+    sections = [
+        _StatsAllPanelSection(title="SUMMARY", body=_normalize_panel_body(summary_body)),
+        _StatsAllPanelSection(title="TASKS", body=_normalize_panel_body(tasks_body)),
+    ]
+
+    if args.max_tags != 0:
+        tags_body = _format_tags_body(
+            result.tags,
+            args,
+            _TagsDisplayConfig(
+                exclude_set=display_config.exclude_set,
+                date_from=display_config.date_from,
+                date_until=display_config.date_until,
+                global_timerange=result.timerange,
+                plot_width=panel_content_width,
+                color_enabled=display_config.color_enabled,
+            ),
+        )
+        sections.append(
+            _StatsAllPanelSection(
+                title=CATEGORY_NAMES[args.use].upper(),
+                body=_normalize_panel_body(tags_body),
+            )
+        )
+
+    if args.max_groups != 0:
+        groups_body = _format_groups_body(
+            result.tag_groups,
+            display_config.exclude_set,
+            args.min_group_size,
+            args.max_groups,
+            _GroupsDisplayConfig(
+                plot_width=panel_content_width,
+                date_from=display_config.date_from,
+                date_until=display_config.date_until,
+                global_timerange=result.timerange,
+                color_enabled=display_config.color_enabled,
+            ),
+        )
+        sections.append(
+            _StatsAllPanelSection(title="GROUPS", body=_normalize_panel_body(groups_body))
+        )
+
+    return sections
+
+
 def _format_tasks_body(
     nodes: list[orgparse.node.OrgNode],
     max_results: int,
@@ -383,75 +490,18 @@ def _render_single_column_stats_all_layout(
 ) -> tuple[Layout, int]:
     """Build a single-column stats all layout with vertically stacked sections."""
     panel_content_width = _resolve_single_column_panel_content_width(console_width)
-    task_display_config = _TaskDisplayConfig(
-        color_enabled=display_config.color_enabled,
-        done_keys=display_config.done_keys,
-        todo_keys=display_config.todo_keys,
-        line_width=panel_content_width,
+    sections = _build_stats_all_panel_sections(
+        result, nodes, args, display_config, panel_content_width
     )
 
-    summary_body = format_tasks_summary(
-        result,
-        SummaryDisplayConfig(
-            date_from=display_config.date_from,
-            date_until=display_config.date_until,
-            done_keys=display_config.done_keys,
-            todo_keys=display_config.todo_keys,
-            color_enabled=display_config.color_enabled,
-        ),
-        panel_content_width,
-    ).lstrip("\n")
-    tasks_body = _format_tasks_body(nodes, args.max_results, task_display_config)
-
-    sections: list[tuple[str, str]] = [
-        ("SUMMARY", summary_body.rstrip("\n") or "No results"),
-        ("TASKS", tasks_body.rstrip("\n") or "No results"),
-    ]
-
-    if args.max_tags != 0:
-        tags_body = _format_tags_body(
-            result.tags,
-            args,
-            _TagsDisplayConfig(
-                exclude_set=display_config.exclude_set,
-                date_from=display_config.date_from,
-                date_until=display_config.date_until,
-                global_timerange=result.timerange,
-                plot_width=panel_content_width,
-                color_enabled=display_config.color_enabled,
-            ),
-        )
-        sections.append((CATEGORY_NAMES[args.use].upper(), tags_body.rstrip("\n") or "No results"))
-
-    if args.max_groups != 0:
-        groups_body = _format_groups_body(
-            result.tag_groups,
-            display_config.exclude_set,
-            args.min_group_size,
-            args.max_groups,
-            _GroupsDisplayConfig(
-                plot_width=panel_content_width,
-                date_from=display_config.date_from,
-                date_until=display_config.date_until,
-                global_timerange=result.timerange,
-                color_enabled=display_config.color_enabled,
-            ),
-        )
-        sections.append(("GROUPS", groups_body.rstrip("\n") or "No results"))
-
     root = Layout(name="root")
-    section_heights = [_line_count(body) + 2 for _, body in sections]
+    section_heights = [_section_height(section) for section in sections]
     section_layouts = [
         Layout(
-            Panel(
-                _panel_body(body, display_config.color_enabled),
-                title=title,
-                expand=True,
-                height=height,
-            ),
+            _build_panel(section, display_config.color_enabled, height=height),
             size=height,
         )
-        for (title, body), height in zip(sections, section_heights, strict=True)
+        for section, height in zip(sections, section_heights, strict=True)
     ]
     total_height = sum(section_heights)
     root.size = total_height
@@ -473,113 +523,44 @@ def render_stats_all_layout(
         )
 
     panel_content_width = _resolve_two_column_panel_content_width(console.width)
-    task_display_config = _TaskDisplayConfig(
-        color_enabled=display_config.color_enabled,
-        done_keys=display_config.done_keys,
-        todo_keys=display_config.todo_keys,
-        line_width=panel_content_width,
+    sections = _build_stats_all_panel_sections(
+        result, nodes, args, display_config, panel_content_width
     )
+    summary_section = sections[0]
+    tasks_section = sections[1]
 
-    summary_body = format_tasks_summary(
-        result,
-        SummaryDisplayConfig(
-            date_from=display_config.date_from,
-            date_until=display_config.date_until,
-            done_keys=display_config.done_keys,
-            todo_keys=display_config.todo_keys,
-            color_enabled=display_config.color_enabled,
-        ),
-        panel_content_width,
-    ).lstrip("\n")
-
-    tasks_body = _format_tasks_body(nodes, args.max_results, task_display_config)
-
-    top_panel_height = max(_line_count(summary_body), _line_count(tasks_body)) + 2
+    top_panel_height = max(_section_height(summary_section), _section_height(tasks_section))
 
     top_layout = Layout(name="top")
     top_layout.size = top_panel_height
     top_layout.split_row(
         Layout(
-            Panel(
-                _panel_body(
-                    summary_body.rstrip("\n") or "No results", display_config.color_enabled
-                ),
-                title="SUMMARY",
-                expand=True,
-                height=top_panel_height,
-            ),
+            _build_panel(summary_section, display_config.color_enabled, height=top_panel_height),
             ratio=1,
         ),
         Layout(
-            Panel(
-                _panel_body(tasks_body.rstrip("\n") or "No results", display_config.color_enabled),
-                title="TASKS",
-                expand=True,
-                height=top_panel_height,
-            ),
+            _build_panel(tasks_section, display_config.color_enabled, height=top_panel_height),
             ratio=1,
         ),
     )
 
-    tags_panel: Panel | None = None
-    groups_panel: Panel | None = None
-    tags_panel_height = 0
-    groups_panel_height = 0
-
-    if args.max_tags != 0:
-        tags_body = _format_tags_body(
-            result.tags,
-            args,
-            _TagsDisplayConfig(
-                exclude_set=display_config.exclude_set,
-                date_from=display_config.date_from,
-                date_until=display_config.date_until,
-                global_timerange=result.timerange,
-                plot_width=panel_content_width,
-                color_enabled=display_config.color_enabled,
-            ),
-        )
-        tags_panel_height = _line_count(tags_body) + 2
-        tags_panel = Panel(
-            _panel_body(tags_body.rstrip("\n") or "No results", display_config.color_enabled),
-            title=CATEGORY_NAMES[args.use].upper(),
-            expand=True,
-            height=tags_panel_height,
-        )
-
-    if args.max_groups != 0:
-        groups_body = _format_groups_body(
-            result.tag_groups,
-            display_config.exclude_set,
-            args.min_group_size,
-            args.max_groups,
-            _GroupsDisplayConfig(
-                plot_width=panel_content_width,
-                date_from=display_config.date_from,
-                date_until=display_config.date_until,
-                global_timerange=result.timerange,
-                color_enabled=display_config.color_enabled,
-            ),
-        )
-        groups_panel_height = _line_count(groups_body) + 2
-        groups_panel = Panel(
-            _panel_body(groups_body.rstrip("\n") or "No results", display_config.color_enabled),
-            title="GROUPS",
-            expand=True,
-            height=groups_panel_height,
-        )
-
-    if tags_panel is None and groups_panel is None:
+    bottom_sections = sections[2:]
+    if not bottom_sections:
         root = Layout(name="root")
         root.size = top_panel_height
         root.update(top_layout)
         return root, top_panel_height
 
+    bottom_left = _build_panel(bottom_sections[0], display_config.color_enabled)
+    bottom_right: Panel | str = ""
+    if len(bottom_sections) > 1:
+        bottom_right = _build_panel(bottom_sections[1], display_config.color_enabled)
+
     bottom_layout = Layout(name="bottom")
-    bottom_layout.size = max(tags_panel_height, groups_panel_height)
+    bottom_layout.size = max(_section_height(section) for section in bottom_sections)
     bottom_layout.split_row(
-        Layout(tags_panel or "", ratio=1),
-        Layout(groups_panel or "", ratio=1),
+        Layout(bottom_left, ratio=1),
+        Layout(bottom_right, ratio=1),
     )
 
     total_height = top_panel_height + bottom_layout.size
