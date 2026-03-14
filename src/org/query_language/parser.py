@@ -132,7 +132,7 @@ def _build_value_parser(
     """Build parsers for literal and variable values."""
     true_literal = _lexeme(_keyword("true")).result(BoolLiteral(True))
     false_literal = _lexeme(_keyword("false")).result(BoolLiteral(False))
-    none_literal = _lexeme(_keyword("none")).result(NoneLiteral())
+    null_literal = _lexeme(_keyword("null")).result(NoneLiteral())
     variable = (_symbol("$") >> identifier).map(Variable)
     number_literal = number_token.map(
         lambda v: NumberLiteral(float(v)) if "." in v else NumberLiteral(int(v))
@@ -141,7 +141,7 @@ def _build_value_parser(
     return (
         true_literal,
         false_literal,
-        none_literal,
+        null_literal,
         variable,
         number_literal,
         string_literal,
@@ -413,7 +413,7 @@ def _make_parser() -> Parser:
     (
         true_literal,
         false_literal,
-        none_literal,
+        null_literal,
         variable,
         number_literal,
         string_literal,
@@ -432,7 +432,7 @@ def _make_parser() -> Parser:
         | if_else
         | true_literal
         | false_literal
-        | none_literal
+        | null_literal
         | function_call
         | variable
         | number_literal

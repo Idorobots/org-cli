@@ -391,7 +391,7 @@ def _coerce_custom_arg_value(value: str | None) -> object:
 
     lowered = value.lower()
     value_map: dict[str, object] = {
-        "none": None,
+        "null": None,
         "true": True,
         "false": False,
     }
@@ -430,7 +430,7 @@ def _custom_stage(query: str, arg_value: object) -> str:
 def _query_literal(value: object) -> str:
     """Render a Python value as a query-language literal."""
     if value is None:
-        return "none"
+        return "null"
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int | float):
@@ -881,7 +881,7 @@ def _builtin_order_stages(value: str) -> list[str]:
         "timestamp-asc": [
             f"sort_by({timestamp_key_expr})",
             "reverse",
-            f"sort_by(({timestamp_key_expr}) != none)",
+            f"sort_by(({timestamp_key_expr}) != null)",
         ],
         "timestamp-desc": ["sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"],
     }
@@ -1001,16 +1001,22 @@ def resolve_input_paths(inputs: list[str] | None) -> list[str]:
     """
     resolved_files: list[str] = []
     searched_dirs: list[Path] = []
+    missing_paths: list[str] = []
 
     targets = inputs or ["."]
     for raw_path in targets:
         path = Path(raw_path)
         if not path.exists():
-            raise typer.BadParameter(f"Path '{raw_path}' not found")
+            missing_paths.append(raw_path)
+            continue
 
         if path.is_dir():
             searched_dirs.append(path)
-            resolved_files.extend(str(file_path) for file_path in sorted(path.glob("*.org")))
+            for file_path in sorted(path.glob("*.org")):
+                if file_path.exists():
+                    resolved_files.append(str(file_path))
+                else:
+                    missing_paths.append(str(file_path))
             continue
 
         if path.is_file():
@@ -1019,7 +1025,13 @@ def resolve_input_paths(inputs: list[str] | None) -> list[str]:
 
         raise typer.BadParameter(f"Path '{raw_path}' is not a file or directory")
 
+    for raw_path in missing_paths:
+        logger.info("Warning: file '%s' not found", raw_path)
+
     if not resolved_files:
+        if missing_paths:
+            missing_list = ", ".join(missing_paths)
+            raise typer.BadParameter(f"All input paths are missing: {missing_list}")
         if searched_dirs:
             searched_list = ", ".join(str(path) for path in searched_dirs)
             raise typer.BadParameter(f"No .org files found in: {searched_list}")
@@ -1052,6 +1064,7 @@ class DataLoadArgs(FilterArgs, Protocol):
     files: list[str] | None
     todo_keys: str
     done_keys: str
+    width: int | None
     with_tags_as_category: bool
     category_property: str
 
@@ -1069,6 +1082,7 @@ class RootDataLoadArgs(Protocol):
     files: list[str] | None
     todo_keys: str
     done_keys: str
+    width: int | None
 
 
 def _resolve_and_load_roots(

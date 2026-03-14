@@ -78,8 +78,21 @@ def test_render_histogram_normal_distribution() -> None:
 
 
 def test_render_histogram_zero_values_shown() -> None:
-    """Test categories in order with 0 counts."""
+    """Test explicit categories render even when keys are missing."""
     histogram = Histogram(values={"DONE": 30})
+    category_order = ["DONE", "TODO", "CANCELLED"]
+
+    lines = render_histogram(histogram, 40, category_order)
+
+    assert len(lines) == 3
+    assert lines[0] == "DONE     ┊" + "█" * 40 + " 30"
+    assert lines[1] == "TODO     ┊ 0"
+    assert lines[2] == "CANCELLED┊ 0"
+
+
+def test_render_histogram_zero_value_key_included() -> None:
+    """Test zero-value key renders when present in histogram."""
+    histogram = Histogram(values={"DONE": 30, "TODO": 0})
     category_order = ["DONE", "TODO", "CANCELLED"]
 
     lines = render_histogram(histogram, 40, category_order)
@@ -218,7 +231,7 @@ def test_render_histogram_proportional_to_sum() -> None:
 
 
 def test_render_histogram_preserves_category_order_with_missing() -> None:
-    """Test that missing categories from order are shown as 0."""
+    """Test that explicit categories render before histogram extras."""
     histogram = Histogram(values={"B": 50})
     category_order = ["A", "B", "C"]
 
@@ -228,6 +241,15 @@ def test_render_histogram_preserves_category_order_with_missing() -> None:
     assert lines[0] == "A        ┊ 0"
     assert lines[1] == "B        ┊" + "█" * 40 + " 50"
     assert lines[2] == "C        ┊ 0"
+
+
+def test_render_histogram_ordered_categories_then_remaining_alphabetical() -> None:
+    """Render order should prefer provided categories, then append remaining sorted."""
+    histogram = Histogram(values={"C": 5, "A": 3, "B": 4, "Z": 1})
+
+    lines = render_histogram(histogram, 40, ["B", "missing", "A"])
+
+    assert [line[:9].strip() for line in lines] == ["B", "missing", "A", "C", "Z"]
 
 
 def test_render_histogram_empty_with_no_order() -> None:

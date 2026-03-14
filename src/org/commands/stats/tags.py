@@ -37,7 +37,7 @@ from org.tui import (
     processing_status,
     setup_output,
 )
-from org.validation import parse_show_values, validate_stats_arguments
+from org.validation import validate_stats_arguments
 
 
 @dataclass
@@ -65,44 +65,47 @@ class TagsArgs:
     filter_completed: bool
     filter_not_completed: bool
     color_flag: bool | None
-    max_results: int
+    width: int | None
+    max_results: int | None
     max_tags: int
     use: str
-    show: str | None
+    tags: list[str] | None
     with_tags_as_category: bool
     category_property: str
     max_relations: int
     min_group_size: int
     max_groups: int
-    buckets: int
+
+
+@dataclass(frozen=True)
+class TagsDisplayConfig:
+    """Configuration for rendering tag blocks."""
+
+    max_results: int
+    max_relations: int
+    plot_width: int
+    date_from: datetime | None
+    date_until: datetime | None
+    global_timerange: TimeRange
+    exclude_set: set[str]
+    color_enabled: bool
 
 
 def format_tags(
     tags: dict[str, Tag],
-    show: list[str] | None,
-    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange, set[str], bool],
+    selected_tags: list[str] | None,
+    config: TagsDisplayConfig,
     indent: str = "",
 ) -> str:
     """Return formatted output for selected tags without a section header."""
-    (
-        max_results,
-        max_relations,
-        num_buckets,
-        date_from,
-        date_until,
-        global_timerange,
-        exclude_set,
-        color_enabled,
-    ) = config
+    cleaned = clean(config.exclude_set, tags)
 
-    cleaned = clean(exclude_set, tags)
-
-    if show is not None:
-        selected_items = [(name, cleaned[name]) for name in show if name in cleaned]
-        selected_items = selected_items[:max_results]
+    if selected_tags is not None:
+        selected_items = [(name, cleaned[name]) for name in selected_tags if name in cleaned]
+        selected_items = selected_items[: config.max_results]
     else:
         selected_items = sorted(cleaned.items(), key=lambda item: -item[1].total_tasks)[
-            0:max_results
+            0 : config.max_results
         ]
 
     if not selected_items:
@@ -117,15 +120,15 @@ def format_tags(
                 name,
                 tag,
                 TagBlockConfig(
-                    max_relations=max_relations,
-                    exclude_set=exclude_set,
-                    date_from=date_from,
-                    date_until=date_until,
-                    global_timerange=global_timerange,
+                    max_relations=config.max_relations,
+                    exclude_set=config.exclude_set,
+                    date_from=config.date_from,
+                    date_until=config.date_until,
+                    global_timerange=config.global_timerange,
                     timeline=TimelineFormatConfig(
-                        num_buckets=num_buckets,
-                        color_enabled=color_enabled,
+                        color_enabled=config.color_enabled,
                         indent="",
+                        plot_width=config.plot_width,
                     ),
                     name_indent="",
                     stats_indent="  ",
@@ -136,27 +139,31 @@ def format_tags(
     return lines_to_text(apply_indent(lines, indent))
 
 
-def _resolve_show_values(args: TagsArgs, mapping: dict[str, str]) -> list[str] | None:
-    if args.show is None:
+def _resolve_tag_values(args: TagsArgs, mapping: dict[str, str]) -> list[str] | None:
+    if args.tags is None:
         return None
 
-    raw_values = parse_show_values(args.show)
-    if args.use == "tags":
-        return [mapping.get(value.strip(), value.strip()) for value in raw_values]
+    raw_values = [value.strip() for value in args.tags if value.strip()]
+    if not raw_values:
+        return None
 
-    show_values: list[str] = []
+    if args.use == "tags":
+        return [mapping.get(value, value) for value in raw_values]
+
+    tag_values: list[str] = []
     for value in raw_values:
         normalized_value = normalize_show_value(value, mapping)
         if normalized_value:
-            show_values.append(normalized_value)
-    return show_values
+            tag_values.append(normalized_value)
+    return tag_values
 
 
 def run_stats_tags(args: TagsArgs) -> None:
     """Run the stats tags command."""
     color_enabled = setup_output(args)
-    console = build_console(color_enabled)
+    console = build_console(color_enabled, args.width)
     validate_stats_arguments(args)
+    max_results = args.max_results if args.max_results is not None else 10
 
     with processing_status(console, color_enabled):
         mapping = resolve_mapping(args)
@@ -175,20 +182,20 @@ def run_stats_tags(args: TagsArgs) -> None:
             global_timerange = compute_global_timerange(nodes)
 
             date_from, date_until = resolve_date_filters(args)
-            show_values = _resolve_show_values(args, mapping)
+            tag_values = _resolve_tag_values(args, mapping)
 
             output = format_tags(
                 tags,
-                show_values,
-                (
-                    args.max_results,
-                    args.max_relations,
-                    args.buckets,
-                    date_from,
-                    date_until,
-                    global_timerange,
-                    exclude_set,
-                    color_enabled,
+                tag_values,
+                TagsDisplayConfig(
+                    max_results=max_results,
+                    max_relations=args.max_relations,
+                    plot_width=console.width,
+                    date_from=date_from,
+                    date_until=date_until,
+                    global_timerange=global_timerange,
+                    exclude_set=exclude_set,
+                    color_enabled=color_enabled,
                 ),
             )
 
@@ -323,9 +330,16 @@ def register(app: typer.Typer) -> None:
             "--color/--no-color",
             help="Force colored output",
         ),
-        max_results: int = typer.Option(
+        width: int | None = typer.Option(
+            None,
+            "--width",
+            metavar="N",
+            min=50,
+            help="Override auto-derived console width (minimum: 50)",
+        ),
+        max_results: int | None = typer.Option(
             10,
-            "--max-results",
+            "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
@@ -336,11 +350,11 @@ def register(app: typer.Typer) -> None:
             metavar="CATEGORY",
             help="Category to display: tags, heading, or body",
         ),
-        show: str | None = typer.Option(
+        tags: list[str] | None = typer.Option(  # noqa: B008
             None,
-            "--show",
-            metavar="TAGS",
-            help="Comma-separated list of tags to display (default: top results)",
+            "--tag",
+            metavar="TAG",
+            help="Tag to display (can specify multiple)",
         ),
         with_tags_as_category: bool = typer.Option(
             False,
@@ -358,12 +372,6 @@ def register(app: typer.Typer) -> None:
             "--max-relations",
             metavar="N",
             help="Maximum number of relations to display per item (use 0 to omit sections)",
-        ),
-        buckets: int = typer.Option(
-            50,
-            "--buckets",
-            metavar="N",
-            help="Number of time buckets for timeline charts (minimum: 20)",
         ),
     ) -> None:
         """Show tag stats for selected tags or top results."""
@@ -389,16 +397,16 @@ def register(app: typer.Typer) -> None:
             filter_completed=filter_completed,
             filter_not_completed=filter_not_completed,
             color_flag=color_flag,
+            width=width,
             max_results=max_results,
             max_tags=0,
             use=use,
-            show=show,
+            tags=tags,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
             max_relations=max_relations,
             min_group_size=2,
             max_groups=0,
-            buckets=buckets,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "stats tags")

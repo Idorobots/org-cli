@@ -14,7 +14,6 @@ import typer
 
 
 COMMAND_OPTION_NAMES = {
-    "buckets",
     "category_property",
     "color_flag",
     "config",
@@ -50,11 +49,12 @@ COMMAND_OPTION_NAMES = {
     "order_by_timestamp_asc",
     "order_by_timestamp_desc",
     "todo_keys",
+    "tags",
     "use",
     "with_tags_as_category",
-    "show",
     "groups",
     "verbose",
+    "width",
 }
 
 
@@ -67,7 +67,6 @@ CONFIG_CUSTOM_WITH: dict[str, str] = {}
 
 
 DEST_TO_OPTION_NAME: dict[str, str] = {
-    "buckets": "--buckets",
     "category_property": "--category-property",
     "color_flag": "--color/--no-color",
     "config": "--config",
@@ -92,7 +91,7 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "mapping_inline": "--mapping",
     "max_groups": "--max-groups",
     "max_relations": "--max-relations",
-    "max_results": "--max-results",
+    "max_results": "--limit",
     "max_tags": "--max-tags",
     "min_group_size": "--min-group-size",
     "offset": "--offset",
@@ -105,11 +104,12 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "order_by_level": "--order-by-level",
     "order_by_timestamp_asc": "--order-by-timestamp-asc",
     "order_by_timestamp_desc": "--order-by-timestamp-desc",
-    "show": "--show",
+    "tags": "--tag",
     "todo_keys": "--todo-keys",
     "use": "--use",
     "verbose": "--verbose",
     "with_tags_as_category": "--with-tags-as-category",
+    "width": "--width",
 }
 
 
@@ -342,7 +342,7 @@ def validate_str_option(key: str, value: object) -> str | None:
     if not isinstance(value, str):
         return None
     stripped = value.strip()
-    if key in ("--config", "--show", "--out", "--filter-priority") and not stripped:
+    if key in ("--config", "--out", "--filter-priority") and not stripped:
         return None
 
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
@@ -564,12 +564,11 @@ def build_config_defaults(
     defaults.update(color_defaults)
 
     stats_int_options: dict[str, tuple[str, int | None]] = {
-        "--max-results": ("max_results", None),
+        "--limit": ("max_results", None),
         "--max-tags": ("max_tags", 0),
         "--max-relations": ("max_relations", 0),
         "--min-group-size": ("min_group_size", 0),
         "--max-groups": ("max_groups", 0),
-        "--buckets": ("buckets", 20),
     }
 
     global_int_options: dict[str, tuple[str, int | None]] = {
@@ -577,6 +576,7 @@ def build_config_defaults(
         "--filter-repeats-above": ("filter_repeats_above", None),
         "--filter-repeats-below": ("filter_repeats_below", None),
         "--offset": ("offset", 0),
+        "--width": ("width", 50),
     }
 
     stats_bool_options: dict[str, str] = {
@@ -599,7 +599,6 @@ def build_config_defaults(
     stats_str_options: dict[str, str] = {
         "--category-property": "category_property",
         "--use": "use",
-        "--show": "show",
     }
 
     global_str_options: dict[str, str] = {
@@ -632,7 +631,7 @@ def build_config_defaults(
         int_options=stats_int_options,
         bool_options=stats_bool_options,
         str_options=stats_str_options,
-        list_options={"--group": "groups"},
+        list_options={"--group": "groups", "--tag": "tags"},
     )
 
     context = ConfigContext(
@@ -713,9 +712,7 @@ def load_cli_config(argv: list[str]) -> LoadedCliConfig:
 
 def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[str, object]]]:
     """Build Click default_map for Typer commands."""
-    summary_defaults = {
-        key: value for key, value in defaults.items() if key not in {"show", "groups"}
-    }
+    all_defaults = {key: value for key, value in defaults.items() if key not in {"tags", "groups"}}
 
     task_command_disallowed = {
         "max_tags",
@@ -723,7 +720,7 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
         "max_groups",
         "min_group_size",
         "use",
-        "show",
+        "tags",
         "groups",
     }
     stats_tasks_defaults = {
@@ -741,13 +738,13 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     groups_defaults = {
         key: value
         for key, value in defaults.items()
-        if key not in {"max_tags", "max_groups", "min_group_size", "show"}
+        if key not in {"max_tags", "max_groups", "min_group_size", "tags"}
     }
 
     return {
         "stats": {
-            "summary": summary_defaults,
-            "tasks": stats_tasks_defaults,
+            "all": all_defaults,
+            "summary": stats_tasks_defaults,
             "tags": tags_defaults,
             "groups": groups_defaults,
         },

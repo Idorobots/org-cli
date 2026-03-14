@@ -42,10 +42,10 @@ def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(config, "build_default_map", lambda _defaults: {"stats": _defaults})
     monkeypatch.setattr(typer.main, "get_command", fake_get_command)
 
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary", "--no-color", "file.org"])
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "all", "--no-color", "file.org"])
     cli.main()
 
-    assert recorded["args"] == ["stats", "summary", "--no-color", "file.org"]
+    assert recorded["args"] == ["stats", "all", "--no-color", "file.org"]
     assert recorded["prog_name"] == "org"
     assert recorded["standalone_mode"] is True
     assert recorded["default_map"] == {"stats": {"max_results": 3}}
@@ -81,7 +81,7 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
     )
     monkeypatch.setattr(config, "build_default_map", lambda _defaults: {})
     monkeypatch.setattr(typer.main, "get_command", fake_get_command)
-    monkeypatch.setattr(sys, "argv", ["org", "stats", "summary"])
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "all"])
 
     try:
         cli.main()

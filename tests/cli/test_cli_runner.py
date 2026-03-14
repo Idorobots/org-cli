@@ -15,22 +15,22 @@ FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 
 
 def test_cli_runner_summary() -> None:
-    """CliRunner should execute stats summary."""
+    """CliRunner should execute stats all."""
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
 
-    result = runner.invoke(app, ["stats", "summary", "--no-color", fixture_path])
+    result = runner.invoke(app, ["stats", "all", "--no-color", fixture_path])
 
     assert result.exit_code == 0
     assert "Total tasks:" in result.stdout
 
 
-def test_cli_runner_tags_show() -> None:
-    """CliRunner should filter tags with --show."""
+def test_cli_runner_tags_tag() -> None:
+    """CliRunner should filter tags with --tag."""
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
 
-    result = runner.invoke(app, ["stats", "tags", "--no-color", "--show", "Test", fixture_path])
+    result = runner.invoke(app, ["stats", "tags", "--no-color", "--tag", "Test", fixture_path])
 
     assert result.exit_code == 0
     assert "Test" in result.stdout
@@ -66,7 +66,7 @@ def test_cli_runner_tasks_list_custom_filter_without_arg() -> None:
 
     try:
         config.CONFIG_CUSTOM_FILTERS.clear()
-        config.CONFIG_CUSTOM_FILTERS.update({"has-todo": "select(.todo != none)"})
+        config.CONFIG_CUSTOM_FILTERS.update({"has-todo": "select(.todo != null)"})
 
         result = runner.invoke(
             app,
@@ -74,7 +74,8 @@ def test_cli_runner_tasks_list_custom_filter_without_arg() -> None:
         )
 
         assert result.exit_code == 0
-        assert "Refactor codebase" in result.stdout
+        assert "* TODO Refactor" in result.stdout
+        assert ":Maintenance:" in result.stdout
     finally:
         config.CONFIG_CUSTOM_FILTERS.clear()
         config.CONFIG_CUSTOM_FILTERS.update(original_filters)
@@ -96,7 +97,8 @@ def test_cli_runner_tasks_list_custom_filter_with_arg() -> None:
         )
 
         assert result.exit_code == 0
-        assert "Refactor codebase" in result.stdout
+        assert "* TODO Refactor" in result.stdout
+        assert ":Maintenance:" in result.stdout
     finally:
         config.CONFIG_CUSTOM_FILTERS.clear()
         config.CONFIG_CUSTOM_FILTERS.update(original_filters)
@@ -123,3 +125,38 @@ def test_cli_runner_tasks_list_custom_filter_required_arg_error() -> None:
     finally:
         config.CONFIG_CUSTOM_FILTERS.clear()
         config.CONFIG_CUSTOM_FILTERS.update(original_filters)
+
+
+def test_cli_runner_allows_missing_files_when_some_exist() -> None:
+    """Missing file paths should warn while command still succeeds."""
+    runner = CliRunner()
+    fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
+    missing_path = str((FIXTURES_DIR / "missing.org").resolve())
+
+    result = runner.invoke(app, ["query", ".[] | .children | length", missing_path, fixture_path])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "3"
+
+
+def test_cli_runner_accepts_width_override() -> None:
+    """Commands should accept --width values at or above 50."""
+    runner = CliRunner()
+    fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
+
+    result = runner.invoke(app, ["query", "1", "--width", "50", fixture_path])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "1"
+
+
+def test_cli_runner_rejects_width_below_minimum() -> None:
+    """Commands should reject --width values below 50."""
+    runner = CliRunner()
+    fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
+
+    result = runner.invoke(app, ["query", "1", "--width", "49", fixture_path])
+
+    assert result.exit_code != 0
+    combined_output = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout + result.stderr)
+    assert "Invalid value for '--width'" in combined_output

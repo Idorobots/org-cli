@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -13,13 +14,7 @@ from org.cli_common import (
     resolve_group_values,
     resolve_input_paths,
 )
-from org.validation import parse_group_values, parse_show_values
-
-
-def test_parse_show_values_rejects_empty() -> None:
-    """Empty show values should exit with error."""
-    with pytest.raises(typer.BadParameter, match="--show cannot be empty"):
-        parse_show_values("  , ")
+from org.validation import parse_group_values
 
 
 def test_normalize_show_value_applies_mapping() -> None:
@@ -61,7 +56,42 @@ def test_resolve_input_paths_from_directory(tmp_path: Path) -> None:
 
 
 def test_resolve_input_paths_missing(tmp_path: Path) -> None:
-    """Missing paths should error."""
+    """All-missing paths should error."""
     missing = tmp_path / "missing"
-    with pytest.raises(typer.BadParameter, match="not found"):
+    with pytest.raises(typer.BadParameter, match="All input paths are missing"):
         resolve_input_paths([str(missing)])
+
+
+def test_resolve_input_paths_warns_and_keeps_existing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Missing paths should warn while existing files are still processed."""
+    existing = tmp_path / "one.org"
+    missing = tmp_path / "missing.org"
+    existing.write_text("* DONE Test", encoding="utf-8")
+
+    with caplog.at_level(logging.INFO, logger="org"):
+        resolved = resolve_input_paths([str(missing), str(existing)])
+
+    assert resolved == [str(existing)]
+    assert f"Warning: file '{missing}' not found" in caplog.text
+
+
+def test_resolve_input_paths_skips_missing_globbed_files_in_verbose(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Missing files discovered from directory glob should be logged and skipped."""
+    existing = tmp_path / "one.org"
+    broken = tmp_path / ".#one.org"
+    missing_target = tmp_path / "missing-target.org"
+    existing.write_text("* DONE Test", encoding="utf-8")
+    try:
+        broken.symlink_to(missing_target)
+    except OSError:
+        pytest.skip("symlinks are not supported on this platform")
+
+    with caplog.at_level(logging.INFO, logger="org"):
+        resolved = resolve_input_paths([str(tmp_path)])
+
+    assert resolved == [str(existing)]
+    assert f"Warning: file '{broken}' not found" in caplog.text

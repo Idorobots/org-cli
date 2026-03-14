@@ -3,39 +3,38 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-import orgparse
 import typer
 
 from org import config as config_module
-from org.analyze import AnalysisResult, Tag, TimeRange, analyze, clean
-from org.cli_common import (
-    CATEGORY_NAMES,
-    load_and_process_data,
-    resolve_date_filters,
-    resolve_exclude_set,
-    resolve_mapping,
+from org.analyze import (
+    AnalysisResult,
+    compute_avg_tasks_per_day,
+    compute_category_histogram,
+    compute_day_of_week_histogram,
+    compute_global_timerange,
+    compute_max_single_day,
+    compute_priority_histogram,
+    compute_task_state_histogram,
+    compute_task_stats,
 )
-from org.commands.stats.tasks import format_tasks_summary
+from org.cli_common import load_and_process_data, resolve_date_filters
+from org.color import magenta
+from org.histogram import Histogram, RenderConfig
 from org.tui import (
-    TagBlockConfig,
+    HistogramSectionConfig,
     TimelineFormatConfig,
-    TopTasksSectionConfig,
     apply_indent,
     build_console,
-    format_groups_section,
-    format_tag_block,
-    format_top_tasks_section,
+    format_histogram_section,
+    format_timeline_lines,
     lines_to_text,
     print_output,
     processing_status,
-    section_header_lines,
     setup_output,
 )
-from org.validation import validate_stats_arguments
 
 
 @dataclass
@@ -63,166 +62,201 @@ class SummaryArgs:
     filter_completed: bool
     filter_not_completed: bool
     color_flag: bool | None
-    max_results: int
-    max_tags: int
-    use: str
+    width: int | None
+    max_results: int | None
     with_tags_as_category: bool
     category_property: str
-    max_relations: int
-    min_group_size: int
-    max_groups: int
-    buckets: int
 
 
-def format_tags_section(
-    category_name: str,
-    tags: dict[str, Tag],
-    config: tuple[int, int, int, datetime | None, datetime | None, TimeRange, int, set[str], bool],
-    order_fn: Callable[[tuple[str, Tag]], int],
+@dataclass(frozen=True)
+class SummaryDisplayConfig:
+    """Configuration for rendering the summary section."""
+
+    date_from: datetime | None
+    date_until: datetime | None
+    done_keys: list[str]
+    todo_keys: list[str]
+    color_enabled: bool
+
+
+def _validate_summary_arguments(args: SummaryArgs) -> None:
+    """Validate summary-specific arguments."""
+    if args.max_results is not None and args.max_results < 0:
+        raise typer.BadParameter("--limit must be non-negative")
+
+
+def _build_task_state_order(
+    task_states: Histogram, done_keys: list[str], todo_keys: list[str]
+) -> list[str]:
+    """Build task-state histogram order grouped and alphabetized."""
+    present_states = {state for state, count in task_states.values.items() if count > 0}
+    sorted_done = [state for state in sorted(done_keys) if state in present_states]
+    sorted_todo = [state for state in sorted(todo_keys) if state in present_states]
+    grouped = set(sorted_done).union(set(sorted_todo))
+    remaining_states = sorted(state for state in present_states if state not in grouped)
+    return sorted_done + sorted_todo + remaining_states
+
+
+def format_tasks_summary(
+    result: AnalysisResult,
+    display_config: SummaryDisplayConfig,
+    plot_width: int,
     indent: str = "",
 ) -> str:
-    """Return formatted output for a single tags section."""
-    (
-        _max_results,
-        max_relations,
-        num_buckets,
-        date_from,
-        date_until,
-        global_timerange,
-        max_items,
-        exclude_set,
-        color_enabled,
-    ) = config
+    """Return formatted global task statistics without tag/group sections."""
+    date_from = display_config.date_from
+    date_until = display_config.date_until
+    done_keys = display_config.done_keys
+    todo_keys = display_config.todo_keys
+    color_enabled = display_config.color_enabled
 
-    if max_items == 0:
-        return ""
-
-    cleaned = clean(exclude_set, tags)
-    sorted_items = sorted(cleaned.items(), key=order_fn)[0:max_items]
-
-    lines = section_header_lines(category_name.upper(), color_enabled)
-
-    if not sorted_items:
-        lines.append("  No results")
-        return lines_to_text(apply_indent(lines, indent))
-
-    for idx, (name, tag) in enumerate(sorted_items):
-        if idx > 0:
-            lines.append("")
+    lines: list[str] = []
+    if result.timerange.earliest and result.timerange.latest and result.timerange.timeline:
+        earliest_date = date_from.date() if date_from else result.timerange.earliest.date()
+        latest_date = date_until.date() if date_until else result.timerange.latest.date()
         lines.extend(
-            format_tag_block(
-                name,
-                tag,
-                TagBlockConfig(
-                    max_relations=max_relations,
-                    exclude_set=exclude_set,
-                    date_from=date_from,
-                    date_until=date_until,
-                    global_timerange=global_timerange,
-                    timeline=TimelineFormatConfig(
-                        num_buckets=num_buckets,
-                        color_enabled=color_enabled,
-                        indent="  ",
-                    ),
-                    name_indent="  ",
-                    stats_indent="    ",
+            format_timeline_lines(
+                result.timerange.timeline,
+                earliest_date,
+                latest_date,
+                TimelineFormatConfig(
+                    color_enabled=color_enabled,
+                    indent="",
+                    plot_width=plot_width,
                 ),
             )
         )
 
+    total_tasks_value = magenta(str(result.total_tasks), color_enabled)
+    lines.append(f"Total tasks: {total_tasks_value}")
+
+    unique_tasks_value = magenta(str(result.unique_tasks), color_enabled)
+    lines.append(f"Unique tasks: {unique_tasks_value}")
+
+    if result.timerange.earliest and result.timerange.latest:
+        avg_value = magenta(f"{result.avg_tasks_per_day:.2f}", color_enabled)
+        max_single_value = magenta(str(result.max_single_day_count), color_enabled)
+        max_repeat_value = magenta(str(result.max_repeat_count), color_enabled)
+        lines.append(f"Average tasks per day: {avg_value}")
+        lines.append(f"Max tasks on a single day: {max_single_value}")
+        lines.append(f"Max repeats of a single task: {max_repeat_value}")
+
+    state_order = _build_task_state_order(result.task_states, done_keys, todo_keys)
+    lines.extend(
+        format_histogram_section(
+            "Task states:",
+            result.task_states,
+            HistogramSectionConfig(
+                plot_width=plot_width,
+                order=state_order,
+                render_config=RenderConfig(
+                    color_enabled=color_enabled,
+                    histogram_type="task_states",
+                    done_keys=done_keys,
+                    todo_keys=todo_keys,
+                ),
+                indent="",
+            ),
+        )
+    )
+
+    priority_order = sorted(result.task_priorities.values.keys())
+    lines.extend(
+        format_histogram_section(
+            "Task priorities:",
+            result.task_priorities,
+            HistogramSectionConfig(
+                plot_width=plot_width,
+                order=priority_order,
+                render_config=RenderConfig(color_enabled=color_enabled),
+                indent="",
+            ),
+        )
+    )
+
+    category_order = sorted(result.task_categories.values.keys())
+    lines.extend(
+        format_histogram_section(
+            "Task categories:",
+            result.task_categories,
+            HistogramSectionConfig(
+                plot_width=plot_width,
+                order=category_order,
+                render_config=RenderConfig(color_enabled=color_enabled),
+                indent="",
+            ),
+        )
+    )
+
+    day_order = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+    lines.extend(
+        format_histogram_section(
+            "Task occurrence by day of week:",
+            result.task_days,
+            HistogramSectionConfig(
+                plot_width=plot_width,
+                order=day_order,
+                render_config=RenderConfig(color_enabled=color_enabled),
+                indent="",
+            ),
+        )
+    )
+
     return lines_to_text(apply_indent(lines, indent))
 
 
-def format_stats_summary_output(
-    result: AnalysisResult,
-    nodes: list[orgparse.node.OrgNode],
-    args: SummaryArgs,
-    display_config: tuple[set[str], datetime | None, datetime | None, list[str], list[str], bool],
-) -> str:
-    """Return formatted output for the stats summary command."""
-    exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled = display_config
-
-    def order_by_total(item: tuple[str, Tag]) -> int:
-        """Sort by total count (descending)."""
-        return -item[1].total_tasks
-
-    category_name = CATEGORY_NAMES[args.use]
-
-    return "".join(
-        section
-        for section in (
-            format_tasks_summary(
-                result,
-                args,
-                (date_from, date_until, done_keys, todo_keys, color_enabled),
-            ),
-            format_top_tasks_section(
-                nodes,
-                TopTasksSectionConfig(
-                    max_results=args.max_results,
-                    color_enabled=color_enabled,
-                    done_keys=done_keys,
-                    todo_keys=todo_keys,
-                    buckets=args.buckets,
-                    indent="",
-                ),
-            ),
-            format_tags_section(
-                category_name,
-                result.tags,
-                (
-                    args.max_results,
-                    args.max_relations,
-                    args.buckets,
-                    date_from,
-                    date_until,
-                    result.timerange,
-                    args.max_tags,
-                    exclude_set,
-                    color_enabled,
-                ),
-                order_by_total,
-                indent="  ",
-            ),
-            format_groups_section(
-                result.tag_groups,
-                exclude_set,
-                (
-                    args.min_group_size,
-                    args.buckets,
-                    date_from,
-                    date_until,
-                    result.timerange,
-                    color_enabled,
-                ),
-                args.max_groups,
-                indent="  ",
-            ),
-        )
-        if section
-    )
-
-
-def run_stats(args: SummaryArgs) -> None:
-    """Run the stats command."""
+def run_stats_summary(args: SummaryArgs) -> None:
+    """Run the stats summary command."""
     color_enabled = setup_output(args)
-    console = build_console(color_enabled)
-    validate_stats_arguments(args)
-
+    console = build_console(color_enabled, args.width)
+    _validate_summary_arguments(args)
     with processing_status(console, color_enabled):
-        mapping = resolve_mapping(args)
-        exclude_set = resolve_exclude_set(args)
         nodes, todo_keys, done_keys = load_and_process_data(args)
+
         if not nodes:
             output = None
         else:
-            result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
+            global_timerange = compute_global_timerange(nodes)
+            total_tasks, max_repeat_count = compute_task_stats(nodes)
+            unique_tasks = len(nodes)
+            max_single_day = compute_max_single_day(global_timerange)
+            avg_tasks_per_day = compute_avg_tasks_per_day(global_timerange, total_tasks)
+
+            result = AnalysisResult(
+                total_tasks=total_tasks,
+                unique_tasks=unique_tasks,
+                task_states=compute_task_state_histogram(nodes),
+                task_categories=compute_category_histogram(nodes, args.category_property),
+                task_priorities=compute_priority_histogram(nodes),
+                task_days=compute_day_of_week_histogram(nodes),
+                timerange=global_timerange,
+                avg_tasks_per_day=avg_tasks_per_day,
+                max_single_day_count=max_single_day,
+                max_repeat_count=max_repeat_count,
+                tags={},
+                tag_groups=[],
+            )
+
             date_from, date_until = resolve_date_filters(args)
-            output = format_stats_summary_output(
+
+            output = format_tasks_summary(
                 result,
-                nodes,
-                args,
-                (exclude_set, date_from, date_until, done_keys, todo_keys, color_enabled),
+                SummaryDisplayConfig(
+                    date_from=date_from,
+                    date_until=date_until,
+                    done_keys=done_keys,
+                    todo_keys=todo_keys,
+                    color_enabled=color_enabled,
+                ),
+                console.width,
             )
 
     if not nodes:
@@ -356,24 +390,19 @@ def register(app: typer.Typer) -> None:
             "--color/--no-color",
             help="Force colored output",
         ),
-        max_results: int = typer.Option(
+        width: int | None = typer.Option(
+            None,
+            "--width",
+            metavar="N",
+            min=50,
+            help="Override auto-derived console width (minimum: 50)",
+        ),
+        max_results: int | None = typer.Option(
             10,
-            "--max-results",
+            "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
-        ),
-        max_tags: int = typer.Option(
-            5,
-            "--max-tags",
-            metavar="N",
-            help="Maximum number of tags to display in TAGS section (use 0 to omit section)",
-        ),
-        use: str = typer.Option(
-            "tags",
-            "--use",
-            metavar="CATEGORY",
-            help="Category to display: tags, heading, or body",
         ),
         with_tags_as_category: bool = typer.Option(
             False,
@@ -386,32 +415,8 @@ def register(app: typer.Typer) -> None:
             metavar="PROPERTY",
             help="Property name to use for category histogram and filtering",
         ),
-        max_relations: int = typer.Option(
-            5,
-            "--max-relations",
-            metavar="N",
-            help="Maximum number of relations to display per item (use 0 to omit sections)",
-        ),
-        min_group_size: int = typer.Option(
-            2,
-            "--min-group-size",
-            metavar="N",
-            help="Minimum group size to display",
-        ),
-        max_groups: int = typer.Option(
-            5,
-            "--max-groups",
-            metavar="N",
-            help="Maximum number of tag groups to display (use 0 to omit section)",
-        ),
-        buckets: int = typer.Option(
-            50,
-            "--buckets",
-            metavar="N",
-            help="Number of time buckets for timeline charts (minimum: 20)",
-        ),
     ) -> None:
-        """Show overall task stats."""
+        """Show overall task stats without tag sections."""
         args = SummaryArgs(
             files=files,
             config=config,
@@ -434,17 +439,12 @@ def register(app: typer.Typer) -> None:
             filter_completed=filter_completed,
             filter_not_completed=filter_not_completed,
             color_flag=color_flag,
+            width=width,
             max_results=max_results,
-            max_tags=max_tags,
-            use=use,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
-            max_relations=max_relations,
-            min_group_size=min_group_size,
-            max_groups=max_groups,
-            buckets=buckets,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "stats summary")
         config_module.log_command_arguments(args, "stats summary")
-        run_stats(args)
+        run_stats_summary(args)

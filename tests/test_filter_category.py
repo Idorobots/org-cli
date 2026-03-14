@@ -31,7 +31,7 @@ def test_filter_category_matches_value() -> None:
 
 
 def test_filter_category_none_matches_missing() -> None:
-    """Test filtering by 'none' matches nodes without property."""
+    """Test filtering by 'null' matches nodes without property."""
     nodes = node_from_org("""
 * DONE Task 1
 :PROPERTIES:
@@ -46,14 +46,14 @@ def test_filter_category_none_matches_missing() -> None:
 :END:
 """)
 
-    filtered = filter_category(nodes, "CATEGORY", "none")
+    filtered = filter_category(nodes, "CATEGORY", "null")
 
     assert len(filtered) == 1
     assert filtered[0].heading == "Task 2"
 
 
 def test_filter_category_none_matches_empty_string() -> None:
-    """Test filtering by 'none' matches empty property value."""
+    """Test filtering by 'null' matches empty property value."""
     nodes = node_from_org("""
 * DONE Task 1
 :PROPERTIES:
@@ -68,7 +68,7 @@ def test_filter_category_none_matches_empty_string() -> None:
 * DONE Task 3
 """)
 
-    filtered = filter_category(nodes, "CATEGORY", "none")
+    filtered = filter_category(nodes, "CATEGORY", "null")
 
     assert len(filtered) == 2
     assert filtered[0].heading == "Task 2"

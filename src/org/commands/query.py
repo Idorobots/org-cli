@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 import click
 import orgparse
@@ -65,18 +65,7 @@ def _format_org_block(value: object) -> str:
         node_text = str(value).rstrip()
         return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
     if isinstance(value, OrgDate) and not bool(value):
-        return "none"
-    return str(value)
-
-
-def _format_query_value(value: object) -> str:
-    """Format one query result value for output."""
-    if isinstance(value, orgparse.node.OrgNode):
-        return str(value).rstrip()
-    if value is None:
-        return "none"
-    if isinstance(value, bool):
-        return "true" if value else "false"
+        return "null"
     return str(value)
 
 
@@ -89,20 +78,28 @@ class OrgQueryOutputFormatter:
         self, values: list[object], console: Console, color_enabled: bool, out_theme: str
     ) -> PreparedOutput:
         del console
-        del color_enabled
-        if values and all(_is_org_object(value) for value in values):
-            return self._prepare_org_values(values, out_theme)
-
-        lines = [_format_query_value(value) for value in values]
-        if not lines:
+        if not values:
             return PreparedOutput(
                 operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
             )
 
-        return PreparedOutput(
-            operations=tuple(
-                OutputOperation(kind="console_print", text=line, markup=False) for line in lines
+        if values and all(_is_org_object(value) for value in values):
+            return self._prepare_org_values(values, out_theme)
+
+        if all(isinstance(value, str) for value in values):
+            string_values = cast(list[str], values)
+            return PreparedOutput(
+                operations=tuple(
+                    OutputOperation(kind="console_print", text=value, markup=False)
+                    for value in string_values
+                )
             )
+
+        return _prepare_output(
+            json.dumps(_json_output_payload(values), ensure_ascii=True),
+            color_enabled,
+            OutputFormat.JSON,
+            out_theme,
         )
 
     def _prepare_org_values(self, values: list[object], out_theme: str) -> PreparedOutput:
@@ -197,6 +194,7 @@ class QueryArgs:
     todo_keys: str
     done_keys: str
     color_flag: bool | None
+    width: int | None
     max_results: int
     offset: int
     out: str
@@ -207,11 +205,11 @@ class QueryArgs:
 def run_query(args: QueryArgs) -> None:
     """Run the query command."""
     color_enabled = setup_output(args)
-    console = build_console(color_enabled)
+    console = build_console(color_enabled, args.width)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
     if args.max_results < 0:
-        raise typer.BadParameter("--max-results must be non-negative")
+        raise typer.BadParameter("--limit must be non-negative")
     try:
         formatter = get_query_formatter(args.out, args.pandoc_args)
     except OutputFormatError as exc:
@@ -299,9 +297,16 @@ def register(app: typer.Typer) -> None:
             "--color/--no-color",
             help="Force colored output",
         ),
+        width: int | None = typer.Option(
+            None,
+            "--width",
+            metavar="N",
+            min=50,
+            help="Override auto-derived console width (minimum: 50)",
+        ),
         max_results: int = typer.Option(
             10,
-            "--max-results",
+            "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
@@ -341,6 +346,7 @@ def register(app: typer.Typer) -> None:
             todo_keys=todo_keys,
             done_keys=done_keys,
             color_flag=color_flag,
+            width=width,
             max_results=max_results,
             offset=offset,
             out=out,

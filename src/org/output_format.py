@@ -187,9 +187,9 @@ def _to_org_input_text(value: object) -> str:
     if isinstance(value, orgparse.node.OrgNode | OrgRootNode):
         return str(value)
     if isinstance(value, OrgDate) and not bool(value):
-        return "none"
+        return "null"
     if value is None:
-        return "none"
+        return "null"
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)

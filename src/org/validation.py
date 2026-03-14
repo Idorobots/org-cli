@@ -17,18 +17,18 @@ class GlobalArgs(Protocol):
     filter_tags: list[str] | None
     filter_headings: list[str] | None
     filter_bodies: list[str] | None
+    width: int | None
 
 
 class StatsArgs(Protocol):
     """Protocol for arguments used in stats validation."""
 
     use: str
-    max_results: int
+    max_results: int | None
     max_relations: int
     max_tags: int
     max_groups: int
     min_group_size: int
-    buckets: int
 
 
 def parse_date_argument(date_str: str, arg_name: str) -> datetime:
@@ -156,14 +156,6 @@ def validate_pattern(pattern: str, option_name: str, use_multiline: bool = False
         ) from err
 
 
-def parse_show_values(value: str) -> list[str]:
-    """Parse comma-separated show values."""
-    values = [item.strip() for item in value.split(",") if item.strip()]
-    if not values:
-        raise typer.BadParameter("--show cannot be empty")
-    return values
-
-
 def parse_group_values(value: str) -> list[str]:
     """Parse comma-separated group values."""
     values = [item.strip() for item in value.split(",") if item.strip()]
@@ -199,28 +191,35 @@ def validate_global_arguments(args: GlobalArgs) -> tuple[list[str], list[str]]:
         for pattern in args.filter_bodies:
             validate_pattern(pattern, "--filter-body", use_multiline=True)
 
+    if args.width is not None and args.width < 50:
+        raise typer.BadParameter("--width must be at least 50")
+
     return (todo_keys, done_keys)
 
 
 def validate_stats_arguments(args: StatsArgs) -> None:
     """Validate stats command arguments."""
-    if args.use not in {"tags", "heading", "body"}:
+    use = args.use
+    max_results = args.max_results
+    max_relations = args.max_relations
+    max_tags = args.max_tags
+    max_groups = args.max_groups
+    min_group_size = args.min_group_size
+
+    if use not in {"tags", "heading", "body"}:
         raise typer.BadParameter("--use must be one of: tags, heading, body")
 
-    if args.max_results < 0:
-        raise typer.BadParameter("--max-results must be non-negative")
+    if max_results is not None and max_results < 0:
+        raise typer.BadParameter("--limit must be non-negative")
 
-    if args.max_relations < 0:
+    if max_relations < 0:
         raise typer.BadParameter("--max-relations must be non-negative")
 
-    if args.max_tags < 0:
+    if max_tags < 0:
         raise typer.BadParameter("--max-tags must be non-negative")
 
-    if args.max_groups < 0:
+    if max_groups < 0:
         raise typer.BadParameter("--max-groups must be non-negative")
 
-    if args.min_group_size < 0:
+    if min_group_size < 0:
         raise typer.BadParameter("--min-group-size must be non-negative")
-
-    if args.buckets < 20:
-        raise typer.BadParameter("--buckets must be at least 20")

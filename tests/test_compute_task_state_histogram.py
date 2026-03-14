@@ -64,12 +64,12 @@ def test_compute_task_state_histogram_repeated_tasks() -> None:
 
 
 def test_compute_task_state_histogram_no_state() -> None:
-    """Test task without state maps to 'none'."""
+    """Test task without state maps to 'null'."""
     nodes = node_from_org("* Task without state\n")
 
     histogram = compute_task_state_histogram(nodes)
 
-    assert histogram.values["none"] == 1
+    assert histogram.values["null"] == 1
 
 
 def test_compute_task_state_histogram_cancelled() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import textwrap
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -23,8 +24,14 @@ from org.color import (
     magenta,
     should_use_color,
 )
-from org.histogram import Histogram, RenderConfig, render_histogram, visual_len
-from org.plot import render_timeline_chart
+from org.histogram import (
+    Histogram,
+    HistogramRenderConfig,
+    RenderConfig,
+    render_histogram,
+    visual_len,
+)
+from org.plot import TimelineRenderConfig, render_timeline_chart
 
 
 def select_earliest_date(
@@ -88,9 +95,9 @@ def setup_output(args: object) -> bool:
     return should_use_color(getattr(args, "color_flag", None))
 
 
-def build_console(color_enabled: bool) -> Console:
+def build_console(color_enabled: bool, width: int | None = None) -> Console:
     """Create a Rich console configured for colored output."""
-    return Console(no_color=not color_enabled, force_terminal=color_enabled, width=200)
+    return Console(no_color=not color_enabled, force_terminal=color_enabled, width=width)
 
 
 def print_output(console: Console, text: str, color_enabled: bool, *, end: str = "\n") -> None:
@@ -99,12 +106,12 @@ def print_output(console: Console, text: str, color_enabled: bool, *, end: str =
         rich_text = Text.from_markup(text)
         rich_text.no_wrap = True
         rich_text.overflow = "ignore"
-        console.print(rich_text, end=end)
+        console.print(rich_text, end=end, soft_wrap=True)
         return
     plain_text = Text(text)
     plain_text.no_wrap = True
     plain_text.overflow = "ignore"
-    console.print(plain_text, end=end, markup=False)
+    console.print(plain_text, end=end, markup=False, soft_wrap=True)
 
 
 @contextmanager
@@ -131,9 +138,14 @@ def section_header_lines(title: str, color_enabled: bool) -> list[str]:
 class TimelineFormatConfig:
     """Configuration for rendering timeline charts."""
 
-    num_buckets: int
     color_enabled: bool
     indent: str
+    plot_width: int
+
+
+def resolve_timeline_plot_width(config: TimelineFormatConfig) -> int:
+    """Resolve visual timeline plot width from config."""
+    return max(3, config.plot_width)
 
 
 @dataclass(frozen=True)
@@ -166,7 +178,7 @@ class GroupBlockConfig:
 class HistogramSectionConfig:
     """Configuration for rendering histogram sections."""
 
-    buckets: int
+    plot_width: int
     order: list[str]
     render_config: RenderConfig
     indent: str
@@ -180,8 +192,8 @@ class TopTasksSectionConfig:
     color_enabled: bool
     done_keys: list[str]
     todo_keys: list[str]
-    buckets: int
     indent: str
+    line_width: int | None = None
 
 
 @dataclass(frozen=True)
@@ -191,7 +203,7 @@ class TaskLineConfig:
     color_enabled: bool
     done_keys: list[str]
     todo_keys: list[str]
-    buckets: int = 0
+    line_width: int | None = None
 
 
 @dataclass(frozen=True)
@@ -205,10 +217,39 @@ class _TaskLineParts:
     heading: str
 
 
+def _truncate_filename(filename: str, width: int) -> str:
+    """Truncate or pad filename to fixed-width column."""
+    truncated = _truncate_to_visual_width(filename, width)
+    return _pad_to_visual_width(truncated, width)
+
+
+def _truncate_to_visual_width(text: str, max_width: int) -> str:
+    """Return text truncated to visual display width."""
+    if max_width <= 0:
+        return ""
+
+    current = ""
+    for char in text:
+        candidate = f"{current}{char}"
+        if visual_len(candidate) > max_width:
+            break
+        current = candidate
+    return current
+
+
+def _pad_to_visual_width(text: str, width: int) -> str:
+    """Right-pad text to target visual display width."""
+    missing_width = width - visual_len(text)
+    if missing_width <= 0:
+        return text
+    return f"{text}{' ' * missing_width}"
+
+
 def _build_task_line_parts(node: orgparse.node.OrgNode, config: TaskLineConfig) -> _TaskLineParts:
     """Extract and format task line components."""
     filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
-    colored_filename = dim_white(f"{filename}:", config.color_enabled)
+    filename_cell = _truncate_filename(filename, 15)
+    colored_filename = dim_white(filename_cell, config.color_enabled)
     todo_state = node.todo if node.todo else ""
     heading = node.heading if node.heading else ""
     level = node.level if node.level is not None else 0
@@ -241,10 +282,20 @@ def _build_task_line_parts(node: orgparse.node.OrgNode, config: TaskLineConfig) 
 def _format_line_with_parts(parts: _TaskLineParts) -> str:
     """Build formatted line from components."""
     if parts.colored_state:
-        return f"{parts.colored_filename} {parts.level_prefix} {parts.colored_state}{parts.priority_text} {parts.heading}".strip()
+        body = f"{parts.level_prefix} {parts.colored_state}{parts.priority_text} {parts.heading}".strip()
+        return f"{parts.colored_filename}{body}"
     if parts.priority_text:
-        return f"{parts.colored_filename} {parts.level_prefix}{parts.priority_text} {parts.heading}".strip()
-    return f"{parts.colored_filename} {parts.level_prefix} {parts.heading}".strip()
+        body = f"{parts.level_prefix}{parts.priority_text} {parts.heading}".strip()
+        return f"{parts.colored_filename}{body}"
+    body = f"{parts.level_prefix} {parts.heading}".strip()
+    return f"{parts.colored_filename}{body}"
+
+
+def _resolve_task_line_width(config: TaskLineConfig, line: str) -> int:
+    """Resolve task line width used for right-aligned tags."""
+    if config.line_width is not None:
+        return config.line_width
+    return visual_len(line)
 
 
 def _add_tags_to_line(
@@ -255,16 +306,16 @@ def _add_tags_to_line(
     tags_text = f":{':'.join(sorted_tags)}:"
     colored_tags = dim_white(tags_text, config.color_enabled)
 
+    line_width = _resolve_task_line_width(config, line)
     line_visual_len = visual_len(line)
-    tags_visual_len = len(tags_text)
-    available_space = config.buckets - tags_visual_len
+    tags_visual_len = visual_len(tags_text)
+    available_space = line_width - tags_visual_len
 
     if line_visual_len > available_space:
-        target_heading_len = len(parts.heading) - (line_visual_len - available_space)
-        if target_heading_len > 0:
-            truncated_heading = parts.heading[:target_heading_len]
-            if config.color_enabled:
-                truncated_heading = escape_text(truncated_heading, config.color_enabled)
+        heading_visual_len = visual_len(parts.heading)
+        target_heading_visual_len = heading_visual_len - (line_visual_len - available_space)
+        if target_heading_visual_len > 0:
+            truncated_heading = _truncate_to_visual_width(parts.heading, target_heading_visual_len)
             truncated_parts = _TaskLineParts(
                 parts.colored_filename,
                 parts.level_prefix,
@@ -275,8 +326,8 @@ def _add_tags_to_line(
             line = _format_line_with_parts(truncated_parts)
 
     line_visual_len = visual_len(line)
-    if line_visual_len < config.buckets:
-        padding = " " * (config.buckets - line_visual_len - tags_visual_len)
+    if line_visual_len < line_width:
+        padding = " " * (line_width - line_visual_len - tags_visual_len)
         return f"{line}{padding}{colored_tags}"
     return f"{line} {colored_tags}"
 
@@ -290,7 +341,7 @@ def format_task_line(
     parts = _build_task_line_parts(node, config)
     line = _format_line_with_parts(parts)
 
-    if node.tags and config.buckets > 0:
+    if node.tags and config.line_width is not None:
         line = _add_tags_to_line(line, node, parts, config)
 
     if indent:
@@ -304,12 +355,15 @@ def format_timeline_lines(
     latest_date: date,
     config: TimelineFormatConfig,
 ) -> list[str]:
+    plot_width = resolve_timeline_plot_width(config)
     date_line, chart_line, underline = render_timeline_chart(
         timeline,
         earliest_date,
         latest_date,
-        config.num_buckets,
-        config.color_enabled,
+        TimelineRenderConfig(
+            plot_width=plot_width,
+            color_enabled=config.color_enabled,
+        ),
     )
     return apply_indent([date_line, chart_line, underline], config.indent)
 
@@ -384,8 +438,16 @@ def format_group_block(
             )
         )
 
-    display_tags = ", ".join(escape_text(tag, color_enabled) for tag in group_tags)
-    lines.append(f"{config.name_indent}{display_tags}")
+    max_name_width = max(1, config.timeline.plot_width - visual_len(config.name_indent))
+    display_tags = ", ".join(group_tags)
+    wrapped_tags = textwrap.wrap(
+        display_tags,
+        width=max_name_width,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    for wrapped_line in wrapped_tags or [""]:
+        lines.append(f"{config.name_indent}{escape_text(wrapped_line, color_enabled)}")
     total_tasks_value = magenta(str(group.total_tasks), color_enabled)
     avg_value = magenta(f"{group.avg_tasks_per_day:.2f}", color_enabled)
     max_value = magenta(str(group.max_single_day_count), color_enabled)
@@ -406,7 +468,7 @@ def format_groups_section(
     if max_groups == 0:
         return ""
 
-    min_group_size, num_buckets, date_from, date_until, global_timerange, color_enabled = config
+    min_group_size, plot_width, date_from, date_until, global_timerange, color_enabled = config
 
     filtered_groups = []
     for group in groups:
@@ -435,9 +497,9 @@ def format_groups_section(
                     date_until=date_until,
                     global_timerange=global_timerange,
                     timeline=TimelineFormatConfig(
-                        num_buckets=num_buckets,
                         color_enabled=color_enabled,
                         indent="  ",
+                        plot_width=plot_width,
                     ),
                     name_indent="  ",
                     stats_indent="    ",
@@ -457,7 +519,7 @@ def format_top_tasks_section(
     if not top_tasks:
         return ""
 
-    lines = section_header_lines("TASKS", config.color_enabled)
+    lines = []
     for node in top_tasks:
         lines.append(
             format_task_line(
@@ -466,7 +528,7 @@ def format_top_tasks_section(
                     color_enabled=config.color_enabled,
                     done_keys=config.done_keys,
                     todo_keys=config.todo_keys,
-                    buckets=config.buckets,
+                    line_width=config.line_width,
                 ),
                 indent="  ",
             )
@@ -481,11 +543,14 @@ def format_histogram_section(
     config: HistogramSectionConfig,
 ) -> list[str]:
     lines = section_header_lines(title, config.render_config.color_enabled)
+    histogram_plot_width = max(3, config.plot_width - 2)
     histogram_lines = render_histogram(
         histogram,
-        config.buckets,
-        config.order,
-        config.render_config,
+        HistogramRenderConfig(
+            plot_width=histogram_plot_width,
+            category_order=config.order,
+            style=config.render_config,
+        ),
     )
     lines.extend([f"  {line}" for line in histogram_lines])
     return apply_indent(lines, config.indent)

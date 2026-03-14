@@ -36,6 +36,7 @@ class FilterArgsStub:
     max_results: int = 10
     todo_keys: str = "TODO"
     done_keys: str = "DONE"
+    width: int | None = None
     with_tags_as_category: bool = False
     category_property: str = "CATEGORY"
 
@@ -103,7 +104,7 @@ def test_build_query_text_filters_only() -> None:
     from org.cli_common import build_query_text
 
     args = make_args(filter_tags=["simple"])
-    argv = ["org", "stats", "summary", "--filter-tag", "simple", "file.org"]
+    argv = ["org", "stats", "all", "--filter-tag", "simple", "file.org"]
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
@@ -146,7 +147,7 @@ def test_build_query_text_with_timestamp_asc_keeps_none_last() -> None:
     assert query == (
         "[ .[] | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) "
         "| reverse "
-        "| sort_by((.repeated_tasks + .deadline + .closed + .scheduled | max) != none) ]"
+        "| sort_by((.repeated_tasks + .deadline + .closed + .scheduled | max) != null) ]"
     )
 
 
@@ -167,7 +168,7 @@ def test_build_query_text_with_property_filter() -> None:
     from org.cli_common import build_query_text
 
     args = make_args(filter_properties=["priority=A"])
-    argv = ["org", "stats", "summary", "--filter-property", "priority=A", "file.org"]
+    argv = ["org", "stats", "all", "--filter-property", "priority=A", "file.org"]
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
@@ -205,7 +206,7 @@ def test_build_query_logs_query_before_compile(caplog: pytest.LogCaptureFixture)
     from org.cli_common import build_query
 
     args = make_args(filter_tags=["simple"])
-    argv = ["org", "stats", "summary", "--filter-tag", "simple", "file.org"]
+    argv = ["org", "stats", "all", "--filter-tag", "simple", "file.org"]
 
     with caplog.at_level(logging.INFO, logger="org"):
         build_query(args, argv, include_ordering=False, include_slice=False)
@@ -225,7 +226,7 @@ def test_build_query_text_with_custom_filter_and_optional_arg(
         "CONFIG_CUSTOM_FILTERS",
         {
             "todo-state": "select(.todo == $arg)",
-            "has-todo": "select(.todo != none)",
+            "has-todo": "select(.todo != null)",
         },
     )
     monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {})
@@ -246,7 +247,7 @@ def test_build_query_text_with_custom_filter_and_optional_arg(
 
     assert query == (
         "[ .[] | let 3 as $arg in (select(.todo == $arg))"
-        " | let none as $arg in (select(.todo != none)) ]"
+        " | let null as $arg in (select(.todo != null)) ]"
     )
 
 
@@ -267,7 +268,7 @@ def test_collect_custom_context_vars_returns_empty_for_custom_args(
         "tasks",
         "list",
         "--with-mark",
-        "none",
+        "null",
         "--with-mark",
         "true",
         "--filter-value",
@@ -289,7 +290,7 @@ def test_build_query_text_custom_with_before_filters(monkeypatch: pytest.MonkeyP
     from org import config
     from org.cli_common import build_query_text
 
-    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {"tagged": "select(.tag != none)"})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {"tagged": "select(.tag != null)"})
     monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {})
     monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {"mark": '. + {"x": $arg}'})
 
@@ -308,7 +309,7 @@ def test_build_query_text_custom_with_before_filters(monkeypatch: pytest.MonkeyP
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
     assert query.startswith('[ .[] | let "one" as $arg in (. + {"x": $arg}) | ')
-    assert "| let none as $arg in (select(.tag != none)) |" in query
+    assert "| let null as $arg in (select(.tag != null)) |" in query
 
 
 def test_build_query_text_custom_ordering_for_stats(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -321,11 +322,11 @@ def test_build_query_text_custom_ordering_for_stats(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {"weight": "sort_by(.priority)"})
 
     args = make_args(files=["file.org"])
-    argv = ["org", "stats", "summary", "--order-by-weight", "file.org"]
+    argv = ["org", "stats", "all", "--order-by-weight", "file.org"]
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
-    assert query == "[ .[] | let none as $arg in (sort_by(.priority)) ]"
+    assert query == "[ .[] | let null as $arg in (sort_by(.priority)) ]"
 
 
 def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixture) -> None:
@@ -367,7 +368,7 @@ def test_build_query_text_preserves_mixed_ordering_cli_order(
     query = build_query_text(args, argv, include_ordering=True, include_slice=False)
 
     assert query == (
-        "[ .[] | let none as $arg in (sort_by(.priority))"
+        "[ .[] | let null as $arg in (sort_by(.priority))"
         " | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) ]"
     )
 
@@ -463,7 +464,7 @@ def test_normalize_cli_files_consumes_required_custom_path_like_argument(
 
 
 def test_get_top_day_info_none() -> None:
-    """get_top_day_info returns none with missing timeline."""
+    """get_top_day_info returns null with missing timeline."""
     from org.cli_common import get_top_day_info
 
     result = get_top_day_info(None)

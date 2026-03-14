@@ -29,6 +29,7 @@ def _make_args(files: list[str], query: str, **overrides: object) -> QueryArgs:
         todo_keys="TODO",
         done_keys="DONE",
         color_flag=False,
+        width=None,
         max_results=10,
         offset=0,
         out=OutputFormat.ORG,
@@ -79,6 +80,78 @@ def test_run_query_org_root_results_render_with_file_header(
     assert "No results" not in captured
 
 
+def test_run_query_default_org_uses_plain_formatter_for_string_results(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Default org output should print plain lines for string-only results."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[] | .children | .[] | .heading")
+
+    def _fake_compiled_query(_stream: object, _context: object) -> list[object]:
+        return ["alpha", "beta"]
+
+    monkeypatch.setattr(
+        "org.commands.query.compile_query_text", lambda _query: _fake_compiled_query
+    )
+    monkeypatch.setattr(
+        "org.commands.query.load_root_data",
+        lambda _args: ([], ["TODO"], ["DONE"]),
+    )
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    assert captured.splitlines() == ["alpha", "beta"]
+
+
+def test_run_query_default_org_uses_json_formatter_for_mixed_results(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Default org output should fall back to JSON for mixed-type results."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[]")
+
+    def _fake_compiled_query(_stream: object, _context: object) -> list[object]:
+        return ["alpha", 1, None]
+
+    monkeypatch.setattr(
+        "org.commands.query.compile_query_text", lambda _query: _fake_compiled_query
+    )
+    monkeypatch.setattr(
+        "org.commands.query.load_root_data",
+        lambda _args: ([], ["TODO"], ["DONE"]),
+    )
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    assert json.loads(captured) == ["alpha", 1, None]
+
+
+def test_run_query_default_org_uses_json_formatter_for_none_result(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Default org output should print JSON null for non-org None results."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = _make_args([fixture_path], ".[]")
+
+    def _fake_compiled_query(_stream: object, _context: object) -> list[object]:
+        return [None]
+
+    monkeypatch.setattr(
+        "org.commands.query.compile_query_text", lambda _query: _fake_compiled_query
+    )
+    monkeypatch.setattr(
+        "org.commands.query.load_root_data",
+        lambda _args: ([], ["TODO"], ["DONE"]),
+    )
+
+    run_query(args)
+    captured = capsys.readouterr().out
+
+    assert json.loads(captured) is None
+
+
 def test_query_syntax_error_shows_pointer_without_invalid_value_prefix() -> None:
     """Query syntax errors should include pointer and omit Invalid value prefix."""
     runner = CliRunner()
@@ -96,15 +169,17 @@ def test_query_syntax_error_shows_pointer_without_invalid_value_prefix() -> None
     assert "^" in result.output
 
 
-def test_query_empty_scheduled_timestamp_renders_none(capsys: pytest.CaptureFixture[str]) -> None:
-    """Querying an unset scheduled timestamp should render as none."""
+def test_query_empty_scheduled_timestamp_renders_json_null(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Querying an unset scheduled timestamp should render as JSON null."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
     args = _make_args([fixture_path], ".[][].scheduled")
 
     run_query(args)
     captured = capsys.readouterr().out
 
-    assert captured.strip() == "none"
+    assert captured.strip() == "null"
 
 
 def test_query_empty_org_result_set_prints_no_results(capsys: pytest.CaptureFixture[str]) -> None:
@@ -119,11 +194,11 @@ def test_query_empty_org_result_set_prints_no_results(capsys: pytest.CaptureFixt
 
 
 def test_run_query_negative_max_results_raises_bad_parameter() -> None:
-    """Query should reject negative max-results values."""
+    """Query should reject negative limit values."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[]", max_results=-1)
 
-    with pytest.raises(click.BadParameter, match="--max-results must be non-negative"):
+    with pytest.raises(click.BadParameter, match="--limit must be non-negative"):
         run_query(args)
 
 

@@ -64,7 +64,8 @@ class ListArgs:
     filter_completed: bool
     filter_not_completed: bool
     color_flag: bool | None
-    max_results: int
+    width: int | None
+    max_results: int | None
     details: bool
     offset: int
     order_by_level: bool
@@ -75,7 +76,6 @@ class ListArgs:
     order_by_timestamp_desc: bool
     with_tags_as_category: bool
     category_property: str
-    buckets: int
     out: str
     out_theme: str
     pandoc_args: str | None
@@ -91,7 +91,7 @@ class TasksListRenderInput:
     done_keys: list[str]
     todo_keys: list[str]
     details: bool
-    buckets: int
+    line_width: int | None
     out_theme: str
 
 
@@ -105,25 +105,19 @@ class TasksListOutputFormatter(Protocol):
         ...
 
 
-def _format_short_task_list(
-    nodes: list[orgparse.node.OrgNode],
-    done_keys: list[str],
-    todo_keys: list[str],
-    color_enabled: bool,
-    buckets: int,
-) -> str:
+def _format_short_task_list(data: TasksListRenderInput) -> str:
     """Return formatted short list of tasks."""
     lines = [
         format_task_line(
             node,
             TaskLineConfig(
-                color_enabled=color_enabled,
-                done_keys=done_keys,
-                todo_keys=todo_keys,
-                buckets=buckets,
+                color_enabled=data.color_enabled,
+                done_keys=data.done_keys,
+                todo_keys=data.todo_keys,
+                line_width=data.line_width,
             ),
         )
-        for node in nodes
+        for node in data.nodes
     ]
     return lines_to_text(lines)
 
@@ -165,13 +159,7 @@ class OrgTasksListOutputFormatter:
         if data.details:
             return _prepare_detailed_task_list(data.nodes, data.out_theme)
 
-        output = _format_short_task_list(
-            data.nodes,
-            data.done_keys,
-            data.todo_keys,
-            data.color_enabled,
-            data.buckets,
-        )
+        output = _format_short_task_list(data)
         if output:
             return PreparedOutput(
                 operations=(
@@ -247,14 +235,62 @@ def get_tasks_list_formatter(
     return PandocTasksListOutputFormatter(normalized_output, pandoc_args)
 
 
+def _resolve_tasks_limit(max_results: int | None, console_height: int) -> int:
+    """Resolve effective tasks limit, defaulting to all available tasks."""
+    del console_height
+    if max_results is None:
+        return sys.maxsize
+    return max_results
+
+
+def _line_count(text: str) -> int:
+    """Return visual line count for a rendered text block."""
+    if not text:
+        return 0
+    return len(text.splitlines())
+
+
+def _should_page_prepared_output(
+    prepared_output: PreparedOutput, *, details: bool, console_height: int
+) -> bool:
+    """Estimate whether prepared output should be displayed via pager."""
+    if details:
+        return True
+
+    estimated_lines = 0
+    for operation in prepared_output.operations:
+        if operation.kind == "print_output" and operation.text is not None:
+            estimated_lines += _line_count(operation.text)
+            continue
+
+        if operation.kind == "plain_write" and operation.text is not None:
+            estimated_lines += max(1, _line_count(operation.text))
+            continue
+
+        if operation.kind == "console_print":
+            if operation.renderable is not None:
+                return True
+            if operation.text is not None:
+                estimated_lines += max(1, _line_count(operation.text))
+
+    return estimated_lines > console_height
+
+
 def run_tasks_list(args: ListArgs) -> None:
     """Run the tasks list command."""
     color_enabled = setup_output(args)
-    console = build_console(color_enabled)
+    console = build_console(color_enabled, args.width)
     if args.offset < 0:
         raise typer.BadParameter("--offset must be non-negative")
-    if args.max_results < 0:
-        raise typer.BadParameter("--max-results must be non-negative")
+    if args.max_results is not None and args.max_results < 0:
+        raise typer.BadParameter("--limit must be non-negative")
+    requested_limit = args.max_results
+    args.max_results = _resolve_tasks_limit(args.max_results, console.height)
+
+    output_format = args.out.strip().lower()
+    should_use_pager = output_format == OutputFormat.ORG and (
+        requested_limit is None or requested_limit >= console.height
+    )
     try:
         formatter = get_tasks_list_formatter(args.out, args.pandoc_args)
     except OutputFormatError as exc:
@@ -270,12 +306,21 @@ def run_tasks_list(args: ListArgs) -> None:
                     done_keys=done_keys,
                     todo_keys=todo_keys,
                     details=args.details,
-                    buckets=args.buckets,
+                    line_width=console.width,
                     out_theme=args.out_theme,
                 )
             )
         except OutputFormatError as exc:
             raise click.UsageError(str(exc)) from exc
+
+    if should_use_pager and _should_page_prepared_output(
+        prepared_output,
+        details=args.details,
+        console_height=console.height,
+    ):
+        with console.pager(styles=color_enabled):
+            print_prepared_output(console, prepared_output)
+        return
 
     print_prepared_output(console, prepared_output)
 
@@ -404,12 +449,19 @@ def register(app: typer.Typer) -> None:
             "--color/--no-color",
             help="Force colored output",
         ),
-        max_results: int = typer.Option(
-            10,
-            "--max-results",
+        width: int | None = typer.Option(
+            None,
+            "--width",
+            metavar="N",
+            min=50,
+            help="Override auto-derived console width (minimum: 50)",
+        ),
+        max_results: int | None = typer.Option(
+            None,
+            "--limit",
             "-n",
             metavar="N",
-            help="Maximum number of results to display",
+            help="Maximum number of results to display (defaults to all results)",
         ),
         offset: int = typer.Option(
             0,
@@ -463,12 +515,6 @@ def register(app: typer.Typer) -> None:
             metavar="PROPERTY",
             help="Property name to use for category histogram and filtering",
         ),
-        buckets: int = typer.Option(
-            50,
-            "--buckets",
-            metavar="N",
-            help="Number of time buckets for timeline charts and tag alignment column",
-        ),
         out: str = typer.Option(
             OutputFormat.ORG,
             "--out",
@@ -509,6 +555,7 @@ def register(app: typer.Typer) -> None:
             filter_completed=filter_completed,
             filter_not_completed=filter_not_completed,
             color_flag=color_flag,
+            width=width,
             max_results=max_results,
             details=details,
             offset=offset,
@@ -520,7 +567,6 @@ def register(app: typer.Typer) -> None:
             order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
-            buckets=buckets,
             out=out,
             out_theme=out_theme,
             pandoc_args=pandoc_args,

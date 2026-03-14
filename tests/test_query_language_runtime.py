@@ -54,10 +54,10 @@ def test_runtime_select_done_nodes() -> None:
     assert result == ["Parent", "Zeta child"]
 
 
-def test_runtime_select_not_none_todo_filters_missing_values() -> None:
-    """Comparing against none should treat missing todo as none."""
+def test_runtime_select_not_null_todo_filters_missing_values() -> None:
+    """Comparing against null should treat missing todo as null."""
     nodes = [*node_from_org("* DONE Keep\n* Plain\n")]
-    result = _execute(".[] | select(.todo != none) | .heading", nodes, None)
+    result = _execute(".[] | select(.todo != null) | .heading", nodes, None)
     assert result == ["Keep"]
 
 
@@ -75,8 +75,8 @@ def test_runtime_sort_by_heading_descending() -> None:
     assert result == ["Zeta child", "Alpha child"]
 
 
-def test_runtime_sort_by_dates_orders_latest_first_with_none_last() -> None:
-    """sort_by should sort date keys by timestamp and place none keys last."""
+def test_runtime_sort_by_dates_orders_latest_first_with_null_last() -> None:
+    """sort_by should sort date keys by timestamp and place null keys last."""
     nodes = [
         *node_from_org(
             """* TODO Older
@@ -96,29 +96,29 @@ SCHEDULED: <2024-01-12 Fri>
     assert result == ["Newer", "Older", "Missing"]
 
 
-def test_runtime_sort_by_places_none_keys_last() -> None:
-    """sort_by should place values with none keys at the end."""
+def test_runtime_sort_by_places_null_keys_last() -> None:
+    """sort_by should place values with null keys at the end."""
     result = _execute(".[0][] | sort_by(.)", [[3, None, 1, None, 2]], None)
     assert result[:3] == [3, 2, 1]
     assert result[3:] == [None, None]
 
 
-def test_runtime_empty_org_date_fields_are_none() -> None:
-    """Unset org date fields should resolve to none values."""
+def test_runtime_empty_org_date_fields_are_null() -> None:
+    """Unset org date fields should resolve to null values."""
     nodes = [*node_from_org("* TODO Plain\n")]
     result = _execute(".[] | .scheduled", nodes, None)
     assert result == [None]
 
 
-def test_runtime_missing_field_returns_none() -> None:
-    """Missing field access should return none values."""
+def test_runtime_missing_field_returns_null() -> None:
+    """Missing field access should return null values."""
     nodes = _sample_nodes()
     result = _execute(".[] | .missing_field", nodes, None)
     assert result == [None, None, None, None]
 
 
-def test_runtime_index_out_of_bounds_returns_none() -> None:
-    """Out-of-bounds index should return none."""
+def test_runtime_index_out_of_bounds_returns_null() -> None:
+    """Out-of-bounds index should return null."""
     nodes = _sample_nodes()
     result = _execute(".[0].children[99]", nodes, None)
     assert result == [None]
@@ -202,20 +202,20 @@ def test_runtime_max_and_min_for_org_dates_compare_by_start() -> None:
     assert [str(value) for value in result_min] == ["<2025-01-02 Thu 09:00>"]
 
 
-def test_runtime_max_and_min_empty_collection_returns_none() -> None:
-    """max/min should return none for empty collections."""
+def test_runtime_max_and_min_empty_collection_returns_null() -> None:
+    """max/min should return null for empty collections."""
     assert _execute("max", [], None) == [None]
     assert _execute("min", [], None) == [None]
 
 
-def test_runtime_max_and_min_ignore_none_values() -> None:
-    """max/min should ignore none values in collections."""
+def test_runtime_max_and_min_ignore_null_values() -> None:
+    """max/min should ignore null values in collections."""
     assert _execute("max", [1, None, 9, 3], None) == [9]
     assert _execute("min", [1, None, 9, 3], None) == [1]
 
 
-def test_runtime_max_and_min_all_none_returns_none() -> None:
-    """max/min should return none when all values are none."""
+def test_runtime_max_and_min_all_null_returns_null() -> None:
+    """max/min should return null when all values are null."""
     assert _execute("max", [None, None], None) == [None]
     assert _execute("min", [None, None], None) == [None]
 
@@ -270,7 +270,7 @@ def test_runtime_unary_minus_behavior() -> None:
 
 def test_runtime_or_and_operator_semantics() -> None:
     """or/and should follow query truthiness semantics."""
-    result = _execute('"foo" or "x", none or "x", "x" and none, "x" and 1', [None], None)
+    result = _execute('"foo" or "x", null or "x", "x" and null, "x" and 1', [None], None)
     assert result == [("foo", "x", False, True)]
 
 
@@ -279,7 +279,7 @@ def test_runtime_type_function() -> None:
     node = next(iter(node_from_org("* TODO Task\n")))
     repeated = _execute('timestamp("<2025-01-02 Thu>")', [None], None)[0]
     result = _execute(".[] | type", [None, 1, "x", node, repeated], None)
-    assert result == ["none", "int", "str", "OrgNode", "OrgDate"]
+    assert result == ["null", "int", "str", "OrgNode", "OrgDate"]
 
 
 def test_runtime_not_function() -> None:
@@ -414,7 +414,7 @@ def test_runtime_timestamp_function_with_supported_arities() -> None:
     """timestamp should create OrgDate values for one, two, and three arguments."""
     one = _execute('timestamp("<2025-01-02 Thu>")', [None], None)[0]
     two = _execute('timestamp("<2025-01-02 Thu>", "<2025-01-03 Fri>")', [None], None)[0]
-    three = _execute('timestamp("<2025-01-02 Thu>", none, false)', [None], None)[0]
+    three = _execute('timestamp("<2025-01-02 Thu>", null, false)', [None], None)[0]
 
     assert str(one) == "<2025-01-02 Thu>"
     assert str(two) == "<2025-01-02 Thu>--<2025-01-03 Fri>"
@@ -436,9 +436,9 @@ def test_runtime_clock_function_with_supported_arities() -> None:
 
 def test_runtime_repeated_task_function_with_supported_arities() -> None:
     """repeated_task should create OrgDateRepeatedTask values."""
-    three = _execute('repeated_task("<2025-01-02 Thu>", "TODO", none)', [None], None)[0]
+    three = _execute('repeated_task("<2025-01-02 Thu>", "TODO", null)', [None], None)[0]
     four = _execute(
-        'repeated_task("<2025-01-02 Thu>", none, "DONE", true)',
+        'repeated_task("<2025-01-02 Thu>", null, "DONE", true)',
         [None],
         None,
     )[0]
@@ -494,9 +494,9 @@ def test_runtime_constructor_function_validation_errors() -> None:
     with pytest.raises(QueryRuntimeError):
         _execute('timestamp("not a timestamp")', [None], None)
     with pytest.raises(QueryRuntimeError):
-        _execute('timestamp("<2025-01-02 Thu>", none, "yes")', [None], None)
+        _execute('timestamp("<2025-01-02 Thu>", null, "yes")', [None], None)
     with pytest.raises(QueryRuntimeError):
-        _execute('clock("<2025-01-02 Thu 10:00>", none)', [None], None)
+        _execute('clock("<2025-01-02 Thu 10:00>", null)', [None], None)
     with pytest.raises(QueryRuntimeError):
         _execute('repeated_task("<2025-01-02 Thu>", 1, "DONE")', [None], None)
 
@@ -550,7 +550,7 @@ def test_runtime_index_requires_indexable_base() -> None:
         _execute(".[0][0]", [1], None)
 
 
-def test_runtime_slice_bounds_must_be_int_or_none() -> None:
+def test_runtime_slice_bounds_must_be_int_or_null() -> None:
     """Slice bounds should reject non-integer values."""
     with pytest.raises(QueryRuntimeError):
         _execute(".[0][1.5:2]", [[1, 2, 3]], None)
@@ -561,7 +561,7 @@ def test_runtime_slice_bounds_must_be_int_or_none() -> None:
 def test_runtime_bracket_key_must_be_string_or_integer() -> None:
     """Bracket access should reject unsupported key types."""
     with pytest.raises(QueryRuntimeError):
-        _execute(".[0][none]", [[1, 2, 3]], None)
+        _execute(".[0][null]", [[1, 2, 3]], None)
 
 
 def test_runtime_bracket_integer_requires_indexable_base() -> None:
@@ -638,46 +638,46 @@ def test_runtime_comparison_rejects_mixed_org_date_and_non_date() -> None:
         _execute('timestamp("<2025-01-02 Thu>") > 1', [None], None)
 
 
-def test_runtime_org_date_ordering_against_none_returns_false() -> None:
-    """Date ordering operators should return false when one side is none."""
-    left_none = _execute(
-        'timestamp("<2025-01-02 Thu>") > none, '
-        'timestamp("<2025-01-02 Thu>") < none, '
-        'timestamp("<2025-01-02 Thu>") >= none, '
-        'timestamp("<2025-01-02 Thu>") <= none',
+def test_runtime_org_date_ordering_against_null_returns_false() -> None:
+    """Date ordering operators should return false when one side is null."""
+    left_null = _execute(
+        'timestamp("<2025-01-02 Thu>") > null, '
+        'timestamp("<2025-01-02 Thu>") < null, '
+        'timestamp("<2025-01-02 Thu>") >= null, '
+        'timestamp("<2025-01-02 Thu>") <= null',
         [None],
         None,
     )
-    right_none = _execute(
-        'none > timestamp("<2025-01-02 Thu>"), '
-        'none < timestamp("<2025-01-02 Thu>"), '
-        'none >= timestamp("<2025-01-02 Thu>"), '
-        'none <= timestamp("<2025-01-02 Thu>")',
+    right_null = _execute(
+        'null > timestamp("<2025-01-02 Thu>"), '
+        'null < timestamp("<2025-01-02 Thu>"), '
+        'null >= timestamp("<2025-01-02 Thu>"), '
+        'null <= timestamp("<2025-01-02 Thu>")',
         [None],
         None,
     )
 
-    assert left_none == [(False, False, False, False)]
-    assert right_none == [(False, False, False, False)]
+    assert left_null == [(False, False, False, False)]
+    assert right_null == [(False, False, False, False)]
 
 
-def test_runtime_org_date_equality_with_none() -> None:
-    """Date equality operators should work when compared against none."""
+def test_runtime_org_date_equality_with_null() -> None:
+    """Date equality operators should work when compared against null."""
     result = _execute(
-        'timestamp("<2025-01-02 Thu>") == none, timestamp("<2025-01-02 Thu>") != none',
+        'timestamp("<2025-01-02 Thu>") == null, timestamp("<2025-01-02 Thu>") != null',
         [None],
         None,
     )
     assert result == [(False, True)]
 
 
-def test_runtime_comparison_operators_with_none_for_any_type() -> None:
-    """Ordering comparisons with none should follow language-wide none semantics."""
+def test_runtime_comparison_operators_with_null_for_any_type() -> None:
+    """Ordering comparisons with null should follow language-wide null semantics."""
     result = _execute(
-        "1 > none, 1 < none, 1 >= none, 1 <= none, "
-        "none > 1, none < 1, none >= 1, none <= 1, "
-        "none > none, none < none, none >= none, none <= none, "
-        '"x" > none, "x" <= none',
+        "1 > null, 1 < null, 1 >= null, 1 <= null, "
+        "null > 1, null < 1, null >= 1, null <= 1, "
+        "null > null, null < null, null >= null, null <= null, "
+        '"x" > null, "x" <= null',
         [None],
         None,
     )
@@ -750,7 +750,7 @@ def test_runtime_binary_broadcast_requires_compatible_stream_lengths() -> None:
 
 def test_runtime_tuple_expr_skips_items_when_part_yields_empty_stream() -> None:
     """Tuple combinations should be omitted if any part is empty."""
-    result = _execute(".[] | (select(none), .)", [1, 2, 3], None)
+    result = _execute(".[] | (select(null), .)", [1, 2, 3], None)
     assert result == []
 
 
@@ -782,14 +782,14 @@ def test_runtime_constructor_functions_validate_supported_arities() -> None:
 
 
 def test_runtime_bracket_field_access_variants() -> None:
-    """Bracket field access should work for dicts, nodes, and none bases."""
+    """Bracket field access should work for dicts, nodes, and null bases."""
     dict_value = _execute('.[0]["key"]', [{"key": 7}], None)
     node_value = _execute('.[0]["heading"]', _sample_nodes(), None)
-    none_value = _execute('.[0]["missing"]', [None], None)
+    null_value = _execute('.[0]["missing"]', [None], None)
 
     assert dict_value == [7]
     assert node_value == ["Parent"]
-    assert none_value == [None]
+    assert null_value == [None]
 
 
 def test_runtime_dict_assignment_sets_and_overwrites_values() -> None:
@@ -843,8 +843,8 @@ def test_runtime_dict_assignment_requires_string_key() -> None:
         _execute(".[] | .[$k] = 1", [{}], {"k": 1})
 
 
-def test_runtime_iterate_skips_none_values() -> None:
-    """Iteration should ignore none values in collection streams."""
+def test_runtime_iterate_skips_null_values() -> None:
+    """Iteration should ignore null values in collection streams."""
     result = _execute(".[] | .[]", [None, [1, 2]], None)
     assert result == [1, 2]
 
@@ -911,7 +911,7 @@ def test_runtime_join_supports_org_root_collection_extraction() -> None:
 
 def test_runtime_iter_function_arguments_skip_empty_parts() -> None:
     """Function argument expansion should skip combinations with empty parts."""
-    result = _execute('timestamp(select(none), "<2025-01-02 Thu>")', [None], None)
+    result = _execute('timestamp(select(null), "<2025-01-02 Thu>")', [None], None)
     assert result == []
 
 
@@ -933,10 +933,10 @@ def test_runtime_parse_org_date_rejects_unparseable_strings() -> None:
         _execute('timestamp("xyz")', [None], None)
 
 
-def test_runtime_constructor_functions_accept_none_for_optional_active_flag() -> None:
-    """Constructor active flags should accept none where supported."""
+def test_runtime_constructor_functions_accept_null_for_optional_active_flag() -> None:
+    """Constructor active flags should accept null where supported."""
     result = _execute(
-        'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 10:30>", none)',
+        'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 10:30>", null)',
         [None],
         None,
     )
@@ -949,8 +949,8 @@ def test_runtime_unique_skips_duplicate_stream_values() -> None:
     assert result == [1, 2]
 
 
-def test_runtime_sort_by_all_none_keys_preserves_input_order() -> None:
-    """sort_by should keep original order when all keys are none."""
+def test_runtime_sort_by_all_null_keys_preserves_input_order() -> None:
+    """sort_by should keep original order when all keys are null."""
     result = _execute(".[0] | .[] | sort_by(.)", [[None, None]], None)
     assert result == [None, None]
 

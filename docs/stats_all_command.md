@@ -1,18 +1,21 @@
-# `org stats tasks`
+# `org stats all`
 
-Show task-only statistics and histograms (no tag/group sections).
+Show a compact full report: task-level stats, top tasks, top tags, and tag groups.
 
 ## Usage
 
 ```bash
-poetry run org stats tasks [OPTIONS] [FILE ...]
+poetry run org stats all [OPTIONS] [FILE ...]
 ```
 
 ## Command-specific switches
 
-- `--category-property` - Property name used for category histogram.
-- `--with-tags-as-category` - Derive category from first tag.
-- `--buckets` - Control timeline/histogram resolution.
+- `--use tags|heading|body` - Choose analysis target for tag sections.
+- `--max-tags` - Limit TAGS section items (`0` hides section).
+- `--max-groups` - Limit GROUPS section items (`0` hides section).
+- `--min-group-size` - Skip small groups.
+- `--max-relations` - Limit relation entries per item.
+- `--with-tags-as-category`, `--category-property` - Control category derivation.
 
 ## Available filters
 
@@ -26,40 +29,51 @@ poetry run org stats tasks [OPTIONS] [FILE ...]
 
 ## Examples
 
-1) Get a task-only status overview
+1) Get a quick project health snapshot
 
 ```bash
-poetry run org stats tasks examples/ARCHIVE_small
+poetry run org stats all examples/ARCHIVE_small
 ```
 
-2) Analyze tasks completed within a date range
+2) Get a compact summary for dashboards or reports
 
 ```bash
-poetry run org stats tasks \
-  --filter-date-from 2023-10-20 \
-  --filter-date-until 2023-11-15 \
-  --filter-completed \
+poetry run org stats all \
+  --limit 3 \
+  --max-tags 2 \
+  --max-groups 1 \
   examples/ARCHIVE_small
 ```
 
-3) Group task categories by first tag
+3) Analyze heading vocabulary trends
 
 ```bash
-poetry run org stats tasks \
-  --category-property CATEGORY \
-  --with-tags-as-category \
+poetry run org stats all \
+  --use heading \
+  --max-tags 5 \
+  --max-relations 2 \
   examples/ARCHIVE_small
 ```
 
-4) Build a filtered, category-aware task report
+4) Review unfinished work in a date window
 
 ```bash
-poetry run org stats tasks \
-  --with-tags-as-category \
-  --category-property CATEGORY \
-  --filter-priority B \
+poetry run org stats all \
   --filter-date-from 2023-10-20 \
   --filter-date-until 2023-11-15 \
+  --filter-not-completed \
+  examples/ARCHIVE_small
+```
+
+5) Build a focused summary with tuned section sizes
+
+```bash
+poetry run org stats all \
+  --use tags \
+  --limit 5 \
+  --max-tags 3 \
+  --max-groups 2 \
+  --max-relations 3 \
   examples/ARCHIVE_small
 ```
 
@@ -80,21 +94,25 @@ Task states:
   SUSPENDED┊█ 1
 ```
 
-Example full output excerpt (ellided):
+Example section output (ellided):
 
 ```text
 Total tasks: 33
 Unique tasks: 32
 ...
-Task states:
-  DONE     ┊█████████████████████████████████████████████ 30
+TASKS
+  examples/ARCHIVE_small: * DONE ...
+
+TAGS
+  ProjectManagement
+    Total tasks: 10
 ...
-Task categories:
-  regular  ┊████████████████████████████ 19
-  simple   ┊█████████████████████ 14
+GROUPS
+  ProjectManagement, Jira
+    Total tasks: 10
 ```
 
 ## How to read plots and histograms
 
-- Frequency plot (top sparkline): timeline of all matched tasks; higher blocks mean busier periods.
-- Histograms (`Task states`, `Task priorities`, `Task categories`, `Task occurrence by day of week`): each row is a bucket; bar length is count.
+- Frequency plot (sparkline): left is earliest date, right is latest date; taller blocks mean higher activity; right label shows peak count/date.
+- Histogram rows: label is the bucket/category, bar length is count.

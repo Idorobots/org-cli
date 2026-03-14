@@ -66,7 +66,8 @@ class GroupsArgs:
     filter_completed: bool
     filter_not_completed: bool
     color_flag: bool | None
-    max_results: int
+    width: int | None
+    max_results: int | None
     max_tags: int
     use: str
     groups: list[str] | None
@@ -75,33 +76,35 @@ class GroupsArgs:
     max_relations: int
     min_group_size: int
     max_groups: int
-    buckets: int
+
+
+@dataclass(frozen=True)
+class GroupListDisplayConfig:
+    """Configuration for rendering group blocks."""
+
+    max_results: int
+    plot_width: int
+    date_from: datetime | None
+    date_until: datetime | None
+    global_timerange: TimeRange
+    exclude_set: set[str]
+    color_enabled: bool
 
 
 def format_group_list(
     groups: list[Group],
-    config: tuple[int, int, datetime | None, datetime | None, TimeRange, set[str], bool],
+    config: GroupListDisplayConfig,
     indent: str = "",
 ) -> str:
     """Return formatted output for group stats without a section header."""
-    (
-        max_results,
-        num_buckets,
-        date_from,
-        date_until,
-        global_timerange,
-        exclude_set,
-        color_enabled,
-    ) = config
-
-    exclude_lower = {value.lower() for value in exclude_set}
+    exclude_lower = {value.lower() for value in config.exclude_set}
     filtered_groups = []
     for group in groups:
         display_tags = [tag for tag in group.tags if tag.lower() not in exclude_lower]
         if display_tags:
             filtered_groups.append((display_tags, group))
 
-    filtered_groups = filtered_groups[:max_results]
+    filtered_groups = filtered_groups[: config.max_results]
 
     if not filtered_groups:
         return lines_to_text(apply_indent(["No results"], indent))
@@ -115,13 +118,13 @@ def format_group_list(
                 group_tags,
                 group,
                 GroupBlockConfig(
-                    date_from=date_from,
-                    date_until=date_until,
-                    global_timerange=global_timerange,
+                    date_from=config.date_from,
+                    date_until=config.date_until,
+                    global_timerange=config.global_timerange,
                     timeline=TimelineFormatConfig(
-                        num_buckets=num_buckets,
-                        color_enabled=color_enabled,
+                        color_enabled=config.color_enabled,
                         indent="",
+                        plot_width=config.plot_width,
                     ),
                     name_indent="",
                     stats_indent="  ",
@@ -135,8 +138,9 @@ def format_group_list(
 def run_stats_groups(args: GroupsArgs) -> None:
     """Run the stats groups command."""
     color_enabled = setup_output(args)
-    console = build_console(color_enabled)
+    console = build_console(color_enabled, args.width)
     validate_stats_arguments(args)
+    max_results = args.max_results if args.max_results is not None else 10
 
     with processing_status(console, color_enabled):
         mapping = resolve_mapping(args)
@@ -170,14 +174,14 @@ def run_stats_groups(args: GroupsArgs) -> None:
 
             output = format_group_list(
                 groups,
-                (
-                    args.max_results,
-                    args.buckets,
-                    date_from,
-                    date_until,
-                    global_timerange,
-                    exclude_set,
-                    color_enabled,
+                GroupListDisplayConfig(
+                    max_results=max_results,
+                    plot_width=console.width,
+                    date_from=date_from,
+                    date_until=date_until,
+                    global_timerange=global_timerange,
+                    exclude_set=exclude_set,
+                    color_enabled=color_enabled,
                 ),
             )
 
@@ -312,9 +316,16 @@ def register(app: typer.Typer) -> None:
             "--color/--no-color",
             help="Force colored output",
         ),
-        max_results: int = typer.Option(
+        width: int | None = typer.Option(
+            None,
+            "--width",
+            metavar="N",
+            min=50,
+            help="Override auto-derived console width (minimum: 50)",
+        ),
+        max_results: int | None = typer.Option(
             10,
-            "--max-results",
+            "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
@@ -348,12 +359,6 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Maximum number of relations to consider per item (use 0 to omit sections)",
         ),
-        buckets: int = typer.Option(
-            50,
-            "--buckets",
-            metavar="N",
-            help="Number of time buckets for timeline charts (minimum: 20)",
-        ),
     ) -> None:
         """Show tag groups for selected groups or top results."""
         args = GroupsArgs(
@@ -378,6 +383,7 @@ def register(app: typer.Typer) -> None:
             filter_completed=filter_completed,
             filter_not_completed=filter_not_completed,
             color_flag=color_flag,
+            width=width,
             max_results=max_results,
             max_tags=0,
             use=use,
@@ -387,7 +393,6 @@ def register(app: typer.Typer) -> None:
             max_relations=max_relations,
             min_group_size=0,
             max_groups=0,
-            buckets=buckets,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "stats groups")

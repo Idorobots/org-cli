@@ -35,17 +35,17 @@ def test_compute_category_histogram_counts_category_values() -> None:
     assert histogram.values["hard"] == 1
 
 
-def test_compute_category_histogram_uses_none_for_missing_category() -> None:
-    """Missing category property should be recorded as none."""
+def test_compute_category_histogram_uses_null_for_missing_category() -> None:
+    """Missing category property should be recorded as null."""
     nodes = node_from_org("* DONE Task\n")
 
     histogram = compute_category_histogram(nodes, "CATEGORY")
 
-    assert histogram.values["none"] == 1
+    assert histogram.values["null"] == 1
 
 
-def test_compute_category_histogram_uses_none_for_empty_category() -> None:
-    """Empty category property should be recorded as none."""
+def test_compute_category_histogram_uses_null_for_empty_category() -> None:
+    """Empty category property should be recorded as null."""
     nodes = node_from_org("""
 * DONE Task
 :PROPERTIES:
@@ -55,7 +55,7 @@ def test_compute_category_histogram_uses_none_for_empty_category() -> None:
 
     histogram = compute_category_histogram(nodes, "CATEGORY")
 
-    assert histogram.values["none"] == 1
+    assert histogram.values["null"] == 1
 
 
 def test_compute_category_histogram_supports_custom_property_name() -> None:
