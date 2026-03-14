@@ -362,6 +362,59 @@ def test_run_stats_all_tasks_panel_grows_with_task_list(
     assert captured.count("Task-") == 40
 
 
+def test_run_stats_all_two_column_default_limit_uses_summary_size(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: os.PathLike[str]
+) -> None:
+    """Two-column stats all should default task limit to summary body line count."""
+    fixture_path = os.path.join(tmp_path, "many_tasks_default_two_column.org")
+    lines = [
+        f"* DONE Task-{index:02d}\nCLOSED: [2025-01-{(index % 28) + 1:02d} Wed 10:00]"
+        for index in range(40)
+    ]
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write("\n\n".join(lines) + "\n")
+
+    args = make_stats_all_args(
+        [fixture_path],
+        width=120,
+        max_results=None,
+        max_tags=0,
+        max_groups=0,
+    )
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "all", "--width", "120"])
+    stats_all_command.run_stats(args)
+    captured = capsys.readouterr().out
+
+    assert captured.count("Task-") > 10
+    assert captured.count("Task-") < 40
+
+
+def test_run_stats_all_single_column_default_limit_stays_ten(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: os.PathLike[str]
+) -> None:
+    """Single-column stats all should keep the legacy 10 task default."""
+    fixture_path = os.path.join(tmp_path, "many_tasks_default_single_column.org")
+    lines = [
+        f"* DONE Task-{index:02d}\nCLOSED: [2025-01-{(index % 28) + 1:02d} Wed 10:00]"
+        for index in range(40)
+    ]
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write("\n\n".join(lines) + "\n")
+
+    args = make_stats_all_args(
+        [fixture_path],
+        width=119,
+        max_results=None,
+        max_tags=0,
+        max_groups=0,
+    )
+    monkeypatch.setattr(sys, "argv", ["org", "stats", "all", "--width", "119"])
+    stats_all_command.run_stats(args)
+    captured = capsys.readouterr().out
+
+    assert captured.count("Task-") == 10
+
+
 def test_resolve_two_column_panel_content_width_accounts_for_panel_chrome() -> None:
     """Panel content width should subtract borders and horizontal padding."""
     assert stats_all_command._resolve_two_column_panel_content_width(80) == 36

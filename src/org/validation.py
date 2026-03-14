@@ -24,7 +24,7 @@ class StatsArgs(Protocol):
     """Protocol for arguments used in stats validation."""
 
     use: str
-    max_results: int
+    max_results: int | None
     max_relations: int
     max_tags: int
     max_groups: int
@@ -199,20 +199,27 @@ def validate_global_arguments(args: GlobalArgs) -> tuple[list[str], list[str]]:
 
 def validate_stats_arguments(args: StatsArgs) -> None:
     """Validate stats command arguments."""
-    if args.use not in {"tags", "heading", "body"}:
+    use = args.use
+    max_results = args.max_results
+    max_relations = args.max_relations
+    max_tags = args.max_tags
+    max_groups = args.max_groups
+    min_group_size = args.min_group_size
+
+    if use not in {"tags", "heading", "body"}:
         raise typer.BadParameter("--use must be one of: tags, heading, body")
 
-    if args.max_results < 0:
+    if max_results is not None and max_results < 0:
         raise typer.BadParameter("--limit must be non-negative")
 
-    if args.max_relations < 0:
+    if max_relations < 0:
         raise typer.BadParameter("--max-relations must be non-negative")
 
-    if args.max_tags < 0:
+    if max_tags < 0:
         raise typer.BadParameter("--max-tags must be non-negative")
 
-    if args.max_groups < 0:
+    if max_groups < 0:
         raise typer.BadParameter("--max-groups must be non-negative")
 
-    if args.min_group_size < 0:
+    if min_group_size < 0:
         raise typer.BadParameter("--min-group-size must be non-negative")

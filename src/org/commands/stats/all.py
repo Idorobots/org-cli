@@ -73,7 +73,7 @@ class StatsAllArgs:
     filter_not_completed: bool
     color_flag: bool | None
     width: int | None
-    max_results: int
+    max_results: int | None
     max_tags: int
     use: str
     with_tags_as_category: bool
@@ -150,6 +150,14 @@ class _StatsAllPanelSection:
     body: str
 
 
+@dataclass(frozen=True)
+class _StatsAllSectionBuildConfig:
+    """Configuration for building stats all panel sections."""
+
+    panel_content_width: int
+    use_summary_based_default: bool
+
+
 def format_tags_section(
     category_name: str,
     tags: dict[str, Tag],
@@ -211,6 +219,7 @@ def format_stats_all_output(
         return -item[1].total_tasks
 
     category_name = CATEGORY_NAMES[args.use]
+    task_limit = args.max_results if args.max_results is not None else 10
 
     return "".join(
         section
@@ -229,7 +238,7 @@ def format_stats_all_output(
             format_top_tasks_section(
                 nodes,
                 TopTasksSectionConfig(
-                    max_results=args.max_results,
+                    max_results=task_limit,
                     color_enabled=display_config.color_enabled,
                     done_keys=display_config.done_keys,
                     todo_keys=display_config.todo_keys,
@@ -298,6 +307,19 @@ def _section_height(section: _StatsAllPanelSection) -> int:
     return _line_count(section.body) + 2
 
 
+def _resolve_stats_all_task_limit(
+    max_results: int | None,
+    normalized_summary_body: str,
+    use_summary_based_default: bool,
+) -> int:
+    """Resolve effective task limit for stats all layouts."""
+    if max_results is not None:
+        return max_results
+    if use_summary_based_default:
+        return max(1, _line_count(normalized_summary_body))
+    return 10
+
+
 def _build_panel(
     section: _StatsAllPanelSection, color_enabled: bool, height: int | None = None
 ) -> Panel:
@@ -316,7 +338,7 @@ def _build_stats_all_panel_sections(
     nodes: list[orgparse.node.OrgNode],
     args: StatsAllArgs,
     display_config: _StatsAllDisplayConfig,
-    panel_content_width: int,
+    config: _StatsAllSectionBuildConfig,
 ) -> list[_StatsAllPanelSection]:
     """Build panel sections shared by both stats all layout modes."""
     summary_body = format_tasks_summary(
@@ -328,21 +350,27 @@ def _build_stats_all_panel_sections(
             todo_keys=display_config.todo_keys,
             color_enabled=display_config.color_enabled,
         ),
-        panel_content_width,
+        config.panel_content_width,
+    )
+    normalized_summary_body = _normalize_panel_body(summary_body)
+    task_limit = _resolve_stats_all_task_limit(
+        args.max_results,
+        normalized_summary_body,
+        config.use_summary_based_default,
     )
     tasks_body = _format_tasks_body(
         nodes,
-        args.max_results,
+        task_limit,
         _TaskDisplayConfig(
             color_enabled=display_config.color_enabled,
             done_keys=display_config.done_keys,
             todo_keys=display_config.todo_keys,
-            line_width=panel_content_width,
+            line_width=config.panel_content_width,
         ),
     )
 
     sections = [
-        _StatsAllPanelSection(title="SUMMARY", body=_normalize_panel_body(summary_body)),
+        _StatsAllPanelSection(title="SUMMARY", body=normalized_summary_body),
         _StatsAllPanelSection(title="TASKS", body=_normalize_panel_body(tasks_body)),
     ]
 
@@ -355,7 +383,7 @@ def _build_stats_all_panel_sections(
                 date_from=display_config.date_from,
                 date_until=display_config.date_until,
                 global_timerange=result.timerange,
-                plot_width=panel_content_width,
+                plot_width=config.panel_content_width,
                 color_enabled=display_config.color_enabled,
             ),
         )
@@ -373,7 +401,7 @@ def _build_stats_all_panel_sections(
             args.min_group_size,
             args.max_groups,
             _GroupsDisplayConfig(
-                plot_width=panel_content_width,
+                plot_width=config.panel_content_width,
                 date_from=display_config.date_from,
                 date_until=display_config.date_until,
                 global_timerange=result.timerange,
@@ -489,7 +517,14 @@ def _render_single_column_stats_all_layout(
     """Build a single-column stats all layout with vertically stacked sections."""
     panel_content_width = _resolve_single_column_panel_content_width(console_width)
     sections = _build_stats_all_panel_sections(
-        result, nodes, args, display_config, panel_content_width
+        result,
+        nodes,
+        args,
+        display_config,
+        _StatsAllSectionBuildConfig(
+            panel_content_width=panel_content_width,
+            use_summary_based_default=False,
+        ),
     )
 
     root = Layout(name="root")
@@ -522,7 +557,14 @@ def render_stats_all_layout(
 
     panel_content_width = _resolve_two_column_panel_content_width(console.width)
     sections = _build_stats_all_panel_sections(
-        result, nodes, args, display_config, panel_content_width
+        result,
+        nodes,
+        args,
+        display_config,
+        _StatsAllSectionBuildConfig(
+            panel_content_width=panel_content_width,
+            use_summary_based_default=True,
+        ),
     )
     summary_section = sections[0]
     tasks_section = sections[1]
@@ -782,8 +824,8 @@ def register(app: typer.Typer) -> None:
             min=50,
             help="Override auto-derived console width (minimum: 50)",
         ),
-        max_results: int = typer.Option(
-            10,
+        max_results: int | None = typer.Option(
+            None,
             "--limit",
             "-n",
             metavar="N",

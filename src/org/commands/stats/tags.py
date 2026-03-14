@@ -66,7 +66,7 @@ class TagsArgs:
     filter_not_completed: bool
     color_flag: bool | None
     width: int | None
-    max_results: int
+    max_results: int | None
     max_tags: int
     use: str
     tags: list[str] | None
@@ -163,6 +163,7 @@ def run_stats_tags(args: TagsArgs) -> None:
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
     validate_stats_arguments(args)
+    max_results = args.max_results if args.max_results is not None else 10
 
     with processing_status(console, color_enabled):
         mapping = resolve_mapping(args)
@@ -187,7 +188,7 @@ def run_stats_tags(args: TagsArgs) -> None:
                 tags,
                 tag_values,
                 TagsDisplayConfig(
-                    max_results=args.max_results,
+                    max_results=max_results,
                     max_relations=args.max_relations,
                     plot_width=console.width,
                     date_from=date_from,
@@ -336,7 +337,7 @@ def register(app: typer.Typer) -> None:
             min=50,
             help="Override auto-derived console width (minimum: 50)",
         ),
-        max_results: int = typer.Option(
+        max_results: int | None = typer.Option(
             10,
             "--limit",
             "-n",

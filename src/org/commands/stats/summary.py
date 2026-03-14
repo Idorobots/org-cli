@@ -63,7 +63,7 @@ class SummaryArgs:
     filter_not_completed: bool
     color_flag: bool | None
     width: int | None
-    max_results: int
+    max_results: int | None
     with_tags_as_category: bool
     category_property: str
 
@@ -81,7 +81,7 @@ class SummaryDisplayConfig:
 
 def _validate_summary_arguments(args: SummaryArgs) -> None:
     """Validate summary-specific arguments."""
-    if args.max_results < 0:
+    if args.max_results is not None and args.max_results < 0:
         raise typer.BadParameter("--limit must be non-negative")
 
 
@@ -397,7 +397,7 @@ def register(app: typer.Typer) -> None:
             min=50,
             help="Override auto-derived console width (minimum: 50)",
         ),
-        max_results: int = typer.Option(
+        max_results: int | None = typer.Option(
             10,
             "--limit",
             "-n",
