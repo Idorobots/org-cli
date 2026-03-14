@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+from datetime import datetime
 from types import SimpleNamespace
 from typing import cast
 
@@ -13,8 +14,10 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 from org import output_format
+from org.analyze import AnalysisResult, Group, Tag, TimeRange
 from org.commands import query as query_command
 from org.commands.tasks import list as tasks_list_command
+from org.histogram import Histogram
 
 
 class _FakeConsole:
@@ -248,6 +251,135 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
     assert syntax.lexer is not None
     assert syntax.lexer.name.lower() == "html"
     assert syntax.word_wrap is True
+
+
+def test_to_json_compatible_serializes_histogram_with_type_field() -> None:
+    """Histogram should serialize to a JSON object with a type field."""
+    histogram = Histogram(values={"DONE": 3, "TODO": 2})
+
+    result = output_format._to_json_compatible(histogram)
+
+    assert isinstance(result, dict)
+    assert result["type"] == "Histogram"
+    assert result["values"] == {"DONE": 3, "TODO": 2}
+
+
+def test_to_json_compatible_serializes_timerange_with_type_field() -> None:
+    """TimeRange should serialize to a JSON object with a type field."""
+    tr = TimeRange()
+    tr.update(datetime(2024, 3, 1, 10, 0))
+    tr.update(datetime(2024, 3, 5, 12, 0))
+
+    result = output_format._to_json_compatible(tr)
+
+    assert isinstance(result, dict)
+    assert result["type"] == "TimeRange"
+    assert result["earliest"] == "2024-03-01T10:00:00"
+    assert result["latest"] == "2024-03-05T12:00:00"
+    assert isinstance(result["timeline"], dict)
+    assert result["timeline"]["2024-03-01"] == 1
+    assert result["timeline"]["2024-03-05"] == 1
+
+
+def test_to_json_compatible_serializes_tag_with_type_field() -> None:
+    """Tag should serialize to a JSON object with a type field and nested TimeRange."""
+    tr = TimeRange()
+    tr.update(datetime(2024, 6, 1))
+    tag = Tag(
+        name="python",
+        total_tasks=5,
+        avg_tasks_per_day=0.5,
+        max_single_day_count=2,
+        relations={"testing": 3},
+        time_range=tr,
+    )
+
+    result = output_format._to_json_compatible(tag)
+
+    assert isinstance(result, dict)
+    assert result["type"] == "Tag"
+    assert result["name"] == "python"
+    assert result["total_tasks"] == 5
+    assert result["avg_tasks_per_day"] == 0.5
+    assert result["max_single_day_count"] == 2
+    assert result["relations"] == {"testing": 3}
+    time_range_result = result["time_range"]
+    assert isinstance(time_range_result, dict)
+    assert time_range_result["type"] == "TimeRange"
+
+
+def test_to_json_compatible_serializes_group_with_type_field() -> None:
+    """Group should serialize to a JSON object with a type field and nested TimeRange."""
+    group = Group(
+        tags=["python", "testing"],
+        time_range=TimeRange(),
+        total_tasks=7,
+        avg_tasks_per_day=0.3,
+        max_single_day_count=3,
+    )
+
+    result = output_format._to_json_compatible(group)
+
+    assert isinstance(result, dict)
+    assert result["type"] == "Group"
+    assert result["tags"] == ["python", "testing"]
+    assert result["total_tasks"] == 7
+    time_range_result = result["time_range"]
+    assert isinstance(time_range_result, dict)
+    assert time_range_result["type"] == "TimeRange"
+
+
+def test_to_json_compatible_serializes_analysis_result_with_type_field() -> None:
+    """AnalysisResult should serialize to a JSON object with nested analysis types."""
+    tr = TimeRange()
+    tr.update(datetime(2024, 1, 15))
+    tag = Tag(
+        name="dev",
+        total_tasks=4,
+        avg_tasks_per_day=0.2,
+        max_single_day_count=2,
+        relations={},
+        time_range=TimeRange(),
+    )
+    result = AnalysisResult(
+        total_tasks=4,
+        unique_tasks=4,
+        task_states=Histogram(values={"DONE": 2, "TODO": 2}),
+        task_categories=Histogram(values={}),
+        task_priorities=Histogram(values={"A": 1}),
+        task_days=Histogram(values={"Monday": 2}),
+        timerange=tr,
+        avg_tasks_per_day=0.2,
+        max_single_day_count=2,
+        max_repeat_count=1,
+        tags={"dev": tag},
+        tag_groups=[],
+    )
+
+    serialized = output_format._to_json_compatible(result)
+
+    assert isinstance(serialized, dict)
+    assert serialized["type"] == "AnalysisResult"
+    assert serialized["total_tasks"] == 4
+    assert serialized["unique_tasks"] == 4
+    assert serialized["avg_tasks_per_day"] == 0.2
+
+    task_states = serialized["task_states"]
+    assert isinstance(task_states, dict)
+    assert task_states["type"] == "Histogram"
+    assert task_states["values"] == {"DONE": 2, "TODO": 2}
+
+    timerange = serialized["timerange"]
+    assert isinstance(timerange, dict)
+    assert timerange["type"] == "TimeRange"
+
+    tags = serialized["tags"]
+    assert isinstance(tags, dict)
+    assert "dev" in tags
+    dev_tag = tags["dev"]
+    assert isinstance(dev_tag, dict)
+    assert dev_tag["type"] == "Tag"
+    assert dev_tag["name"] == "dev"
 
 
 def test_json_tasks_formatter_uses_json_syntax_when_color_enabled() -> None:
