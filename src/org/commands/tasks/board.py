@@ -46,6 +46,8 @@ class BoardArgs:
     filter_not_completed: bool
     color_flag: bool | None
     width: int | None
+    max_results: int | None
+    offset: int
     order_by_level: bool
     order_by_file_order: bool
     order_by_file_order_reversed: bool
@@ -211,12 +213,52 @@ def _estimate_panel_content_width(console_width: int, column_count: int) -> int:
     return max(10, raw_width - 8)
 
 
+def _resolve_tasks_limit(max_results: int | None) -> int:
+    """Resolve effective tasks limit, defaulting to all available tasks."""
+    if max_results is None:
+        return sys.maxsize
+    return max_results
+
+
+def _task_panel_height(node: orgparse.node.OrgNode, width: int, color_enabled: bool) -> int:
+    """Estimate panel height for one task card."""
+    title_lines = _build_heading_lines(node, width, color_enabled)
+    metadata_lines = _build_metadata_lines(node, width, color_enabled)
+    return len(title_lines) + len(metadata_lines) + 2
+
+
+def _column_content_height(
+    nodes: list[orgparse.node.OrgNode], width: int, color_enabled: bool
+) -> int:
+    """Estimate rendered content height for one board column."""
+    if not nodes:
+        return 1
+    return sum(_task_panel_height(node, width, color_enabled) for node in nodes)
+
+
+def _estimate_board_height(
+    columns: list[_BoardColumn], panel_content_width: int, color_enabled: bool
+) -> int:
+    """Estimate total rendered board table height in terminal lines."""
+    column_heights = [
+        _column_content_height(column.nodes, panel_content_width, color_enabled)
+        for column in columns
+    ]
+    content_row_height = max(column_heights, default=1)
+    return content_row_height + 3
+
+
 def run_tasks_board(args: BoardArgs) -> None:
     """Run the tasks board command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
     if console.width < 80:
         raise typer.BadParameter("--width must be at least 80")
+    if args.offset < 0:
+        raise typer.BadParameter("--offset must be non-negative")
+    if args.max_results is not None and args.max_results < 0:
+        raise typer.BadParameter("--limit must be non-negative")
+    args.max_results = _resolve_tasks_limit(args.max_results)
 
     with processing_status(console, color_enabled):
         nodes, todo_keys, done_keys = load_and_process_data(args)
@@ -256,6 +298,12 @@ def run_tasks_board(args: BoardArgs) -> None:
         content_cells.append(Group(*panels))
 
     table.add_row(*content_cells)
+    board_height = _estimate_board_height(columns, panel_content_width, color_enabled)
+    if board_height > console.height:
+        with console.pager(styles=color_enabled):
+            console.print(table)
+        return
+
     console.print(table)
 
 
@@ -390,6 +438,19 @@ def register(app: typer.Typer) -> None:
             min=80,
             help="Override auto-derived console width (minimum: 80)",
         ),
+        max_results: int | None = typer.Option(
+            None,
+            "--limit",
+            "-n",
+            metavar="N",
+            help="Maximum number of results to display (defaults to all results)",
+        ),
+        offset: int = typer.Option(
+            0,
+            "--offset",
+            metavar="N",
+            help="Number of results to skip before displaying",
+        ),
         order_by_level: bool = typer.Option(
             False,
             "--order-by-level",
@@ -456,6 +517,8 @@ def register(app: typer.Typer) -> None:
             filter_not_completed=filter_not_completed,
             color_flag=color_flag,
             width=width,
+            max_results=max_results,
+            offset=offset,
             order_by_level=order_by_level,
             order_by_file_order=order_by_file_order,
             order_by_file_order_reversed=order_by_file_order_reversed,

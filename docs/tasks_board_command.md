@@ -24,6 +24,8 @@ poetry run org tasks board [OPTIONS] [FILE ...]
 - `--order-by-priority` - Sort by task priority (repeatable).
 - `--order-by-timestamp-asc` - Sort by task timestamp ascending (repeatable).
 - `--order-by-timestamp-desc` - Sort by task timestamp descending (repeatable).
+- `--limit`, `-n` - Maximum number of results to display (defaults to all results).
+- `--offset` - Skip first N results.
 - `--width` - Override console width (minimum: `80`).
 
 ## Available filters
@@ -71,4 +73,5 @@ poetry run org tasks board \
 ## Output
 
 - The command always renders a Rich board layout (no `--out` format selection).
+- When rendered board height exceeds the viewport, output is shown in a pager.
 - Empty result set prints `No results`.
