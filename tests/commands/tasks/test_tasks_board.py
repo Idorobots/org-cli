@@ -53,6 +53,7 @@ def make_board_args(files: list[str], **overrides: object) -> tasks_board.BoardA
         order_by_timestamp_desc=False,
         with_tags_as_category=False,
         category_property="CATEGORY",
+        coalesce_completed=True,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -243,3 +244,136 @@ def test_run_tasks_board_uses_pager_when_render_exceeds_console_height(
     tasks_board.run_tasks_board(args)
 
     assert pager_called["value"]
+
+
+def test_run_tasks_board_coalesce_completed_true_shows_completed_column(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With coalesce_completed=True, all done tasks appear under a single COMPLETED column."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    args = make_board_args(
+        [fixture_path],
+        todo_keys="TODO,WAITING,IN-PROGRESS",
+        done_keys="DONE,CANCELLED,ARCHIVED",
+        coalesce_completed=True,
+        width=200,
+    )
+
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--width", "200"])
+    tasks_board.run_tasks_board(args)
+    output = capsys.readouterr().out
+
+    assert "COMPLETED" in output
+    assert "DONE" not in output.split("COMPLETED")[0].replace("NOT STARTED", "")
+    assert "CANCELLED" not in output.split("COMPLETED")[0].replace("NOT STARTED", "")
+    assert "ARCHIVED" not in output.split("COMPLETED")[0].replace("NOT STARTED", "")
+
+
+def test_run_tasks_board_coalesce_completed_true_prefixes_state_in_panel(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With coalesce_completed=True, each completed task panel shows its state in the title."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    args = make_board_args(
+        [fixture_path],
+        todo_keys="TODO,WAITING,IN-PROGRESS",
+        done_keys="DONE,CANCELLED,ARCHIVED",
+        coalesce_completed=True,
+        width=200,
+    )
+
+    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--width", "200"])
+    tasks_board.run_tasks_board(args)
+    output = capsys.readouterr().out
+
+    assert "DONE Completed task" in output
+    assert "CANCELLED Custom done state" in output
+    assert "ARCHIVED Another done state" in output
+
+
+def test_run_tasks_board_coalesce_completed_false_shows_individual_done_columns(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With coalesce_completed=False, each done state gets its own column header."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    args = make_board_args(
+        [fixture_path],
+        todo_keys="TODO,WAITING,IN-PROGRESS",
+        done_keys="DONE,CANCELLED,ARCHIVED",
+        coalesce_completed=False,
+        width=200,
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "tasks", "board", "--no-coalesce-completed", "--width", "200"],
+    )
+    tasks_board.run_tasks_board(args)
+    output = capsys.readouterr().out
+
+    assert "COMPLETED" not in output
+    assert "DONE" in output
+    assert "CANCELLED" in output
+    assert "ARCHIVED" in output
+
+
+def test_run_tasks_board_coalesce_completed_false_done_columns_ordered_after_todo_columns(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With coalesce_completed=False, done key columns appear to the right of todo key columns."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    args = make_board_args(
+        [fixture_path],
+        todo_keys="TODO,WAITING,IN-PROGRESS",
+        done_keys="DONE,CANCELLED,ARCHIVED",
+        coalesce_completed=False,
+        width=200,
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "tasks", "board", "--no-coalesce-completed", "--width", "200"],
+    )
+    tasks_board.run_tasks_board(args)
+    output = capsys.readouterr().out
+
+    pos_in_progress = output.find("IN-PROGRESS")
+    pos_done = output.find("DONE")
+    pos_cancelled = output.find("CANCELLED")
+    pos_archived = output.find("ARCHIVED")
+
+    assert pos_in_progress != -1
+    assert pos_done != -1
+    assert pos_cancelled != -1
+    assert pos_archived != -1
+    assert pos_in_progress < pos_done
+    assert pos_done < pos_cancelled
+    assert pos_cancelled < pos_archived
+
+
+def test_run_tasks_board_coalesce_completed_false_tasks_in_correct_columns(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With coalesce_completed=False, tasks appear under their specific done state column."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    args = make_board_args(
+        [fixture_path],
+        todo_keys="TODO,WAITING,IN-PROGRESS",
+        done_keys="DONE,CANCELLED,ARCHIVED",
+        coalesce_completed=False,
+        width=200,
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "tasks", "board", "--no-coalesce-completed", "--width", "200"],
+    )
+    tasks_board.run_tasks_board(args)
+    output = capsys.readouterr().out
+
+    assert "Completed task" in output
+    assert "Custom done state" in output
+    assert "Another done state" in output

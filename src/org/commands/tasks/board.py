@@ -56,6 +56,7 @@ class BoardArgs:
     order_by_timestamp_desc: bool
     with_tags_as_category: bool
     category_property: str
+    coalesce_completed: bool
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,17 @@ class _BoardColumn:
 
     title: str
     nodes: list[orgparse.node.OrgNode]
+
+
+@dataclass(frozen=True)
+class _PanelRenderConfig:
+    """Rendering context passed to task panel builders."""
+
+    width: int
+    color_enabled: bool
+    done_keys: list[str]
+    todo_keys: list[str]
+    coalesce_completed: bool
 
 
 def _build_heading_lines(node: orgparse.node.OrgNode, width: int, color_enabled: bool) -> list[str]:
@@ -126,13 +138,35 @@ def _build_metadata_lines(
     return [first_line, *continuation]
 
 
-def _build_task_panel(node: orgparse.node.OrgNode, width: int, color_enabled: bool) -> Panel:
+def _state_prefix(
+    node: orgparse.node.OrgNode,
+    done_keys: list[str],
+    todo_keys: list[str],
+    color_enabled: bool,
+) -> str:
+    """Build a colored state prefix string for a task panel title line."""
+    state = node.todo or ""
+    if not state:
+        return ""
+    style = get_state_color(state, done_keys, todo_keys, color_enabled)
+    safe_state = escape_text(state, color_enabled)
+    if color_enabled and style:
+        return f"[{style}]{safe_state}[/] "
+    return f"{safe_state} "
+
+
+def _build_task_panel(node: orgparse.node.OrgNode, render: _PanelRenderConfig) -> Panel:
     """Build a visual panel for one task."""
-    title_lines = _build_heading_lines(node, width, color_enabled)
-    metadata_lines = _build_metadata_lines(node, width, color_enabled)
+    title_lines = _build_heading_lines(node, render.width, render.color_enabled)
+    metadata_lines = _build_metadata_lines(node, render.width, render.color_enabled)
+
+    if render.coalesce_completed and node.todo and node.todo in render.done_keys:
+        prefix = _state_prefix(node, render.done_keys, render.todo_keys, render.color_enabled)
+        title_lines = [f"{prefix}{title_lines[0]}", *title_lines[1:]]
+
     lines = [*title_lines, *metadata_lines]
     return Panel(
-        Text.from_markup("\n".join(lines)) if color_enabled else Text("\n".join(lines)),
+        Text.from_markup("\n".join(lines)) if render.color_enabled else Text("\n".join(lines)),
         expand=True,
         box=box.ROUNDED,
         padding=(0, 1),
@@ -164,12 +198,18 @@ def _column_title_markup(
     return safe_title
 
 
-def _initial_columns(todo_keys: list[str]) -> dict[str, list[orgparse.node.OrgNode]]:
+def _initial_columns(
+    todo_keys: list[str], done_keys: list[str], coalesce_completed: bool
+) -> dict[str, list[orgparse.node.OrgNode]]:
     """Create mutable board columns keyed by title."""
     columns: dict[str, list[orgparse.node.OrgNode]] = {"NOT STARTED": []}
     for key in todo_keys:
         columns[key] = []
-    columns["COMPLETED"] = []
+    if coalesce_completed:
+        columns["COMPLETED"] = []
+    else:
+        for key in done_keys:
+            columns[key] = []
     return columns
 
 
@@ -178,6 +218,7 @@ def _place_node(
     node: orgparse.node.OrgNode,
     todo_keys: list[str],
     done_keys: list[str],
+    coalesce_completed: bool,
 ) -> None:
     """Assign one node to its board column."""
     state = node.todo
@@ -185,7 +226,10 @@ def _place_node(
         columns["NOT STARTED"].append(node)
         return
     if state in done_keys:
-        columns["COMPLETED"].append(node)
+        if coalesce_completed:
+            columns["COMPLETED"].append(node)
+        else:
+            columns[state].append(node)
         return
     if state in todo_keys:
         columns[state].append(node)
@@ -197,12 +241,16 @@ def _build_board_columns(
     nodes: list[orgparse.node.OrgNode],
     todo_keys: list[str],
     done_keys: list[str],
+    coalesce_completed: bool,
 ) -> list[_BoardColumn]:
     """Group nodes into ordered board columns."""
-    columns = _initial_columns(todo_keys)
+    columns = _initial_columns(todo_keys, done_keys, coalesce_completed)
     for node in nodes:
-        _place_node(columns, node, todo_keys, done_keys)
-    ordered_titles = ["NOT STARTED", *todo_keys, "COMPLETED"]
+        _place_node(columns, node, todo_keys, done_keys, coalesce_completed)
+    if coalesce_completed:
+        ordered_titles = ["NOT STARTED", *todo_keys, "COMPLETED"]
+    else:
+        ordered_titles = ["NOT STARTED", *todo_keys, *done_keys]
     return [_BoardColumn(title=title, nodes=columns[title]) for title in ordered_titles]
 
 
@@ -248,6 +296,24 @@ def _estimate_board_height(
     return content_row_height + 3
 
 
+def _resolve_header_state(
+    column: _BoardColumn, done_keys: list[str], coalesce_completed: bool
+) -> str:
+    """Resolve the state name used for coloring a column header."""
+    if column.title == "NOT STARTED":
+        return ""
+    if coalesce_completed and column.title == "COMPLETED":
+        return _completed_header_state(done_keys)
+    return column.title
+
+
+def _restore_key_order(specified: list[str], discovered: list[str]) -> list[str]:
+    """Return discovered keys with user-specified keys first in their original order."""
+    specified_set = set(specified)
+    extras = [k for k in discovered if k not in specified_set]
+    return [*specified, *extras]
+
+
 def run_tasks_board(args: BoardArgs) -> None:
     """Run the tasks board command."""
     color_enabled = setup_output(args)
@@ -261,13 +327,18 @@ def run_tasks_board(args: BoardArgs) -> None:
     args.max_results = _resolve_tasks_limit(args.max_results)
 
     with processing_status(console, color_enabled):
-        nodes, todo_keys, done_keys = load_and_process_data(args)
+        nodes, discovered_todo_keys, discovered_done_keys = load_and_process_data(args)
+
+    specified_todo_keys = [k.strip() for k in args.todo_keys.split(",") if k.strip()]
+    specified_done_keys = [k.strip() for k in args.done_keys.split(",") if k.strip()]
+    todo_keys = _restore_key_order(specified_todo_keys, discovered_todo_keys)
+    done_keys = _restore_key_order(specified_done_keys, discovered_done_keys)
 
     if not nodes:
         console.print("No results", markup=False)
         return
 
-    columns = _build_board_columns(nodes, todo_keys, done_keys)
+    columns = _build_board_columns(nodes, todo_keys, done_keys, args.coalesce_completed)
     panel_content_width = _estimate_panel_content_width(console.width, len(columns))
 
     table = Table(expand=True, box=box.SQUARE, show_lines=False, show_header=False)
@@ -276,25 +347,25 @@ def run_tasks_board(args: BoardArgs) -> None:
 
     header_row: list[str] = []
     for column in columns:
-        state = column.title
-        if column.title == "NOT STARTED":
-            state = ""
-        elif column.title == "COMPLETED":
-            state = _completed_header_state(done_keys)
-
+        state = _resolve_header_state(column, done_keys, args.coalesce_completed)
         header_row.append(
             _column_title_markup(column.title, state, done_keys, todo_keys, color_enabled)
         )
     table.add_row(*header_row)
 
+    render = _PanelRenderConfig(
+        width=panel_content_width,
+        color_enabled=color_enabled,
+        done_keys=done_keys,
+        todo_keys=todo_keys,
+        coalesce_completed=args.coalesce_completed,
+    )
     content_cells: list[RenderableType] = []
     for column in columns:
         if not column.nodes:
             content_cells.append(Text(""))
             continue
-        panels = [
-            _build_task_panel(node, panel_content_width, color_enabled) for node in column.nodes
-        ]
+        panels = [_build_task_panel(node, render) for node in column.nodes]
         content_cells.append(Group(*panels))
 
     table.add_row(*content_cells)
@@ -492,6 +563,14 @@ def register(app: typer.Typer) -> None:
             metavar="PROPERTY",
             help="Property name to use for category histogram and filtering",
         ),
+        coalesce_completed: bool = typer.Option(
+            True,
+            "--coalesce-completed/--no-coalesce-completed",
+            help=(
+                "Coalesce all completed states into a single COMPLETED column. "
+                "When disabled, each done state gets its own column."
+            ),
+        ),
     ) -> None:
         """Display tasks as an AGILE-style board."""
         args = BoardArgs(
@@ -527,6 +606,7 @@ def register(app: typer.Typer) -> None:
             order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
             category_property=category_property,
+            coalesce_completed=coalesce_completed,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks board")
