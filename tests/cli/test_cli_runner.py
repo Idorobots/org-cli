@@ -127,6 +127,33 @@ def test_cli_runner_tasks_list_custom_filter_required_arg_error() -> None:
         config.CONFIG_CUSTOM_FILTERS.update(original_filters)
 
 
+def test_cli_runner_tasks_board_renders_columns() -> None:
+    """CliRunner should render board columns for tasks board command."""
+    runner = CliRunner()
+    fixture_path = str((FIXTURES_DIR / "custom_states.org").resolve())
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "board",
+            "--no-color",
+            "--todo-keys",
+            "TODO,WAITING,IN-PROGRESS",
+            "--done-keys",
+            "DONE,CANCELLED,ARCHIVED",
+            "--width",
+            "150",
+            fixture_path,
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "NOT STARTED" in result.stdout
+    assert "COMPLETED" in result.stdout
+    assert "WAITING" in result.stdout
+
+
 def test_cli_runner_allows_missing_files_when_some_exist() -> None:
     """Missing file paths should warn while command still succeeds."""
     runner = CliRunner()

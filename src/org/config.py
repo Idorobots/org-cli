@@ -729,6 +729,12 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     tasks_list_defaults = {
         key: value for key, value in defaults.items() if key not in task_command_disallowed
     }
+    tasks_board_disallowed = task_command_disallowed.union(
+        {"details", "max_results", "offset", "out", "out_theme", "pandoc_args"}
+    )
+    tasks_board_defaults = {
+        key: value for key, value in defaults.items() if key not in tasks_board_disallowed
+    }
     tags_defaults = {
         key: value
         for key, value in defaults.items()
@@ -748,7 +754,7 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
             "tags": tags_defaults,
             "groups": groups_defaults,
         },
-        "tasks": {"list": tasks_list_defaults},
+        "tasks": {"list": tasks_list_defaults, "board": tasks_board_defaults},
     }
 
 

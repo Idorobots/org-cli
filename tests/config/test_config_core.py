@@ -303,6 +303,34 @@ def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
     assert tasks_list_defaults["order_by_level"] is True
     assert tasks_list_defaults["order_by_timestamp_desc"] is False
 
+    tasks_board_defaults = default_map["tasks"]["board"]
+    assert tasks_board_defaults["order_by_level"] is True
+    assert tasks_board_defaults["order_by_timestamp_desc"] is False
+
+
+def test_build_default_map_strips_tasks_board_unsupported_defaults() -> None:
+    """Tasks board default map should omit list-only output and slice options."""
+    default_map = config.build_default_map(
+        {
+            "details": True,
+            "max_results": 5,
+            "offset": 2,
+            "out": "json",
+            "out_theme": "vim",
+            "pandoc_args": "--wrap=none",
+            "order_by_level": True,
+        }
+    )
+
+    tasks_board_defaults = default_map["tasks"]["board"]
+    assert "details" not in tasks_board_defaults
+    assert "max_results" not in tasks_board_defaults
+    assert "offset" not in tasks_board_defaults
+    assert "out" not in tasks_board_defaults
+    assert "out_theme" not in tasks_board_defaults
+    assert "pandoc_args" not in tasks_board_defaults
+    assert tasks_board_defaults["order_by_level"] is True
+
 
 def test_apply_config_defaults_applies_inline_and_append_defaults() -> None:
     """apply_config_defaults should fill append and inline values."""
