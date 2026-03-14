@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import shlex
 import subprocess
@@ -16,6 +17,8 @@ from orgparse.node import OrgRootNode
 from rich.console import Console
 from rich.syntax import Syntax
 
+from org.analyze import AnalysisResult, Group, Tag, TimeRange
+from org.histogram import Histogram
 from org.tui import print_output
 
 
@@ -310,6 +313,17 @@ def _org_object_to_json_dict(value: object, seen: set[int]) -> dict[str, object]
     return data
 
 
+def _analysis_object_to_json_dict(
+    value: AnalysisResult | Tag | Group | TimeRange | Histogram,
+    seen: set[int],
+) -> dict[str, object]:
+    """Serialize analysis result dataclass into a JSON object with a type field."""
+    data: dict[str, object] = {"type": type(value).__name__}
+    for f in dataclasses.fields(value):
+        data[f.name] = _to_json_compatible(getattr(value, f.name), seen)
+    return data
+
+
 def _iterable_to_json_list(value: object, seen: set[int]) -> list[object]:
     """Convert iterable values into JSON arrays."""
     if isinstance(value, Iterable):
@@ -337,6 +351,9 @@ def _to_json_compatible(value: object, seen: set[int] | None = None) -> object:
     elif isinstance(value, OrgDate | orgparse.node.OrgNode | OrgRootNode | orgparse.node.OrgEnv):
         seen.add(obj_id)
         result = _org_object_to_json_dict(value, seen)
+    elif isinstance(value, AnalysisResult | Tag | Group | TimeRange | Histogram):
+        seen.add(obj_id)
+        result = _analysis_object_to_json_dict(value, seen)
     elif isinstance(value, Mapping):
         seen.add(obj_id)
         result = {str(key): _to_json_compatible(item, seen) for key, item in value.items()}

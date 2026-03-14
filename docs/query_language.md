@@ -517,6 +517,42 @@ repeated_task("<2025-01-02 Thu>", null, "DONE", true)
 # => [2025-01-02 Thu], <2025-01-02 Thu>
 ```
 
+### `analyze`
+
+- Arity: 0.
+- Input: stream of `OrgNode` values. Any non-`OrgNode` value (including `OrgRootNode`) raises a runtime error.
+- Output: single `AnalysisResult` value.
+
+Aggregates all nodes in the stream into a complete analysis using default parameters: tag-based category (`"tags"`), no tag remapping, 5 max relations per tag, and `"CATEGORY"` as the category property.
+
+The resulting `AnalysisResult` exposes these fields via dot-access:
+
+| Field | Type | Description |
+|---|---|---|
+| `.total_tasks` | `int` | Total task count including repeated entries |
+| `.unique_tasks` | `int` | Number of unique nodes |
+| `.task_states` | `Histogram` | Counts per TODO/DONE/etc. state |
+| `.task_categories` | `Histogram` | Counts per `CATEGORY` property value |
+| `.task_priorities` | `Histogram` | Counts per priority (A/B/C/none) |
+| `.task_days` | `Histogram` | Counts per day of the week |
+| `.timerange` | `TimeRange` | Global earliest/latest timestamps |
+| `.avg_tasks_per_day` | `float` | Average tasks per day across the time range |
+| `.max_single_day_count` | `int` | Peak task count on any single day |
+| `.max_repeat_count` | `int` | Highest repeat count for any single task |
+| `.tags` | `dict` | Per-tag statistics (`Tag` objects keyed by tag name) |
+| `.tag_groups` | `list` | Strongly connected tag groups (`Group` objects) |
+
+```text
+# total task count for all nodes
+.[][] | analyze | .total_tasks
+
+# top-level priority histogram
+.[] | analyze | .task_priorities
+
+# inspect a specific tag
+.[][] | analyze | .tags["debugging"]
+```
+
 ## 7) Value model
 
 Runtime values accepted/produced include:
@@ -524,6 +560,7 @@ Runtime values accepted/produced include:
 - Scalars: `null`, `bool`, `int`, `float`, `str`
 - Collections: `list`, `tuple`, `set`, `dict`
 - Org values: `OrgNode`, `OrgRootNode`, `OrgDate`, `OrgDateClock`, `OrgDateRepeatedTask`
+- Analysis values: `AnalysisResult`, `Tag`, `Group`, `TimeRange`, `Histogram`
 
 ```text
 # scalar values

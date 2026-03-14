@@ -3463,6 +3463,37 @@ stats_args = cast(StatsArgs, args)
 
 Please pass =args= as =StatsArgs= not an =object=. It adjust the other useage cases to let the =max_results= be =None.
 
+** REWORKED Query language analyze function                                         :Query:Analysis:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-14 Sat 15:24] \\
+  Needed a bit of slop handling.
+:END:
+Add a new query language function called =analyze= that takes a stream of nodes and produces =AnalysisResult= containing all the typical stats computed by the analysis.
+There is no requirement to use this function in any commands that compute task analysis.
+Update the documentation to reflect the existence of this new function.
+
+The analysis result should be represented as JSON in the output, similarly to how the repeated tasks are handled. Each object in the analysis should be a JSON object with a =type= field naming the class.
+**** CANCELLED Code review comment
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-03-14 Sat 15:24] \\
+  Did this myself.
+:END:
+
+In file src/org/query_language/runtime.py around line 937, near the body of ~def _func_repeated_task(stream: Stream, argument: Expr, context: EvalContext) ->~
+
+#+begin_example
++        if isinstance(value, OrgRootNode):
++            raise QueryRuntimeError(
++                f"analyze requires a stream of OrgNode values, got {_type_name(value)}"
++            )
+
+#+end_example
+
+=OrgRootNode= is not a subclass of =OrgNode= so there's no need for this if clause. Please remove it.
+
 ** Mutable parse tree
 *** Use org_parser
 - Bump the library version
@@ -3654,9 +3685,19 @@ Like linting and formatting.
 - Document the CLI
 - Document the config format
 ** Better heading & body parsing
-** MCP server
+** MCP server / RAG command
+#+begin_example
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
+model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
+documents = SimpleDirectoryReader("docs").load_data()
+index = VectorStoreIndex.from_documents(documents, embed_model=model)
+query_engine = index.as_retriever()
+
+query_engine.retrieve("How to fetch a list of tasks completed last year?")
+#+end_example
+
 ** Website for org-cli
 - Publish the package
 - Add a static site for org-cli.idorobots.org on github pages.
-** Query language analyze function
-Runs the stats analysis on a full stream of nodes.

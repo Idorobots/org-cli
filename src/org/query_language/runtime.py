@@ -14,8 +14,9 @@ from typing import cast
 from uuid import uuid4
 
 from orgparse.date import OrgDate, OrgDateClock, OrgDateRepeatedTask
-from orgparse.node import OrgRootNode
+from orgparse.node import OrgNode, OrgRootNode
 
+from org.analyze import analyze as _analyze_nodes
 from org.query_language.ast import (
     AsBinding,
     BinaryOp,
@@ -605,6 +606,7 @@ def _evaluate_tuple_expr(expr: TupleExpr, stream: Stream, context: EvalContext) 
 def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext) -> Stream:
     """Evaluate built-in function call expression."""
     no_arg_functions: dict[str, Callable[[Stream], Stream]] = {
+        "analyze": _func_analyze,
         "reverse": _func_reverse,
         "unique": _func_unique,
         "length": _func_length,
@@ -933,6 +935,24 @@ def _func_repeated_task(stream: Stream, argument: Expr, context: EvalContext) ->
             )
         )
     return output
+
+
+def _func_analyze(stream: Stream) -> Stream:
+    """Aggregate a stream of OrgNode values into a single AnalysisResult."""
+    nodes: list[OrgNode] = []
+    for value in stream:
+        if not isinstance(value, OrgNode):
+            raise QueryRuntimeError(
+                f"analyze requires a stream of OrgNode values, got {_type_name(value)}"
+            )
+        nodes.append(value)
+    return _stream(
+        [
+            _analyze_nodes(
+                nodes, mapping={}, category="tags", max_relations=5, category_property="CATEGORY"
+            )
+        ]
+    )
 
 
 def _func_reverse(stream: Stream) -> Stream:
