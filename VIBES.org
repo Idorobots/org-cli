@@ -3188,7 +3188,7 @@ Document the =$arg= handling of custom filters/orderings/enrichment - the docume
 
 Please refactor the =test_runtime_cast_functions_convert_supported_values= test so that the sha256 case is a separate test case. Sha256 is not a conversion, but a function of its own.
 
-** DONE More Rich support & other output fixes
+** DONE More Rich support & other output fixes                                      :TUI:UX:Cleanup:
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-03-10 Tue 11:08]
 :END:
@@ -3347,17 +3347,121 @@ Rename the =stats tasks= command to =stats summary=.
 
 Update the documentation, README & AGENTS.md to reflect these new command names.
 
-*** DONE Handle save files
+*** DONE Handle save files                                                                     :Bug:
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-03-11 Wed 23:25]
 :END:
 Sometimes editors create savefiles for Org documents that are reported as "not found" in org-cli when searching a directory for such files. It would be nice to handle that situation similarly to the explicitly passed files - log the missing file so that it's visible on the =--verbose= output and skip it.
 
-*** DONE Dedent handling
+*** DONE Dedent handling                                                                       :Bug:
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-03-12 Thu 11:50]
 :END:
 Don't dedent tags and groups on the =stats all= command output - these should show up the same way as on =stats tags= and =stats groups=, except be displayed within their respective panels.
+
+*** DONE display_config tuples
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-13 Fri 11:54]
+:END:
+Refactor the =display_config= tuples in various commands to use dataclasses instead of tuples.
+
+*** REWORKED Don't show "unknown" on day histogram unless present
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-13 Fri 19:49] \\
+  Needed some manual work.
+:END:
+The task day occurance histogram shows the =unknown= category regardless if it's represented in the histogram or not. It should be omited when not present in histogramy. To achieve that, refactor the histogram category handling to always show the categories passed to the render method first, and then follow them with all the other categories that occur in the histogram, sorted alphabetically at the end.
+
+The explicitly passed categories should also be displayed regardless if they are represented in the histogram or not. That is, the explicit list is always shown and the remaining keys are added to the bottom of the histogram in alphabetical order.
+
+*** REWORKED stats all layout refactor
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-13 Fri 20:20] \\
+  Needed a few changes.
+:END:
+Refactor the =stats all= layouts to reuse as much of the panel configuration as possible - both display modes are the same fundamentally and should only differ in the layout. The panels themselves should remain the same.
+
+**** DONE Code review comment
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-13 Fri 20:15]
+:END:
+
+In file src/org/commands/stats/all.py at line 290, within the body of ~def _panel_body(text: str, color_enabled: bool) -> Text:~
+
+#+begin_example
++    task_display_config = _TaskDisplayConfig(
++        color_enabled=display_config.color_enabled,
++        done_keys=display_config.done_keys,
++        todo_keys=display_config.todo_keys,
++        line_width=panel_content_width,
++    )
+
+#+end_example
+
+Put that inline with the formatter call, same as for the other sections.
+**** DONE Code review comment
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-13 Fri 20:20]
+:END:
+
+In file src/org/commands/stats/all.py at line 290, within the body of ~def _panel_body(text: str, color_enabled: bool) -> Text:~
+
+#+begin_example
+.lstrip("\n")
+#+end_example
+
+Not sure why this is needed. Please explain.
+
+Let's remove the empty initial line in the summary and remove this lstrip.
+
+*** DONE Double console refactor
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-13 Fri 23:09]
+:END:
+Currently, some of the commands perform output rendering via a temporary =Console= object and then print it out with the target console. I'd like that to be updated so that the temporary console is not needed - instead, render the command ouput directly on the target console.
+*** DONE Failing CI test
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-13 Fri 23:11]
+:END:
+One of the tests is failing on the CI pipeline. It looks like it's not stripping the ANSI escape sequence. Please fix it.
+
+#+begin_example
+FAILED tests/cli/test_cli_runner.py::test_cli_runner_rejects_width_below_minimum - assert "Invalid value for '--width'" in "\x1b[33mUsage: \x1b[0mroot query [OPTIONS] QUERY [FILE]\n\x1b[2mTry \x1b[0m\x1b[2;34m'root query \x1b[0m\x1b[1;2;34m-...   \x1b[31m│\x1b[0m\n\x1b[31m╰──────────────────────────────────────────────────────────────────────────────╯\x1b[0m\n"
+#+end_example
+
+*** DONE Wrap group content in panels                                                          :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-13 Fri 23:23]
+:END:
+Groups with many tags currently overflow their panel. I'd rather they wrapped around and made all group members visible.
+
+*** REWORKED Stats all task list size
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-14 Sat 01:48] \\
+  Needed some sloperation.
+:END:
+Set the =stats all= task list default limit based on the size of the summary section contents when in two-column mode. In single column it's OK to default to the 10 results.
+**** DONE Code review comment
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-14 Sat 01:48]
+:END:
+
+In file src/org/validation.py at line 197, within the body of ~def validate_global_arguments(args: GlobalArgs) -> tuple[list[str], list[str]]:~
+
+#+begin_example
+stats_args = cast(StatsArgs, args)
+#+end_example
+
+Please pass =args= as =StatsArgs= not an =object=. It adjust the other useage cases to let the =max_results= be =None.
 
 ** Mutable parse tree
 *** Use org_parser
@@ -3554,3 +3658,5 @@ Like linting and formatting.
 ** Website for org-cli
 - Publish the package
 - Add a static site for org-cli.idorobots.org on github pages.
+** Query language analyze function
+Runs the stats analysis on a full stream of nodes.
