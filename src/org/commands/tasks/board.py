@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import math
 import sys
-import textwrap
 from dataclasses import dataclass
 
 import orgparse
@@ -78,66 +78,6 @@ class _PanelRenderConfig:
     coalesce_completed: bool
 
 
-def _build_heading_lines(node: orgparse.node.OrgNode, width: int, color_enabled: bool) -> list[str]:
-    """Build wrapped heading lines for one task panel."""
-    heading = node.heading if node.heading else ""
-    escaped_heading = escape_text(heading, color_enabled)
-    lines = textwrap.wrap(
-        escaped_heading,
-        width=max(10, width),
-        break_long_words=False,
-        break_on_hyphens=False,
-    )
-    return lines or [""]
-
-
-def _build_wrapped_tag_lines(tags: set[str], width: int) -> list[str]:
-    """Wrap tags preserving boundaries between tag names."""
-    if not tags:
-        return []
-
-    max_width = max(4, width)
-    wrapped: list[str] = []
-    current = ":"
-    for tag in sorted(tags):
-        candidate = f"{tag}:"
-        if len(current) + len(candidate) <= max_width:
-            current = f"{current}{candidate}"
-            continue
-        if current == ":":
-            current = f":{candidate}"
-            continue
-        wrapped.append(current)
-        current = f":{candidate}"
-
-    wrapped.append(current)
-    return wrapped
-
-
-def _build_metadata_lines(
-    node: orgparse.node.OrgNode, width: int, color_enabled: bool
-) -> list[str]:
-    """Build styled metadata lines for priority and tags."""
-    priority_text = f"[#{node.priority}]" if node.priority else ""
-    tag_lines = _build_wrapped_tag_lines(set(node.tags), width)
-
-    if not priority_text and not tag_lines:
-        return []
-
-    if priority_text and not tag_lines:
-        return [bright_blue(priority_text, color_enabled)]
-
-    if not priority_text and tag_lines:
-        return [dim_white(line, color_enabled) for line in tag_lines]
-
-    first_tag_line = tag_lines[0]
-    first_line = (
-        f"{bright_blue(priority_text, color_enabled)} {dim_white(first_tag_line, color_enabled)}"
-    )
-    continuation = [dim_white(line, color_enabled) for line in tag_lines[1:]]
-    return [first_line, *continuation]
-
-
 def _state_prefix(
     node: orgparse.node.OrgNode,
     done_keys: list[str],
@@ -157,20 +97,25 @@ def _state_prefix(
 
 def _build_task_panel(node: orgparse.node.OrgNode, render: _PanelRenderConfig) -> Panel:
     """Build a visual panel for one task."""
-    title_lines = _build_heading_lines(node, render.width, render.color_enabled)
-    metadata_lines = _build_metadata_lines(node, render.width, render.color_enabled)
+    heading = node.heading if node.heading else ""
+    content = escape_text(heading, render.color_enabled)
 
     if render.coalesce_completed and node.todo and node.todo in render.done_keys:
         prefix = _state_prefix(node, render.done_keys, render.todo_keys, render.color_enabled)
-        title_lines = [f"{prefix}{title_lines[0]}", *title_lines[1:]]
+        content = f"{prefix}{content}"
 
-    lines = [*title_lines, *metadata_lines]
-    return Panel(
-        Text.from_markup("\n".join(lines)) if render.color_enabled else Text("\n".join(lines)),
-        expand=True,
-        box=box.ROUNDED,
-        padding=(0, 1),
-    )
+    priority_text = f"[#{node.priority}]" if node.priority else ""
+    tags_text = f":{':'.join(sorted(node.tags))}:" if node.tags else ""
+    if priority_text and tags_text:
+        meta = f"{bright_blue(priority_text, render.color_enabled)} {dim_white(tags_text, render.color_enabled)}"
+        content = f"{content}\n{meta}"
+    elif priority_text:
+        content = f"{content}\n{bright_blue(priority_text, render.color_enabled)}"
+    elif tags_text:
+        content = f"{content}\n{dim_white(tags_text, render.color_enabled)}"
+
+    text = Text.from_markup(content) if render.color_enabled else Text(content)
+    return Panel(text, expand=True, box=box.ROUNDED, padding=(0, 1))
 
 
 def _completed_header_state(done_keys: list[str]) -> str:
@@ -268,29 +213,25 @@ def _resolve_tasks_limit(max_results: int | None) -> int:
     return max_results
 
 
-def _task_panel_height(node: orgparse.node.OrgNode, width: int, color_enabled: bool) -> int:
+def _task_panel_height(node: orgparse.node.OrgNode, width: int) -> int:
     """Estimate panel height for one task card."""
-    title_lines = _build_heading_lines(node, width, color_enabled)
-    metadata_lines = _build_metadata_lines(node, width, color_enabled)
-    return len(title_lines) + len(metadata_lines) + 2
+    heading = node.heading if node.heading else ""
+    heading_lines = max(1, math.ceil(len(heading) / max(1, width)))
+    has_metadata = bool(node.priority or node.tags)
+    return heading_lines + (1 if has_metadata else 0) + 2
 
 
-def _column_content_height(
-    nodes: list[orgparse.node.OrgNode], width: int, color_enabled: bool
-) -> int:
+def _column_content_height(nodes: list[orgparse.node.OrgNode], width: int) -> int:
     """Estimate rendered content height for one board column."""
     if not nodes:
         return 1
-    return sum(_task_panel_height(node, width, color_enabled) for node in nodes)
+    return sum(_task_panel_height(node, width) for node in nodes)
 
 
-def _estimate_board_height(
-    columns: list[_BoardColumn], panel_content_width: int, color_enabled: bool
-) -> int:
+def _estimate_board_height(columns: list[_BoardColumn], panel_content_width: int) -> int:
     """Estimate total rendered board table height in terminal lines."""
     column_heights = [
-        _column_content_height(column.nodes, panel_content_width, color_enabled)
-        for column in columns
+        _column_content_height(column.nodes, panel_content_width) for column in columns
     ]
     content_row_height = max(column_heights, default=1)
     return content_row_height + 3
@@ -369,7 +310,7 @@ def run_tasks_board(args: BoardArgs) -> None:
         content_cells.append(Group(*panels))
 
     table.add_row(*content_cells)
-    board_height = _estimate_board_height(columns, panel_content_width, color_enabled)
+    board_height = _estimate_board_height(columns, panel_content_width)
     if board_height > console.height:
         with console.pager(styles=color_enabled):
             console.print(table)
