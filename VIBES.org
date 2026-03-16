@@ -3494,6 +3494,143 @@ In file src/org/query_language/runtime.py around line 937, near the body of ~def
 
 =OrgRootNode= is not a subclass of =OrgNode= so there's no need for this if clause. Please remove it.
 
+** REWORKED Kanband board
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-16 Mon 13:07] \\
+  Needed some work, didn't exactly one-shot it.
+:END:
+Add a new =tasks board= command that will display an AGILE-workflow-like board of active tasks.
+
+The board should be displayed as a multi-column layout, where each =todo_key= have a dedicated column named the same as the state and all =done_keys= have a single, final column named "COMPLETED". All tasks that don't have a TODO state, should be added to the initial column called "NOT STARTED".
+Here's the conceptual example of how that layout should look given the following todo states: =TODO=, =WAITING=, =INPROGRESS= and done states: =DONE=, =CANCELLED=:
+
+#+begin_example
+[ NOT STARTED ][ TODO ][ WAITING ][ INPROGRESS ][ COMPLETED ]
+#+end_example
+
+The columns should be clearly separated from one another vertically and have a header that displays the column name.
+The column names should be colored according to the same algorithm as is used for task states in task list and task state histogram. The "COMPLETED" column name should be colored the same way as completed task states.
+
+The column should be of equal widths and in total they should occupy the entire console width. A Typer table can be used to achieve this.
+
+All tasks should be displayed in their respective columns based on their TODO state. Each task should be rendered as a small  panel box, that contains the heading title, task's priority and the tags. Here's an conceptual example of how it should look like:
+
+#+begin_example
+╭──────────────────╮
+│ Do some stuff    │
+│ later.           │
+│ [#A] :UX:Bugfix: │
+╰──────────────────╯
+#+end_example
+
+Use the same color scheme for coloring the tasks priority, title & tags as is used in the task list.
+The tasks title should wrap around in a smart way (no word breaking). The priority & tags line should start on the next line after the title ends also wrap around to the following lines. It is OK if the panel expands vertically, but it should fit within the column.
+
+The content and order of the tasks displayed on the boards should be preserved from the initial filtering/ordering, i.e. the tasks are displayed in each column in the same order they appear on the task list resulting from filtering/ordering.
+
+The command should accept all the global CLI arguments like =--config=, =--exclude=, =--todo-keys=, etc.
+The command should support the =--width= CLI argument with a minimum of 80 columns.
+
+The command should accept the same filters, orderings & enrichments as the task list command. It should respect the filters, orderings and enrichments and produce the results based on the processed node list (same as =tasks list=).
+
+There is no need to support the output format CLI parameters, the only output of this command is the AGILE-like task board.
+
+Please add the documentation for this new command and describe it briefly in the README.
+
+*** REWORKED Support for limit & offset & pager.
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-03-14 Sat 20:49] \\
+  Needed some work.
+:END:
+
+I'd like the new =tasks board= command to support the =--limit= and =--offset= CLI arguments that allow limiting the number of results shown. Furthermore, if there are more tasks to display in any given colum than the console height permits, the table should be paginated with a Typer pager.
+
+**** DONE Code review comment                                                              :Cleanup:
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-14 Sat 20:56] \\
+  It's still not great as it recomputes some values, but w/e.
+:END:
+
+In file src/org/commands/tasks/board.py around line 214, near the ~def _estimate_panel_content_width(console_width: int, column_count: int) -> int:~
+
+#+begin_example
++    preview_buffer = StringIO()
++    preview_console = Console(
++        width=console.width,
++        height=console.height,
++        file=preview_buffer,
++        force_terminal=False,
++        no_color=not color_enabled,
++    )
++    preview_console.print(table)
++    return len(preview_buffer.getvalue().splitlines())
++
+
+#+end_example
+
+Can this be done without the double print? Estimate the output size in a similar fashion to what has been done in =stats all=.
+
+*** DONE Un-coalesced completed column
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-15 Sun 23:49]
+:END:
+Add a new CLI argument to the =tasks board= command called =--coalesce-completed= which is =true= by default that will control the behaviour of the board:
+
+- When true, the final =COMPLETED= column is displayed that contains all the tasks that have a todo state in =done_keys=.
+  If the =COMPLETED= column is shown, each task's panel should also show the colored state the task is in - it can appear at the beginning of the title line, i.e. =CANCELLED Do some stuff=.
+
+- When false, the individual todo states in =done_keys= should have a dedicated column and all the completed tasks should be distributed between those colums.
+
+The =done_keys= columns should appear on the right to the =todo_keys= columns and be ordered the same as the =done_keys= values.
+
+This new switch will effectively control if the completed tasks are coalesced into a single column or displayed separately.
+
+*** DONE Title wrap bug                                                                        :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-16 Mon 13:05]
+:END:
+Some titles look weird on the coalesced column view, likely due to the extra wrap happening after the state name is added:
+#+begin_example
+│ ╭─────────────────────────────────────────────────────────────────╮ │
+│ │ DONE Implement the general Org-Mode document structure in the   │ │
+│ │ org                                                             │ │
+│ │ parser.                                                         │ │
+│ │ :Python:VibeCoding:                                             │ │
+│ ╰─────────────────────────────────────────────────────────────────╯ │
+#+end_example
+
+Can we remove the custom wrapping logic altogether and just rely on Rich Panel's wrap?
+
+*** DONE Space before tags                                                                     :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-16 Mon 13:05]
+:END:
+When a node doesn't have a priority, its tags are displayed with an extra leading whitespace, but should be aligned to the line start:
+#+begin_example
+│ ╭─────────────────────────────────────────────────────────────────╮ │
+│ │ DONE Implement the general Org-Mode document structure in the   │ │
+│ │ org parser.                                                     │ │
+│ │  :Python:VibeCoding:                                            │ │
+│ ╰─────────────────────────────────────────────────────────────────╯ │
+#+end_example
+
+** Agenda command
+Like Org Agenta, but CLI.
+
+- accept a date, default to today
+- select what the agenda shows, exclusions for deadlines, overdue etc.
+
+- Tasks to do on a given day including timestamp, state, heading and tags.
+- Tasks done on a given day
+- Tasks that are overdue
+- Deadlines that are overdue
+- Upcomming deadlines
+
+- ability to refile tasks to another file
+
 ** Mutable parse tree
 *** Use org_parser
 - Bump the library version
@@ -3525,22 +3662,6 @@ In file src/org/query_language/runtime.py around line 937, near the body of ~def
 - Modifying the heading
 - Modifying the body
 
-** Agenda command
-Like Org Agenta, but CLI.
-
-- accept a date, default to today
-- select what the agenda shows, exclusions for deadlines, overdue etc.
-
-- Tasks to do on a given day including timestamp, state, heading and tags.
-- Tasks done on a given day
-- Tasks that are overdue
-- Deadlines that are overdue
-- Upcomming deadlines
-
-- ability to refile tasks to another file
-
-** Kanband board
-- Shows tasks organized into kanban lanes
 ** Workflow command
 
 Break down next task:
@@ -3667,7 +3788,7 @@ Node size is how many tasks are related to a tag. Closeness is how related these
 Allow selecting specific tags or top tags.
 
 ** File watching and updated display
-*** TODO --watch support
+*** --watch support
 Add a new CLI parameter =--watch= that will watch the =FILES= for changes and rerun the selected command to update the display.
 It should apply to each of the available commands. This parameter should be made optional. When not provided the command should exit after printing the output.
 
