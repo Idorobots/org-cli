@@ -3617,6 +3617,84 @@ When a node doesn't have a priority, its tags are displayed with an extra leadin
 │ ╰─────────────────────────────────────────────────────────────────╯ │
 #+end_example
 
+*** CANCELLED src/org/commands/tasks/board.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-03-22 Sun 16:26]
+:END:
+
+In file src/org/commands/tasks/board.py around line 266, near the ~new file   src/org/commands/tasks/board.py~
+
+#+begin_example
++    if args.max_results is not None and args.max_results < 0:
++        raise typer.BadParameter("--limit must be non-negative")
++    args.max_results = _resolve_tasks_limit(args.max_results)
+#+end_example
+
+This looks weird but is needed for the limit computation.
+
+*** DONE src/org/commands/tasks/board.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-03-22 Sun 16:26]
+:END:
+
+In file src/org/commands/tasks/board.py around line 318, near the ~new file   src/org/commands/tasks/board.py~
+
+#+begin_example
++    specified_todo_keys = [k.strip() for k in args.todo_keys.split(",") if k.strip()]
++    specified_done_keys = [k.strip() for k in args.done_keys.split(",") if k.strip()]
++    todo_keys = _restore_key_order(specified_todo_keys, discovered_todo_keys)
++    done_keys = _restore_key_order(specified_done_keys, discovered_done_keys)
++
++    if not nodes:
++        console.print("No results", markup=False)
++        return
++
++    columns = _build_board_columns(nodes, todo_keys, done_keys, args.coalesce_completed)
++    panel_content_width = _estimate_panel_content_width(console.width, len(columns))
++
++    table = Table(expand=True, box=box.SQUARE, show_lines=False, show_header=False)
++    for _ in columns:
++        table.add_column(ratio=1)
++
++    header_row: list[str] = []
++    for column in columns:
++        state = _resolve_header_state(column, done_keys, args.coalesce_completed)
++        header_row.append(
++            _column_title_markup(column.title, state, done_keys, todo_keys, color_enabled)
++        )
++    table.add_row(*header_row)
++
++    render = _PanelRenderConfig(
++        width=panel_content_width,
++        color_enabled=color_enabled,
++        done_keys=done_keys,
++        todo_keys=todo_keys,
++        coalesce_completed=args.coalesce_completed,
++    )
++    content_cells: list[RenderableType] = []
++    for column in columns:
++        if not column.nodes:
++            content_cells.append(Text(""))
++            continue
++        panels = [_build_task_panel(node, render) for node in column.nodes]
++        content_cells.append(Group(*panels))
++
++    table.add_row(*content_cells)
++    board_height = _estimate_board_height(columns, panel_content_width)
++    if board_height > console.height:
++        with console.pager(styles=color_enabled):
++            console.print(table)
++        return
+
+#+end_example
+
+All of this processing should be done as part of the processing block.
 ** Agenda command
 Like Org Agenta, but CLI.
 

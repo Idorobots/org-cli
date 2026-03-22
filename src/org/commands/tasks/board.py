@@ -267,50 +267,53 @@ def run_tasks_board(args: BoardArgs) -> None:
         raise typer.BadParameter("--limit must be non-negative")
     args.max_results = _resolve_tasks_limit(args.max_results)
 
+    table = Table(expand=True, box=box.SQUARE, show_lines=False, show_header=False)
+    board_height = 0
+
     with processing_status(console, color_enabled):
         nodes, discovered_todo_keys, discovered_done_keys = load_and_process_data(args)
 
-    specified_todo_keys = [k.strip() for k in args.todo_keys.split(",") if k.strip()]
-    specified_done_keys = [k.strip() for k in args.done_keys.split(",") if k.strip()]
-    todo_keys = _restore_key_order(specified_todo_keys, discovered_todo_keys)
-    done_keys = _restore_key_order(specified_done_keys, discovered_done_keys)
+        specified_todo_keys = [k.strip() for k in args.todo_keys.split(",") if k.strip()]
+        specified_done_keys = [k.strip() for k in args.done_keys.split(",") if k.strip()]
+        todo_keys = _restore_key_order(specified_todo_keys, discovered_todo_keys)
+        done_keys = _restore_key_order(specified_done_keys, discovered_done_keys)
 
-    if not nodes:
-        console.print("No results", markup=False)
-        return
+        if not nodes:
+            console.print("No results", markup=False)
+            return
 
-    columns = _build_board_columns(nodes, todo_keys, done_keys, args.coalesce_completed)
-    panel_content_width = _estimate_panel_content_width(console.width, len(columns))
+        columns = _build_board_columns(nodes, todo_keys, done_keys, args.coalesce_completed)
+        panel_content_width = _estimate_panel_content_width(console.width, len(columns))
 
-    table = Table(expand=True, box=box.SQUARE, show_lines=False, show_header=False)
-    for _ in columns:
-        table.add_column(ratio=1)
+        for _ in columns:
+            table.add_column(ratio=1)
 
-    header_row: list[str] = []
-    for column in columns:
-        state = _resolve_header_state(column, done_keys, args.coalesce_completed)
-        header_row.append(
-            _column_title_markup(column.title, state, done_keys, todo_keys, color_enabled)
+        header_row: list[str] = []
+        for column in columns:
+            state = _resolve_header_state(column, done_keys, args.coalesce_completed)
+            header_row.append(
+                _column_title_markup(column.title, state, done_keys, todo_keys, color_enabled)
+            )
+        table.add_row(*header_row)
+
+        render = _PanelRenderConfig(
+            width=panel_content_width,
+            color_enabled=color_enabled,
+            done_keys=done_keys,
+            todo_keys=todo_keys,
+            coalesce_completed=args.coalesce_completed,
         )
-    table.add_row(*header_row)
+        content_cells: list[RenderableType] = []
+        for column in columns:
+            if not column.nodes:
+                content_cells.append(Text(""))
+                continue
+            panels = [_build_task_panel(node, render) for node in column.nodes]
+            content_cells.append(Group(*panels))
 
-    render = _PanelRenderConfig(
-        width=panel_content_width,
-        color_enabled=color_enabled,
-        done_keys=done_keys,
-        todo_keys=todo_keys,
-        coalesce_completed=args.coalesce_completed,
-    )
-    content_cells: list[RenderableType] = []
-    for column in columns:
-        if not column.nodes:
-            content_cells.append(Text(""))
-            continue
-        panels = [_build_task_panel(node, render) for node in column.nodes]
-        content_cells.append(Group(*panels))
+        table.add_row(*content_cells)
+        board_height = _estimate_board_height(columns, panel_content_width)
 
-    table.add_row(*content_cells)
-    board_height = _estimate_board_height(columns, panel_content_width)
     if board_height > console.height:
         with console.pager(styles=color_enabled):
             console.print(table)
