@@ -163,6 +163,17 @@ examples/ARCHIVE_small: * DONE Reorganize tickets on the CHAT project board.:Jir
 ...
 ```
 
+### `org tasks board`
+
+Display matching tasks as a workflow-style board with one column per todo state plus `COMPLETED`.
+
+```bash
+poetry run org tasks board \
+  --todo-keys TODO,WAITING,INPROGRESS \
+  --done-keys DONE,CANCELLED \
+  examples/ARCHIVE_small
+```
+
 ## Notes
 
 - Command docs and defaults: [docs/index.md](docs/index.md)
