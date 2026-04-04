@@ -3846,6 +3846,11 @@ In file src/org/query_language/runtime.py around line 937, near the ~def _func_n
 #+end_example
 
 This and the analogous =Clock= constructors can be simplified to just accept a single string and use =from_source= on that.
+*** DONE Rename the =repeated_task= query language function to =repeat=
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 18:09]
+:END:
+Adjust the code, constructor and the documentation.
 *** Filtering, ordering & enrichments
 - Use it for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
 - Use it for property additions

@@ -437,11 +437,11 @@ def test_runtime_clock_function_accepts_source_strings() -> None:
     assert str(inactive) == "CLOCK: [2025-01-02 Thu 10:00-11:30]\n"
 
 
-def test_runtime_repeated_task_function_with_supported_arities() -> None:
-    """repeated_task should create Repeat values."""
-    three = _execute('repeated_task("<2025-01-02 Thu>", "TODO", "DONE")', [None], None)[0]
+def test_runtime_repeat_function_with_supported_arities() -> None:
+    """repeat should create Repeat values."""
+    three = _execute('repeat("<2025-01-02 Thu>", "TODO", "DONE")', [None], None)[0]
     four = _execute(
-        'repeated_task("<2025-01-02 Thu>", "TODO", "DONE", true)',
+        'repeat("<2025-01-02 Thu>", "TODO", "DONE", true)',
         [None],
         None,
     )[0]
@@ -501,7 +501,7 @@ def test_runtime_constructor_function_validation_errors() -> None:
     with pytest.raises(QueryRuntimeError):
         _execute('clock("<2025-01-02 Thu 10:00-11:30>", null)', [None], None)
     with pytest.raises(QueryRuntimeError):
-        _execute('repeated_task("<2025-01-02 Thu>", 1, "DONE")', [None], None)
+        _execute('repeat("<2025-01-02 Thu>", 1, "DONE")', [None], None)
 
 
 def test_runtime_as_binding_visible_in_pipeline() -> None:
@@ -615,7 +615,7 @@ def test_runtime_org_date_comparison_operators_use_start_values() -> None:
         None,
     )[0]
     repeated_later = _execute(
-        'repeated_task("<2025-01-03 Fri 09:00>", "TODO", "DONE")',
+        'repeat("<2025-01-03 Fri 09:00>", "TODO", "DONE")',
         [None],
         None,
     )[0]
@@ -778,7 +778,7 @@ def test_runtime_constructor_functions_validate_supported_arities() -> None:
         _execute('clock("<2025-01-02 Thu 10:00-11:00>", true)', [None], None)
     with pytest.raises(QueryRuntimeError):
         _execute(
-            'repeated_task("<2025-01-02 Thu>", "TODO", "DONE", true, false)',
+            'repeat("<2025-01-02 Thu>", "TODO", "DONE", true, false)',
             [None],
             None,
         )

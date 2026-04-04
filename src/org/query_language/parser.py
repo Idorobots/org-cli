@@ -58,7 +58,7 @@ KNOWN_FUNCTIONS = {
     "type",
     "timestamp",
     "clock",
-    "repeated_task",
+    "repeat",
     "uuid",
     "not",
     "debug",

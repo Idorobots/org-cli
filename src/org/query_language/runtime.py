@@ -635,7 +635,7 @@ def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext)
         "not": _func_not,
         "timestamp": _func_timestamp,
         "clock": _func_clock,
-        "repeated_task": _func_repeated_task,
+        "repeat": _func_repeat,
     }
 
     if expr.name in no_arg_functions:
@@ -913,11 +913,11 @@ def _func_clock(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
     return output
 
 
-def _func_repeated_task(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+def _func_repeat(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
     """Create Repeat values from three or four arguments."""
     output = _stream()
     for arguments in _iter_function_argument_values(stream, argument, context):
-        _ensure_arity(arguments, {3, 4}, "repeated_task")
+        _ensure_arity(arguments, {3, 4}, "repeat")
         start_timestamp = _parse_timestamp(arguments[0])
         before = _as_state_or_none(arguments[1], "before")
         after = _as_state_or_none(arguments[2], "after")

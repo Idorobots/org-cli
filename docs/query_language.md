@@ -500,16 +500,16 @@ clock("<2025-01-02 Thu 10:00-11:30>")
 # => CLOCK: <2025-01-02 Thu 10:00-11:30>
 ```
 
-### `repeated_task(...)`
+### `repeat(...)`
 
 - Arity: 3 or 4.
 - Forms:
-  - `repeated_task(timestamp, before_or_null, after_or_null)`
-  - `repeated_task(timestamp, before_or_null, after_or_null, active_or_null)`
+  - `repeat(timestamp, before_or_null, after_or_null)`
+  - `repeat(timestamp, before_or_null, after_or_null, active_or_null)`
 
 ```text
-repeated_task("<2025-01-02 Thu>", "TODO", "DONE")
-repeated_task("<2025-01-02 Thu>", null, "DONE", true)
+repeat("<2025-01-02 Thu>", "TODO", "DONE")
+repeat("<2025-01-02 Thu>", null, "DONE", true)
 # => [2025-01-02 Thu], <2025-01-02 Thu>
 ```
 
