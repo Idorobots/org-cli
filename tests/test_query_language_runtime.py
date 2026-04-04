@@ -8,6 +8,7 @@ import org_parser
 import pytest
 from org_parser import Document
 from org_parser.element import Repeat
+from org_parser.text import RichText
 from org_parser.time import Clock, Timestamp
 
 from org.query_language import EvalContext, QueryRuntimeError, Stream, compile_query_text
@@ -332,6 +333,62 @@ def test_runtime_cast_functions_convert_supported_values() -> None:
     assert len(timestamp_value) == 1
     assert isinstance(timestamp_value[0], Timestamp)
     assert str(timestamp_value[0]) == "<2026-03-01 Sun 10:00-12:00>"
+
+
+def test_runtime_string_operators_accept_richtext_values() -> None:
+    """String operators should accept RichText by using plain text values."""
+    values = [RichText("abc"), RichText("ab")]
+    result = _execute(
+        '.[0] == "abc", .[0] matches "a.c", .[1] * 2, .[1] + "c", .[1] in "zabx"',
+        values,
+        None,
+    )
+
+    assert result == [(True, True, "abab", "abc", True)]
+
+
+def test_runtime_string_functions_accept_richtext_values() -> None:
+    """String-accepting functions should accept RichText values."""
+    converted = _execute(
+        "int(.[0]), float(.[1]), bool(.[2])",
+        [RichText("42"), RichText("3.5"), RichText("TRUE")],
+        None,
+    )
+    hashed = _execute("sha256", RichText("abc"), None)
+    matched = _execute('match("a(.)")', RichText("ab"), None)
+    timestamp_value = _execute("timestamp(.[0])", [RichText("<2025-01-02 Thu>")], None)[0]
+    clock_value = _execute("clock(.[0])", [RichText("<2025-01-02 Thu 10:00-11:00>")], None)[0]
+    repeat_value = _execute(
+        "repeat(.[0], .[1], .[2])",
+        [RichText("<2025-01-02 Thu>"), RichText("TODO"), RichText("DONE")],
+        None,
+    )[0]
+
+    assert converted == [(42, 3.5, True)]
+    assert hashed == ["ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"]
+    assert matched == [["ab", "b"]]
+    assert isinstance(timestamp_value, Timestamp)
+    assert str(timestamp_value) == "<2025-01-02 Thu>"
+    assert isinstance(clock_value, Clock)
+    assert str(clock_value) == "CLOCK: <2025-01-02 Thu 10:00-11:00>\n"
+    assert isinstance(repeat_value, Repeat)
+    assert repeat_value.before == "TODO"
+    assert repeat_value.after == "DONE"
+
+
+def test_runtime_string_accessors_accept_richtext_values() -> None:
+    """Accessors that operate on strings should accept RichText values."""
+    indexed_and_sliced = _execute(".[0][1], .[0][1:3]", [RichText("abcd")], None)
+    length_value = _execute("length", RichText("abcd"), None)
+    joined = _execute(
+        ". as $root | $root[0] | join($root[1])",
+        [[1, 2, 3], RichText("|")],
+        None,
+    )
+
+    assert indexed_and_sliced == [("b", "bc")]
+    assert length_value == [4]
+    assert joined == ["1|2|3"]
 
 
 def test_runtime_sha256_function_hashes_supported_values() -> None:
@@ -860,6 +917,15 @@ def test_runtime_dict_assignment_with_dynamic_key_expression() -> None:
         {"k": "done", "meta": {"done": True}},
         {"k": "state", "meta": {"state": True}},
     ]
+
+
+def test_runtime_dict_assignment_accepts_richtext_keys() -> None:
+    """Dictionary assignment should accept RichText keys."""
+    values = [{"k": RichText("done"), "meta": {}}]
+    result = _execute('.[] | .meta[.["k"]] = true; .meta["done"]', values, None)
+
+    assert result == [True]
+    assert values[0]["meta"] == {"done": True}
 
 
 def test_runtime_sequence_evaluates_side_effects_before_returning_right_value() -> None:

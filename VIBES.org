@@ -3870,6 +3870,12 @@ org query '.[][].properties.key'
 
 Results in a null value, even though =.[][].properties= does return a non-null value. Make sure that property access does indeed work and allows fetching specific keys. Make sure that setting property values also works.
 
+*** DONE Query language should support =RichText=
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 18:34]
+:END:
+All query language functions/constructs that accept strings should also accept org-parser =RichText=. They can rely on the =.text= attribute for now.
+
 *** Filtering, ordering & enrichments
 - Use it for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
 - Use it for property additions
