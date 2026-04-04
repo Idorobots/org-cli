@@ -183,7 +183,7 @@ def test_load_root_nodes_valid() -> None:
     roots, _, _ = load_root_nodes([fixture_path], ["TODO"], ["DONE"])
 
     assert len(roots) == 1
-    assert len(list(roots[0][1:])) > 0
+    assert len(list(roots[0])) > 0
 
 
 def test_load_root_nodes_todo_keys() -> None:

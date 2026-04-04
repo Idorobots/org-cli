@@ -6,8 +6,8 @@ import math
 import sys
 from dataclasses import dataclass
 
-import orgparse
 import typer
+from org_parser.document import Heading
 from rich import box
 from rich.console import Group, RenderableType
 from rich.panel import Panel
@@ -55,7 +55,6 @@ class BoardArgs:
     order_by_timestamp_asc: bool
     order_by_timestamp_desc: bool
     with_tags_as_category: bool
-    category_property: str
     coalesce_completed: bool
 
 
@@ -64,7 +63,7 @@ class _BoardColumn:
     """One board column with title and assigned tasks."""
 
     title: str
-    nodes: list[orgparse.node.OrgNode]
+    nodes: list[Heading]
 
 
 @dataclass(frozen=True)
@@ -79,7 +78,7 @@ class _PanelRenderConfig:
 
 
 def _state_prefix(
-    node: orgparse.node.OrgNode,
+    node: Heading,
     done_keys: list[str],
     todo_keys: list[str],
     color_enabled: bool,
@@ -95,9 +94,9 @@ def _state_prefix(
     return f"{safe_state} "
 
 
-def _build_task_panel(node: orgparse.node.OrgNode, render: _PanelRenderConfig) -> Panel:
+def _build_task_panel(node: Heading, render: _PanelRenderConfig) -> Panel:
     """Build a visual panel for one task."""
-    heading = node.heading if node.heading else ""
+    heading = node.title_text if node.title_text else ""
     content = escape_text(heading, render.color_enabled)
 
     if render.coalesce_completed and node.todo and node.todo in render.done_keys:
@@ -145,9 +144,9 @@ def _column_title_markup(
 
 def _initial_columns(
     todo_keys: list[str], done_keys: list[str], coalesce_completed: bool
-) -> dict[str, list[orgparse.node.OrgNode]]:
+) -> dict[str, list[Heading]]:
     """Create mutable board columns keyed by title."""
-    columns: dict[str, list[orgparse.node.OrgNode]] = {"NOT STARTED": []}
+    columns: dict[str, list[Heading]] = {"NOT STARTED": []}
     for key in todo_keys:
         columns[key] = []
     if coalesce_completed:
@@ -159,8 +158,8 @@ def _initial_columns(
 
 
 def _place_node(
-    columns: dict[str, list[orgparse.node.OrgNode]],
-    node: orgparse.node.OrgNode,
+    columns: dict[str, list[Heading]],
+    node: Heading,
     todo_keys: list[str],
     done_keys: list[str],
     coalesce_completed: bool,
@@ -183,7 +182,7 @@ def _place_node(
 
 
 def _build_board_columns(
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     todo_keys: list[str],
     done_keys: list[str],
     coalesce_completed: bool,
@@ -213,15 +212,15 @@ def _resolve_tasks_limit(max_results: int | None) -> int:
     return max_results
 
 
-def _task_panel_height(node: orgparse.node.OrgNode, width: int) -> int:
+def _task_panel_height(node: Heading, width: int) -> int:
     """Estimate panel height for one task card."""
-    heading = node.heading if node.heading else ""
+    heading = node.title_text if node.title_text else ""
     heading_lines = max(1, math.ceil(len(heading) / max(1, width)))
     has_metadata = bool(node.priority or node.tags)
     return heading_lines + (1 if has_metadata else 0) + 2
 
 
-def _column_content_height(nodes: list[orgparse.node.OrgNode], width: int) -> int:
+def _column_content_height(nodes: list[Heading], width: int) -> int:
     """Estimate rendered content height for one board column."""
     if not nodes:
         return 1
@@ -499,13 +498,7 @@ def register(app: typer.Typer) -> None:
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
-            help="Preprocess nodes to set category property based on first tag",
-        ),
-        category_property: str = typer.Option(
-            "CATEGORY",
-            "--category-property",
-            metavar="PROPERTY",
-            help="Property name to use for category histogram and filtering",
+            help="Preprocess nodes to set category from first tag",
         ),
         coalesce_completed: bool = typer.Option(
             True,
@@ -549,7 +542,6 @@ def register(app: typer.Typer) -> None:
             order_by_timestamp_asc=order_by_timestamp_asc,
             order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
-            category_property=category_property,
             coalesce_completed=coalesce_completed,
         )
         config_module.apply_config_defaults(args)

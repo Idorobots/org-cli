@@ -74,14 +74,14 @@ def test_compute_task_state_histogram_no_state() -> None:
 
 def test_compute_task_state_histogram_cancelled() -> None:
     """Test CANCELLED task state."""
-    import orgparse
+    import org_parser
 
     content = """#+TODO: TODO | DONE CANCELLED
 
 * CANCELLED Task
 """
-    ns = orgparse.loads(content)
-    nodes = list(ns[1:]) if ns else []
+    ns = org_parser.loads(content)
+    nodes = list(ns) if ns else []
 
     histogram = compute_task_state_histogram(nodes)
 

@@ -48,7 +48,6 @@ def make_stats_all_args(files: list[str], **overrides: object) -> stats_all_comm
         max_tags=5,
         use="tags",
         with_tags_as_category=False,
-        category_property="CATEGORY",
         max_relations=5,
         min_group_size=2,
         max_groups=5,
@@ -88,7 +87,6 @@ def make_tags_args(files: list[str], **overrides: object) -> stats_tags.TagsArgs
         use="tags",
         tags=None,
         with_tags_as_category=False,
-        category_property="CATEGORY",
         max_relations=5,
         min_group_size=2,
         max_groups=5,
@@ -128,7 +126,6 @@ def make_groups_args(files: list[str], **overrides: object) -> stats_groups.Grou
         use="tags",
         groups=None,
         with_tags_as_category=False,
-        category_property="CATEGORY",
         max_relations=5,
         min_group_size=2,
         max_groups=5,
@@ -165,7 +162,6 @@ def make_summary_args(files: list[str], **overrides: object) -> stats_summary_co
         width=None,
         max_results=10,
         with_tags_as_category=False,
-        category_property="CATEGORY",
     )
     for key, value in overrides.items():
         setattr(args, key, value)

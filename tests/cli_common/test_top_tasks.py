@@ -73,9 +73,9 @@ CLOSED: [2023-10-10 Tue 09:00]
     top_tasks = get_top_tasks(nodes, 3)
 
     assert len(top_tasks) == 3
-    assert top_tasks[0].heading == "Task 2"
-    assert top_tasks[1].heading == "Task 1"
-    assert top_tasks[2].heading == "Task 3"
+    assert top_tasks[0].title_text == "Task 2"
+    assert top_tasks[1].title_text == "Task 1"
+    assert top_tasks[2].title_text == "Task 3"
 
 
 def test_get_top_tasks_respects_max_results() -> None:
@@ -94,8 +94,8 @@ CLOSED: [2023-10-10 Tue 09:00]
     top_tasks = get_top_tasks(nodes, 2)
 
     assert len(top_tasks) == 2
-    assert top_tasks[0].heading == "Task 2"
-    assert top_tasks[1].heading == "Task 1"
+    assert top_tasks[0].title_text == "Task 2"
+    assert top_tasks[1].title_text == "Task 1"
 
 
 def test_get_top_tasks_filters_nodes_without_timestamps() -> None:
@@ -113,8 +113,8 @@ CLOSED: [2023-10-10 Tue 09:00]
     top_tasks = get_top_tasks(nodes, 3)
 
     assert len(top_tasks) == 2
-    assert top_tasks[0].heading == "Task 1"
-    assert top_tasks[1].heading == "Task 3"
+    assert top_tasks[0].title_text == "Task 1"
+    assert top_tasks[1].title_text == "Task 3"
 
 
 def test_get_top_tasks_empty_list() -> None:

@@ -1,6 +1,7 @@
 """Shared test fixtures and utilities for org tests."""
 
-import orgparse
+import org_parser
+from org_parser.document import Heading
 
 from org.analyze import Frequency
 
@@ -31,7 +32,7 @@ def freq_dict_to_ints(d: dict[str, Frequency]) -> dict[str, int]:
 
 def node_from_org(
     org_text: str, todo_keys: list[str] | None = None, done_keys: list[str] | None = None
-) -> list[orgparse.node.OrgNode]:
+) -> list[Heading]:
     """Parse org-mode text and return list of nodes (excluding root).
 
     Args:
@@ -40,7 +41,7 @@ def node_from_org(
         done_keys: List of DONE state keywords (default: ["DONE"])
 
     Returns:
-        List of OrgNode objects (excluding root node)
+        List of Heading objects (excluding root node)
     """
     if todo_keys is None:
         todo_keys = ["TODO"]
@@ -51,5 +52,5 @@ def node_from_org(
     content = org_text.replace("24:00", "00:00")
     content = todo_config + content
 
-    root = orgparse.loads(content)
-    return list(root[1:]) if root else []
+    root = org_parser.loads(content)
+    return list(root)

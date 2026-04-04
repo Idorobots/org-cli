@@ -7,8 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-import orgparse
 import typer
+from org_parser.document import Heading
 from rich.console import Console
 from rich.layout import Layout
 from rich.panel import Panel
@@ -77,7 +77,6 @@ class StatsAllArgs:
     max_tags: int
     use: str
     with_tags_as_category: bool
-    category_property: str
     max_relations: int
     min_group_size: int
     max_groups: int
@@ -207,7 +206,7 @@ def format_tags_section(
 
 def format_stats_all_output(
     result: AnalysisResult,
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     args: StatsAllArgs,
     display_config: _StatsAllDisplayConfig,
     plot_width: int,
@@ -335,7 +334,7 @@ def _build_panel(
 
 def _build_stats_all_panel_sections(
     result: AnalysisResult,
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     args: StatsAllArgs,
     display_config: _StatsAllDisplayConfig,
     config: _StatsAllSectionBuildConfig,
@@ -416,7 +415,7 @@ def _build_stats_all_panel_sections(
 
 
 def _format_tasks_body(
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     max_results: int,
     config: _TaskDisplayConfig,
 ) -> str:
@@ -509,7 +508,7 @@ def _format_tags_body(
 
 def _render_single_column_stats_all_layout(
     result: AnalysisResult,
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     args: StatsAllArgs,
     display_config: _StatsAllDisplayConfig,
     console_width: int,
@@ -545,7 +544,7 @@ def _render_single_column_stats_all_layout(
 def render_stats_all_layout(
     console: Console,
     result: AnalysisResult,
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     args: StatsAllArgs,
     display_config: _StatsAllDisplayConfig,
 ) -> tuple[Layout, int]:
@@ -671,7 +670,7 @@ def run_stats(args: StatsAllArgs) -> None:
         exclude_set = resolve_exclude_set(args)
         nodes, todo_keys, done_keys = load_and_process_data(args)
         if nodes:
-            result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
+            result = analyze(nodes, mapping, args.use, args.max_relations)
             date_from, date_until = resolve_date_filters(args)
             layout, layout_height = render_stats_all_layout(
                 console,
@@ -846,13 +845,7 @@ def register(app: typer.Typer) -> None:
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
-            help="Preprocess nodes to set category property based on first tag",
-        ),
-        category_property: str = typer.Option(
-            "CATEGORY",
-            "--category-property",
-            metavar="PROPERTY",
-            help="Property name to use for category histogram and filtering",
+            help="Preprocess nodes to set category from first tag",
         ),
         max_relations: int = typer.Option(
             5,
@@ -901,7 +894,6 @@ def register(app: typer.Typer) -> None:
             max_tags=max_tags,
             use=use,
             with_tags_as_category=with_tags_as_category,
-            category_property=category_property,
             max_relations=max_relations,
             min_group_size=min_group_size,
             max_groups=max_groups,

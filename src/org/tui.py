@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
 
-import orgparse
+from org_parser.document import Heading
 from rich.console import Console
 from rich.text import Text
 
@@ -245,13 +245,13 @@ def _pad_to_visual_width(text: str, width: int) -> str:
     return f"{text}{' ' * missing_width}"
 
 
-def _build_task_line_parts(node: orgparse.node.OrgNode, config: TaskLineConfig) -> _TaskLineParts:
+def _build_task_line_parts(node: Heading, config: TaskLineConfig) -> _TaskLineParts:
     """Extract and format task line components."""
-    filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
+    filename = node.document.filename if node.document.filename else "<string>"
     filename_cell = _truncate_filename(filename, 15)
     colored_filename = dim_white(filename_cell, config.color_enabled)
     todo_state = node.todo if node.todo else ""
-    heading = node.heading if node.heading else ""
+    heading = node.title_text.strip() if node.title_text else ""
     level = node.level if node.level is not None else 0
     level_prefix = "*" * level if level > 0 else ""
 
@@ -299,7 +299,7 @@ def _resolve_task_line_width(config: TaskLineConfig, line: str) -> int:
 
 
 def _add_tags_to_line(
-    line: str, node: orgparse.node.OrgNode, parts: _TaskLineParts, config: TaskLineConfig
+    line: str, node: Heading, parts: _TaskLineParts, config: TaskLineConfig
 ) -> str:
     """Add tags to line with alignment and heading truncation."""
     sorted_tags = sorted(node.tags)
@@ -333,7 +333,7 @@ def _add_tags_to_line(
 
 
 def format_task_line(
-    node: orgparse.node.OrgNode,
+    node: Heading,
     config: TaskLineConfig,
     indent: str = "",
 ) -> str:
@@ -511,7 +511,7 @@ def format_groups_section(
 
 
 def format_top_tasks_section(
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     config: TopTasksSectionConfig,
 ) -> str:
     """Return formatted output for the top tasks section."""

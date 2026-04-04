@@ -10,7 +10,6 @@ poetry run org stats summary [OPTIONS] [FILE ...]
 
 ## Command-specific switches
 
-- `--category-property` - Property name used for category histogram.
 - `--with-tags-as-category` - Derive category from first tag.
 
 ## Available filters
@@ -45,7 +44,6 @@ poetry run org stats summary \
 
 ```bash
 poetry run org stats summary \
-  --category-property CATEGORY \
   --with-tags-as-category \
   examples/ARCHIVE_small
 ```
@@ -55,7 +53,6 @@ poetry run org stats summary \
 ```bash
 poetry run org stats summary \
   --with-tags-as-category \
-  --category-property CATEGORY \
   --filter-priority B \
   --filter-date-from 2023-10-20 \
   --filter-date-until 2023-11-15 \

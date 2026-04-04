@@ -85,7 +85,7 @@ def test_run_query_default_org_uses_plain_formatter_for_string_results(
 ) -> None:
     """Default org output should print plain lines for string-only results."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = _make_args([fixture_path], ".[] | .children | .[] | .heading")
+    args = _make_args([fixture_path], ".[] | .children | .[] | .title_text")
 
     def _fake_compiled_query(_stream: object, _context: object) -> list[object]:
         return ["alpha", "beta"]
@@ -342,10 +342,9 @@ def test_run_query_json_root_result_is_single_object(capsys: pytest.CaptureFixtu
 
     parsed = json.loads(captured)
     assert isinstance(parsed, dict)
-    assert parsed["type"] == "OrgRootNode"
-    assert "env" in parsed
-    assert isinstance(parsed["env"], dict)
-    assert "nodes" not in parsed["env"]
+    assert parsed["type"] == "Document"
+    assert "filename" in parsed
+    assert "todo_states" in parsed
 
 
 def test_run_query_json_node_result_excludes_env(capsys: pytest.CaptureFixture[str]) -> None:
@@ -358,7 +357,7 @@ def test_run_query_json_node_result_excludes_env(capsys: pytest.CaptureFixture[s
 
     parsed = json.loads(captured)
     assert isinstance(parsed, dict)
-    assert parsed["type"] == "OrgNode"
+    assert parsed["type"] == "Heading"
     assert "env" not in parsed
 
 

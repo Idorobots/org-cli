@@ -33,12 +33,12 @@ from org.query_language.errors import QueryParseError
         '.properties["foo"]',
         ".[0]",
         ".[0:10]",
-        ".children[1:2].heading",
+        ".children[1:2].title_text",
         ".[]",
         ".[] | reverse",
         'select(.properties["gamify_exp"] > 10)',
         "sort_by(.latest_timestamp) | reverse",
-        'select(.heading == "ID", .properties[$id] == "ID") | .children',
+        'select(.title_text == "ID", .properties[$id] == "ID") | .children',
         ".children[] | sort_by(.level) | reverse | .[0:10]",
         "select((.depndencies[] | length) == 0)",
         ".[1:1 + $limit]",
@@ -52,7 +52,7 @@ from org.query_language.errors import QueryParseError
         "clock(.closed, .scheduled, true)",
         'repeated_task(.closed, .todo, "DONE", null)',
         'not(.todo == "DONE")',
-        "str(.heading)",
+        "str(.title_text)",
         'int("42")',
         'float("3.14")',
         'bool("true")',
@@ -64,9 +64,9 @@ from org.query_language.errors import QueryParseError
         "-1",
         "-.priority",
         "1 - -2",
-        "let .heading as $h in $h",
-        'if .todo == "DONE" then .heading else "pending"',
-        'if .todo == "DONE" then .heading elif .todo == "TODO" then "todo" else "pending"',
+        "let .title_text as $h in $h",
+        'if .todo == "DONE" then .title_text else "pending"',
+        'if .todo == "DONE" then .title_text elif .todo == "TODO" then "todo" else "pending"',
         ". as $root | $root[]",
         '[ .[] | select(.todo == "DONE") ] | .[10:20]',
         "[]",
@@ -115,14 +115,14 @@ def test_parse_as_binding_shape() -> None:
 
 def test_parse_let_binding_shape() -> None:
     """Parser should parse let-binding nodes."""
-    expr = parse_query("let .heading as $h in $h")
+    expr = parse_query("let .title_text as $h in $h")
     assert isinstance(expr, LetBinding)
     assert expr.name == "h"
 
 
 def test_parse_if_else_shape() -> None:
     """Parser should parse if-then-else nodes."""
-    expr = parse_query('if .todo == "DONE" then .heading else "pending"')
+    expr = parse_query('if .todo == "DONE" then .title_text else "pending"')
     assert isinstance(expr, IfElse)
 
 
@@ -144,7 +144,7 @@ def test_parse_unary_minus_shape() -> None:
 
 def test_parse_fold_shape() -> None:
     """Parser should parse fold expressions."""
-    expr = parse_query("[ .[] | .heading ]")
+    expr = parse_query("[ .[] | .title_text ]")
     assert isinstance(expr, Fold)
 
 
@@ -196,7 +196,7 @@ def test_parse_none_literal_is_not_identifier_string() -> None:
         "a +",
         ". as root",
         "let . as root in .",
-        'if .todo == "DONE" then .heading',
+        'if .todo == "DONE" then .title_text',
         ".[] = 1",
     ],
 )

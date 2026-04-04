@@ -51,8 +51,7 @@ Negative values use unary minus (`-subquery`), which is evaluated as `0 - subque
 
 Variables are referenced as `$name`.
 
-Common CLI-provided context variables include `$todo_keys`, `$done_keys`, `$offset`, `$limit`, and
-`$category_property`.
+Common CLI-provided context variables include `$todo_keys`, `$done_keys`, `$offset`, and `$limit`.
 
 ```text
 .[] | select(.todo in $done_keys)
@@ -73,7 +72,7 @@ Common CLI-provided context variables include `$todo_keys`, `$done_keys`, `$offs
 Dot field access:
 
 ```text
-.heading
+.title_text
 .properties.priority
 ```
 
@@ -105,7 +104,7 @@ Known functions can be called with `(...)` when they require arguments.
 
 ```text
 select(.todo == "DONE")
-sort_by(.heading)
+sort_by(.title_text)
 join(",")
 ```
 
@@ -122,7 +121,7 @@ sum
 Comma builds tuples from expression outputs:
 
 ```text
-.todo, .heading
+.todo, .title_text
 ```
 
 ### Variable binding
@@ -139,7 +138,7 @@ Bind stage output to a variable:
 while evaluating the body, then restores/clears the variable afterwards.
 
 ```text
-let .heading as $h in ("The heading: " + $h)
+let .title_text as $h in ("The heading: " + $h)
 let "DONE" as $state in select(.todo == $state)
 ```
 
@@ -154,8 +153,8 @@ runs either branch based on truthiness.
 
 ```text
 2 | if . == 2 then "yes" else "no"
-.[] | if .todo == "DONE" then .heading else "pending"
-.[] | if .todo == "DONE" then .heading elif .todo == "TODO" then "todo" else "pending"
+.[] | if .todo == "DONE" then .title_text else "pending"
+.[] | if .todo == "DONE" then .title_text elif .todo == "TODO" then "todo" else "pending"
 ```
 
 ### Fold expression
@@ -163,7 +162,7 @@ runs either branch based on truthiness.
 `[ subquery ]` collects subquery output into a list, per input item.
 
 ```text
-[ .[] | .heading ]
+[ .[] | .title_text ]
 []
 ```
 
@@ -191,7 +190,7 @@ No other assignment target forms are supported yet.
 `left | right` feeds left output stream into right stage.
 
 ```text
-.[] | select(.todo == "DONE") | .heading
+.[] | select(.todo == "DONE") | .title_text
 ```
 
 ### Sequence
@@ -228,7 +227,7 @@ Examples below are minimal and syntactically valid. Output is shown as query-val
 
 - `==`, `!=`, `>`, `<`, `>=`, `<=`
 - Numeric and string operands compare directly.
-- When both operands are org date values (`OrgDate`, `OrgDateClock`, `OrgDateRepeatedTask`),
+- When both operands are org date values (`Timestamp`, `Clock`, `Repeat`),
   comparisons use their `start` values.
 - For ordering operators with `null`:
   - `a > null`, `a < null`, `null > a`, `null < a` are always `false`
@@ -249,7 +248,7 @@ null <= null => true
 - `left matches right` where both operands are strings.
 
 ```text
-.heading matches "^Fix"   => true/false
+.title_text matches "^Fix"   => true/false
 ```
 
 ### Membership
@@ -342,7 +341,7 @@ bool("true")
 
 ### `ts(subquery)`
 
-- Converts each subquery result to `OrgDate`.
+- Converts each subquery result to `Timestamp`.
 - Accepts existing org-date values and org timestamp strings.
 
 ```text
@@ -439,7 +438,7 @@ min                    # ["z","a"] => "a"
 - Non-`null` keys must be one comparable category.
 
 ```text
-.[] | sort_by(.heading)         # ["b","a"] => ["b","a"] (desc)
+.[] | sort_by(.title_text)         # ["b","a"] => ["b","a"] (desc)
 ```
 
 ### `join(separator_expr)`
@@ -463,7 +462,7 @@ map(. * 2)             # [1,2,3] => [2,4,6]
 ### `type`
 
 - No args.
-- Emits runtime type name (`null`, `int`, `str`, `OrgNode`, `OrgDate`, ...).
+- Emits runtime type name (`null`, `int`, `str`, `Heading`, `Timestamp`, ...).
 
 ```text
 .[] | type             # [null,1,"x"] => ["null","int","str"]
@@ -520,7 +519,7 @@ repeated_task("<2025-01-02 Thu>", null, "DONE", true)
 ### `analyze`
 
 - Arity: 0.
-- Input: stream of `OrgNode` values. Any non-`OrgNode` value (including `OrgRootNode`) raises a runtime error.
+- Input: stream of `Heading` values. Any non-`Heading` value (including `Document`) raises a runtime error.
 - Output: single `AnalysisResult` value.
 
 Aggregates all nodes in the stream into a complete analysis using default parameters: tag-based category (`"tags"`), no tag remapping, 5 max relations per tag, and `"CATEGORY"` as the category property.
@@ -559,7 +558,7 @@ Runtime values accepted/produced include:
 
 - Scalars: `null`, `bool`, `int`, `float`, `str`
 - Collections: `list`, `tuple`, `set`, `dict`
-- Org values: `OrgNode`, `OrgRootNode`, `OrgDate`, `OrgDateClock`, `OrgDateRepeatedTask`
+- Org values: `Heading`, `Document`, `Timestamp`, `Clock`, `Repeat`
 - Analysis values: `AnalysisResult`, `Tag`, `Group`, `TimeRange`, `Histogram`
 
 ```text
@@ -571,7 +570,7 @@ null
 true
 
 # collections
-[ .[] | .heading ]
+[ .[] | .title_text ]
 .[0]
 
 # org values
@@ -589,20 +588,20 @@ Notes:
 
 ```text
 # done headings
-.[] | select(.todo == "DONE") | .heading
+.[] | select(.todo == "DONE") | .title_text
 
 # count children for each top-level node
 .[] | .children | length
 
 # collect headings as one list
-[ .[] | .heading ]
+[ .[] | .title_text ]
 
 # use variables in pipeline
-. as $root | $root[] | .heading
+. as $root | $root[] | .title_text
 
 # dynamic slicing with CLI-provided vars offset/limit
 .[ $offset : $offset + $limit ]
 
 # find most recently modified tasks
-.[][] | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) | .heading
+.[][] | sort_by(.repeats + .deadline + .closed + .scheduled | max) | .title_text
 ```

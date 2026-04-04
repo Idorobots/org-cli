@@ -51,7 +51,7 @@ Example:
     "has-todo": "select(.todo != null)"
   },
   "order-by": {
-    "recent-first": "sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"
+    "recent-first": "sort_by(.repeats + .deadline + .closed + .scheduled | max)"
   },
   "with": {
     "priority-value": ".properties.priority_value = .priority"
@@ -86,5 +86,4 @@ Common date formats for date filters:
 
 ## Categories
 
-`org-cli` can derive categories from tags with `--with-tags-as-category` and store them in a
-customizable property name via `--category-property`.
+`org-cli` can derive categories from tags with `--with-tags-as-category`.

@@ -41,7 +41,6 @@ poetry run org tasks board [OPTIONS] [FILE ...]
 ## Available enrichments
 
 - `--with-tags-as-category` - Preprocess nodes by copying first tag into category property.
-- `--category-property PROPERTY` - Category property used by enrichment/filter pipeline.
 
 ## Examples
 

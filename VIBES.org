@@ -3701,6 +3701,142 @@ Create a plan for the replacement of orgparse with =org-parser= library. The doc
 
 Implement the plan from @plans/orgparse-to-org-parser.md
 
+*** CANCELLED src/org/cli_common.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-04-04 Sat 17:18] \\
+  It made some provisions to coerce non-timestamp Clock and Repeat into timestamps.
+:END:
+
+In file src/org/cli_common.py around line 884, near the ~def _builtin_order_stages(value: str) -> list[str]:~
+
+#+begin_example
+         ],
+-        "timestamp-desc": ["sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"],
++        "timestamp-desc": ["sort_by(.repeats + .deadline + .closed + .scheduled | max)"],
+#+end_example
+
+This might be a problem as =Repeat= is not a timestamp-derived class.
+*** TODO src/org/commands/query.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/query.py around line 57, near the ~class QueryOutputFormatter(Protocol):~
+
+#+begin_example
+     """Return whether value is an org node or org date object."""
+-    return isinstance(value, orgparse.node.OrgNode | OrgRootNode | OrgDate)
++    return isinstance(value, Heading | Document | Timestamp)
+#+end_example
+
+This is likely missing Clock and Repeat.
+
+Arguably, all the =Elements= and =RichText= objects could be supported.
+*** TODO tests/commands/tasks/test_tasks_list.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file tests/commands/tasks/test_tasks_list.py around line 403, near the ~def test_run_tasks_list_unicode_heading_aligns_tags_to_visual_width(~
+
+#+begin_example
+-        handle.write("* TODO 修正タスク名の確認 :開発:\n")
++        # FIXME This needs a unicode tag for better test coverage.
++        handle.write("* TODO 修正タスク名の確認 :dev:\n")
+#+end_example
+
+Needs a tree-sitter grammar update.
+*** CANCELLED src/org/output_format.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-04-04 Sat 17:31] \\
+  Turns out it's already available.
+:END:
+
+In file src/org/output_format.py around line 300, near the ~_CLOCK_EXPORTED_FIELDS = (~
+
+#+begin_example
+-    "body",
++    # "body", # FIXME Needs to be added.
+#+end_example
+
+Not exposed by org-parser currently.
+*** TODO src/org/query_language/runtime.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/query_language/runtime.py around line 290, near the ~def _resolve_bracket_key(base: object, key: object) -> object:~
+
+#+begin_example
++def _normalize_timestamp_value(value: object) -> object:
++    """Normalize timestamp-like values for runtime evaluation."""
+     return value
+#+end_example
+
+This is no longer needed and should be removed.
+*** TODO src/org/query_language/runtime.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/query_language/runtime.py around line 601, near the ~def _apply_compare_datetime(operator: str, left: datetime, right: datetime) -> b~
+
+#+begin_example
++def _org_date_start_for_comparison(value: Timestamp) -> datetime:
++    """Return Timestamp start normalized for comparisons."""
++    return value.start
+#+end_example
+
+This can be removed as well. No need for the wrapper.
+*** TODO src/org/query_language/runtime.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/query_language/runtime.py around line 937, near the ~def _func_not(stream: Stream, condition: Expr, context: EvalContext) -> Stream:~
+
+#+begin_example
+ def _func_timestamp(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+-    """Create OrgDate values from one, two, or three arguments."""
++    """Create Timestamp values from one, two, or three arguments."""
+     output = _stream()
+     for arguments in _iter_function_argument_values(stream, argument, context):
+         _ensure_arity(arguments, {1, 2, 3}, "timestamp")
+-        start_date = _parse_org_date(arguments[0])
++        start_value = _parse_timestamp(arguments[0])
++        start = start_value.start
++        active_value: bool | None = start_value.is_active
++        end: datetime | None = None
+ 
+-        if len(arguments) == 1:
+-            output.append(OrgDate(start_date.start, start_date.end, start_date.is_active()))
+-            continue
+-
+-        end_date = _as_org_date_or_none(arguments[1])
+-        end_value = None if end_date is None else end_date.start
++        if len(arguments) >= 2:
++            end_value = _as_timestamp_or_none(arguments[1])
++            end = None if end_value is None else end_value.start
+ 
+-        if len(arguments) == 2:
+-            output.append(OrgDate(start_date.start, end_value, start_date.is_active()))
+-            continue
++        if len(arguments) == 3:
++            active_value = _as_active_or_none(arguments[2])
+ 
+-        active = _as_active_or_none(arguments[2])
+-        output.append(OrgDate(start_date.start, end_value, active))
++        output.append(_timestamp_from_datetimes(start, end, active_value))
+     return output
+#+end_example
+
+This and the analogous =Clock= constructors can be simplified to just accept a single string and use =from_source= on that.
 *** Filtering, ordering & enrichments
 - Use it for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
 - Use it for property additions
@@ -3713,8 +3849,7 @@ Implement the plan from @plans/orgparse-to-org-parser.md
 - ~properties.foo = none~ set/delete property
 - update the documentation in docs/query_language.md
 
-*** org_parser.text.RichText support
-
+*** org_parser.text.RichText rendering support
 ** Agenda command
 Like Org Agenta, but CLI.
 

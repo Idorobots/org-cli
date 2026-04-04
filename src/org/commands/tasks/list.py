@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import click
-import orgparse
 import typer
+from org_parser.document import Heading
 from rich.console import Console
 from rich.syntax import Syntax
 
@@ -75,7 +75,6 @@ class ListArgs:
     order_by_timestamp_asc: bool
     order_by_timestamp_desc: bool
     with_tags_as_category: bool
-    category_property: str
     out: str
     out_theme: str
     pandoc_args: str | None
@@ -85,7 +84,7 @@ class ListArgs:
 class TasksListRenderInput:
     """Render input for tasks list output formatters."""
 
-    nodes: list[orgparse.node.OrgNode]
+    nodes: list[Heading]
     console: Console
     color_enabled: bool
     done_keys: list[str]
@@ -122,16 +121,14 @@ def _format_short_task_list(data: TasksListRenderInput) -> str:
     return lines_to_text(lines)
 
 
-def _prepare_detailed_task_list(
-    nodes: list[orgparse.node.OrgNode], out_theme: str
-) -> PreparedOutput:
+def _prepare_detailed_task_list(nodes: list[Heading], out_theme: str) -> PreparedOutput:
     """Prepare detailed list of tasks with syntax highlighting."""
     theme = _normalize_syntax_theme(out_theme)
     operations: list[OutputOperation] = []
     for idx, node in enumerate(nodes):
         if idx > 0:
             operations.append(OutputOperation(kind="console_print", text="", markup=False))
-        filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
+        filename = node.document.filename if node.document.filename else "unknown"
         node_text = str(node).rstrip()
         org_block = f"# {filename}\n{node_text}" if node_text else f"# {filename}"
         operations.append(
@@ -507,13 +504,7 @@ def register(app: typer.Typer) -> None:
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
-            help="Preprocess nodes to set category property based on first tag",
-        ),
-        category_property: str = typer.Option(
-            "CATEGORY",
-            "--category-property",
-            metavar="PROPERTY",
-            help="Property name to use for category histogram and filtering",
+            help="Preprocess nodes to set category from first tag",
         ),
         out: str = typer.Option(
             OutputFormat.ORG,
@@ -566,7 +557,6 @@ def register(app: typer.Typer) -> None:
             order_by_timestamp_asc=order_by_timestamp_asc,
             order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
-            category_property=category_property,
             out=out,
             out_theme=out_theme,
             pandoc_args=pandoc_args,

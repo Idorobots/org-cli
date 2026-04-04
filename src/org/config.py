@@ -14,7 +14,6 @@ import typer
 
 
 COMMAND_OPTION_NAMES = {
-    "category_property",
     "color_flag",
     "config",
     "details",
@@ -67,7 +66,6 @@ CONFIG_CUSTOM_WITH: dict[str, str] = {}
 
 
 DEST_TO_OPTION_NAME: dict[str, str] = {
-    "category_property": "--category-property",
     "color_flag": "--color/--no-color",
     "config": "--config",
     "details": "--details",
@@ -596,10 +594,7 @@ def build_config_defaults(
         "--verbose": "verbose",
     }
 
-    stats_str_options: dict[str, str] = {
-        "--category-property": "category_property",
-        "--use": "use",
-    }
+    stats_str_options: dict[str, str] = {"--use": "use"}
 
     global_str_options: dict[str, str] = {
         "--todo-keys": "todo_keys",

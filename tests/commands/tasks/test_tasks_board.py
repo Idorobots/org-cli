@@ -52,7 +52,6 @@ def make_board_args(files: list[str], **overrides: object) -> tasks_board.BoardA
         order_by_timestamp_asc=False,
         order_by_timestamp_desc=False,
         with_tags_as_category=False,
-        category_property="CATEGORY",
         coalesce_completed=True,
     )
     for key, value in overrides.items():

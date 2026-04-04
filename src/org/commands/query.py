@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from typing import Protocol, cast
 
 import click
-import orgparse
 import typer
-from orgparse.date import OrgDate
-from orgparse.node import OrgRootNode
+from org_parser import Document
+from org_parser.document import Heading
+from org_parser.time import Timestamp
 from rich.console import Console
 from rich.syntax import Syntax
 
@@ -55,17 +55,19 @@ class QueryOutputFormatter(Protocol):
 
 def _is_org_object(value: object) -> bool:
     """Return whether value is an org node or org date object."""
-    return isinstance(value, orgparse.node.OrgNode | OrgRootNode | OrgDate)
+    return isinstance(value, Heading | Document | Timestamp)
 
 
 def _format_org_block(value: object) -> str:
     """Build org-formatted text block for one value."""
-    if isinstance(value, orgparse.node.OrgNode | OrgRootNode):
-        filename = value.env.filename if value.env.filename else "unknown"
+    if isinstance(value, Heading):
+        filename = value.document.filename if value.document.filename else "unknown"
         node_text = str(value).rstrip()
         return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
-    if isinstance(value, OrgDate) and not bool(value):
-        return "null"
+    if isinstance(value, Document):
+        filename = value.filename if value.filename else "unknown"
+        node_text = str(value).rstrip()
+        return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
     return str(value)
 
 

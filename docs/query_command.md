@@ -27,13 +27,13 @@ When you use `--offset` or `--limit`, include `$offset` and `$limit` in the quer
 1) Fetch headings from all tasks
 
 ```bash
-poetry run org query '.[][] | .heading' examples/ARCHIVE_small
+poetry run org query '.[][] | .title_text' examples/ARCHIVE_small
 ```
 
 2) Fetch headings of completed tasks
 
 ```bash
-poetry run org query '.[][] | select(.todo in $done_keys) | .heading' \
+poetry run org query '.[][] | select(.todo in $done_keys) | .title_text' \
   examples/ARCHIVE_small
 ```
 
@@ -48,7 +48,7 @@ Prepare a document for team onboarding to Ejabberd.
 3) Fetch a paged window of headings
 
 ```bash
-poetry run org query '[ .[][] | .heading ][ $offset : $offset + $limit ]' \
+poetry run org query '[ .[][] | .title_text ][ $offset : $offset + $limit ]' \
   --offset 5 \
   --limit 5 \
   examples/ARCHIVE_small
@@ -57,7 +57,7 @@ poetry run org query '[ .[][] | .heading ][ $offset : $offset + $limit ]' \
 4) Fetch headings for tasks tagged `Debugging`, then page results
 
 ```bash
-poetry run org query '[ .[][] | select("Debugging" in .tags) | .heading ][ $offset : $offset + $limit ]' \
+poetry run org query '[ .[][] | select("Debugging" in .tags) | .title_text ][ $offset : $offset + $limit ]' \
   --offset 2 \
   --limit 8 \
   examples/ARCHIVE_small
@@ -100,7 +100,7 @@ SCHEDULED: <2023-10-19 czw>
 6) Export markdown with a custom Pygments theme
 
 ```bash
-poetry run org query '.[][] | .heading' \
+poetry run org query '.[][] | .title_text' \
   --out gfm \
   --out-theme monokai \
   examples/ARCHIVE_small

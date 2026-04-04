@@ -82,7 +82,7 @@ poetry install
 poetry run org --help
 
 # Query command
-poetry run org query '.[][] | .heading' -n 5 examples/ARCHIVE_small
+poetry run org query '.[][] | .title_text' -n 5 examples/ARCHIVE_small
 
 # Summary stats
 poetry run org stats all --filter-priority A --max-tags 3 --max-groups 2 examples/ARCHIVE_small
@@ -214,7 +214,7 @@ import sys
 import os
 
 # Third-party imports next
-import orgparse
+import org_parser
 
 # Local package imports last
 from org.analyze import analyze, Frequency
@@ -286,9 +286,9 @@ except PermissionError:
     sys.exit(1)
 
 # Check for None returns
-ns = orgparse.loads(contents)
+ns = org_parser.loads(contents)
 if ns is not None:  # Use "is not None" instead of "!= None"
-    nodes = nodes + list(ns[1:])
+    nodes = nodes + list(list(ns))
 ```
 
 ### Comments

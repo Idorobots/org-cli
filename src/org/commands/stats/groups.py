@@ -72,7 +72,6 @@ class GroupsArgs:
     use: str
     groups: list[str] | None
     with_tags_as_category: bool
-    category_property: str
     max_relations: int
     min_group_size: int
     max_groups: int
@@ -345,13 +344,7 @@ def register(app: typer.Typer) -> None:
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
-            help="Preprocess nodes to set category property based on first tag",
-        ),
-        category_property: str = typer.Option(
-            "CATEGORY",
-            "--category-property",
-            metavar="PROPERTY",
-            help="Property name to use for category histogram and filtering",
+            help="Preprocess nodes to set category from first tag",
         ),
         max_relations: int = typer.Option(
             5,
@@ -389,7 +382,6 @@ def register(app: typer.Typer) -> None:
             use=use,
             groups=groups,
             with_tags_as_category=with_tags_as_category,
-            category_property=category_property,
             max_relations=max_relations,
             min_group_size=0,
             max_groups=0,

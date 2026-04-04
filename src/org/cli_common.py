@@ -12,8 +12,9 @@ from pathlib import Path
 from typing import Protocol, cast
 
 import click
-import orgparse
 import typer
+from org_parser import Document
+from org_parser.document import Heading
 
 from org import config as config_module
 from org.analyze import TimeRange, normalize
@@ -172,7 +173,7 @@ def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
     return (top_day.isoformat(), max_count)
 
 
-def get_most_recent_timestamp(node: orgparse.node.OrgNode) -> datetime | None:
+def get_most_recent_timestamp(node: Heading) -> datetime | None:
     """Get the most recent timestamp from a node.
 
     Args:
@@ -185,9 +186,7 @@ def get_most_recent_timestamp(node: orgparse.node.OrgNode) -> datetime | None:
     return max(timestamps) if timestamps else None
 
 
-def get_top_tasks(
-    nodes: list[orgparse.node.OrgNode], max_results: int
-) -> list[orgparse.node.OrgNode]:
+def get_top_tasks(nodes: list[Heading], max_results: int) -> list[Heading]:
     """Get top N nodes sorted by most recent timestamp.
 
     Args:
@@ -197,7 +196,7 @@ def get_top_tasks(
     Returns:
         List of nodes sorted by most recent timestamp (descending)
     """
-    nodes_with_timestamps: list[tuple[orgparse.node.OrgNode, datetime]] = []
+    nodes_with_timestamps: list[tuple[Heading, datetime]] = []
     for node in nodes:
         timestamp = get_most_recent_timestamp(node)
         if timestamp:
@@ -709,27 +708,27 @@ def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
         stage = f"select(.level == {args.filter_level})"
     elif arg_name == "--filter-repeats-above" and args.filter_repeats_above is not None:
         threshold = args.filter_repeats_above
-        stage = f"select(.repeated_tasks | length > {threshold})"
+        stage = f"select(.repeats | length > {threshold})"
     elif arg_name == "--filter-repeats-below" and args.filter_repeats_below is not None:
         threshold = args.filter_repeats_below
-        stage = f"select(.repeated_tasks | length < {threshold})"
+        stage = f"select(.repeats | length < {threshold})"
     elif arg_name == "--filter-date-from" and args.filter_date_from is not None:
         timestamp_value = _quote_string(args.filter_date_from)
         stage = (
-            "select(.repeated_tasks + .deadline + .closed + .scheduled "
+            "select(.repeats + .deadline + .closed + .scheduled "
             f"| max >= timestamp({timestamp_value}))"
         )
     elif arg_name == "--filter-date-until" and args.filter_date_until is not None:
         timestamp_value = _quote_string(args.filter_date_until)
         stage = (
-            "select(.repeated_tasks + .deadline + .closed + .scheduled "
+            "select(.repeats + .deadline + .closed + .scheduled "
             f"| max <= timestamp({timestamp_value}))"
         )
-    # FIXME These two should also modify the .repeated_tasks property when mutation is added.
+    # FIXME These two should also modify the .repeats property when mutation is added.
     elif arg_name == "--filter-completed" and args.filter_completed:
-        stage = "select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys)"
+        stage = "select(((.repeats | map(.after)) + .todo)[] in $done_keys)"
     elif arg_name == "--filter-not-completed" and args.filter_not_completed:
-        stage = "select(not(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys))"
+        stage = "select(not(((.repeats | map(.after)) + .todo)[] in $done_keys))"
     return stage
 
 
@@ -768,7 +767,7 @@ def _indexed_filter_stage(
     ):
         pattern = args.filter_headings[index_trackers["heading"]]
         index_trackers["heading"] += 1
-        return f"select(.heading matches {_quote_string(pattern)})"
+        return f"select(.title_text matches {_quote_string(pattern)})"
 
     if (
         arg_name == "--filter-body"
@@ -777,7 +776,7 @@ def _indexed_filter_stage(
     ):
         pattern = f"(?m){args.filter_bodies[index_trackers['body']]}"
         index_trackers["body"] += 1
-        return f"select(.body matches {_quote_string(pattern)})"
+        return f"select(.body_text matches {_quote_string(pattern)})"
 
     return None
 
@@ -872,7 +871,7 @@ def build_order_stages(
 
 def _builtin_order_stages(value: str) -> list[str]:
     """Build query stages for one built-in ordering value."""
-    timestamp_key_expr = ".repeated_tasks + .deadline + .closed + .scheduled | max"
+    timestamp_key_expr = ".repeats + .deadline + .closed + .scheduled | max"
     order_stages: dict[str, list[str]] = {
         "file-order": ["."],
         "file-order-reversed": ["reverse"],
@@ -883,7 +882,7 @@ def _builtin_order_stages(value: str) -> list[str]:
             "reverse",
             f"sort_by(({timestamp_key_expr}) != null)",
         ],
-        "timestamp-desc": ["sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"],
+        "timestamp-desc": ["sort_by(.repeats + .deadline + .closed + .scheduled | max)"],
     }
     return order_stages.get(value, [])
 
@@ -1066,7 +1065,6 @@ class DataLoadArgs(FilterArgs, Protocol):
     done_keys: str
     width: int | None
     with_tags_as_category: bool
-    category_property: str
 
 
 class SlicedDataLoadArgs(Protocol):
@@ -1087,7 +1085,7 @@ class RootDataLoadArgs(Protocol):
 
 def _resolve_and_load_roots(
     args: RootDataLoadArgs,
-) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+) -> tuple[list[Document], list[str], list[str]]:
     """Resolve inputs and load org roots after validating todo/done keys."""
     todo_keys = validate_and_parse_keys(args.todo_keys, "--todo-keys")
     done_keys = validate_and_parse_keys(args.done_keys, "--done-keys")
@@ -1096,7 +1094,7 @@ def _resolve_and_load_roots(
 
 def _load_roots_for_inputs(
     files: list[str] | None, todo_keys: list[str], done_keys: list[str]
-) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+) -> tuple[list[Document], list[str], list[str]]:
     """Resolve file inputs and load all org root nodes."""
     filenames = resolve_input_paths(files)
     return load_root_nodes(filenames, todo_keys, done_keys)
@@ -1104,14 +1102,14 @@ def _load_roots_for_inputs(
 
 def load_root_data(
     args: RootDataLoadArgs,
-) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+) -> tuple[list[Document], list[str], list[str]]:
     """Load org root nodes without filters, enrichment, or ordering."""
     return _resolve_and_load_roots(args)
 
 
 def load_and_process_data(
     args: DataLoadArgs,
-) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
+) -> tuple[list[Heading], list[str], list[str]]:
     """Load nodes, preprocess, and apply query-based filters/ordering."""
     include_ordering = hasattr(args, "order_by_level")
     validate_custom_switches(sys.argv, include_ordering)
@@ -1121,10 +1119,10 @@ def load_and_process_data(
 
     todo_keys, done_keys = validate_global_arguments(args)
     roots, todo_keys, done_keys = _load_roots_for_inputs(normalized_files, todo_keys, done_keys)
-    nodes = [node for root in roots for node in root[1:]]
+    nodes = [node for root in roots for node in list(root)]
 
     if args.with_tags_as_category:
-        nodes = preprocess_tags_as_category(nodes, args.category_property)
+        nodes = preprocess_tags_as_category(nodes)
 
     include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
     query = build_query(
@@ -1134,7 +1132,6 @@ def load_and_process_data(
     context_vars: dict[str, object] = {
         "todo_keys": todo_keys,
         "done_keys": done_keys,
-        "category_property": args.category_property,
     }
     context_vars.update(collect_custom_context_vars(sys.argv, normalized_files, include_ordering))
     if include_slice:
@@ -1154,6 +1151,6 @@ def load_and_process_data(
         flattened = cast(list[object], results[0])
     else:
         flattened = list(results)
-    nodes = [value for value in flattened if isinstance(value, orgparse.node.OrgNode)]
+    nodes = [value for value in flattened if isinstance(value, Heading)]
 
     return nodes, todo_keys, done_keys

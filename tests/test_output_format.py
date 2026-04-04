@@ -8,8 +8,8 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import cast
 
-import orgparse
 import pytest
+from org_parser.document import Heading
 from rich.console import Console
 from rich.syntax import Syntax
 
@@ -232,7 +232,7 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
 
     prepared_output = formatter.prepare(
         tasks_list_command.TasksListRenderInput(
-            nodes=[cast(orgparse.node.OrgNode, _FakeNode())],
+            nodes=[cast(Heading, _FakeNode())],
             console=cast(Console, console),
             color_enabled=True,
             done_keys=["DONE"],

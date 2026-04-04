@@ -1,237 +1,85 @@
 """Node filtering functions."""
 
 import re
-import typing
 from collections.abc import Callable
 from datetime import datetime
 
-import orgparse
+from org_parser.document import Heading
+from org_parser.element import Repeat
 
 from org.timestamp import extract_timestamp_any
 
 
-class _FilteredOrgNode(orgparse.node.OrgNode):
-    """Wrapper for OrgNode that overrides repeated_tasks without copying the entire node.
-
-    This class delegates all attribute access to the original node except for repeated_tasks,
-    which is replaced with a filtered list. This avoids the performance cost of deep copying.
-    """
-
-    def __init__(
-        self,
-        original_node: orgparse.node.OrgNode,
-        filtered_repeats: list[orgparse.date.OrgDateRepeatedTask],
-    ) -> None:
-        """Initialize with original node and filtered repeated tasks.
-
-        Args:
-            original_node: The original OrgNode to wrap
-            filtered_repeats: The filtered list of repeated tasks
-        """
-        self._original_node = original_node
-        self._filtered_repeats = filtered_repeats
-
-    @property
-    def repeated_tasks(self) -> list[orgparse.date.OrgDateRepeatedTask]:
-        """Return the filtered repeated tasks.
-
-        Returns:
-            Filtered list of repeated tasks
-        """
-        return self._filtered_repeats
-
-    def __getattr__(self, name: str) -> typing.Any:  # noqa: ANN401
-        """Delegate attribute access to the original node.
-
-        Args:
-            name: Attribute name
-
-        Returns:
-            Attribute value from original node
-        """
-        return getattr(self._original_node, name)
+def get_repeat_count(node: Heading) -> int:
+    """Get total repeat count for a node."""
+    return max(1, len(node.repeats))
 
 
-class _PropertyRewrittenOrgNode(orgparse.node.OrgNode):
-    """Wrapper for OrgNode with fully rewritten properties."""
-
-    def __init__(
-        self,
-        original_node: orgparse.node.OrgNode,
-        rewritten_properties: dict[str, typing.Any],
-    ) -> None:
-        """Initialize with original node and rewritten properties."""
-        self._original_node = original_node
-        self._rewritten_properties = rewritten_properties
-
-    @property
-    def properties(self) -> dict[str, typing.Any]:
-        """Return rewritten properties dictionary."""
-        return self._rewritten_properties
-
-    def __getattr__(self, name: str) -> typing.Any:  # noqa: ANN401
-        """Delegate attribute access to the original node."""
-        return getattr(self._original_node, name)
-
-
-def get_repeat_count(node: orgparse.node.OrgNode) -> int:
-    """Get total repeat count for a node.
-
-    Returns max(1, len(node.repeated_tasks))
-
-    Args:
-        node: Org-mode node
-
-    Returns:
-        Repeat count (minimum 1)
-    """
-    return max(1, len(node.repeated_tasks))
-
-
-def _filter_node_repeats(
-    node: orgparse.node.OrgNode, predicate: Callable[[orgparse.date.OrgDateRepeatedTask], bool]
-) -> orgparse.node.OrgNode | None:
-    """Filter repeated tasks in a node based on a predicate function.
-
-    Args:
-        node: Org-mode node to filter
-        predicate: Function that takes a repeated task and returns True if it should be kept
-
-    Returns:
-        - Original node if all repeats match (or no repeats)
-        - FilteredOrgNode with filtered repeated_tasks if some match
-        - None if no repeats match (and node doesn't have valid non-repeat data)
-    """
-    if not node.repeated_tasks:
+def _filter_node_repeats(node: Heading, predicate: Callable[[Repeat], bool]) -> Heading | None:
+    """Filter repeated tasks in place based on a predicate function."""
+    if not node.repeats:
         return node
 
-    matching_repeats = [rt for rt in node.repeated_tasks if predicate(rt)]
-
-    if len(matching_repeats) == len(node.repeated_tasks):
+    matching_repeats = [repeat for repeat in node.repeats if predicate(repeat)]
+    if len(matching_repeats) == len(node.repeats):
         return node
-
-    if len(matching_repeats) == 0:
+    if not matching_repeats:
         return None
 
-    return _FilteredOrgNode(node, matching_repeats)
+    node.repeats = matching_repeats
+    return node
 
 
-def filter_repeats_above(
-    nodes: list[orgparse.node.OrgNode], threshold: int
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes where repeat count > threshold (non-inclusive).
-
-    Repeat count = max(1, len(node.repeated_tasks))
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        threshold: Threshold value
-
-    Returns:
-        Filtered list of nodes
-    """
+def filter_repeats_above(nodes: list[Heading], threshold: int) -> list[Heading]:
+    """Filter nodes where repeat count > threshold (non-inclusive)."""
     return [node for node in nodes if get_repeat_count(node) > threshold]
 
 
-def filter_repeats_below(
-    nodes: list[orgparse.node.OrgNode], threshold: int
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes where repeat count < threshold (non-inclusive).
-
-    Repeat count = max(1, len(node.repeated_tasks))
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        threshold: Threshold value
-
-    Returns:
-        Filtered list of nodes
-    """
+def filter_repeats_below(nodes: list[Heading], threshold: int) -> list[Heading]:
+    """Filter nodes where repeat count < threshold (non-inclusive)."""
     return [node for node in nodes if get_repeat_count(node) < threshold]
 
 
-def filter_date_from(
-    nodes: list[orgparse.node.OrgNode], date_threshold: datetime
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes with any timestamp after date_threshold (inclusive).
-
-    For nodes with repeated tasks, filters the repeated_tasks list to only include
-    tasks with timestamps >= date_threshold. For nodes without repeated tasks,
-    checks the node's timestamp.
-
-    Uses extract_timestamp_any() logic. Nodes without timestamps are excluded.
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        date_threshold: Date threshold (inclusive)
-
-    Returns:
-        Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
-    """
-    result = []
-
+def filter_date_from(nodes: list[Heading], date_threshold: datetime) -> list[Heading]:
+    """Filter nodes with any timestamp after date_threshold (inclusive)."""
+    result: list[Heading] = []
     for node in nodes:
-        if node.repeated_tasks:
-            filtered_node = _filter_node_repeats(node, lambda rt: rt.start >= date_threshold)
+        if node.repeats:
+            filtered_node = _filter_node_repeats(
+                node,
+                lambda repeat: repeat.timestamp.start >= date_threshold,
+            )
             if filtered_node is not None:
                 result.append(filtered_node)
-        else:
-            timestamps = extract_timestamp_any(node)
-            if any(timestamp >= date_threshold for timestamp in timestamps):
-                result.append(node)
+            continue
 
+        timestamps = extract_timestamp_any(node)
+        if any(timestamp >= date_threshold for timestamp in timestamps):
+            result.append(node)
     return result
 
 
-def filter_date_until(
-    nodes: list[orgparse.node.OrgNode], date_threshold: datetime
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes with any timestamp before date_threshold (inclusive).
-
-    For nodes with repeated tasks, filters the repeated_tasks list to only include
-    tasks with timestamps <= date_threshold. For nodes without repeated tasks,
-    checks the node's timestamp.
-
-    Uses extract_timestamp_any() logic. Nodes without timestamps are excluded.
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        date_threshold: Date threshold (inclusive)
-
-    Returns:
-        Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
-    """
-    result = []
-
+def filter_date_until(nodes: list[Heading], date_threshold: datetime) -> list[Heading]:
+    """Filter nodes with any timestamp before date_threshold (inclusive)."""
+    result: list[Heading] = []
     for node in nodes:
-        if node.repeated_tasks:
-            filtered_node = _filter_node_repeats(node, lambda rt: rt.start <= date_threshold)
+        if node.repeats:
+            filtered_node = _filter_node_repeats(
+                node,
+                lambda repeat: repeat.timestamp.start <= date_threshold,
+            )
             if filtered_node is not None:
                 result.append(filtered_node)
-        else:
-            timestamps = extract_timestamp_any(node)
-            if any(timestamp <= date_threshold for timestamp in timestamps):
-                result.append(node)
+            continue
 
+        timestamps = extract_timestamp_any(node)
+        if any(timestamp <= date_threshold for timestamp in timestamps):
+            result.append(node)
     return result
 
 
-def filter_property(
-    nodes: list[orgparse.node.OrgNode], property_name: str, property_value: str
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes with exact property match (case-sensitive).
-
-    Nodes without the property are excluded.
-    For gamify_exp property, nodes without it are NOT treated as having value 10.
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        property_name: Property name to match
-        property_value: Property value to match
-
-    Returns:
-        Filtered list of nodes
-    """
+def filter_property(nodes: list[Heading], property_name: str, property_value: str) -> list[Heading]:
+    """Filter nodes with exact property match (case-sensitive)."""
     return [
         node
         for node in nodes
@@ -240,211 +88,85 @@ def filter_property(
     ]
 
 
-def filter_tag(nodes: list[orgparse.node.OrgNode], tag_pattern: str) -> list[orgparse.node.OrgNode]:
-    """Filter nodes where any tag matches the regex pattern (case-sensitive).
-
-    Matches against individual tags in node.tags list using regex.
-    Nodes without any matching tag are excluded.
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        tag_pattern: Regex pattern to match against tags
-
-    Returns:
-        Filtered list of nodes
-
-    Raises:
-        re.error: If tag_pattern is not a valid regex
-    """
+def filter_tag(nodes: list[Heading], tag_pattern: str) -> list[Heading]:
+    """Filter nodes where any tag matches the regex pattern (case-sensitive)."""
     pattern = re.compile(tag_pattern)
     return [node for node in nodes if any(pattern.search(tag) for tag in node.tags)]
 
 
-def _make_completion_predicate(
-    keys: list[str],
-) -> Callable[[orgparse.date.OrgDateRepeatedTask], bool]:
-    """Create a predicate function for checking completed status.
+def _make_completion_predicate(keys: list[str]) -> Callable[[Repeat], bool]:
+    """Create predicate for completed repeat states."""
 
-    Args:
-        keys: List of state keywords
-
-    Returns:
-        Predicate function
-    """
-
-    def predicate(rt: orgparse.date.OrgDateRepeatedTask) -> bool:
-        return rt.after in keys
+    def predicate(repeat: Repeat) -> bool:
+        return repeat.after in keys
 
     return predicate
 
 
-def _make_not_completion_predicate(
-    keys: list[str],
-) -> Callable[[orgparse.date.OrgDateRepeatedTask], bool]:
-    """Create a predicate function for checking not-completed status.
+def _make_not_completion_predicate(keys: list[str]) -> Callable[[Repeat], bool]:
+    """Create predicate for non-completed repeat states."""
 
-    Includes tasks with state in keys OR without a state.
-
-    Args:
-        keys: List of state keywords
-
-    Returns:
-        Predicate function
-    """
-
-    def predicate(rt: orgparse.date.OrgDateRepeatedTask) -> bool:
-        return rt.after in keys or not rt.after
+    def predicate(repeat: Repeat) -> bool:
+        return repeat.after in keys or not repeat.after
 
     return predicate
 
 
-def filter_completed(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
-    """Filter nodes with todo state in node.env.done_keys.
-
-    For nodes with repeated tasks, filters the repeated_tasks list to only include
-    tasks with after state in the node's environment done_keys. For nodes without
-    repeated tasks, checks node.todo against node.env.done_keys.
-
-    Args:
-        nodes: List of org-mode nodes to filter
-
-    Returns:
-        Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
-    """
-    result = []
-
+def filter_completed(nodes: list[Heading]) -> list[Heading]:
+    """Filter nodes with todo state in document done states."""
+    result: list[Heading] = []
     for node in nodes:
-        done_keys = node.env.done_keys
-        if node.repeated_tasks:
+        done_keys = node.document.done_states
+        if node.repeats:
             filtered_node = _filter_node_repeats(node, _make_completion_predicate(done_keys))
             if filtered_node is not None:
                 result.append(filtered_node)
-        elif node.todo in done_keys:
+            continue
+        if node.is_completed:
             result.append(node)
-
     return result
 
 
-def filter_not_completed(nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
-    """Filter nodes with todo state in node.env.todo_keys or without a todo state.
-
-    For nodes with repeated tasks, filters the repeated_tasks list to only include
-    tasks with after state in the node's environment todo_keys or without a state.
-    For nodes without repeated tasks, checks node.todo against node.env.todo_keys
-    or includes nodes without a todo state.
-
-    Args:
-        nodes: List of org-mode nodes to filter
-
-    Returns:
-        Filtered list of nodes (some may be deep copies with filtered repeated_tasks)
-    """
-    result = []
-
+def filter_not_completed(nodes: list[Heading]) -> list[Heading]:
+    """Filter nodes with todo state in document todo states or without a todo state."""
+    result: list[Heading] = []
     for node in nodes:
-        todo_keys = node.env.todo_keys if hasattr(node, "env") else []
-        if node.repeated_tasks:
+        todo_keys = node.document.todo_states
+        if node.repeats:
             filtered_node = _filter_node_repeats(node, _make_not_completion_predicate(todo_keys))
             if filtered_node is not None:
                 result.append(filtered_node)
-        elif node.todo in todo_keys or not node.todo:
+            continue
+        if not node.is_completed:
             result.append(node)
-
     return result
 
 
-def filter_heading(
-    nodes: list[orgparse.node.OrgNode], heading_pattern: str
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes where heading matches the regex pattern (case-sensitive).
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        heading_pattern: Regex pattern to match against heading
-
-    Returns:
-        Filtered list of nodes
-
-    Raises:
-        re.error: If heading_pattern is not a valid regex
-    """
+def filter_heading(nodes: list[Heading], heading_pattern: str) -> list[Heading]:
+    """Filter nodes where title_text matches the regex pattern (case-sensitive)."""
     pattern = re.compile(heading_pattern)
-    return [node for node in nodes if node.heading and pattern.search(node.heading)]
+    return [node for node in nodes if node.title_text and pattern.search(node.title_text)]
 
 
-def filter_body(
-    nodes: list[orgparse.node.OrgNode], body_pattern: str
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes where body text matches the regex pattern (case-sensitive, multiline).
-
-    Uses re.MULTILINE flag for pattern matching.
-
-    Args:
-        nodes: List of org-mode nodes to filter
-        body_pattern: Regex pattern to match against body text
-
-    Returns:
-        Filtered list of nodes
-
-    Raises:
-        re.error: If body_pattern is not a valid regex
-    """
+def filter_body(nodes: list[Heading], body_pattern: str) -> list[Heading]:
+    """Filter nodes where body text matches the regex pattern (case-sensitive, multiline)."""
     pattern = re.compile(body_pattern, re.MULTILINE)
-    return [node for node in nodes if node.body and pattern.search(node.body)]
+    return [node for node in nodes if node.body_text and pattern.search(node.body_text)]
 
 
-def filter_category(
-    nodes: list[orgparse.node.OrgNode], category_property: str, category_value: str
-) -> list[orgparse.node.OrgNode]:
-    """Filter nodes by category property value.
-
-    Args:
-        nodes: List of nodes to filter
-        category_property: Name of property to check
-        category_value: Value to match (empty string matches "", "null" matches missing property)
-
-    Returns:
-        Filtered list of nodes
-    """
+def filter_category(nodes: list[Heading], category_value: str) -> list[Heading]:
+    """Filter nodes by effective heading category value."""
     return [
-        # NOTE "" category is treated as "null" to avoid weird display behaviour.
         node
         for node in nodes
-        if category_value == (node.properties.get(category_property) or "null")
+        if category_value
+        == ("null" if node.category is None or str(node.category) == "" else str(node.category))
     ]
 
 
-def preprocess_tags_as_category(
-    nodes: list[orgparse.node.OrgNode],
-    category_property: str,
-) -> list[orgparse.node.OrgNode]:
-    """Add category property to nodes based on first tag.
-
-    For each node with tags, sets category property to the value of the first tag.
-    The first tag is determined by its position in the org file (preserves order).
-    Nodes without tags are returned unwrapped (no category property modification).
-
-    Args:
-        nodes: List of nodes to preprocess
-        category_property: Name of property to set (e.g., "CATEGORY")
-
-    Returns:
-        List of nodes with category property set (wrapped if has tags, unwrapped if not)
-    """
-    # FIXME This is pretty slow, should be refactored in the future.
-    result: list[orgparse.node.OrgNode] = []
+def preprocess_tags_as_category(nodes: list[Heading]) -> list[Heading]:
+    """Set heading category to the first effective tag when present."""
     for node in nodes:
-        # FIXME node.tags is a set, but we want the ordered occurances.
-        if node._tags and len(node._tags) > 0:
-            first_tag = node._tags[0]
-            wrapped = _PropertyRewrittenOrgNode(
-                node,
-                {
-                    **node.properties,
-                    category_property: first_tag,
-                },
-            )
-            result.append(wrapped)
-        else:
-            result.append(node)
-    return result
+        if node.tags:
+            node.heading_category = node.heading_tags[0]
+    return nodes

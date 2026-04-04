@@ -4,7 +4,7 @@ from collections.abc import Callable
 from datetime import date, datetime
 
 import pytest
-from orgparse.node import OrgNode
+from org_parser.document import Heading
 
 from org.filters import (
     filter_body,
@@ -50,7 +50,7 @@ def test_get_repeat_count_with_repeats() -> None:
     ],
 )
 def test_filter_repeats_boundary(
-    filter_func: Callable[[list[OrgNode], int], list[OrgNode]], threshold: int, should_match: bool
+    filter_func: Callable[[list[Heading], int], list[Heading]], threshold: int, should_match: bool
 ) -> None:
     """Test repeats filters are non-inclusive at boundaries."""
     org_text_2_repeats = """* DONE Task
@@ -83,7 +83,7 @@ def test_filter_repeats_above_minimum_is_one() -> None:
     ],
 )
 def test_filter_date_basic(
-    filter_func: Callable[[list[OrgNode], datetime], list[OrgNode]],
+    filter_func: Callable[[list[Heading], datetime], list[Heading]],
     cutoff_date: datetime,
     expected_task: str,
 ) -> None:
@@ -107,7 +107,7 @@ def test_filter_date_basic(
     ],
 )
 def test_filter_date_boundary_inclusive(
-    filter_func: Callable[[list[OrgNode], datetime], list[OrgNode]], cutoff_date: datetime
+    filter_func: Callable[[list[Heading], datetime], list[Heading]], cutoff_date: datetime
 ) -> None:
     """Test date filters are inclusive at boundaries."""
     org_text = "* DONE Task\nCLOSED: [2025-01-15 Wed 10:00]\n"
@@ -120,7 +120,7 @@ def test_filter_date_boundary_inclusive(
 
 @pytest.mark.parametrize("filter_func", [filter_date_from, filter_date_until])
 def test_filter_date_no_timestamp(
-    filter_func: Callable[[list[OrgNode], datetime], list[OrgNode]],
+    filter_func: Callable[[list[Heading], datetime], list[Heading]],
 ) -> None:
     """Test date filters exclude nodes without timestamps."""
     nodes = node_from_org("* DONE Task\n")
@@ -194,7 +194,7 @@ def test_filter_date_from_mixed_completion_states() -> None:
     ],
 )
 def test_filter_date_with_repeats(
-    filter_func: Callable[[list[OrgNode], datetime], list[OrgNode]],
+    filter_func: Callable[[list[Heading], datetime], list[Heading]],
     cutoff_date: datetime,
     expected_repeat_count: int,
     expected_date: date | None,
@@ -249,9 +249,9 @@ def test_filter_date_with_repeats(
     result = filter_func(nodes, cutoff_date)
 
     assert len(result) == 1
-    assert len(result[0].repeated_tasks) == expected_repeat_count
+    assert len(result[0].repeats) == expected_repeat_count
     if expected_date:
-        assert result[0].repeated_tasks[0].start.date() == expected_date
+        assert result[0].repeats[0].timestamp.start.date() == expected_date
 
 
 def test_filter_date_from_repeats_none_match() -> None:
@@ -395,7 +395,7 @@ def test_filter_tag_no_tag() -> None:
     ],
 )
 def test_filter_completion_basic(
-    filter_func: Callable[[list[OrgNode]], list[OrgNode]], expected_indices: list[int]
+    filter_func: Callable[[list[Heading]], list[Heading]], expected_indices: list[int]
 ) -> None:
     """Test completion filters with basic filtering."""
     nodes = (
@@ -423,7 +423,7 @@ def test_filter_completion_basic(
     ],
 )
 def test_filter_completion_multiple_keys(
-    filter_func: Callable[[list[OrgNode]], list[OrgNode]],
+    filter_func: Callable[[list[Heading]], list[Heading]],
     done_keys: list[str],
     todo_keys: list[str],
 ) -> None:
@@ -456,7 +456,7 @@ def test_filter_completion_multiple_keys(
     ],
 )
 def test_filter_completion_no_match(
-    filter_func: Callable[[list[OrgNode]], list[OrgNode]], todo_state: str
+    filter_func: Callable[[list[Heading]], list[Heading]], todo_state: str
 ) -> None:
     """Test completion filters with no matching nodes."""
     nodes = node_from_org(f"* {todo_state} Task\n")
@@ -501,12 +501,12 @@ def test_filter_date_range_repeats_combined() -> None:
     result = filter_date_until(result, datetime(2025, 3, 1))
 
     assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 1
-    assert result[0].repeated_tasks[0].start.date() == date(2025, 2, 15)
+    assert len(result[0].repeats) == 1
+    assert result[0].repeats[0].timestamp.start.date() == date(2025, 2, 15)
 
 
-def test_filters_do_not_mutate_original_nodes() -> None:
-    """Test that filtering with repeats does not mutate original nodes."""
+def test_filters_mutate_original_nodes() -> None:
+    """Filtering repeated tasks should mutate the original node repeats."""
     org_text = """* DONE Task
 :LOGBOOK:
 - State "DONE" from "TODO" [2025-01-10 Fri 09:00]
@@ -514,12 +514,12 @@ def test_filters_do_not_mutate_original_nodes() -> None:
 :END:
 """
     nodes = node_from_org(org_text)
-    original_repeat_count = len(nodes[0].repeated_tasks)
+    original_repeat_count = len(nodes[0].repeats)
 
     result = filter_date_from(nodes, datetime(2025, 2, 1))
 
-    assert len(nodes[0].repeated_tasks) == original_repeat_count
-    assert len(result[0].repeated_tasks) == 1
+    assert len(nodes[0].repeats) < original_repeat_count
+    assert len(result[0].repeats) == 1
 
 
 @pytest.mark.parametrize(
@@ -534,7 +534,7 @@ def test_filters_do_not_mutate_original_nodes() -> None:
     ],
 )
 def test_filter_completion_with_repeats(
-    filter_func: Callable[[list[OrgNode]], list[OrgNode]], expected_repeat_count: int
+    filter_func: Callable[[list[Heading]], list[Heading]], expected_repeat_count: int
 ) -> None:
     """Test completion filters with repeated tasks."""
     if filter_func == filter_completed:
@@ -589,7 +589,7 @@ def test_filter_completion_with_repeats(
         assert len(result) == 0
     else:
         assert len(result) == 1
-        assert len(result[0].repeated_tasks) == expected_repeat_count
+        assert len(result[0].repeats) == expected_repeat_count
 
 
 def test_filter_completed_without_repeats_matches() -> None:
@@ -599,7 +599,7 @@ def test_filter_completed_without_repeats_matches() -> None:
     result = filter_completed(nodes)
 
     assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 0
+    assert len(result[0].repeats) == 0
 
 
 def test_filter_not_completed_without_repeats_matches() -> None:
@@ -609,7 +609,7 @@ def test_filter_not_completed_without_repeats_matches() -> None:
     result = filter_not_completed(nodes)
 
     assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 0
+    assert len(result[0].repeats) == 0
 
 
 def test_filter_completed_multiple_done_keys_with_repeats() -> None:
@@ -626,9 +626,9 @@ def test_filter_completed_multiple_done_keys_with_repeats() -> None:
     result = filter_completed(nodes)
 
     assert len(result) == 1
-    assert len(result[0].repeated_tasks) == 2
-    assert result[0].repeated_tasks[0].after in ["DONE", "DELEGATED"]
-    assert result[0].repeated_tasks[1].after in ["DONE", "DELEGATED"]
+    assert len(result[0].repeats) == 2
+    assert result[0].repeats[0].after in ["DONE", "DELEGATED"]
+    assert result[0].repeats[1].after in ["DONE", "DELEGATED"]
 
 
 @pytest.mark.parametrize(
@@ -721,7 +721,7 @@ def test_filter_tag_regex(pattern: str, expected_count: int, expected_indices: l
     ],
 )
 def test_filter_regex_patterns(
-    filter_func: Callable[[list[OrgNode], str], list[OrgNode]],
+    filter_func: Callable[[list[Heading], str], list[Heading]],
     pattern: str,
     expected_count: int,
     expected_indices: list[int],

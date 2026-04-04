@@ -13,8 +13,10 @@ from math import trunc
 from typing import cast
 from uuid import uuid4
 
-from orgparse.date import OrgDate, OrgDateClock, OrgDateRepeatedTask
-from orgparse.node import OrgNode, OrgRootNode
+from org_parser import Document
+from org_parser.document import Heading
+from org_parser.element import Repeat
+from org_parser.time import Clock, Timestamp
 
 from org.analyze import analyze as _analyze_nodes
 from org.query_language.ast import (
@@ -234,7 +236,7 @@ def _resolve_field(value: object, field: str) -> object:
     attr_value = getattr(value, field, sentinel)
     if attr_value is sentinel:
         return None
-    return _normalize_org_date_value(attr_value)
+    return _normalize_timestamp_value(attr_value)
 
 
 def _evaluate_bracket_field_access(
@@ -262,16 +264,14 @@ def _resolve_bracket_key(base: object, key: object) -> object:
     if isinstance(key, int):
         if isinstance(base, (list, tuple, str)):
             if -len(base) <= key < len(base):
-                return _normalize_org_date_value(base[key])
+                return _normalize_timestamp_value(base[key])
             return None
         raise QueryRuntimeError("Index access requires a list, tuple, or string")
     raise QueryRuntimeError("Bracket key must be a string or integer")
 
 
-def _normalize_org_date_value(value: object) -> object:
-    """Normalize empty org date objects to null."""
-    if isinstance(value, OrgDate) and not bool(value):
-        return None
+def _normalize_timestamp_value(value: object) -> object:
+    """Normalize timestamp-like values for runtime evaluation."""
     return value
 
 
@@ -281,8 +281,8 @@ def _evaluate_iterate(base: Stream) -> Stream:
     for value in base:
         if value is None:
             continue
-        if isinstance(value, OrgRootNode):
-            output.extend(list(value[1:]))
+        if isinstance(value, Document):
+            output.extend(list(value))
             continue
         if isinstance(value, (list, tuple, set)):
             output.extend(list(value))
@@ -307,8 +307,8 @@ def _index_one(base_value: object, index_value: object) -> object:
     """Apply one index operation."""
     if not isinstance(index_value, int):
         raise QueryRuntimeError("Index expression must evaluate to an integer")
-    if isinstance(base_value, OrgRootNode):
-        nodes = list(base_value[1:])
+    if isinstance(base_value, Document):
+        nodes = list(base_value)
         if -len(nodes) <= index_value < len(nodes):
             return nodes[index_value]
         return None
@@ -348,8 +348,8 @@ def _slice_one(base_value: object, start_value: object, end_value: object) -> ob
         raise QueryRuntimeError("Slice start must be an integer or null")
     if end_value is not None and not isinstance(end_value, int):
         raise QueryRuntimeError("Slice end must be an integer or null")
-    if isinstance(base_value, OrgRootNode):
-        nodes = list(base_value[1:])
+    if isinstance(base_value, Document):
+        nodes = list(base_value)
         return nodes[start_value:end_value]
     if isinstance(base_value, (list, tuple, str)):
         start_index = start_value
@@ -503,9 +503,11 @@ def _apply_in_operator(left: object, right: object) -> bool:
 
 def _apply_equality(operator: str, left: object, right: object) -> bool:
     """Apply equality operators."""
-    if isinstance(left, OrgDate) and isinstance(right, OrgDate):
-        left = _org_date_start_for_comparison(left)
-        right = _org_date_start_for_comparison(right)
+    left_timestamp = _as_timestamp_comparable(left)
+    right_timestamp = _as_timestamp_comparable(right)
+    if left_timestamp is not None and right_timestamp is not None:
+        left = _org_date_start_for_comparison(left_timestamp)
+        right = _org_date_start_for_comparison(right_timestamp)
     if operator == "==":
         return left == right
     return left != right
@@ -519,20 +521,24 @@ def _apply_boolean(operator: str, left: object, right: object) -> object:
 
 
 def _apply_compare(operator: str, left: object, right: object) -> bool:
-    """Apply numeric, string, or OrgDate comparison operators."""
+    """Apply numeric, string, or Timestamp comparison operators."""
     if left is None or right is None:
         if operator in {">", "<"}:
             return False
         return left is None and right is None
 
-    is_org_date = isinstance(left, OrgDate) and isinstance(right, OrgDate)
+    left_timestamp = _as_timestamp_comparable(left)
+    right_timestamp = _as_timestamp_comparable(right)
+    is_org_date = left_timestamp is not None and right_timestamp is not None
     is_numeric = isinstance(left, (int, float)) and isinstance(right, (int, float))
     is_string = isinstance(left, str) and isinstance(right, str)
     if not is_org_date and not is_numeric and not is_string:
-        raise QueryRuntimeError("Comparison operators require numeric, string, or OrgDate operands")
+        raise QueryRuntimeError(
+            "Comparison operators require numeric, string, or Timestamp operands"
+        )
     if is_org_date:
-        left_date = _org_date_start_for_comparison(cast(OrgDate, left))
-        right_date = _org_date_start_for_comparison(cast(OrgDate, right))
+        left_date = _org_date_start_for_comparison(cast(Timestamp, left_timestamp))
+        right_date = _org_date_start_for_comparison(cast(Timestamp, right_timestamp))
         return _apply_compare_datetime(operator, left_date, right_date)
     if is_numeric:
         left_value_num = cast(float | int, left)
@@ -582,13 +588,20 @@ def _apply_compare_datetime(operator: str, left: datetime, right: datetime) -> b
     raise QueryRuntimeError(f"Unsupported comparison operator: {operator}")
 
 
-def _org_date_start_for_comparison(value: OrgDate) -> datetime:
-    """Return OrgDate start normalized for comparisons."""
-    if value.start is None:
-        raise QueryRuntimeError("Comparison operators require OrgDate values with start")
-    if isinstance(value.start, datetime):
-        return value.start
-    return datetime(value.start.year, value.start.month, value.start.day)
+def _org_date_start_for_comparison(value: Timestamp) -> datetime:
+    """Return Timestamp start normalized for comparisons."""
+    return value.start
+
+
+def _as_timestamp_comparable(value: object) -> Timestamp | None:
+    """Convert Timestamp-like values into Timestamp for comparisons."""
+    if isinstance(value, Timestamp):
+        return value
+    if isinstance(value, Clock):
+        return value.timestamp
+    if isinstance(value, Repeat):
+        return value.timestamp
+    return None
 
 
 def _evaluate_tuple_expr(expr: TupleExpr, stream: Stream, context: EvalContext) -> Stream:
@@ -685,28 +698,46 @@ def _ensure_arity(arguments: tuple[object, ...], expected: set[int], function_na
     raise QueryRuntimeError(f"{function_name} expects {allowed} argument(s)")
 
 
-def _parse_org_date(value: object) -> OrgDate:
-    """Convert runtime value into an OrgDate object."""
-    if isinstance(value, OrgDate):
+def _parse_timestamp(value: object) -> Timestamp:
+    """Convert runtime value into a Timestamp object."""
+    if isinstance(value, Timestamp):
         return value
     if not isinstance(value, str):
-        raise QueryRuntimeError("timestamp values must evaluate to string, OrgDate, or null")
+        raise QueryRuntimeError("timestamp values must evaluate to string, Timestamp, or null")
 
-    parsed_values = OrgDate.list_from_str(value)
-    if parsed_values:
-        return parsed_values[0]
+    try:
+        return Timestamp.from_source(value)
+    except TypeError, ValueError:
+        try:
+            parsed = datetime.fromisoformat(value.replace(" ", "T"))
+            return Timestamp.from_datetime(parsed)
+        except ValueError as parse_exc:
+            raise QueryRuntimeError(f"Cannot parse timestamp: {value}") from parse_exc
 
-    fallback = OrgDate.from_str(value)
-    if fallback.start is None:
-        raise QueryRuntimeError(f"Cannot parse timestamp: {value}")
-    return fallback
 
-
-def _as_org_date_or_none(value: object) -> OrgDate | None:
-    """Convert optional timestamp value into OrgDate or null."""
+def _as_timestamp_or_none(value: object) -> Timestamp | None:
+    """Convert optional timestamp value into Timestamp or null."""
     if value is None:
         return None
-    return _parse_org_date(value)
+    return _parse_timestamp(value)
+
+
+def _timestamp_from_datetimes(
+    start: datetime,
+    end: datetime | None = None,
+    active: bool | None = None,
+) -> Timestamp:
+    """Create Timestamp value from datetime components."""
+    timestamp = Timestamp.from_datetime(start, is_active=True if active is None else active)
+    if end is not None:
+        timestamp.end_year = end.year
+        timestamp.end_month = end.month
+        timestamp.end_day = end.day
+        timestamp.end_hour = end.hour
+        timestamp.end_minute = end.minute
+    if active is not None:
+        timestamp.is_active = active
+    return timestamp
 
 
 def _as_active_or_none(value: object) -> bool | None:
@@ -784,12 +815,12 @@ def _func_bool(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
 
 
 def _func_ts(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
-    """Convert argument values into OrgDate timestamps."""
+    """Convert argument values into Timestamp timestamps."""
     output = _stream()
     for item in stream:
         argument_values = evaluate_expr(argument, _stream([item]), context)
         for value in argument_values:
-            output.append(_parse_org_date(value))
+            output.append(_parse_timestamp(value))
     return output
 
 
@@ -872,84 +903,91 @@ def _func_not(stream: Stream, condition: Expr, context: EvalContext) -> Stream:
 
 
 def _func_timestamp(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
-    """Create OrgDate values from one, two, or three arguments."""
+    """Create Timestamp values from one, two, or three arguments."""
     output = _stream()
     for arguments in _iter_function_argument_values(stream, argument, context):
         _ensure_arity(arguments, {1, 2, 3}, "timestamp")
-        start_date = _parse_org_date(arguments[0])
+        start_value = _parse_timestamp(arguments[0])
+        start = start_value.start
+        active_value: bool | None = start_value.is_active
+        end: datetime | None = None
 
-        if len(arguments) == 1:
-            output.append(OrgDate(start_date.start, start_date.end, start_date.is_active()))
-            continue
+        if len(arguments) >= 2:
+            end_value = _as_timestamp_or_none(arguments[1])
+            end = None if end_value is None else end_value.start
 
-        end_date = _as_org_date_or_none(arguments[1])
-        end_value = None if end_date is None else end_date.start
+        if len(arguments) == 3:
+            active_value = _as_active_or_none(arguments[2])
 
-        if len(arguments) == 2:
-            output.append(OrgDate(start_date.start, end_value, start_date.is_active()))
-            continue
-
-        active = _as_active_or_none(arguments[2])
-        output.append(OrgDate(start_date.start, end_value, active))
+        output.append(_timestamp_from_datetimes(start, end, active_value))
     return output
 
 
 def _func_clock(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
-    """Create OrgDateClock values from two or three arguments."""
+    """Create Clock values from two or three arguments."""
     output = _stream()
     for arguments in _iter_function_argument_values(stream, argument, context):
         _ensure_arity(arguments, {2, 3}, "clock")
-        start_date = _parse_org_date(arguments[0])
-        end_date = _as_org_date_or_none(arguments[1])
-        if end_date is None:
+        start_timestamp = _parse_timestamp(arguments[0])
+        end_timestamp = _as_timestamp_or_none(arguments[1])
+        if end_timestamp is None:
             raise QueryRuntimeError("clock end value cannot be null")
-        clock_ctor: Callable[..., OrgDateClock] = OrgDateClock
-        if len(arguments) == 2:
-            output.append(clock_ctor(start_date.start, end_date.start))
-            continue
-
-        active = _as_active_or_none(arguments[2])
-        output.append(clock_ctor(start_date.start, end_date.start, active=active))
+        active_value = start_timestamp.is_active
+        if len(arguments) == 3:
+            parsed_active = _as_active_or_none(arguments[2])
+            active_value = True if parsed_active is None else parsed_active
+        output.append(
+            Clock(
+                timestamp=_timestamp_from_datetimes(
+                    start_timestamp.start,
+                    end_timestamp.start,
+                    active_value,
+                )
+            )
+        )
     return output
 
 
 def _func_repeated_task(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
-    """Create OrgDateRepeatedTask values from three or four arguments."""
+    """Create Repeat values from three or four arguments."""
     output = _stream()
     for arguments in _iter_function_argument_values(stream, argument, context):
         _ensure_arity(arguments, {3, 4}, "repeated_task")
-        start_date = _parse_org_date(arguments[0])
+        start_timestamp = _parse_timestamp(arguments[0])
         before = _as_state_or_none(arguments[1], "before")
         after = _as_state_or_none(arguments[2], "after")
 
-        if len(arguments) == 3:
-            output.append(
-                OrgDateRepeatedTask(start_date.start, cast(str, before), cast(str, after))
-            )
-            continue
+        active_value = start_timestamp.is_active
+        if len(arguments) == 4:
+            parsed_active = _as_active_or_none(arguments[3])
+            active_value = True if parsed_active is None else parsed_active
 
-        active = _as_active_or_none(arguments[3])
         output.append(
-            OrgDateRepeatedTask(
-                start_date.start, cast(str, before), cast(str, after), active=active
+            Repeat(
+                after=cast(str, after),
+                before=cast(str, before),
+                timestamp=_timestamp_from_datetimes(start_timestamp.start, active=active_value),
             )
         )
     return output
 
 
 def _func_analyze(stream: Stream) -> Stream:
-    """Aggregate a stream of OrgNode values into a single AnalysisResult."""
-    nodes: list[OrgNode] = []
+    """Aggregate a stream of Heading values into a single AnalysisResult."""
+    nodes: list[Heading] = []
     for value in stream:
-        if not isinstance(value, OrgNode):
+        if not isinstance(value, Heading):
             raise QueryRuntimeError(
-                f"analyze requires a stream of OrgNode values, got {_type_name(value)}"
+                f"analyze requires a stream of Heading values, got {_type_name(value)}"
             )
         nodes.append(value)
     return _stream(
         [
             _analyze_nodes(
-                nodes, mapping={}, category="tags", max_relations=5, category_property="CATEGORY"
+                nodes,
+                mapping={},
+                category="tags",
+                max_relations=5,
             )
         ]
     )
@@ -982,8 +1020,8 @@ def _func_length(stream: Stream) -> Stream:
     """Return length for each stream value."""
     output = _stream()
     for value in stream:
-        if isinstance(value, OrgRootNode):
-            output.append(len(list(value[1:])))
+        if isinstance(value, Document):
+            output.append(len(list(value)))
             continue
         if isinstance(value, (list, tuple, dict, set, str)):
             output.append(len(value))
@@ -1051,19 +1089,23 @@ def _collection_extreme(value: object, mode: str) -> object:
 
 def _to_comparable_value(value: object) -> tuple[str, ComparableKey]:
     """Convert one value into a typed comparison key."""
-    if isinstance(value, (int, float)):
-        return ("number", value)
-    if isinstance(value, str):
-        return ("string", value)
-    if isinstance(value, datetime):
-        return ("date", value)
-    if isinstance(value, date):
-        return ("date", datetime(value.year, value.month, value.day))
-    if isinstance(value, OrgDate):
-        if value.start is None:
-            raise QueryRuntimeError("max/min cannot compare OrgDate with empty start")
-        return _to_comparable_value(value.start)
-    raise QueryRuntimeError(f"max/min cannot compare value of type {type(value).__name__}")
+    normalized = value
+    if isinstance(normalized, Clock | Repeat):
+        normalized = normalized.timestamp
+    if isinstance(normalized, Timestamp):
+        normalized = normalized.start
+
+    if isinstance(normalized, (int, float)):
+        result: tuple[str, ComparableKey] = ("number", normalized)
+    elif isinstance(normalized, str):
+        result = ("string", normalized)
+    elif isinstance(normalized, datetime):
+        result = ("date", normalized)
+    elif isinstance(normalized, date):
+        result = ("date", datetime(normalized.year, normalized.month, normalized.day))
+    else:
+        raise QueryRuntimeError(f"max/min cannot compare value of type {type(value).__name__}")
+    return result
 
 
 def _is_better_item(
@@ -1117,7 +1159,7 @@ def _func_sort_by(stream: Stream, key_expr: Expr, context: EvalContext) -> Strea
 
     for _, item in enumerate(stream):
         key_values = evaluate_expr(key_expr, _stream([item]), context)
-        key = _normalize_org_date_value(key_values[0] if key_values else None)
+        key = _normalize_timestamp_value(key_values[0] if key_values else None)
         if key is None:
             without_key.append(item)
             continue
@@ -1171,8 +1213,8 @@ def _func_map(stream: Stream, subquery: Expr, context: EvalContext) -> Stream:
 
 def _extract_collection(value: object) -> list[object]:
     """Extract a value as a query collection list."""
-    if isinstance(value, OrgRootNode):
-        return list(value[1:])
+    if isinstance(value, Document):
+        return list(value)
     if isinstance(value, (list, tuple, set)):
         return list(value)
     raise QueryRuntimeError("Operation requires a collection")

@@ -2,6 +2,8 @@
 
 from datetime import datetime
 
+from org_parser.document import Heading
+
 from org.filters import (
     filter_completed,
     filter_date_from,
@@ -131,9 +133,7 @@ def test_filter_order_matters_not_result_for_pure_filters() -> None:
 
 def test_all_filters_with_empty_input() -> None:
     """Filters should return empty output for empty input."""
-    import orgparse
-
-    empty_nodes: list[orgparse.node.OrgNode] = []
+    empty_nodes: list[Heading] = []
 
     assert filter_repeats_above(empty_nodes, 1) == []
     assert filter_date_from(empty_nodes, datetime(2025, 1, 1)) == []

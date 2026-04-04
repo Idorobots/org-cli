@@ -38,7 +38,6 @@ class FilterArgsStub:
     done_keys: str = "DONE"
     width: int | None = None
     with_tags_as_category: bool = False
-    category_property: str = "CATEGORY"
 
 
 def make_args(**overrides: object) -> FilterArgsStub:
@@ -130,7 +129,7 @@ def test_build_query_text_with_ordering_and_slice() -> None:
 
     assert query == (
         '[ .[] | select(.tags[] matches "work") '
-        "| sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) ]"
+        "| sort_by(.repeats + .deadline + .closed + .scheduled | max) ]"
         "[$offset:($offset + $limit)]"
     )
 
@@ -145,9 +144,9 @@ def test_build_query_text_with_timestamp_asc_keeps_none_last() -> None:
     query = build_query_text(args, argv, include_ordering=True, include_slice=False)
 
     assert query == (
-        "[ .[] | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) "
+        "[ .[] | sort_by(.repeats + .deadline + .closed + .scheduled | max) "
         "| reverse "
-        "| sort_by((.repeated_tasks + .deadline + .closed + .scheduled | max) != null) ]"
+        "| sort_by((.repeats + .deadline + .closed + .scheduled | max) != null) ]"
     )
 
 
@@ -184,7 +183,7 @@ def test_build_query_text_with_filter_completed() -> None:
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
-    assert query == ("[ .[] | select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys) ]")
+    assert query == ("[ .[] | select(((.repeats | map(.after)) + .todo)[] in $done_keys) ]")
 
 
 def test_build_query_text_with_filter_not_completed() -> None:
@@ -196,9 +195,7 @@ def test_build_query_text_with_filter_not_completed() -> None:
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
-    assert query == (
-        "[ .[] | select(not(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys)) ]"
-    )
+    assert query == ("[ .[] | select(not(((.repeats | map(.after)) + .todo)[] in $done_keys)) ]")
 
 
 def test_build_query_logs_query_before_compile(caplog: pytest.LogCaptureFixture) -> None:
@@ -341,7 +338,6 @@ def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixtu
 
     assert "Query context:" in caplog.text
     assert "'todo_keys': ['TODO']" in caplog.text
-    assert "'category_property': 'CATEGORY'" in caplog.text
 
 
 def test_build_query_text_preserves_mixed_ordering_cli_order(
@@ -369,7 +365,7 @@ def test_build_query_text_preserves_mixed_ordering_cli_order(
 
     assert query == (
         "[ .[] | let null as $arg in (sort_by(.priority))"
-        " | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) ]"
+        " | sort_by(.repeats + .deadline + .closed + .scheduled | max) ]"
     )
 
 

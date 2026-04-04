@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Protocol, cast
+from typing import Protocol
 
-import orgparse
 import typer
+from org_parser import loads
+from org_parser.document import Document, Heading
 
 
 class FilterSpec(Protocol):
     """Protocol for filtering node lists."""
 
-    def filter(self, nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
+    def filter(self, nodes: list[Heading]) -> list[Heading]:
         """Filter nodes and return the filtered list."""
         raise NotImplementedError
 
@@ -42,18 +43,18 @@ def load_root_nodes(
     filenames: list[str],
     todo_keys: list[str],
     done_keys: list[str],
-) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+) -> tuple[list[Document], list[str], list[str]]:
     """Load org-mode files and return root nodes with merged todo/done keys."""
-    roots: list[orgparse.node.OrgRootNode] = []
+    roots: list[Document] = []
     all_todo_keys: set[str] = set(todo_keys)
     all_done_keys: set[str] = set(done_keys)
 
     for name in filenames:
         contents = _read_org_file(name)
         contents = _prepend_todo_config(contents, todo_keys, done_keys)
-        root = cast(orgparse.node.OrgRootNode, orgparse.loads(contents, filename=name))
-        all_todo_keys = all_todo_keys.union(set(root.env.todo_keys))
-        all_done_keys = all_done_keys.union(set(root.env.done_keys))
+        root = loads(contents, filename=name)
+        all_todo_keys = all_todo_keys.union(set(root.todo_states))
+        all_done_keys = all_done_keys.union(set(root.done_states))
         roots.append(root)
 
     return roots, list(all_todo_keys), list(all_done_keys)

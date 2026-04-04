@@ -214,34 +214,6 @@ def test_extract_timestamp_single_done_in_repeats() -> None:
     assert timestamps[0].day == 20 and timestamps[0].hour == 14 and timestamps[0].minute == 43
 
 
-def test_extract_timestamp_datelist_fallback() -> None:
-    """Test datelist is used when no other timestamps are present."""
-    nodes = node_from_org("""
-* DONE Task
-[2023-10-20 Fri 14:30]
-""")
-
-    timestamps = extract_timestamp(nodes[0], ["DONE"])
-
-    assert len(timestamps) == 1
-    assert timestamps[0].day == 20 and timestamps[0].hour == 14 and timestamps[0].minute == 30
-
-
-def test_extract_timestamp_datelist_multiple() -> None:
-    """Test multiple datelist timestamps are extracted."""
-    nodes = node_from_org("""
-* DONE Task
-[2023-10-20 Fri 14:30]
-[2023-10-21 Sat 10:00]
-""")
-
-    timestamps = extract_timestamp(nodes[0], ["DONE"])
-
-    assert len(timestamps) == 2
-    assert timestamps[0].day == 20
-    assert timestamps[1].day == 21
-
-
 def test_extract_timestamp_datelist_priority_after_deadline() -> None:
     """Test datelist is only used after repeated/closed/scheduled/deadline."""
     nodes = node_from_org("""

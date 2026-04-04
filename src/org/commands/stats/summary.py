@@ -65,7 +65,6 @@ class SummaryArgs:
     width: int | None
     max_results: int | None
     with_tags_as_category: bool
-    category_property: str
 
 
 @dataclass(frozen=True)
@@ -234,7 +233,7 @@ def run_stats_summary(args: SummaryArgs) -> None:
                 total_tasks=total_tasks,
                 unique_tasks=unique_tasks,
                 task_states=compute_task_state_histogram(nodes),
-                task_categories=compute_category_histogram(nodes, args.category_property),
+                task_categories=compute_category_histogram(nodes),
                 task_priorities=compute_priority_histogram(nodes),
                 task_days=compute_day_of_week_histogram(nodes),
                 timerange=global_timerange,
@@ -407,13 +406,7 @@ def register(app: typer.Typer) -> None:
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
-            help="Preprocess nodes to set category property based on first tag",
-        ),
-        category_property: str = typer.Option(
-            "CATEGORY",
-            "--category-property",
-            metavar="PROPERTY",
-            help="Property name to use for category histogram and filtering",
+            help="Preprocess nodes to set category from first tag",
         ),
     ) -> None:
         """Show overall task stats without tag sections."""
@@ -442,7 +435,6 @@ def register(app: typer.Typer) -> None:
             width=width,
             max_results=max_results,
             with_tags_as_category=with_tags_as_category,
-            category_property=category_property,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "stats summary")

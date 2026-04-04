@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
-from typing import cast
 
-import orgparse
+import org_parser
 import pytest
-from orgparse.date import OrgDate, OrgDateClock, OrgDateRepeatedTask
-from orgparse.node import OrgRootNode
+from org_parser import Document
+from org_parser.element import Repeat
+from org_parser.time import Clock, Timestamp
 
 from org.query_language import EvalContext, QueryRuntimeError, Stream, compile_query_text
 from tests.conftest import node_from_org
@@ -42,7 +42,7 @@ def _sample_root() -> object:
 
 * TODO Second
 """
-    root = orgparse.loads(org_text)
+    root = org_parser.loads(org_text)
     assert root is not None
     return root
 
@@ -50,28 +50,28 @@ def _sample_root() -> object:
 def test_runtime_select_done_nodes() -> None:
     """select() should filter nodes by todo state."""
     nodes = _sample_nodes()
-    result = _execute('.[] | select(.todo == "DONE") | .heading', nodes, None)
+    result = _execute('.[] | select(.todo == "DONE") | .title_text', nodes, None)
     assert result == ["Parent", "Zeta child"]
 
 
 def test_runtime_select_not_null_todo_filters_missing_values() -> None:
     """Comparing against null should treat missing todo as null."""
     nodes = [*node_from_org("* DONE Keep\n* Plain\n")]
-    result = _execute(".[] | select(.todo != null) | .heading", nodes, None)
+    result = _execute(".[] | select(.todo != null) | .title_text", nodes, None)
     assert result == ["Keep"]
 
 
 def test_runtime_reverse_and_index() -> None:
     """reverse and index should return the last child heading."""
     nodes = _sample_nodes()
-    result = _execute(".[0].children | reverse | .[0].heading", nodes, None)
+    result = _execute(".[0].children | reverse | .[0].title_text", nodes, None)
     assert result == ["Zeta child"]
 
 
 def test_runtime_sort_by_heading_descending() -> None:
     """sort_by should order by heading descending."""
     nodes = _sample_nodes()
-    result = _execute(".[0].children | .[] | sort_by(.heading) | .heading", nodes, None)
+    result = _execute(".[0].children | .[] | sort_by(.title_text) | .title_text", nodes, None)
     assert result == ["Zeta child", "Alpha child"]
 
 
@@ -88,8 +88,8 @@ SCHEDULED: <2024-01-12 Fri>
         )
     ]
     query = (
-        ".[] | sort_by(.repeated_tasks + .deadline + .closed + .scheduled"
-        " | [ .[] | select(.) ] | max) | .heading"
+        ".[] | sort_by(.repeats + .deadline + .closed + .scheduled"
+        " | [ .[] | select(.) ] | max) | .title_text"
     )
 
     result = _execute(query, nodes, None)
@@ -134,7 +134,7 @@ def test_runtime_slice_out_of_bounds_returns_empty_collection() -> None:
 def test_runtime_matches_and_membership() -> None:
     """matches and in should work in select conditions."""
     nodes = _sample_nodes()
-    matches_result = _execute('.[] | select(.heading matches "^P") | .heading', nodes, None)
+    matches_result = _execute('.[] | select(.title_text matches "^P") | .title_text', nodes, None)
     in_result = _execute(
         ".[] | select(.todo in $done_keys) | .todo",
         nodes,
@@ -147,7 +147,7 @@ def test_runtime_matches_and_membership() -> None:
 def test_runtime_comma_builds_tuples() -> None:
     """Comma expressions should produce tuple values."""
     nodes = _sample_nodes()
-    result = _execute(".[] | .todo, .heading", nodes, None)
+    result = _execute(".[] | .todo, .title_text", nodes, None)
     assert result[0] == ("DONE", "Parent")
 
 
@@ -155,15 +155,15 @@ def test_runtime_type_mismatch_raises_exception() -> None:
     """Type mismatch in operator should raise query runtime error."""
     nodes = _sample_nodes()
     with pytest.raises(QueryRuntimeError):
-        _execute(".[] | select(.heading > 1)", nodes, None)
+        _execute(".[] | select(.title_text > 1)", nodes, None)
 
 
 def test_runtime_root_node_is_iterable_indexable_and_sliceable() -> None:
-    """OrgRootNode should behave like a collection in query operators."""
+    """Document should behave like a collection in query operators."""
     root = _sample_root()
-    result_iterate = _execute(".[0][] | .heading", [root], None)
-    result_index = _execute(".[0][0].heading", [root], None)
-    result_slice = _execute(".[0][0:2] | .[] | .heading", [root], None)
+    result_iterate = _execute(".[0][] | .title_text", [root], None)
+    result_index = _execute(".[0][0].title_text", [root], None)
+    result_slice = _execute(".[0][0:2] | .[] | .title_text", [root], None)
 
     assert result_iterate == ["Parent", "Alpha child", "Zeta child", "Second"]
     assert result_index == ["Parent"]
@@ -190,7 +190,7 @@ def test_runtime_max_and_min_functions() -> None:
 
 
 def test_runtime_max_and_min_for_org_dates_compare_by_start() -> None:
-    """max/min should compare OrgDate values by start value."""
+    """max/min should compare Timestamp values by start value."""
     dates = [
         _execute('timestamp("<2025-01-02 Thu 10:00>")', [None], None)[0],
         _execute('timestamp("<2025-01-02 Thu 09:00>")', [None], None)[0],
@@ -279,7 +279,7 @@ def test_runtime_type_function() -> None:
     node = next(iter(node_from_org("* TODO Task\n")))
     repeated = _execute('timestamp("<2025-01-02 Thu>")', [None], None)[0]
     result = _execute(".[] | type", [None, 1, "x", node, repeated], None)
-    assert result == ["null", "int", "str", "OrgNode", "OrgDate"]
+    assert result == ["null", "int", "str", "Heading", "Timestamp"]
 
 
 def test_runtime_not_function() -> None:
@@ -330,8 +330,8 @@ def test_runtime_cast_functions_convert_supported_values() -> None:
         )
     ]
     assert len(timestamp_value) == 1
-    assert isinstance(timestamp_value[0], OrgDate)
-    assert str(timestamp_value[0]) == "<2026-03-01 Sun 10:00--12:00>"
+    assert isinstance(timestamp_value[0], Timestamp)
+    assert str(timestamp_value[0]) == "<2026-03-01 Sun 10:00-12:00>"
 
 
 def test_runtime_sha256_function_hashes_supported_values() -> None:
@@ -351,7 +351,7 @@ def test_runtime_if_expression_evaluates_selected_branch() -> None:
     """if should evaluate then/else branch based on condition truthiness."""
     direct = _execute('2 | if . == 2 then "yes" else "no"', [None], None)
     nodes = _sample_nodes()
-    per_item = _execute('.[] | if .todo == "DONE" then .heading else "pending"', nodes, None)
+    per_item = _execute('.[] | if .todo == "DONE" then .title_text else "pending"', nodes, None)
 
     assert direct == ["yes"]
     assert per_item == ["Parent", "pending", "Zeta child", "pending"]
@@ -411,46 +411,51 @@ def test_runtime_cast_and_match_validation_errors() -> None:
 
 
 def test_runtime_timestamp_function_with_supported_arities() -> None:
-    """timestamp should create OrgDate values for one, two, and three arguments."""
+    """timestamp should create Timestamp values for one, two, and three arguments."""
     one = _execute('timestamp("<2025-01-02 Thu>")', [None], None)[0]
     two = _execute('timestamp("<2025-01-02 Thu>", "<2025-01-03 Fri>")', [None], None)[0]
     three = _execute('timestamp("<2025-01-02 Thu>", null, false)', [None], None)[0]
 
-    assert str(one) == "<2025-01-02 Thu>"
-    assert str(two) == "<2025-01-02 Thu>--<2025-01-03 Fri>"
-    assert str(three) == "[2025-01-02 Thu]"
+    assert str(one) == "<2025-01-02 Thu 00:00>"
+    assert str(two) == "<2025-01-02 Thu 00:00>--<2025-01-03 00:00>"
+    assert str(three) == "[2025-01-02 Thu 00:00]"
 
 
 def test_runtime_clock_function_with_supported_arities() -> None:
-    """clock should create OrgDateClock values with computed durations."""
+    """clock should create Clock values with computed durations."""
     two = _execute('clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:30>")', [None], None)[0]
     three = _execute(
         'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:30>", true)', [None], None
     )[0]
 
-    assert isinstance(two, OrgDateClock)
-    assert two.duration.total_seconds() == 5400
-    assert str(two) == "[2025-01-02 Thu 10:00]--[2025-01-02 Thu 11:30]"
-    assert str(three) == "<2025-01-02 Thu 10:00>--<2025-01-02 Thu 11:30>"
+    assert isinstance(two, Clock)
+    assert isinstance(three, Clock)
+    assert two.duration is None
+    assert two.timestamp is not None
+    assert two.timestamp.end is not None
+    assert two.timestamp.end.hour == 11
+    assert two.timestamp.end.minute == 30
+    assert str(two) == "CLOCK: <2025-01-02 Thu 10:00-11:30>\n"
+    assert str(three) == "CLOCK: <2025-01-02 Thu 10:00-11:30>\n"
 
 
 def test_runtime_repeated_task_function_with_supported_arities() -> None:
-    """repeated_task should create OrgDateRepeatedTask values."""
-    three = _execute('repeated_task("<2025-01-02 Thu>", "TODO", null)', [None], None)[0]
+    """repeated_task should create Repeat values."""
+    three = _execute('repeated_task("<2025-01-02 Thu>", "TODO", "DONE")', [None], None)[0]
     four = _execute(
-        'repeated_task("<2025-01-02 Thu>", null, "DONE", true)',
+        'repeated_task("<2025-01-02 Thu>", "TODO", "DONE", true)',
         [None],
         None,
     )[0]
 
-    assert isinstance(three, OrgDateRepeatedTask)
+    assert isinstance(three, Repeat)
     assert three.before is not None and three.before == "TODO"
-    assert cast(object, three.after) is None
-    assert str(three) == "[2025-01-02 Thu]"
-    assert isinstance(four, OrgDateRepeatedTask)
-    assert cast(object, four.before) is None
+    assert three.after is not None and three.after == "DONE"
+    assert str(three) == '- State "DONE"       from "TODO"       <2025-01-02 Thu 00:00>\n'
+    assert isinstance(four, Repeat)
+    assert four.before is not None and four.before == "TODO"
     assert four.after is not None and four.after == "DONE"
-    assert str(four) == "<2025-01-02 Thu>"
+    assert str(four) == '- State "DONE"       from "TODO"       <2025-01-02 Thu 00:00>\n'
 
 
 def test_runtime_string_and_collection_operator_extensions() -> None:
@@ -504,7 +509,7 @@ def test_runtime_constructor_function_validation_errors() -> None:
 def test_runtime_as_binding_visible_in_pipeline() -> None:
     """as-binding should define variables for downstream pipe stages."""
     root = _sample_root()
-    typed_root = root if isinstance(root, OrgRootNode) else None
+    typed_root = root if isinstance(root, Document) else None
     assert typed_root is not None
     result = _execute(". as $root | $root[], ($root[] | .children | length)", [typed_root], None)
 
@@ -514,9 +519,9 @@ def test_runtime_as_binding_visible_in_pipeline() -> None:
 def test_runtime_fold_operator() -> None:
     """Fold operator should collect subquery streams into lists."""
     nodes = _sample_nodes()
-    folded = _execute('[ .[] | select(.todo == "DONE") | .heading ]', nodes, None)
+    folded = _execute('[ .[] | select(.todo == "DONE") | .title_text ]', nodes, None)
     tuple_fold = _execute("[1, 2, 3]", [None], None)
-    scalar_fold = _execute(".[] | [ .heading ]", nodes, None)
+    scalar_fold = _execute(".[] | [ .title_text ]", nodes, None)
     empty_fold = _execute("[]", [None], None)
 
     assert folded == [["Parent", "Zeta child"]]
@@ -527,7 +532,7 @@ def test_runtime_fold_operator() -> None:
 
 def test_runtime_returns_stream_type() -> None:
     """Compiled queries should return Stream instances."""
-    compiled = compile_query_text(".[] | .heading")
+    compiled = compile_query_text(".[] | .title_text")
     result = compiled(Stream([_sample_nodes()]), EvalContext({}))
     assert isinstance(result, Stream)
 
@@ -604,7 +609,7 @@ def test_runtime_string_comparison_operators() -> None:
 
 
 def test_runtime_org_date_comparison_operators_use_start_values() -> None:
-    """Date comparisons should work across OrgDate variants using start values."""
+    """Date comparisons should work across Timestamp variants using start values."""
     timestamp_value = _execute('timestamp("<2025-01-02 Thu 10:00>")', [None], None)[0]
     clock_same_start = _execute(
         'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:00>")',
@@ -784,7 +789,7 @@ def test_runtime_constructor_functions_validate_supported_arities() -> None:
 def test_runtime_bracket_field_access_variants() -> None:
     """Bracket field access should work for dicts, nodes, and null bases."""
     dict_value = _execute('.[0]["key"]', [{"key": 7}], None)
-    node_value = _execute('.[0]["heading"]', _sample_nodes(), None)
+    node_value = _execute('.[0]["title_text"]', _sample_nodes(), None)
     null_value = _execute('.[0]["missing"]', [None], None)
 
     assert dict_value == [7]
@@ -905,7 +910,7 @@ def test_runtime_length_supports_org_root() -> None:
 def test_runtime_join_supports_org_root_collection_extraction() -> None:
     """join should accept org roots as collection values."""
     root = _sample_root()
-    result = _execute('.[0] | map(.heading) | join(",")', [root], None)
+    result = _execute('.[0] | map(.title_text) | join(",")', [root], None)
     assert result == ["Parent,Alpha child,Zeta child,Second"]
 
 
@@ -916,19 +921,19 @@ def test_runtime_iter_function_arguments_skip_empty_parts() -> None:
 
 
 def test_runtime_parse_org_date_accepts_orgdate_values() -> None:
-    """timestamp should accept already-parsed OrgDate values."""
+    """timestamp should accept already-parsed Timestamp values."""
     result = _execute('timestamp(timestamp("<2025-01-02 Thu>"))', [None], None)
-    assert [str(value) for value in result] == ["<2025-01-02 Thu>"]
+    assert [str(value) for value in result] == ["<2025-01-02 Thu 00:00>"]
 
 
 def test_runtime_parse_org_date_rejects_non_string_non_orgdate() -> None:
-    """timestamp should reject non-string and non-OrgDate values."""
+    """timestamp should reject non-string and non-Timestamp values."""
     with pytest.raises(QueryRuntimeError):
         _execute("timestamp(1)", [None], None)
 
 
 def test_runtime_parse_org_date_rejects_unparseable_strings() -> None:
-    """timestamp should fail for values that cannot be parsed as OrgDate."""
+    """timestamp should fail for values that cannot be parsed as Timestamp."""
     with pytest.raises(QueryRuntimeError):
         _execute('timestamp("xyz")', [None], None)
 
