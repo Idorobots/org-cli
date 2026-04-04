@@ -699,6 +699,13 @@ def _quote_string(value: str) -> str:
     return json.dumps(value)
 
 
+def _timestamp_source_literal(value: str, arg_name: str) -> str:
+    """Quote one parsed date argument as org timestamp source."""
+    parsed = parse_date_argument(value, arg_name).replace(second=0, microsecond=0)
+    source = f"<{parsed:%Y-%m-%d %a %H:%M}>"
+    return _quote_string(source)
+
+
 def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
     """Build query stage for non-indexed filter options."""
     stage: str | None = None
@@ -713,13 +720,13 @@ def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
         threshold = args.filter_repeats_below
         stage = f"select(.repeats | length < {threshold})"
     elif arg_name == "--filter-date-from" and args.filter_date_from is not None:
-        timestamp_value = _quote_string(args.filter_date_from)
+        timestamp_value = _timestamp_source_literal(args.filter_date_from, arg_name)
         stage = (
             "select(.repeats + .deadline + .closed + .scheduled "
             f"| max >= timestamp({timestamp_value}))"
         )
     elif arg_name == "--filter-date-until" and args.filter_date_until is not None:
-        timestamp_value = _quote_string(args.filter_date_until)
+        timestamp_value = _timestamp_source_literal(args.filter_date_until, arg_name)
         stage = (
             "select(.repeats + .deadline + .closed + .scheduled "
             f"| max <= timestamp({timestamp_value}))"

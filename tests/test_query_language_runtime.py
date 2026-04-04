@@ -410,33 +410,31 @@ def test_runtime_cast_and_match_validation_errors() -> None:
         _execute('.[] | match("x")', [1], None)
 
 
-def test_runtime_timestamp_function_with_supported_arities() -> None:
-    """timestamp should create Timestamp values for one, two, and three arguments."""
+def test_runtime_timestamp_function_accepts_source_strings() -> None:
+    """timestamp should parse Timestamp source strings directly."""
     one = _execute('timestamp("<2025-01-02 Thu>")', [None], None)[0]
-    two = _execute('timestamp("<2025-01-02 Thu>", "<2025-01-03 Fri>")', [None], None)[0]
-    three = _execute('timestamp("<2025-01-02 Thu>", null, false)', [None], None)[0]
+    two = _execute('timestamp("<2025-01-02 Thu>--<2025-01-03 Fri>")', [None], None)[0]
+    three = _execute('timestamp("[2025-01-02 Thu]")', [None], None)[0]
 
-    assert str(one) == "<2025-01-02 Thu 00:00>"
-    assert str(two) == "<2025-01-02 Thu 00:00>--<2025-01-03 00:00>"
-    assert str(three) == "[2025-01-02 Thu 00:00]"
+    assert str(one) == "<2025-01-02 Thu>"
+    assert str(two) == "<2025-01-02 Thu>--<2025-01-03 Fri>"
+    assert str(three) == "[2025-01-02 Thu]"
 
 
-def test_runtime_clock_function_with_supported_arities() -> None:
-    """clock should create Clock values with computed durations."""
-    two = _execute('clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:30>")', [None], None)[0]
-    three = _execute(
-        'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:30>", true)', [None], None
-    )[0]
+def test_runtime_clock_function_accepts_source_strings() -> None:
+    """clock should parse one timestamp source string into a Clock."""
+    active = _execute('clock("<2025-01-02 Thu 10:00-11:30>")', [None], None)[0]
+    inactive = _execute('clock("[2025-01-02 Thu 10:00-11:30]")', [None], None)[0]
 
-    assert isinstance(two, Clock)
-    assert isinstance(three, Clock)
-    assert two.duration is None
-    assert two.timestamp is not None
-    assert two.timestamp.end is not None
-    assert two.timestamp.end.hour == 11
-    assert two.timestamp.end.minute == 30
-    assert str(two) == "CLOCK: <2025-01-02 Thu 10:00-11:30>\n"
-    assert str(three) == "CLOCK: <2025-01-02 Thu 10:00-11:30>\n"
+    assert isinstance(active, Clock)
+    assert isinstance(inactive, Clock)
+    assert active.duration is None
+    assert active.timestamp is not None
+    assert active.timestamp.end is not None
+    assert active.timestamp.end.hour == 11
+    assert active.timestamp.end.minute == 30
+    assert str(active) == "CLOCK: <2025-01-02 Thu 10:00-11:30>\n"
+    assert str(inactive) == "CLOCK: [2025-01-02 Thu 10:00-11:30]\n"
 
 
 def test_runtime_repeated_task_function_with_supported_arities() -> None:
@@ -499,9 +497,9 @@ def test_runtime_constructor_function_validation_errors() -> None:
     with pytest.raises(QueryRuntimeError):
         _execute('timestamp("not a timestamp")', [None], None)
     with pytest.raises(QueryRuntimeError):
-        _execute('timestamp("<2025-01-02 Thu>", null, "yes")', [None], None)
+        _execute('timestamp("<2025-01-02 Thu>", null)', [None], None)
     with pytest.raises(QueryRuntimeError):
-        _execute('clock("<2025-01-02 Thu 10:00>", null)', [None], None)
+        _execute('clock("<2025-01-02 Thu 10:00-11:30>", null)', [None], None)
     with pytest.raises(QueryRuntimeError):
         _execute('repeated_task("<2025-01-02 Thu>", 1, "DONE")', [None], None)
 
@@ -612,7 +610,7 @@ def test_runtime_org_date_comparison_operators_use_start_values() -> None:
     """Date comparisons should work across Timestamp variants using start values."""
     timestamp_value = _execute('timestamp("<2025-01-02 Thu 10:00>")', [None], None)[0]
     clock_same_start = _execute(
-        'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:00>")',
+        'clock("<2025-01-02 Thu 10:00-11:00>")',
         [None],
         None,
     )[0]
@@ -775,9 +773,9 @@ def test_runtime_unique_length_and_reverse_variants() -> None:
 def test_runtime_constructor_functions_validate_supported_arities() -> None:
     """Constructor functions should reject unsupported argument counts."""
     with pytest.raises(QueryRuntimeError):
-        _execute("timestamp(1, 2, 3, 4)", [None], None)
+        _execute('timestamp("<2025-01-02 Thu>", "<2025-01-03 Fri>")', [None], None)
     with pytest.raises(QueryRuntimeError):
-        _execute('clock("<2025-01-02 Thu>", "<2025-01-03 Fri>", true, false)', [None], None)
+        _execute('clock("<2025-01-02 Thu 10:00-11:00>", true)', [None], None)
     with pytest.raises(QueryRuntimeError):
         _execute(
             'repeated_task("<2025-01-02 Thu>", "TODO", "DONE", true, false)',
@@ -916,18 +914,18 @@ def test_runtime_join_supports_org_root_collection_extraction() -> None:
 
 def test_runtime_iter_function_arguments_skip_empty_parts() -> None:
     """Function argument expansion should skip combinations with empty parts."""
-    result = _execute('timestamp(select(null), "<2025-01-02 Thu>")', [None], None)
+    result = _execute("timestamp(select(null))", [None], None)
     assert result == []
 
 
-def test_runtime_parse_org_date_accepts_orgdate_values() -> None:
-    """timestamp should accept already-parsed Timestamp values."""
-    result = _execute('timestamp(timestamp("<2025-01-02 Thu>"))', [None], None)
-    assert [str(value) for value in result] == ["<2025-01-02 Thu 00:00>"]
+def test_runtime_timestamp_constructor_rejects_timestamp_values() -> None:
+    """timestamp constructor should accept source strings only."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('timestamp(timestamp("<2025-01-02 Thu>"))', [None], None)
 
 
-def test_runtime_parse_org_date_rejects_non_string_non_orgdate() -> None:
-    """timestamp should reject non-string and non-Timestamp values."""
+def test_runtime_parse_org_date_rejects_non_string_input() -> None:
+    """timestamp should reject non-string input values."""
     with pytest.raises(QueryRuntimeError):
         _execute("timestamp(1)", [None], None)
 
@@ -938,14 +936,10 @@ def test_runtime_parse_org_date_rejects_unparseable_strings() -> None:
         _execute('timestamp("xyz")', [None], None)
 
 
-def test_runtime_constructor_functions_accept_null_for_optional_active_flag() -> None:
-    """Constructor active flags should accept null where supported."""
-    result = _execute(
-        'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 10:30>", null)',
-        [None],
-        None,
-    )
-    assert len(result) == 1
+def test_runtime_clock_constructor_rejects_non_string_input() -> None:
+    """clock should reject non-string constructor values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("clock(1)", [None], None)
 
 
 def test_runtime_unique_skips_duplicate_stream_values() -> None:

@@ -236,7 +236,7 @@ def _resolve_field(value: object, field: str) -> object:
     attr_value = getattr(value, field, sentinel)
     if attr_value is sentinel:
         return None
-    return _normalize_timestamp_value(attr_value)
+    return attr_value
 
 
 def _evaluate_bracket_field_access(
@@ -264,15 +264,10 @@ def _resolve_bracket_key(base: object, key: object) -> object:
     if isinstance(key, int):
         if isinstance(base, (list, tuple, str)):
             if -len(base) <= key < len(base):
-                return _normalize_timestamp_value(base[key])
+                return base[key]
             return None
         raise QueryRuntimeError("Index access requires a list, tuple, or string")
     raise QueryRuntimeError("Bracket key must be a string or integer")
-
-
-def _normalize_timestamp_value(value: object) -> object:
-    """Normalize timestamp-like values for runtime evaluation."""
-    return value
 
 
 def _evaluate_iterate(base: Stream) -> Stream:
@@ -506,8 +501,8 @@ def _apply_equality(operator: str, left: object, right: object) -> bool:
     left_timestamp = _as_timestamp_comparable(left)
     right_timestamp = _as_timestamp_comparable(right)
     if left_timestamp is not None and right_timestamp is not None:
-        left = _org_date_start_for_comparison(left_timestamp)
-        right = _org_date_start_for_comparison(right_timestamp)
+        left = left_timestamp.start
+        right = right_timestamp.start
     if operator == "==":
         return left == right
     return left != right
@@ -537,8 +532,8 @@ def _apply_compare(operator: str, left: object, right: object) -> bool:
             "Comparison operators require numeric, string, or Timestamp operands"
         )
     if is_org_date:
-        left_date = _org_date_start_for_comparison(cast(Timestamp, left_timestamp))
-        right_date = _org_date_start_for_comparison(cast(Timestamp, right_timestamp))
+        left_date = cast(Timestamp, left_timestamp).start
+        right_date = cast(Timestamp, right_timestamp).start
         return _apply_compare_datetime(operator, left_date, right_date)
     if is_numeric:
         left_value_num = cast(float | int, left)
@@ -586,11 +581,6 @@ def _apply_compare_datetime(operator: str, left: datetime, right: datetime) -> b
     if operator == "<=":
         return left <= right
     raise QueryRuntimeError(f"Unsupported comparison operator: {operator}")
-
-
-def _org_date_start_for_comparison(value: Timestamp) -> datetime:
-    """Return Timestamp start normalized for comparisons."""
-    return value.start
 
 
 def _as_timestamp_comparable(value: object) -> Timestamp | None:
@@ -715,11 +705,14 @@ def _parse_timestamp(value: object) -> Timestamp:
             raise QueryRuntimeError(f"Cannot parse timestamp: {value}") from parse_exc
 
 
-def _as_timestamp_or_none(value: object) -> Timestamp | None:
-    """Convert optional timestamp value into Timestamp or null."""
-    if value is None:
-        return None
-    return _parse_timestamp(value)
+def _parse_timestamp_source(value: object, function_name: str) -> Timestamp:
+    """Parse one timestamp source string for constructor functions."""
+    if not isinstance(value, str):
+        raise QueryRuntimeError(f"{function_name} expects 1 argument(s)")
+    try:
+        return Timestamp.from_source(value)
+    except (TypeError, ValueError) as parse_exc:
+        raise QueryRuntimeError(f"Cannot parse timestamp: {value}") from parse_exc
 
 
 def _timestamp_from_datetimes(
@@ -903,48 +896,20 @@ def _func_not(stream: Stream, condition: Expr, context: EvalContext) -> Stream:
 
 
 def _func_timestamp(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
-    """Create Timestamp values from one, two, or three arguments."""
+    """Create Timestamp values from one source string argument."""
     output = _stream()
     for arguments in _iter_function_argument_values(stream, argument, context):
-        _ensure_arity(arguments, {1, 2, 3}, "timestamp")
-        start_value = _parse_timestamp(arguments[0])
-        start = start_value.start
-        active_value: bool | None = start_value.is_active
-        end: datetime | None = None
-
-        if len(arguments) >= 2:
-            end_value = _as_timestamp_or_none(arguments[1])
-            end = None if end_value is None else end_value.start
-
-        if len(arguments) == 3:
-            active_value = _as_active_or_none(arguments[2])
-
-        output.append(_timestamp_from_datetimes(start, end, active_value))
+        _ensure_arity(arguments, {1}, "timestamp")
+        output.append(_parse_timestamp_source(arguments[0], "timestamp"))
     return output
 
 
 def _func_clock(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
-    """Create Clock values from two or three arguments."""
+    """Create Clock values from one source string argument."""
     output = _stream()
     for arguments in _iter_function_argument_values(stream, argument, context):
-        _ensure_arity(arguments, {2, 3}, "clock")
-        start_timestamp = _parse_timestamp(arguments[0])
-        end_timestamp = _as_timestamp_or_none(arguments[1])
-        if end_timestamp is None:
-            raise QueryRuntimeError("clock end value cannot be null")
-        active_value = start_timestamp.is_active
-        if len(arguments) == 3:
-            parsed_active = _as_active_or_none(arguments[2])
-            active_value = True if parsed_active is None else parsed_active
-        output.append(
-            Clock(
-                timestamp=_timestamp_from_datetimes(
-                    start_timestamp.start,
-                    end_timestamp.start,
-                    active_value,
-                )
-            )
-        )
+        _ensure_arity(arguments, {1}, "clock")
+        output.append(Clock(timestamp=_parse_timestamp_source(arguments[0], "clock")))
     return output
 
 
@@ -1159,7 +1124,7 @@ def _func_sort_by(stream: Stream, key_expr: Expr, context: EvalContext) -> Strea
 
     for _, item in enumerate(stream):
         key_values = evaluate_expr(key_expr, _stream([item]), context)
-        key = _normalize_timestamp_value(key_values[0] if key_values else None)
+        key = key_values[0] if key_values else None
         if key is None:
             without_key.append(item)
             continue

@@ -3766,9 +3766,12 @@ In file src/org/output_format.py around line 300, near the ~_CLOCK_EXPORTED_FIEL
 #+end_example
 
 Not exposed by org-parser currently.
-*** TODO src/org/query_language/runtime.py
+*** DONE src/org/query_language/runtime.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 17:47]
 :END:
 
 In file src/org/query_language/runtime.py around line 290, near the ~def _resolve_bracket_key(base: object, key: object) -> object:~
@@ -3780,9 +3783,12 @@ In file src/org/query_language/runtime.py around line 290, near the ~def _resolv
 #+end_example
 
 This is no longer needed and should be removed.
-*** TODO src/org/query_language/runtime.py
+*** DONE src/org/query_language/runtime.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 17:50]
 :END:
 
 In file src/org/query_language/runtime.py around line 601, near the ~def _apply_compare_datetime(operator: str, left: datetime, right: datetime) -> b~
@@ -3794,9 +3800,12 @@ In file src/org/query_language/runtime.py around line 601, near the ~def _apply_
 #+end_example
 
 This can be removed as well. No need for the wrapper.
-*** TODO src/org/query_language/runtime.py
+*** DONE src/org/query_language/runtime.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 18:00]
 :END:
 
 In file src/org/query_language/runtime.py around line 937, near the ~def _func_not(stream: Stream, condition: Expr, context: EvalContext) -> Stream:~

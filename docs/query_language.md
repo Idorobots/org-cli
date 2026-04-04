@@ -237,7 +237,7 @@ Examples below are minimal and syntactically valid. Output is shown as query-val
 "b" > "a"             => true
 2 <= 2                => true
 .todo == "DONE"       => true/false per item
-timestamp("<2025-01-02 Thu>") < clock("<2025-01-03 Fri>", "<2025-01-03 Fri>") => true
+timestamp("<2025-01-02 Thu>") < clock("<2025-01-03 Fri>") => true
 timestamp("<2025-01-02 Thu>") > null => false
 null <= null => true
 1 >= null => false
@@ -478,29 +478,26 @@ map(. * 2)             # [1,2,3] => [2,4,6]
 
 ### `timestamp(...)`
 
-- Arity: 1, 2, or 3.
-- Forms:
-  - `timestamp(start)`
-  - `timestamp(start, end_or_null)`
-  - `timestamp(start, end_or_null, active_or_null)`
+- Arity: 1.
+- Form:
+  - `timestamp(source)`
 
 ```text
 timestamp("<2025-01-02 Thu>")
-timestamp("<2025-01-02 Thu>", "<2025-01-03 Fri>")
-timestamp("<2025-01-02 Thu>", null, false)
+timestamp("<2025-01-02 Thu>--<2025-01-03 Fri>")
+timestamp("[2025-01-02 Thu]")
 # => <2025-01-02 Thu>, <2025-01-02 Thu>--<2025-01-03 Fri>, [2025-01-02 Thu]
 ```
 
 ### `clock(...)`
 
-- Arity: 2 or 3.
-- Forms:
-  - `clock(start, end)`
-  - `clock(start, end, active_or_null)`
+- Arity: 1.
+- Form:
+  - `clock(source)`
 
 ```text
-clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:30>")
-# => [2025-01-02 Thu 10:00]--[2025-01-02 Thu 11:30]
+clock("<2025-01-02 Thu 10:00-11:30>")
+# => CLOCK: <2025-01-02 Thu 10:00-11:30>
 ```
 
 ### `repeated_task(...)`
