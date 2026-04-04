@@ -795,6 +795,43 @@ def test_runtime_bracket_field_access_variants() -> None:
     assert null_value == [None]
 
 
+def test_runtime_heading_properties_support_dot_and_bracket_access() -> None:
+    """Heading properties should expose keys via dot and bracket access."""
+    nodes = [
+        *node_from_org("""
+* Task
+:PROPERTIES:
+:key: 23
+:END:
+""")
+    ]
+
+    dot_result = _execute(".[] | .properties.key", nodes, None)
+    bracket_result = _execute('.[] | .properties["key"]', nodes, None)
+
+    assert dot_result == ["23"]
+    assert bracket_result == ["23"]
+
+
+def test_runtime_heading_properties_support_assignment() -> None:
+    """Heading property values should be assignable via dot and bracket targets."""
+    nodes = [
+        *node_from_org("""
+* Task
+:PROPERTIES:
+:key: 23
+:END:
+""")
+    ]
+
+    dot_update = _execute('.[] | .properties.key = "99"; .properties.key', nodes, None)
+    bracket_update = _execute('.[] | .properties["key"] = "42"; .properties["key"]', nodes, None)
+
+    assert dot_update == ["99"]
+    assert bracket_update == ["42"]
+    assert nodes[0].properties["key"] == "42"
+
+
 def test_runtime_dict_assignment_sets_and_overwrites_values() -> None:
     """Dictionary assignment should set and overwrite dictionary keys."""
     values = [{"x": 1}, {}]

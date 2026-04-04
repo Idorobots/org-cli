@@ -3851,6 +3851,25 @@ This and the analogous =Clock= constructors can be simplified to just accept a s
 - State "DONE"       from "TODO"       [2026-04-04 Sat 18:09]
 :END:
 Adjust the code, constructor and the documentation.
+*** DONE Property extraction doesn't work
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 18:15]
+:END:
+Given the following task:
+
+#+begin_example
+,* Task
+:PROPERTIES:
+:key: 23
+:END:
+#+end_example
+
+#+begin_example
+org query '.[][].properties.key'
+#+end_example
+
+Results in a null value, even though =.[][].properties= does return a non-null value. Make sure that property access does indeed work and allows fetching specific keys. Make sure that setting property values also works.
+
 *** Filtering, ordering & enrichments
 - Use it for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
 - Use it for property additions

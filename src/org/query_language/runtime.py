@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from hashlib import sha256
@@ -158,7 +158,7 @@ def _evaluate_dict_assignment(
         value_key_base_pairs = _broadcast(value_values, _stream(key_base_pairs))
         for value, key_base_pair in value_key_base_pairs:
             key, base = cast(tuple[object, object], key_base_pair)
-            if not isinstance(base, dict):
+            if not isinstance(base, MutableMapping):
                 raise QueryRuntimeError("Assignment target must evaluate to a dictionary")
             if not isinstance(key, str):
                 raise QueryRuntimeError("Assignment key must evaluate to a string")
@@ -229,7 +229,7 @@ def _resolve_field(value: object, field: str) -> object:
     """Resolve attribute-like field access with None fallback."""
     if value is None:
         return None
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return value.get(field)
 
     sentinel = object()
@@ -258,7 +258,7 @@ def _resolve_bracket_key(base: object, key: object) -> object:
     if base is None:
         return None
     if isinstance(key, str):
-        if isinstance(base, dict):
+        if isinstance(base, Mapping):
             return base.get(key)
         return _resolve_field(base, key)
     if isinstance(key, int):
