@@ -7,10 +7,13 @@ import os
 
 import click
 import pytest
+from org_parser.element import Repeat
+from org_parser.text import RichText
+from org_parser.time import Clock, Timestamp
 from typer.testing import CliRunner
 
 from org.cli import app
-from org.commands.query import QueryArgs, run_query
+from org.commands.query import QueryArgs, _is_org_object, run_query
 from org.output_format import OutputFormat, OutputFormatError
 
 
@@ -390,6 +393,23 @@ def test_run_query_json_preserves_multiple_collection_results(
     assert isinstance(parsed, list)
     assert len(parsed) == 2
     assert all(isinstance(item, list) for item in parsed)
+
+
+def test_is_org_object_supports_org_parser_text_and_element_types() -> None:
+    """Org formatter detection should include rich text and element values."""
+    timestamp = Timestamp.from_source("<2025-01-02 Thu>")
+    clock = Clock(timestamp=Timestamp.from_source("<2025-01-02 Thu 10:00-11:00>"))
+    repeat = Repeat(
+        before="TODO",
+        after="DONE",
+        timestamp=Timestamp.from_source("<2025-01-02 Thu>"),
+    )
+
+    assert _is_org_object(timestamp)
+    assert _is_org_object(clock)
+    assert _is_org_object(repeat)
+    assert _is_org_object(RichText("text"))
+    assert not _is_org_object({"key": "value"})
 
 
 def test_run_query_invalid_pandoc_args_is_usage_error() -> None:

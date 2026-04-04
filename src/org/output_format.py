@@ -10,10 +10,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import StrEnum
+from typing import cast
 
 from org_parser import Document
 from org_parser.document import Heading
-from org_parser.element import Repeat
+from org_parser.element import Element, Properties, Repeat
+from org_parser.text import RichText
 from org_parser.time import Clock, Timestamp
 from rich.console import Console
 from rich.syntax import Syntax
@@ -317,7 +319,25 @@ def _exported_org_fields(value: object) -> tuple[str, ...]:
         return _TIMESTAMP_EXPORTED_FIELDS
     if isinstance(value, Clock):
         return _CLOCK_EXPORTED_FIELDS
-    return _REPEAT_EXPORTED_FIELDS
+    if isinstance(value, Repeat):
+        return _REPEAT_EXPORTED_FIELDS
+    return _element_exported_fields(cast(Element, value))
+
+
+def _element_exported_fields(value: Element) -> tuple[str, ...]:
+    """Return serializable public fields for generic Element values."""
+    exported_fields: list[str] = []
+    for field_name in dir(value):
+        if field_name.startswith("_"):
+            continue
+        try:
+            field_value = getattr(value, field_name)
+        except Exception:
+            continue
+        if callable(field_value):
+            continue
+        exported_fields.append(field_name)
+    return tuple(sorted(exported_fields))
 
 
 def _org_object_to_json_dict(value: object, seen: set[int]) -> dict[str, object]:
@@ -353,6 +373,8 @@ def _to_json_compatible(value: object, seen: set[int] | None = None) -> object:
     """Convert arbitrary values to JSON-serializable structures."""
     if _is_primitive_json_type(value):
         return value
+    if isinstance(value, RichText):
+        return value.text
 
     if seen is None:
         seen = set()
@@ -366,7 +388,10 @@ def _to_json_compatible(value: object, seen: set[int] | None = None) -> object:
         result = value.isoformat()
     elif isinstance(value, bytes):
         result = value.decode("utf-8", errors="replace")
-    elif isinstance(value, Timestamp | Clock | Repeat | Heading | Document):
+    elif isinstance(value, Properties):
+        seen.add(obj_id)
+        result = {str(key): _to_json_compatible(item, seen) for key, item in value.items()}
+    elif isinstance(value, Timestamp | Clock | Repeat | Heading | Document | Element):
         seen.add(obj_id)
         result = _org_object_to_json_dict(value, seen)
     elif isinstance(value, AnalysisResult | Tag | Group | TimeRange | Histogram):

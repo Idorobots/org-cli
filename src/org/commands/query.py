@@ -11,6 +11,8 @@ import click
 import typer
 from org_parser import Document
 from org_parser.document import Heading
+from org_parser.element import Element
+from org_parser.text import RichText
 from org_parser.time import Timestamp
 from rich.console import Console
 from rich.syntax import Syntax
@@ -54,8 +56,8 @@ class QueryOutputFormatter(Protocol):
 
 
 def _is_org_object(value: object) -> bool:
-    """Return whether value is an org node or org date object."""
-    return isinstance(value, Heading | Document | Timestamp)
+    """Return whether value is an org-parser object rendered as org output."""
+    return isinstance(value, Heading | Document | Element | Timestamp | RichText)
 
 
 def _format_org_block(value: object) -> str:

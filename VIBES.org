@@ -3719,9 +3719,12 @@ In file src/org/cli_common.py around line 884, near the ~def _builtin_order_stag
 #+end_example
 
 This might be a problem as =Repeat= is not a timestamp-derived class.
-*** TODO src/org/commands/query.py
+*** DONE src/org/commands/query.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 18:54]
 :END:
 
 In file src/org/commands/query.py around line 57, near the ~class QueryOutputFormatter(Protocol):~
@@ -3734,7 +3737,9 @@ In file src/org/commands/query.py around line 57, near the ~class QueryOutputFor
 
 This is likely missing Clock and Repeat.
 
-Arguably, all the =Elements= and =RichText= objects could be supported.
+Arguably, all the =Elements= and =RichText= objects could be supported, including =Timestamp= and =Clock=.
+
+For JSON format, =RichText= should render as a string (just the =.text= attribute). =Element= subclasses should render as full objects with a =type= with the exception of =Properties= - this can ramain as-is.
 *** TODO tests/commands/tasks/test_tasks_list.py
 :PROPERTIES:
 :context: 
