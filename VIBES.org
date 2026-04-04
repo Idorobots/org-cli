@@ -3695,6 +3695,26 @@ In file src/org/commands/tasks/board.py around line 318, near the ~new file   sr
 #+end_example
 
 All of this processing should be done as part of the processing block.
+** TODO Mutable parse tree
+*** TODO Use org-parser
+Create a plan for the replacement of orgparse with =org-parser= library. The documentation for that library can be found here: https://blog.idorobots.org/org-parser/
+
+Implement the plan from @plans/orgparse-to-org-parser.md
+
+*** Filtering, ordering & enrichments
+- Use it for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
+- Use it for property additions
+- Use it for numeric gamify exp
+
+*** Query language mutation
+- ~a = b~ assignment operator
+- ~+=~ append
+- ~-=~ remove
+- ~properties.foo = none~ set/delete property
+- update the documentation in docs/query_language.md
+
+*** org_parser.text.RichText support
+
 ** Agenda command
 Like Org Agenta, but CLI.
 
@@ -3708,22 +3728,6 @@ Like Org Agenta, but CLI.
 - Upcomming deadlines
 
 - ability to refile tasks to another file
-
-** Mutable parse tree
-*** Use org_parser
-- Bump the library version
-- Use it for repeated task filtering - =select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys) | .repeated_tasks = [.repeated_tasks[] | select(.after in $done_keys)]=
-- Use it for property additions
-- Use it for numeric gamify exp
-
-*** Query language mutation
-- ~a = b~ assignment operator
-- ~+=~ append
-- ~-=~ remove
-- ~properties.foo = none~ set/delete property
-- update the documentation in docs/query_language.md
-
-*** org_parser.text.RichText support
 
 ** Tasks CRUD
 *** Tasks C**D
@@ -3900,3 +3904,7 @@ query_engine.retrieve("How to fetch a list of tasks completed last year?")
 ** Website for org-cli
 - Publish the package
 - Add a static site for org-cli.idorobots.org on github pages.
+** Parallelize document processing
+** LSP server
+- Error checks
+- Value auto-complete
