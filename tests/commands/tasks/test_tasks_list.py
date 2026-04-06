@@ -400,8 +400,7 @@ def test_run_tasks_list_unicode_heading_aligns_tags_to_visual_width(
     """Short list should align tags correctly for wide unicode headings."""
     fixture_path = os.path.join(tmp_path, "unicode.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
-        # FIXME This needs a unicode tag for better test coverage.
-        handle.write("* TODO 修正タスク名の確認 :dev:\n")
+        handle.write("* TODO 修正タスク名の確認 :開発:\n")
 
     args = make_list_args([fixture_path], max_results=1, width=60)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--width", "60"])
@@ -411,7 +410,7 @@ def test_run_tasks_list_unicode_heading_aligns_tags_to_visual_width(
     lines = [line for line in captured.splitlines() if line.strip()]
     assert lines
     assert visual_len(lines[0]) == 60
-    assert lines[0].endswith(":dev:")
+    assert lines[0].endswith(":開発:")
 
 
 def test_run_tasks_list_details_wraps_long_lines_to_console_width(
