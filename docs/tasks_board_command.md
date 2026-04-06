@@ -10,8 +10,8 @@ poetry run org tasks board [OPTIONS] [FILE ...]
 
 ## Board layout
 
-- Columns are: `NOT STARTED`, each state from `--todo-keys`, and final `COMPLETED`.
-- Tasks with todo state in `--done-keys` are placed in `COMPLETED`.
+- Columns are: `NOT STARTED`, each state from `--todo-states`, and final `COMPLETED`.
+- Tasks with todo state in `--done-states` are placed in `COMPLETED`.
 - Tasks without a todo state are placed in `NOT STARTED`.
 - Tasks with unknown states are also placed in `NOT STARTED` so no tasks are hidden.
 - Task order is preserved from the processed list after enrichments, filters, and ordering.
@@ -64,8 +64,8 @@ poetry run org tasks board \
 
 ```bash
 poetry run org tasks board \
-  --todo-keys TODO,WAITING,INPROGRESS \
-  --done-keys DONE,CANCELLED \
+  --todo-states TODO,WAITING,INPROGRESS \
+  --done-states DONE,CANCELLED \
   examples/ARCHIVE_small
 ```
 

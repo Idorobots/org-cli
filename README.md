@@ -31,7 +31,7 @@ Custom switch argument handling:
 ```json
 {
   "defaults": {
-    "--done-keys": "DONE,CANCELLED,DELEGATED",
+    "--done-states": "DONE,CANCELLED,DELEGATED",
     "--buckets": 80,
     "--filter-priority": "A",
     "--mapping": "examples/mapping_example.json",
@@ -58,8 +58,8 @@ Run jq-style queries over your Org Mode tasks.
 
 ```bash
 # Expand all nodes, select completed tasks, extract heading, return a page of results
-poetry run org query '[ .[][] | select(.todo in $done_keys) | .title_text ][$offset: $offset + $limit]' \
-  --done-keys DONE,CANCELLED \
+poetry run org query '[ .[][] | select(.todo in $done_states) | .title_text ][$offset: $offset + $limit]' \
+  --done-states DONE,CANCELLED \
   --max-results 10 \
   --offset 10 \
   examples/ARCHIVE_small
@@ -168,8 +168,8 @@ Display matching tasks as a workflow-style board with one column per todo state 
 
 ```bash
 poetry run org tasks board \
-  --todo-keys TODO,WAITING,INPROGRESS \
-  --done-keys DONE,CANCELLED \
+  --todo-states TODO,WAITING,INPROGRESS \
+  --done-states DONE,CANCELLED \
   examples/ARCHIVE_small
 ```
 

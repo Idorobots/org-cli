@@ -137,9 +137,9 @@ def test_runtime_matches_and_membership() -> None:
     nodes = _sample_nodes()
     matches_result = _execute('.[] | select(.title_text matches "^P") | .title_text', nodes, None)
     in_result = _execute(
-        ".[] | select(.todo in $done_keys) | .todo",
+        ".[] | select(.todo in $done_states) | .todo",
         nodes,
-        {"done_keys": ["DONE"]},
+        {"done_states": ["DONE"]},
     )
     assert matches_result == ["Parent"]
     assert in_result == ["DONE", "DONE"]
@@ -286,7 +286,7 @@ def test_runtime_type_function() -> None:
 def test_runtime_not_function() -> None:
     """not should invert subquery truthiness."""
     nodes = _sample_nodes()
-    result = _execute(".[] | not(.todo in $done_keys)", nodes, {"done_keys": ["DONE"]})
+    result = _execute(".[] | not(.todo in $done_states)", nodes, {"done_states": ["DONE"]})
     assert result == [False, True, False, True]
 
 

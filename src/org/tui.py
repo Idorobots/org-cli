@@ -190,8 +190,8 @@ class TopTasksSectionConfig:
 
     max_results: int
     color_enabled: bool
-    done_keys: list[str]
-    todo_keys: list[str]
+    done_states: list[str]
+    todo_states: list[str]
     indent: str
     line_width: int | None = None
 
@@ -201,8 +201,8 @@ class TaskLineConfig:
     """Configuration for rendering a single task line."""
 
     color_enabled: bool
-    done_keys: list[str]
-    todo_keys: list[str]
+    done_states: list[str]
+    todo_states: list[str]
     line_width: int | None = None
 
 
@@ -267,8 +267,8 @@ def _build_task_line_parts(node: Heading, config: TaskLineConfig) -> _TaskLinePa
     if todo_state:
         state_style = get_state_color(
             todo_state,
-            config.done_keys,
-            config.todo_keys,
+            config.done_states,
+            config.todo_states,
             config.color_enabled,
         )
         if config.color_enabled and state_style:
@@ -526,8 +526,8 @@ def format_top_tasks_section(
                 node,
                 TaskLineConfig(
                     color_enabled=config.color_enabled,
-                    done_keys=config.done_keys,
-                    todo_keys=config.todo_keys,
+                    done_states=config.done_states,
+                    todo_states=config.todo_states,
                     line_width=config.line_width,
                 ),
                 indent="  ",

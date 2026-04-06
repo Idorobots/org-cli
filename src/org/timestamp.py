@@ -19,7 +19,7 @@ def normalize_timestamp(ts: datetime | date) -> datetime:
     return ts
 
 
-def extract_timestamp(node: Heading, done_keys: list[str]) -> list[datetime]:
+def extract_timestamp(node: Heading, done_states: list[str]) -> list[datetime]:
     """Extract timestamps from a node following priority rules.
 
     Priority order:
@@ -31,15 +31,15 @@ def extract_timestamp(node: Heading, done_keys: list[str]) -> list[datetime]:
 
     Args:
         node: Org-mode node to extract timestamps from
-        done_keys: List of completion state keywords
+        done_states: List of completion state keywords
 
     Returns:
         List of datetime objects (may be empty if no timestamps found)
     """
     timestamps = []
 
-    if node.repeats and any(rt.after in done_keys for rt in node.repeats):
-        timestamps.extend([rt.timestamp.start for rt in node.repeats if rt.after in done_keys])
+    if node.repeats and any(rt.after in done_states for rt in node.repeats):
+        timestamps.extend([rt.timestamp.start for rt in node.repeats if rt.after in done_states])
     elif node.closed:
         timestamps.append(node.closed.start)
     elif node.scheduled:

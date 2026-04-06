@@ -195,8 +195,8 @@ class QueryArgs:
     mapping: str | None
     mapping_inline: dict[str, str] | None
     exclude_inline: list[str] | None
-    todo_keys: str
-    done_keys: str
+    todo_states: str
+    done_states: str
     color_flag: bool | None
     width: int | None
     max_results: int
@@ -225,14 +225,14 @@ def run_query(args: QueryArgs) -> None:
         except QueryParseError as exc:
             raise click.UsageError(str(exc)) from exc
 
-        roots, todo_keys, done_keys = load_root_data(args)
+        roots, todo_states, done_states = load_root_data(args)
 
         context = EvalContext(
             {
                 "offset": args.offset,
                 "limit": args.max_results,
-                "todo_keys": todo_keys,
-                "done_keys": done_keys,
+                "todo_states": todo_states,
+                "done_states": done_states,
             }
         )
         try:
@@ -284,15 +284,15 @@ def register(app: typer.Typer) -> None:
             metavar="FILE",
             help="JSON file containing tag mappings (dict[str, str])",
         ),
-        todo_keys: str = typer.Option(
+        todo_states: str = typer.Option(
             "TODO",
-            "--todo-keys",
+            "--todo-states",
             metavar="KEYS",
             help="Comma-separated list of incomplete task states",
         ),
-        done_keys: str = typer.Option(
+        done_states: str = typer.Option(
             "DONE",
-            "--done-keys",
+            "--done-states",
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
@@ -347,8 +347,8 @@ def register(app: typer.Typer) -> None:
             mapping=mapping,
             mapping_inline=None,
             exclude_inline=None,
-            todo_keys=todo_keys,
-            done_keys=done_keys,
+            todo_states=todo_states,
+            done_states=done_states,
             color_flag=color_flag,
             width=width,
             max_results=max_results,

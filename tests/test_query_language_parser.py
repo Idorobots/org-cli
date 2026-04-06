@@ -215,7 +215,7 @@ def test_parse_error_does_not_include_keyword_boundary_regex() -> None:
 
 def test_parse_error_includes_query_pointer() -> None:
     """Syntax errors should include query text and pointer."""
-    query = ".[][] | select(not(.todo in $done_keys) | .todo"
+    query = ".[][] | select(not(.todo in $done_states) | .todo"
     with pytest.raises(QueryParseError) as exc_info:
         parse_query(query)
 

@@ -52,8 +52,8 @@ def test_format_task_line_with_priority() -> None:
         nodes[0],
         TaskLineConfig(
             color_enabled=False,
-            done_keys=["DONE"],
-            todo_keys=["TODO"],
+            done_states=["DONE"],
+            todo_states=["TODO"],
         ),
     )
 
@@ -73,8 +73,8 @@ def test_format_task_line_without_priority() -> None:
         nodes[0],
         TaskLineConfig(
             color_enabled=False,
-            done_keys=["DONE"],
-            todo_keys=["TODO"],
+            done_states=["DONE"],
+            todo_states=["TODO"],
         ),
     )
 
@@ -94,8 +94,8 @@ def test_format_task_line_with_tags() -> None:
         nodes[0],
         TaskLineConfig(
             color_enabled=False,
-            done_keys=["DONE"],
-            todo_keys=["TODO"],
+            done_states=["DONE"],
+            todo_states=["TODO"],
             line_width=80,
         ),
     )
@@ -116,8 +116,8 @@ def test_format_task_line_without_tags() -> None:
         nodes[0],
         TaskLineConfig(
             color_enabled=False,
-            done_keys=["DONE"],
-            todo_keys=["TODO"],
+            done_states=["DONE"],
+            todo_states=["TODO"],
             line_width=80,
         ),
     )
@@ -138,8 +138,8 @@ def test_format_task_line_with_priority_and_tags() -> None:
         nodes[0],
         TaskLineConfig(
             color_enabled=False,
-            done_keys=["DONE"],
-            todo_keys=["TODO"],
+            done_states=["DONE"],
+            todo_states=["TODO"],
             line_width=80,
         ),
     )

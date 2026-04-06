@@ -51,10 +51,10 @@ Negative values use unary minus (`-subquery`), which is evaluated as `0 - subque
 
 Variables are referenced as `$name`.
 
-Common CLI-provided context variables include `$todo_keys`, `$done_keys`, `$offset`, and `$limit`.
+Common CLI-provided context variables include `$todo_states`, `$done_states`, `$offset`, and `$limit`.
 
 ```text
-.[] | select(.todo in $done_keys)
+.[] | select(.todo in $done_states)
 ```
 
 ### Identity and grouping
@@ -257,7 +257,7 @@ null <= null => true
 - Right side must be collection-like (`list`, `tuple`, `set`, `dict`, or `string`).
 
 ```text
-.todo in $done_keys
+.todo in $done_states
 "a" in "cat"             => true
 ```
 
@@ -473,7 +473,7 @@ map(. * 2)             # [1,2,3] => [2,4,6]
 - Emits boolean negation of condition truthiness per item.
 
 ```text
-.[] | not(.todo in $done_keys)  # DONE=>false, TODO=>true
+.[] | not(.todo in $done_states)  # DONE=>false, TODO=>true
 ```
 
 ### `timestamp(...)`

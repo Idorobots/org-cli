@@ -222,7 +222,7 @@ def test_validate_helpers() -> None:
     assert config.validate_str_option("--use", "nope") is None
     assert config.validate_str_option("--out", "gfm") == "gfm"
     assert config.validate_str_option("--out", "") is None
-    assert config.validate_str_option("--todo-keys", "TODO|WAIT") is None
+    assert config.validate_str_option("--todo-states", "TODO|WAIT") is None
     assert config.validate_str_option("--filter-date-from", "2025/01/15") is None
 
     assert config.validate_list_option("--filter-property", ["key=value"]) == ["key=value"]

@@ -3887,10 +3887,14 @@ Results in a null value, even though =.[][].properties= does return a non-null v
 :END:
 All query language functions/constructs that accept strings should also accept org-parser =RichText=. They can rely on the =.text= attribute for now.
 
+*** DONE Rename =todo_keys= and =done_keys= to =todo_states= and =done_states=
+:LOGBOOK:
+- State "DONE"       from              [2026-04-07 Tue 01:08]
+:END:
 *** Filtering, ordering & enrichments
-- Use it for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
-- Use it for property additions
-- Use it for numeric gamify exp
+- [ ] Use it for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
+- [X] Use it for property additions
+- [ ] Use it for numeric gamify exp
 
 *** Query language mutation
 - ~a = b~ assignment operator

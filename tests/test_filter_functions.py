@@ -416,7 +416,7 @@ def test_filter_completion_basic(
 
 
 @pytest.mark.parametrize(
-    "filter_func,done_keys,todo_keys",
+    "filter_func,done_states,todo_states",
     [
         (filter_completed, ["DONE", "DELEGATED"], ["TODO"]),
         (filter_not_completed, ["DONE"], ["TODO", "WAITING"]),
@@ -424,23 +424,23 @@ def test_filter_completion_basic(
 )
 def test_filter_completion_multiple_keys(
     filter_func: Callable[[list[Heading]], list[Heading]],
-    done_keys: list[str],
-    todo_keys: list[str],
+    done_states: list[str],
+    todo_states: list[str],
 ) -> None:
     """Test completion filters with multiple todo/done keys."""
     if filter_func == filter_completed:
         nodes = node_from_org(
             "* DONE Task\n",
-            todo_keys=todo_keys,
-            done_keys=done_keys,
+            todo_states=todo_states,
+            done_states=done_states,
         ) + node_from_org(
             "* DELEGATED Task\n",
-            todo_keys=todo_keys,
-            done_keys=done_keys,
+            todo_states=todo_states,
+            done_states=done_states,
         )
     else:
-        nodes = node_from_org("* TODO Task\n", todo_keys=todo_keys) + node_from_org(
-            "* WAITING Task\n", todo_keys=todo_keys
+        nodes = node_from_org("* TODO Task\n", todo_states=todo_states) + node_from_org(
+            "* WAITING Task\n", todo_states=todo_states
         )
 
     result = filter_func(nodes)
@@ -581,7 +581,7 @@ def test_filter_completion_with_repeats(
 :END:
 """
 
-    nodes = node_from_org(org_text, todo_keys=["TODO"])
+    nodes = node_from_org(org_text, todo_states=["TODO"])
 
     result = filter_func(nodes)
 
@@ -612,7 +612,7 @@ def test_filter_not_completed_without_repeats_matches() -> None:
     assert len(result[0].repeats) == 0
 
 
-def test_filter_completed_multiple_done_keys_with_repeats() -> None:
+def test_filter_completed_multiple_done_states_with_repeats() -> None:
     """Test filter_completed with multiple done keys and repeated tasks."""
     org_text = """* DELEGATED Task
 :LOGBOOK:
@@ -621,7 +621,7 @@ def test_filter_completed_multiple_done_keys_with_repeats() -> None:
 - State "CANCELLED" from "TODO" [2025-03-20 Thu 14:00]
 :END:
 """
-    nodes = node_from_org(org_text, todo_keys=["TODO"], done_keys=["DONE", "DELEGATED"])
+    nodes = node_from_org(org_text, todo_states=["TODO"], done_states=["DONE", "DELEGATED"])
 
     result = filter_completed(nodes)
 

@@ -733,9 +733,9 @@ def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
         )
     # FIXME These two should also modify the .repeats property when mutation is added.
     elif arg_name == "--filter-completed" and args.filter_completed:
-        stage = "select(((.repeats | map(.after)) + .todo)[] in $done_keys)"
+        stage = "select(((.repeats | map(.after)) + .todo)[] in $done_states)"
     elif arg_name == "--filter-not-completed" and args.filter_not_completed:
-        stage = "select(not(((.repeats | map(.after)) + .todo)[] in $done_keys))"
+        stage = "select(not(((.repeats | map(.after)) + .todo)[] in $done_states))"
     return stage
 
 
@@ -1068,8 +1068,8 @@ class DataLoadArgs(FilterArgs, Protocol):
     """Protocol for loading and preprocessing data."""
 
     files: list[str] | None
-    todo_keys: str
-    done_keys: str
+    todo_states: str
+    done_states: str
     width: int | None
     with_tags_as_category: bool
 
@@ -1085,8 +1085,8 @@ class RootDataLoadArgs(Protocol):
     """Protocol for loading root nodes without filters or enrichment."""
 
     files: list[str] | None
-    todo_keys: str
-    done_keys: str
+    todo_states: str
+    done_states: str
     width: int | None
 
 
@@ -1094,17 +1094,17 @@ def _resolve_and_load_roots(
     args: RootDataLoadArgs,
 ) -> tuple[list[Document], list[str], list[str]]:
     """Resolve inputs and load org roots after validating todo/done keys."""
-    todo_keys = validate_and_parse_keys(args.todo_keys, "--todo-keys")
-    done_keys = validate_and_parse_keys(args.done_keys, "--done-keys")
-    return _load_roots_for_inputs(args.files, todo_keys, done_keys)
+    todo_states = validate_and_parse_keys(args.todo_states, "--todo-states")
+    done_states = validate_and_parse_keys(args.done_states, "--done-states")
+    return _load_roots_for_inputs(args.files, todo_states, done_states)
 
 
 def _load_roots_for_inputs(
-    files: list[str] | None, todo_keys: list[str], done_keys: list[str]
+    files: list[str] | None, todo_states: list[str], done_states: list[str]
 ) -> tuple[list[Document], list[str], list[str]]:
     """Resolve file inputs and load all org root nodes."""
     filenames = resolve_input_paths(files)
-    return load_root_nodes(filenames, todo_keys, done_keys)
+    return load_root_nodes(filenames, todo_states, done_states)
 
 
 def load_root_data(
@@ -1124,8 +1124,10 @@ def load_and_process_data(
     normalized_files = normalize_cli_files_for_custom_switches(args.files)
     args.files = normalized_files
 
-    todo_keys, done_keys = validate_global_arguments(args)
-    roots, todo_keys, done_keys = _load_roots_for_inputs(normalized_files, todo_keys, done_keys)
+    todo_states, done_states = validate_global_arguments(args)
+    roots, todo_states, done_states = _load_roots_for_inputs(
+        normalized_files, todo_states, done_states
+    )
     nodes = [node for root in roots for node in list(root)]
 
     if args.with_tags_as_category:
@@ -1137,8 +1139,8 @@ def load_and_process_data(
     )
 
     context_vars: dict[str, object] = {
-        "todo_keys": todo_keys,
-        "done_keys": done_keys,
+        "todo_states": todo_states,
+        "done_states": done_states,
     }
     context_vars.update(collect_custom_context_vars(sys.argv, normalized_files, include_ordering))
     if include_slice:
@@ -1160,4 +1162,4 @@ def load_and_process_data(
         flattened = list(results)
     nodes = [value for value in flattened if isinstance(value, Heading)]
 
-    return nodes, todo_keys, done_keys
+    return nodes, todo_states, done_states

@@ -58,7 +58,7 @@ def test_filter_node_repeats_filters_in_place() -> None:
 - State "TODO" from "DONE" [2025-02-15 Sat 11:00]
 :END:
 """,
-        todo_keys=["TODO"],
+        todo_states=["TODO"],
     )[0]
 
     filtered = _filter_node_repeats(node, lambda repeat: repeat.after == "DONE")
@@ -82,7 +82,7 @@ def test_filter_node_repeats_preserves_node_fields() -> None:
 
 Task body text.
 """,
-        todo_keys=["TODO"],
+        todo_states=["TODO"],
     )[0]
 
     filtered = _filter_node_repeats(node, lambda repeat: repeat.after == "DONE")

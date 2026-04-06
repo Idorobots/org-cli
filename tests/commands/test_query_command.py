@@ -29,8 +29,8 @@ def _make_args(files: list[str], query: str, **overrides: object) -> QueryArgs:
         mapping=None,
         mapping_inline=None,
         exclude_inline=None,
-        todo_keys="TODO",
-        done_keys="DONE",
+        todo_states="TODO",
+        done_states="DONE",
         color_flag=False,
         width=None,
         max_results=10,
@@ -162,13 +162,13 @@ def test_query_syntax_error_shows_pointer_without_invalid_value_prefix() -> None
 
     result = runner.invoke(
         app,
-        ["query", ".[][] | select(not(.todo in $done_keys) | .todo", fixture_path],
+        ["query", ".[][] | select(not(.todo in $done_states) | .todo", fixture_path],
     )
 
     assert result.exit_code != 0
     assert "Invalid query syntax:" in result.output
     assert "Invalid value:" not in result.output
-    assert ".[][] | select(not(.todo in $done_keys) | .todo" in result.output
+    assert ".[][] | select(not(.todo in $done_states) | .todo" in result.output
     assert "^" in result.output
 
 

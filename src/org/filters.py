@@ -116,9 +116,9 @@ def filter_completed(nodes: list[Heading]) -> list[Heading]:
     """Filter nodes with todo state in document done states."""
     result: list[Heading] = []
     for node in nodes:
-        done_keys = node.document.done_states
+        done_states = node.document.done_states
         if node.repeats:
-            filtered_node = _filter_node_repeats(node, _make_completion_predicate(done_keys))
+            filtered_node = _filter_node_repeats(node, _make_completion_predicate(done_states))
             if filtered_node is not None:
                 result.append(filtered_node)
             continue
@@ -131,9 +131,9 @@ def filter_not_completed(nodes: list[Heading]) -> list[Heading]:
     """Filter nodes with todo state in document todo states or without a todo state."""
     result: list[Heading] = []
     for node in nodes:
-        todo_keys = node.document.todo_states
+        todo_states = node.document.todo_states
         if node.repeats:
-            filtered_node = _filter_node_repeats(node, _make_not_completion_predicate(todo_keys))
+            filtered_node = _filter_node_repeats(node, _make_not_completion_predicate(todo_states))
             if filtered_node is not None:
                 result.append(filtered_node)
             continue

@@ -30,8 +30,8 @@ class BoardArgs:
     mapping: str | None
     mapping_inline: dict[str, str] | None
     exclude_inline: list[str] | None
-    todo_keys: str
-    done_keys: str
+    todo_states: str
+    done_states: str
     filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
@@ -72,22 +72,22 @@ class _PanelRenderConfig:
 
     width: int
     color_enabled: bool
-    done_keys: list[str]
-    todo_keys: list[str]
+    done_states: list[str]
+    todo_states: list[str]
     coalesce_completed: bool
 
 
 def _state_prefix(
     node: Heading,
-    done_keys: list[str],
-    todo_keys: list[str],
+    done_states: list[str],
+    todo_states: list[str],
     color_enabled: bool,
 ) -> str:
     """Build a colored state prefix string for a task panel title line."""
     state = node.todo or ""
     if not state:
         return ""
-    style = get_state_color(state, done_keys, todo_keys, color_enabled)
+    style = get_state_color(state, done_states, todo_states, color_enabled)
     safe_state = escape_text(state, color_enabled)
     if color_enabled and style:
         return f"[{style}]{safe_state}[/] "
@@ -99,8 +99,8 @@ def _build_task_panel(node: Heading, render: _PanelRenderConfig) -> Panel:
     heading = node.title_text if node.title_text else ""
     content = escape_text(heading, render.color_enabled)
 
-    if render.coalesce_completed and node.todo and node.todo in render.done_keys:
-        prefix = _state_prefix(node, render.done_keys, render.todo_keys, render.color_enabled)
+    if render.coalesce_completed and node.todo and node.todo in render.done_states:
+        prefix = _state_prefix(node, render.done_states, render.todo_states, render.color_enabled)
         content = f"{prefix}{content}"
 
     priority_text = f"[#{node.priority}]" if node.priority else ""
@@ -117,25 +117,25 @@ def _build_task_panel(node: Heading, render: _PanelRenderConfig) -> Panel:
     return Panel(text, expand=True, box=box.ROUNDED, padding=(0, 1))
 
 
-def _completed_header_state(done_keys: list[str]) -> str:
+def _completed_header_state(done_states: list[str]) -> str:
     """Resolve representative completed state for header coloring."""
-    non_cancelled = [key for key in done_keys if key != "CANCELLED"]
+    non_cancelled = [key for key in done_states if key != "CANCELLED"]
     if non_cancelled:
         return non_cancelled[0]
-    if done_keys:
-        return done_keys[0]
+    if done_states:
+        return done_states[0]
     return "DONE"
 
 
 def _column_title_markup(
     title: str,
     state: str,
-    done_keys: list[str],
-    todo_keys: list[str],
+    done_states: list[str],
+    todo_states: list[str],
     color_enabled: bool,
 ) -> str:
     """Build column title with state-aligned coloring."""
-    style = get_state_color(state, done_keys, todo_keys, color_enabled)
+    style = get_state_color(state, done_states, todo_states, color_enabled)
     safe_title = escape_text(title, color_enabled)
     if color_enabled and style:
         return f"[{style}]{safe_title}[/]"
@@ -143,16 +143,16 @@ def _column_title_markup(
 
 
 def _initial_columns(
-    todo_keys: list[str], done_keys: list[str], coalesce_completed: bool
+    todo_states: list[str], done_states: list[str], coalesce_completed: bool
 ) -> dict[str, list[Heading]]:
     """Create mutable board columns keyed by title."""
     columns: dict[str, list[Heading]] = {"NOT STARTED": []}
-    for key in todo_keys:
+    for key in todo_states:
         columns[key] = []
     if coalesce_completed:
         columns["COMPLETED"] = []
     else:
-        for key in done_keys:
+        for key in done_states:
             columns[key] = []
     return columns
 
@@ -160,8 +160,8 @@ def _initial_columns(
 def _place_node(
     columns: dict[str, list[Heading]],
     node: Heading,
-    todo_keys: list[str],
-    done_keys: list[str],
+    todo_states: list[str],
+    done_states: list[str],
     coalesce_completed: bool,
 ) -> None:
     """Assign one node to its board column."""
@@ -169,13 +169,13 @@ def _place_node(
     if not state:
         columns["NOT STARTED"].append(node)
         return
-    if state in done_keys:
+    if state in done_states:
         if coalesce_completed:
             columns["COMPLETED"].append(node)
         else:
             columns[state].append(node)
         return
-    if state in todo_keys:
+    if state in todo_states:
         columns[state].append(node)
         return
     columns["NOT STARTED"].append(node)
@@ -183,18 +183,18 @@ def _place_node(
 
 def _build_board_columns(
     nodes: list[Heading],
-    todo_keys: list[str],
-    done_keys: list[str],
+    todo_states: list[str],
+    done_states: list[str],
     coalesce_completed: bool,
 ) -> list[_BoardColumn]:
     """Group nodes into ordered board columns."""
-    columns = _initial_columns(todo_keys, done_keys, coalesce_completed)
+    columns = _initial_columns(todo_states, done_states, coalesce_completed)
     for node in nodes:
-        _place_node(columns, node, todo_keys, done_keys, coalesce_completed)
+        _place_node(columns, node, todo_states, done_states, coalesce_completed)
     if coalesce_completed:
-        ordered_titles = ["NOT STARTED", *todo_keys, "COMPLETED"]
+        ordered_titles = ["NOT STARTED", *todo_states, "COMPLETED"]
     else:
-        ordered_titles = ["NOT STARTED", *todo_keys, *done_keys]
+        ordered_titles = ["NOT STARTED", *todo_states, *done_states]
     return [_BoardColumn(title=title, nodes=columns[title]) for title in ordered_titles]
 
 
@@ -237,13 +237,13 @@ def _estimate_board_height(columns: list[_BoardColumn], panel_content_width: int
 
 
 def _resolve_header_state(
-    column: _BoardColumn, done_keys: list[str], coalesce_completed: bool
+    column: _BoardColumn, done_states: list[str], coalesce_completed: bool
 ) -> str:
     """Resolve the state name used for coloring a column header."""
     if column.title == "NOT STARTED":
         return ""
     if coalesce_completed and column.title == "COMPLETED":
-        return _completed_header_state(done_keys)
+        return _completed_header_state(done_states)
     return column.title
 
 
@@ -270,18 +270,18 @@ def run_tasks_board(args: BoardArgs) -> None:
     board_height = 0
 
     with processing_status(console, color_enabled):
-        nodes, discovered_todo_keys, discovered_done_keys = load_and_process_data(args)
+        nodes, discovered_todo_states, discovered_done_states = load_and_process_data(args)
 
-        specified_todo_keys = [k.strip() for k in args.todo_keys.split(",") if k.strip()]
-        specified_done_keys = [k.strip() for k in args.done_keys.split(",") if k.strip()]
-        todo_keys = _restore_key_order(specified_todo_keys, discovered_todo_keys)
-        done_keys = _restore_key_order(specified_done_keys, discovered_done_keys)
+        specified_todo_states = [k.strip() for k in args.todo_states.split(",") if k.strip()]
+        specified_done_states = [k.strip() for k in args.done_states.split(",") if k.strip()]
+        todo_states = _restore_key_order(specified_todo_states, discovered_todo_states)
+        done_states = _restore_key_order(specified_done_states, discovered_done_states)
 
         if not nodes:
             console.print("No results", markup=False)
             return
 
-        columns = _build_board_columns(nodes, todo_keys, done_keys, args.coalesce_completed)
+        columns = _build_board_columns(nodes, todo_states, done_states, args.coalesce_completed)
         panel_content_width = _estimate_panel_content_width(console.width, len(columns))
 
         for _ in columns:
@@ -289,17 +289,17 @@ def run_tasks_board(args: BoardArgs) -> None:
 
         header_row: list[str] = []
         for column in columns:
-            state = _resolve_header_state(column, done_keys, args.coalesce_completed)
+            state = _resolve_header_state(column, done_states, args.coalesce_completed)
             header_row.append(
-                _column_title_markup(column.title, state, done_keys, todo_keys, color_enabled)
+                _column_title_markup(column.title, state, done_states, todo_states, color_enabled)
             )
         table.add_row(*header_row)
 
         render = _PanelRenderConfig(
             width=panel_content_width,
             color_enabled=color_enabled,
-            done_keys=done_keys,
-            todo_keys=todo_keys,
+            done_states=done_states,
+            todo_states=todo_states,
             coalesce_completed=args.coalesce_completed,
         )
         content_cells: list[RenderableType] = []
@@ -350,15 +350,15 @@ def register(app: typer.Typer) -> None:
             metavar="FILE",
             help="JSON file containing tag mappings (dict[str, str])",
         ),
-        todo_keys: str = typer.Option(
+        todo_states: str = typer.Option(
             "TODO",
-            "--todo-keys",
+            "--todo-states",
             metavar="KEYS",
             help="Comma-separated list of incomplete task states",
         ),
-        done_keys: str = typer.Option(
+        done_states: str = typer.Option(
             "DONE",
-            "--done-keys",
+            "--done-states",
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
@@ -517,8 +517,8 @@ def register(app: typer.Typer) -> None:
             mapping=mapping,
             mapping_inline=None,
             exclude_inline=None,
-            todo_keys=todo_keys,
-            done_keys=done_keys,
+            todo_states=todo_states,
+            done_states=done_states,
             filter_priority=filter_priority,
             filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,

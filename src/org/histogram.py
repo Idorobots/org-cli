@@ -47,14 +47,14 @@ class RenderConfig:
     Attributes:
         color_enabled: Whether to apply colors to the output
         histogram_type: Type of histogram ("task_states" or "other")
-        done_keys: List of done state keywords (for task_states coloring)
-        todo_keys: List of todo state keywords (for task_states coloring)
+        done_states: List of done state keywords (for task_states coloring)
+        todo_states: List of todo state keywords (for task_states coloring)
     """
 
     color_enabled: bool = False
     histogram_type: str = "other"
-    done_keys: list[str] = field(default_factory=list)
-    todo_keys: list[str] = field(default_factory=list)
+    done_states: list[str] = field(default_factory=list)
+    todo_states: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -135,8 +135,8 @@ def render_histogram(
         if render_config.histogram_type == "task_states":
             state_style = get_state_color(
                 category,
-                render_config.done_keys,
-                render_config.todo_keys,
+                render_config.done_states,
+                render_config.todo_states,
                 render_config.color_enabled,
             )
             if render_config.color_enabled and state_style:

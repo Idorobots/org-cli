@@ -34,8 +34,8 @@ class FilterArgsStub:
     order_by_timestamp_desc: bool = False
     offset: int = 0
     max_results: int = 10
-    todo_keys: str = "TODO"
-    done_keys: str = "DONE"
+    todo_states: str = "TODO"
+    done_states: str = "DONE"
     width: int | None = None
     with_tags_as_category: bool = False
 
@@ -183,7 +183,7 @@ def test_build_query_text_with_filter_completed() -> None:
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
-    assert query == ("[ .[] | select(((.repeats | map(.after)) + .todo)[] in $done_keys) ]")
+    assert query == ("[ .[] | select(((.repeats | map(.after)) + .todo)[] in $done_states) ]")
 
 
 def test_build_query_text_with_filter_not_completed() -> None:
@@ -195,7 +195,7 @@ def test_build_query_text_with_filter_not_completed() -> None:
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
-    assert query == ("[ .[] | select(not(((.repeats | map(.after)) + .todo)[] in $done_keys)) ]")
+    assert query == ("[ .[] | select(not(((.repeats | map(.after)) + .todo)[] in $done_states)) ]")
 
 
 def test_build_query_logs_query_before_compile(caplog: pytest.LogCaptureFixture) -> None:
@@ -337,7 +337,7 @@ def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixtu
         load_and_process_data(args)
 
     assert "Query context:" in caplog.text
-    assert "'todo_keys': ['TODO']" in caplog.text
+    assert "'todo_states': ['TODO']" in caplog.text
 
 
 def test_build_query_text_preserves_mixed_ordering_cli_order(

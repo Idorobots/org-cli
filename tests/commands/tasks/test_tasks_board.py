@@ -27,8 +27,8 @@ def make_board_args(files: list[str], **overrides: object) -> tasks_board.BoardA
         mapping=None,
         mapping_inline=None,
         exclude_inline=None,
-        todo_keys="TODO",
-        done_keys="DONE",
+        todo_states="TODO",
+        done_states="DONE",
         filter_priority=None,
         filter_level=None,
         filter_repeats_above=None,
@@ -66,8 +66,8 @@ def test_run_tasks_board_renders_expected_columns(
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
-        todo_keys="TODO,WAITING,IN-PROGRESS",
-        done_keys="DONE,CANCELLED,ARCHIVED",
+        todo_states="TODO,WAITING,IN-PROGRESS",
+        done_states="DONE,CANCELLED,ARCHIVED",
         width=150,
     )
 
@@ -78,9 +78,9 @@ def test_run_tasks_board_renders_expected_columns(
             "org",
             "tasks",
             "board",
-            "--todo-keys",
+            "--todo-states",
             "TODO,WAITING,IN-PROGRESS",
-            "--done-keys",
+            "--done-states",
             "DONE,CANCELLED,ARCHIVED",
             "--width",
             "150",
@@ -252,8 +252,8 @@ def test_run_tasks_board_coalesce_completed_true_shows_completed_column(
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
-        todo_keys="TODO,WAITING,IN-PROGRESS",
-        done_keys="DONE,CANCELLED,ARCHIVED",
+        todo_states="TODO,WAITING,IN-PROGRESS",
+        done_states="DONE,CANCELLED,ARCHIVED",
         coalesce_completed=True,
         width=200,
     )
@@ -275,8 +275,8 @@ def test_run_tasks_board_coalesce_completed_true_prefixes_state_in_panel(
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
-        todo_keys="TODO,WAITING,IN-PROGRESS",
-        done_keys="DONE,CANCELLED,ARCHIVED",
+        todo_states="TODO,WAITING,IN-PROGRESS",
+        done_states="DONE,CANCELLED,ARCHIVED",
         coalesce_completed=True,
         width=200,
     )
@@ -297,8 +297,8 @@ def test_run_tasks_board_coalesce_completed_false_shows_individual_done_columns(
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
-        todo_keys="TODO,WAITING,IN-PROGRESS",
-        done_keys="DONE,CANCELLED,ARCHIVED",
+        todo_states="TODO,WAITING,IN-PROGRESS",
+        done_states="DONE,CANCELLED,ARCHIVED",
         coalesce_completed=False,
         width=200,
     )
@@ -324,8 +324,8 @@ def test_run_tasks_board_coalesce_completed_false_done_columns_ordered_after_tod
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
-        todo_keys="TODO,WAITING,IN-PROGRESS",
-        done_keys="DONE,CANCELLED,ARCHIVED",
+        todo_states="TODO,WAITING,IN-PROGRESS",
+        done_states="DONE,CANCELLED,ARCHIVED",
         coalesce_completed=False,
         width=200,
     )
@@ -359,8 +359,8 @@ def test_run_tasks_board_coalesce_completed_false_tasks_in_correct_columns(
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
-        todo_keys="TODO,WAITING,IN-PROGRESS",
-        done_keys="DONE,CANCELLED,ARCHIVED",
+        todo_states="TODO,WAITING,IN-PROGRESS",
+        done_states="DONE,CANCELLED,ARCHIVED",
         coalesce_completed=False,
         width=200,
     )

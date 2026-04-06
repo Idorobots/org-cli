@@ -17,7 +17,7 @@ COMMAND_OPTION_NAMES = {
     "color_flag",
     "config",
     "details",
-    "done_keys",
+    "done_states",
     "exclude",
     "filter_bodies",
     "filter_completed",
@@ -47,7 +47,7 @@ COMMAND_OPTION_NAMES = {
     "order_by_level",
     "order_by_timestamp_asc",
     "order_by_timestamp_desc",
-    "todo_keys",
+    "todo_states",
     "tags",
     "use",
     "with_tags_as_category",
@@ -69,7 +69,7 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "color_flag": "--color/--no-color",
     "config": "--config",
     "details": "--details",
-    "done_keys": "--done-keys",
+    "done_states": "--done-states",
     "exclude": "--exclude",
     "exclude_inline": "--exclude",
     "filter_bodies": "--filter-body",
@@ -103,7 +103,7 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "order_by_timestamp_asc": "--order-by-timestamp-asc",
     "order_by_timestamp_desc": "--order-by-timestamp-desc",
     "tags": "--tag",
-    "todo_keys": "--todo-keys",
+    "todo_states": "--todo-states",
     "use": "--use",
     "verbose": "--verbose",
     "with_tags_as_category": "--with-tags-as-category",
@@ -344,7 +344,7 @@ def validate_str_option(key: str, value: object) -> str | None:
         return None
 
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
-    invalid_keys = key in ("--todo-keys", "--done-keys") and not is_valid_keys_string(value)
+    invalid_keys = key in ("--todo-states", "--done-states") and not is_valid_keys_string(value)
     invalid_dates = key in (
         "--filter-date-from",
         "--filter-date-until",
@@ -597,8 +597,8 @@ def build_config_defaults(
     stats_str_options: dict[str, str] = {"--use": "use"}
 
     global_str_options: dict[str, str] = {
-        "--todo-keys": "todo_keys",
-        "--done-keys": "done_keys",
+        "--todo-states": "todo_states",
+        "--done-states": "done_states",
         "--filter-date-from": "filter_date_from",
         "--filter-date-until": "filter_date_until",
         "--filter-priority": "filter_priority",

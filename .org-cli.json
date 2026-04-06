@@ -1,6 +1,6 @@
 {
   "defaults": {
-    "--done-keys": "DONE,CANCELLED,DELEGATED",
+    "--done-states": "DONE,CANCELLED,DELEGATED",
     "--mapping": "examples/mapping_example.json",
     "--exclude": "examples/exclude_example.txt"
   },
