@@ -890,20 +890,20 @@ def test_runtime_heading_properties_support_assignment() -> None:
 
 
 def test_runtime_dict_assignment_sets_and_overwrites_values() -> None:
-    """Dictionary assignment should set and overwrite dictionary keys."""
+    """Assignment should set and overwrite dictionary keys."""
     values = [{"x": 1}, {}]
     result = _execute('.[] | .["x"] = 2', values, None)
 
-    assert result == [{"x": 2}, {"x": 2}]
+    assert result == [2, 2]
     assert values == [{"x": 2}, {"x": 2}]
 
 
 def test_runtime_dict_assignment_with_dot_target() -> None:
-    """Dictionary assignment should work with dot field targets."""
+    """Assignment should work with dot field targets."""
     values = [{"meta": {}}, {"meta": {"done": False}}]
     result = _execute(".[] | .meta.done = true", values, None)
 
-    assert result == [{"done": True}, {"done": True}]
+    assert result == [True, True]
     assert values == [{"meta": {"done": True}}, {"meta": {"done": True}}]
 
 
@@ -947,6 +947,54 @@ def test_runtime_dict_assignment_requires_string_key() -> None:
     """Dictionary assignment should reject non-string key values."""
     with pytest.raises(QueryRuntimeError):
         _execute(".[] | .[$k] = 1", [{}], {"k": 1})
+
+
+def test_runtime_object_field_assignment_returns_field_value() -> None:
+    """Object field assignment should update and return assigned field value."""
+    nodes = [*node_from_org("* TODO Keep\n")]
+    result = _execute('.[] | .todo = "DONE"', nodes, None)
+
+    assert result == ["DONE"]
+    assert nodes[0].todo == "DONE"
+
+
+def test_runtime_object_field_assignment_rejects_type_mismatch() -> None:
+    """Object field assignment should reject values of a different type."""
+    nodes = [*node_from_org("* TODO Keep\n")]
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[] | .todo = 1", nodes, None)
+
+
+def test_runtime_object_field_assignment_requires_writable_field() -> None:
+    """Object field assignment should fail for read-only fields."""
+    nodes = [*node_from_org("* TODO Keep\n")]
+    with pytest.raises(QueryRuntimeError):
+        _execute('.[] | .title_text = "Changed"', nodes, None)
+
+
+def test_runtime_append_assignment_mutates_collection_in_place() -> None:
+    """Append assignment should mutate target collections and return them."""
+    values = [{"items": [1, 2]}, {"items": [3]}]
+    result = _execute(".[] | .items += [4, 5]", values, None)
+
+    assert result == [[1, 2, 4, 5], [3, 4, 5]]
+    assert values == [{"items": [1, 2, 4, 5]}, {"items": [3, 4, 5]}]
+
+
+def test_runtime_remove_assignment_mutates_collection_in_place() -> None:
+    """Remove assignment should mutate target collections and return them."""
+    values = [{"items": [1, 2, 2, 3]}, {"items": [2, 4]}]
+    result = _execute(".[] | .items -= [2]", values, None)
+
+    assert result == [[1, 3], [4]]
+    assert values == [{"items": [1, 3]}, {"items": [4]}]
+
+
+def test_runtime_collection_mutation_assignment_requires_collection_target() -> None:
+    """Collection mutation assignments should reject non-collection target values."""
+    values = [{"items": 1}]
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[] | .items += 2", values, None)
 
 
 def test_runtime_iterate_skips_null_values() -> None:

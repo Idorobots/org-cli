@@ -72,6 +72,8 @@ from org.query_language.errors import QueryParseError
         "[]",
         "[1, 2, 3]",
         '.properties["x"] = 1',
+        '.properties["x"] += 1',
+        '.properties["x"] -= 1',
         ".properties[$key] = 1",
         ".properties.x = 1",
         '.properties["x"] = 1; .properties["x"]',
@@ -152,6 +154,7 @@ def test_parse_dict_assignment_shape() -> None:
     """Parser should parse dictionary assignment expressions."""
     expr = parse_query('.properties["done"] = true')
     assert isinstance(expr, DictAssignment)
+    assert expr.operator == "="
     assert isinstance(expr.base, FieldAccess)
     assert isinstance(expr.key_expr, StringLiteral)
     assert expr.key_expr.value == "done"
@@ -161,6 +164,7 @@ def test_parse_dict_assignment_dynamic_key_shape() -> None:
     """Parser should parse assignments with computed bracket keys."""
     expr = parse_query(".properties[$key] = true")
     assert isinstance(expr, DictAssignment)
+    assert expr.operator == "="
     assert isinstance(expr.base, FieldAccess)
     assert isinstance(expr.key_expr, Variable)
 
@@ -169,9 +173,24 @@ def test_parse_dict_assignment_dot_target_lowering_shape() -> None:
     """Parser should lower dot assignments into string-key assignments."""
     expr = parse_query(".properties.done = true")
     assert isinstance(expr, DictAssignment)
+    assert expr.operator == "="
     assert isinstance(expr.base, FieldAccess)
     assert isinstance(expr.key_expr, StringLiteral)
     assert expr.key_expr.value == "done"
+
+
+def test_parse_append_assignment_shape() -> None:
+    """Parser should parse append assignment operator."""
+    expr = parse_query('.properties["done"] += true')
+    assert isinstance(expr, DictAssignment)
+    assert expr.operator == "+="
+
+
+def test_parse_remove_assignment_shape() -> None:
+    """Parser should parse remove assignment operator."""
+    expr = parse_query('.properties["done"] -= true')
+    assert isinstance(expr, DictAssignment)
+    assert expr.operator == "-="
 
 
 def test_parse_sequence_shape() -> None:

@@ -157,7 +157,7 @@ def _evaluate_dict_assignment(
     stream: Stream,
     context: EvalContext,
 ) -> Stream:
-    """Evaluate dictionary field assignment expressions."""
+    """Evaluate assignment expressions against object fields and collection indexes."""
     output = _stream()
     for item in stream:
         base_values = evaluate_expr(expr.base, _stream([item]), context)
@@ -168,14 +168,122 @@ def _evaluate_dict_assignment(
         value_key_base_pairs = _broadcast(value_values, _stream(key_base_pairs))
         for value, key_base_pair in value_key_base_pairs:
             key, base = cast(tuple[object, object], key_base_pair)
-            if not isinstance(base, MutableMapping):
-                raise QueryRuntimeError("Assignment target must evaluate to a dictionary")
-            key_text = _as_string_value(key)
-            if key_text is None:
-                raise QueryRuntimeError("Assignment key must evaluate to a string")
-            base[key_text] = value
-            output.append(base)
+            output.append(_apply_assignment(expr.operator, base, key, value))
     return output
+
+
+def _apply_assignment(operator: str, base: object, key: object, value: object) -> object:
+    """Apply one assignment operation and return assigned value."""
+    key_text = _as_string_value(key)
+    if key_text is not None:
+        if isinstance(base, MutableMapping):
+            return _assign_mapping_value(base, key_text, value, operator)
+        return _assign_object_field_value(base, key_text, value, operator)
+
+    if isinstance(key, int):
+        return _assign_index_value(base, key, value, operator)
+
+    raise QueryRuntimeError("Assignment key must evaluate to a string or integer")
+
+
+def _assign_mapping_value(
+    mapping: MutableMapping[str, object],
+    key: str,
+    value: object,
+    operator: str,
+) -> object:
+    """Assign one mapping key and return assigned value."""
+    if operator == "=":
+        mapping[key] = value
+        return mapping[key]
+
+    current_value = mapping.get(key)
+    updated_collection = _mutate_collection_for_assignment(current_value, value, operator)
+    mapping[key] = updated_collection
+    return mapping[key]
+
+
+def _assign_object_field_value(base: object, field: str, value: object, operator: str) -> object:
+    """Assign one object field and return assigned value."""
+    sentinel = object()
+    current_value = getattr(base, field, sentinel)
+    if current_value is sentinel:
+        raise QueryRuntimeError(f"Assignment target field does not exist: {field}")
+
+    if operator == "=":
+        _ensure_assignment_type_match(current_value, value, field)
+        _set_object_field(base, field, value)
+        return getattr(base, field)
+
+    updated_collection = _mutate_collection_for_assignment(current_value, value, operator)
+    if updated_collection is not current_value:
+        _set_object_field(base, field, updated_collection)
+    return getattr(base, field)
+
+
+def _set_object_field(base: object, field: str, value: object) -> None:
+    """Set one object field with writable-field validation."""
+    try:
+        setattr(base, field, value)
+    except (AttributeError, TypeError) as exc:
+        raise QueryRuntimeError(f"Assignment target field is not writable: {field}") from exc
+
+
+def _assign_index_value(base: object, index: int, value: object, operator: str) -> object:
+    """Assign one list index and return assigned value."""
+    if not isinstance(base, list):
+        raise QueryRuntimeError("Index assignment target must evaluate to a list")
+    if not (-len(base) <= index < len(base)):
+        raise QueryRuntimeError("Assignment index is out of bounds")
+
+    current_value = base[index]
+    if operator == "=":
+        _ensure_assignment_type_match(current_value, value, "index")
+        base[index] = value
+        return base[index]
+
+    updated_collection = _mutate_collection_for_assignment(current_value, value, operator)
+    base[index] = updated_collection
+    return base[index]
+
+
+def _ensure_assignment_type_match(current_value: object, value: object, field_name: str) -> None:
+    """Ensure assignment value matches existing non-null field type."""
+    if current_value is None or value is None:
+        return
+    expected_type = type(current_value)
+    if isinstance(value, expected_type):
+        return
+    raise QueryRuntimeError(
+        f"Assigned value type mismatch for {field_name}: "
+        f"expected {expected_type.__name__}, got {type(value).__name__}"
+    )
+
+
+def _mutate_collection_for_assignment(collection: object, value: object, operator: str) -> object:
+    """Mutate one collection target for += or -= operators."""
+    if operator not in {"+=", "-="}:
+        raise QueryRuntimeError(f"Unsupported assignment operator: {operator}")
+
+    values = list(value) if isinstance(value, (list, tuple, set)) else [value]
+    if isinstance(collection, list):
+        if operator == "+=":
+            collection.extend(values)
+            return collection
+
+        collection[:] = [
+            existing for existing in collection if all(existing != removed for removed in values)
+        ]
+        return collection
+
+    if isinstance(collection, set):
+        if operator == "+=":
+            collection.update(values)
+        else:
+            collection.difference_update(values)
+        return collection
+
+    raise QueryRuntimeError("In-place collection mutation requires list or set assignment target")
 
 
 def _evaluate_as_binding(expr: AsBinding, stream: Stream, context: EvalContext) -> Stream:

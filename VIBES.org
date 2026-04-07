@@ -3891,19 +3891,26 @@ All query language functions/constructs that accept strings should also accept o
 :LOGBOOK:
 - State "DONE"       from              [2026-04-07 Tue 01:08]
 :END:
-*** Filtering, ordering & enrichments
-- [ ] Use it for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
-- [X] Use it for property additions
-- [ ] Use it for numeric gamify exp
+*** DONE Query language mutation
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-07 Tue 18:10]
+:END:
+Extend the query language with mutation syntax rules:
+- ~a = b~ assignment operator allows assigning any writable field of an object with a specified value. If the value type does not match the field type, an exception should be raised. The returned value should be the modified field value.
+- ~a.properties.foo = null~ - special case of the above that currently works for properties. It should remain working.
+- ~a += b~ append a value to a collection of values in-place, returning the modified collection.
+- ~a -= b~ remove a value from a collection of values in place, returning the modiied collection.
 
-*** Query language mutation
-- ~a = b~ assignment operator
-- ~+=~ append
-- ~-=~ remove
-- ~properties.foo = none~ set/delete property
-- update the documentation in docs/query_language.md
+Update the documentation in docs/query_language.md.
+
+*** TODO Filtering, ordering & enrichments
+- [ ] Use mutation for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
+- [X] Use mutation for property additions
+- [X] Use mutation for numeric gamify exp
 
 *** org_parser.text.RichText rendering support
+Mostly for short-form tasks lists.
+
 ** Agenda command
 Like Org Agenta, but CLI.
 

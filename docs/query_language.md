@@ -25,7 +25,7 @@ A query is an expression tree composed of these syntax classes:
 - **Function calls**: built-ins like `select(...)`, `sort_by(...)`, `sum`, `uuid`.
 - **Operators**: arithmetic, comparison, boolean, membership, regex match.
 - **Combinators**: tuple (`,`), variable binding (`as`), scoped binding (`let ... in`), conditional (`if ... then ... else ...`), pipeline (`|`), fold (`[ ... ]`).
-  sequencing (`;`), dictionary assignment (`=`, limited forms).
+  sequencing (`;`), assignment (`=`, `+=`, `-=`).
 
 ## 3) Syntax reference
 
@@ -166,24 +166,35 @@ runs either branch based on truthiness.
 []
 ```
 
-### Dictionary assignment
+### Assignment
 
-Assignment is currently supported only for dictionary field writes:
+Assignment targets support field and bracket access forms:
 
-- `<subquery>.field = <value-subquery>`
-- `<subquery>[<field-subquery>] = <value-subquery>`
+- `<subquery>.field <op> <value-subquery>`
+- `<subquery>[<field-or-index-subquery>] <op> <value-subquery>`
+- Operators: `=`, `+=`, `-=`
 
-The target subquery must evaluate to dictionaries at runtime. For bracket assignment, the key subquery
-must evaluate to a string. Assignment mutates those dictionaries and returns the mutated dictionary
-stream.
+`=` writes a value and returns the modified field value.
+
+- For object-field/index writes, value type must match the existing non-`null` field/index value type,
+  otherwise a runtime error is raised.
+- For mapping/property writes (for example `.properties.foo`), assignment remains flexible and does not
+  enforce this type check.
+
+`+=` and `-=` mutate collection targets in place and return the modified collection.
+
+- `+=` appends one or more values.
+- `-=` removes matching values.
+- In-place collection mutation requires list/set target values.
 
 ```text
+.todo = "DONE"
 .properties.done = true
 .properties["priority"] = "A"
 .properties[$field_name] = "A"
+.tags += "new-tag"
+.properties["labels"] -= ["blocked"]
 ```
-
-No other assignment target forms are supported yet.
 
 ### Pipeline
 
@@ -215,7 +226,7 @@ Highest to lowest:
 7. Boolean (`and`, `or`)
 8. Tuple (`,`)
 9. Binding (`as $name`)
-10. Assignment (`=`)
+10. Assignment (`=`, `+=`, `-=`)
 11. Sequence (`;`)
 12. Pipeline (`|`)
 
