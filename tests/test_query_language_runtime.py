@@ -958,9 +958,34 @@ def test_runtime_object_field_assignment_returns_field_value() -> None:
     assert nodes[0].todo == "DONE"
 
 
+def test_runtime_object_field_assignment_uses_setter_type_for_string_like_union() -> None:
+    """Object field assignment should allow setter-accepted union member types."""
+    nodes = [*node_from_org("* TODO Keep\n")]
+    result = _execute('.[] | .title = "Changed"; .title_text', nodes, None)
+
+    assert result == ["Changed"]
+    assert nodes[0].title_text == "Changed"
+
+
+def test_runtime_object_field_assignment_uses_setter_type_for_mapping_union() -> None:
+    """Object field assignment should allow dict values accepted by property setter."""
+    nodes = [*node_from_org("* TODO Keep\n")]
+    result = _execute('.[] | .properties = $props; .properties["x"]', nodes, {"props": {"x": "1"}})
+
+    assert result == ["1"]
+    assert nodes[0].properties["x"] == "1"
+
+
 def test_runtime_object_field_assignment_rejects_type_mismatch() -> None:
     """Object field assignment should reject values of a different type."""
     nodes = [*node_from_org("* TODO Keep\n")]
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[] | .todo = 1", nodes, None)
+
+
+def test_runtime_object_field_assignment_rejects_type_mismatch_when_current_value_is_null() -> None:
+    """Object field assignment should validate setter type even when current field value is null."""
+    nodes = [*node_from_org("* Keep\n")]
     with pytest.raises(QueryRuntimeError):
         _execute(".[] | .todo = 1", nodes, None)
 

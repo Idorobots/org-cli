@@ -176,8 +176,10 @@ Assignment targets support field and bracket access forms:
 
 `=` writes a value and returns the modified field value.
 
-- For object-field/index writes, value type must match the existing non-`null` field/index value type,
-  otherwise a runtime error is raised.
+- For object-field writes, runtime first validates against property setter type annotations when available.
+- If setter type metadata is unavailable, object-field writes fall back to matching existing non-`null`
+  field value type.
+- For index writes, value type must match the existing non-`null` index value type.
 - For mapping/property writes (for example `.properties.foo`), assignment remains flexible and does not
   enforce this type check.
 

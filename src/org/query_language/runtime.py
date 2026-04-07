@@ -4,13 +4,22 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable, Iterable, Mapping, MutableMapping
+import types
+from collections.abc import (
+    Callable,
+    Iterable,
+    Mapping,
+    MutableMapping,
+)
+from collections.abc import (
+    Sequence as CollectionSequence,
+)
 from dataclasses import dataclass
 from datetime import date, datetime
 from hashlib import sha256
 from itertools import product
 from math import trunc
-from typing import cast
+from typing import Any, Union, cast, get_args, get_origin, get_type_hints
 from uuid import uuid4
 
 from org_parser import Document
@@ -211,7 +220,7 @@ def _assign_object_field_value(base: object, field: str, value: object, operator
         raise QueryRuntimeError(f"Assignment target field does not exist: {field}")
 
     if operator == "=":
-        _ensure_assignment_type_match(current_value, value, field)
+        _ensure_object_assignment_type_match(base, current_value, value, field)
         _set_object_field(base, field, value)
         return getattr(base, field)
 
@@ -245,6 +254,83 @@ def _assign_index_value(base: object, index: int, value: object, operator: str) 
     updated_collection = _mutate_collection_for_assignment(current_value, value, operator)
     base[index] = updated_collection
     return base[index]
+
+
+def _ensure_object_assignment_type_match(
+    base: object,
+    current_value: object,
+    value: object,
+    field_name: str,
+) -> None:
+    """Validate object field assignment using setter annotation metadata when available."""
+    setter_annotation = _resolve_setter_value_annotation(base, field_name)
+    if setter_annotation is not None:
+        if _value_matches_annotation(value, setter_annotation):
+            return
+        raise QueryRuntimeError(
+            f"Assigned value type mismatch for {field_name}: "
+            f"expected {_format_type_annotation(setter_annotation)}, got {type(value).__name__}"
+        )
+
+    _ensure_assignment_type_match(current_value, value, field_name)
+
+
+def _resolve_setter_value_annotation(base: object, field_name: str) -> object | None:
+    """Resolve setter value annotation for one object property field."""
+    descriptor = getattr(type(base), field_name, None)
+    if not isinstance(descriptor, property) or descriptor.fset is None:
+        return None
+
+    setter = descriptor.fset
+    try:
+        type_hints = get_type_hints(setter)
+    except NameError, TypeError:
+        fallback_globals = dict(setter.__globals__)
+        fallback_globals.setdefault("Sequence", CollectionSequence)
+        try:
+            type_hints = get_type_hints(
+                setter,
+                globalns=fallback_globals,
+                localns=vars(type(base)),
+            )
+        except NameError, TypeError:
+            return None
+
+    return type_hints.get("value")
+
+
+def _value_matches_annotation(value: object, annotation: object) -> bool:
+    """Check if runtime value matches one resolved type annotation."""
+    if annotation is Any:
+        return True
+    if annotation is None or annotation is type(None):
+        return value is None
+
+    origin = get_origin(annotation)
+    if origin in {Union, types.UnionType}:
+        return any(_value_matches_annotation(value, option) for option in get_args(annotation))
+    if origin is not None:
+        return isinstance(value, origin) if isinstance(origin, type) else True
+    if isinstance(annotation, type):
+        return isinstance(value, annotation)
+    return True
+
+
+def _format_type_annotation(annotation: object) -> str:
+    """Format one annotation for runtime type mismatch errors."""
+    if annotation is Any:
+        return "any"
+    if annotation is None or annotation is type(None):
+        return "None"
+
+    origin = get_origin(annotation)
+    if origin in {Union, types.UnionType}:
+        return " | ".join(_format_type_annotation(option) for option in get_args(annotation))
+    if origin is not None:
+        return origin.__name__ if isinstance(origin, type) else str(origin)
+    if isinstance(annotation, type):
+        return annotation.__name__
+    return str(annotation)
 
 
 def _ensure_assignment_type_match(current_value: object, value: object, field_name: str) -> None:

@@ -3903,6 +3903,31 @@ Extend the query language with mutation syntax rules:
 
 Update the documentation in docs/query_language.md.
 
+*** DONE src/org/query_language/runtime.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-07 Tue 19:15]
+:END:
+
+In file src/org/query_language/runtime.py around line 277, near the ~def _evaluate_dict_assignment(~
+
+#+begin_example
++def _ensure_assignment_type_match(current_value: object, value: object, field_name: str) -> None:
++    """Ensure assignment value matches existing non-null field type."""
++    if current_value is None or value is None:
++        return
++    expected_type = type(current_value)
++    if isinstance(value, expected_type):
++        return
++    raise QueryRuntimeError(
++        f"Assigned value type mismatch for {field_name}: "
++        f"expected {expected_type.__name__}, got {type(value).__name__}"
++    )
+#+end_example
+
+Not a great condition, especially for attributes accepting strings and =RichText=.
 *** TODO Filtering, ordering & enrichments
 - [ ] Use mutation for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
 - [X] Use mutation for property additions
