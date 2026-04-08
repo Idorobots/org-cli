@@ -48,56 +48,6 @@ def make_args(**overrides: object) -> FilterArgsStub:
     return args
 
 
-def test_parse_filter_order_from_argv() -> None:
-    """Filter order should follow argv position."""
-    from org.cli_common import parse_filter_order_from_argv
-
-    argv = [
-        "org",
-        "tasks",
-        "list",
-        "--filter-priority",
-        "A",
-        "--filter-tag",
-        "work$",
-        "file.org",
-    ]
-
-    result = parse_filter_order_from_argv(argv)
-
-    assert result == ["--filter-priority", "--filter-tag"]
-
-
-def test_parse_filter_order_from_argv_supports_equals_form() -> None:
-    """Filter order parsing should support --opt=value form."""
-    from org.cli_common import parse_filter_order_from_argv
-
-    argv = ["org", "tasks", "list", "--filter-level=2", "--filter-tag=work", "file.org"]
-
-    result = parse_filter_order_from_argv(argv)
-
-    assert result == ["--filter-level", "--filter-tag"]
-
-
-def test_parse_order_values_from_argv() -> None:
-    """Ordering switches should preserve command-line occurrence order."""
-    from org.cli_common import parse_order_values_from_argv
-
-    argv = [
-        "org",
-        "tasks",
-        "list",
-        "--order-by-level",
-        "--order-by-timestamp-asc",
-        "--order-by-level",
-        "file.org",
-    ]
-
-    result = parse_order_values_from_argv(argv)
-
-    assert result == ["level", "timestamp-asc", "level"]
-
-
 def test_build_query_text_filters_only() -> None:
     """Query text should include filters in command order."""
     from org.cli_common import build_query_text

@@ -264,20 +264,6 @@ class CustomStageInvocation:
     arg_value: object
 
 
-def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
-    """Parse filter option order from command-line arguments."""
-    filter_order: list[str] = []
-    for token in argv:
-        if token in FILTER_OPTIONS_WITH_VALUE or token in FILTER_OPTIONS_FLAGS:
-            filter_order.append(token)
-            continue
-        for option_name in FILTER_OPTIONS_WITH_VALUE:
-            if token.startswith(f"{option_name}="):
-                filter_order.append(option_name)
-                break
-    return filter_order
-
-
 def _extract_option_token(token: str) -> str:
     """Return option token without inline assignment suffix."""
     if token.startswith("--") and "=" in token:
@@ -483,16 +469,6 @@ def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) ->
         next_token = argv[next_index]
         if next_token.startswith("-"):
             raise _required_custom_arg_error(option)
-
-
-def parse_order_values_from_argv(argv: list[str]) -> list[str]:
-    """Extract built-in ordering values in command-line argument order."""
-    values: list[str] = []
-    for token in argv:
-        value = ORDER_BY_OPTION_TO_VALUE.get(token)
-        if value is not None:
-            values.append(value)
-    return values
 
 
 def parse_filter_entries_from_argv(

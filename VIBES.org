@@ -3983,8 +3983,17 @@ In file src/org/cli_common.py around line 681, near the ~def extend_with_entries
 #+end_example
 
 Inline this in the only call site there is for this function.
-*** TODO Filtering, ordering & enrichments
-- [ ] Use mutation for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
+*** DONE Remove any unused filter_* functions from filters.py
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 23:11]
+:END:
+Do the same for unused ordering functions and enrichments. Remove tests that were created for those functions.
+
+*** DONE Filtering, ordering & enrichments
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 23:11]
+:END:
+- [X] Use mutation for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
 - [X] Use mutation for property additions
 - [X] Use mutation for numeric gamify exp
 
