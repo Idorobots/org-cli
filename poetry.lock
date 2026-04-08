@@ -380,14 +380,14 @@ files = [
 
 [[package]]
 name = "org-parser"
-version = "0.26.0"
+version = "0.26.1"
 description = "A parser for Org Mode documents"
 optional = false
 python-versions = "<4.0,>=3.12"
 groups = ["main"]
 files = [
-    {file = "org_parser-0.26.0-py3-none-any.whl", hash = "sha256:af2bd6f062003ab3034ef4da0762780cba78a6fc2c35a1c59131e667aa44e77e"},
-    {file = "org_parser-0.26.0.tar.gz", hash = "sha256:74f2fa6ca7f61e99a2aa285bfb2f634dab99455713a7acd74969a6cce53d4c0d"},
+    {file = "org_parser-0.26.1-py3-none-any.whl", hash = "sha256:359eb843f6fac1ba88937294b8a21389d7772c9b70567de03442b5824929e507"},
+    {file = "org_parser-0.26.1.tar.gz", hash = "sha256:88a0b567dd9bc5edb01d7ffeeafe2f92a2ae7477010f811a6c1cb363b1f7df47"},
 ]
 
 [package.dependencies]
@@ -800,4 +800,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "1eb9fd5bf75cf8c384f947561f7a66cf51fda446711ecd9e4f150e572889db11"
+content-hash = "828253b194f59c79a60ca9551d1d38118b682c99ef16dee5a4b45aac3842254c"
