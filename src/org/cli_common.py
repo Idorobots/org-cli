@@ -18,9 +18,6 @@ from org_parser.document import Heading
 
 from org import config as config_module
 from org.analyze import TimeRange, normalize
-from org.filters import (
-    preprocess_tags_as_category,
-)
 from org.parse import load_root_nodes
 from org.query_language import (
     EvalContext,
@@ -143,6 +140,16 @@ class FilterArgs(Protocol):
     filter_bodies: list[str] | None
     filter_completed: bool
     filter_not_completed: bool
+
+
+class WithArgs(Protocol):
+    """Protocol for built-in enrichment CLI arguments."""
+
+    with_tags_as_category: bool
+
+
+class QueryBuildArgs(FilterArgs, WithArgs, Protocol):
+    """Protocol for arguments used to build query pipelines."""
 
 
 def is_valid_regex(pattern: str, use_multiline: bool = False) -> bool:
@@ -600,19 +607,21 @@ def parse_order_entries_from_argv(
 
 def parse_with_entries_from_argv(
     argv: list[str],
-) -> list[CustomStageInvocation]:
-    """Parse custom enrichment switch occurrences in argv order."""
-    entries: list[CustomStageInvocation] = []
+) -> list[str | CustomStageInvocation]:
+    """Parse built-in and custom enrichment switch occurrences in argv order."""
+    entries: list[str | CustomStageInvocation] = []
     index = 0
+    builtins = WITH_OPTIONS_FLAGS
     while index < len(argv):
         token = argv[index]
         option = _extract_option_token(token)
         if option in WITH_OPTIONS_FLAGS:
+            entries.append(option)
             index += 1
             continue
 
         name = _custom_option_name(option, "with")
-        if name is None or name not in config_module.CONFIG_CUSTOM_WITH:
+        if name is None or name not in config_module.CONFIG_CUSTOM_WITH or option in builtins:
             index += 1
             continue
 
@@ -645,6 +654,23 @@ def parse_with_entries_from_argv(
         index = consumed_index + 1
 
     return entries
+
+
+def extend_with_entries_with_defaults(
+    with_entries: list[str | CustomStageInvocation],
+    args: WithArgs,
+) -> list[str | CustomStageInvocation]:
+    """Extend with-entry order to include config-provided built-in enrichments."""
+    expected_counts = {"--with-tags-as-category": 1 if args.with_tags_as_category else 0}
+
+    full_entries = list(with_entries)
+    for option_name, expected in expected_counts.items():
+        existing = sum(1 for entry in full_entries if entry == option_name)
+        missing = expected - existing
+        if missing > 0:
+            full_entries.extend([option_name] * missing)
+
+    return full_entries
 
 
 def count_filter_values(value: list[str] | None) -> int:
@@ -901,12 +927,17 @@ def _builtin_order_stages(value: str) -> list[str]:
     return order_stages.get(value, [])
 
 
-def build_with_stages(argv: list[str]) -> list[str]:
-    """Build query stages for custom enrichment pipeline."""
-    invocations = parse_with_entries_from_argv(argv)
+def build_with_stages(args: WithArgs, argv: list[str]) -> list[str]:
+    """Build query stages for built-in and custom enrichment pipeline."""
+    entries = parse_with_entries_from_argv(argv)
+    entries = extend_with_entries_with_defaults(entries, args)
     stages: list[str] = []
-    for invocation in invocations:
-        stages.append(_custom_stage(invocation.query, invocation.arg_value))
+    for entry in entries:
+        if isinstance(entry, CustomStageInvocation):
+            stages.append(_custom_stage(entry.query, entry.arg_value))
+            continue
+        if entry == "--with-tags-as-category" and args.with_tags_as_category:
+            stages.append("(if .tags | length > 0 then .heading_category = .tags[0] else null); .")
     return stages
 
 
@@ -921,7 +952,7 @@ def collect_custom_context_vars(
 
 
 def build_query_text(
-    args: FilterArgs,
+    args: QueryBuildArgs,
     argv: list[str],
     include_ordering: bool,
     include_slice: bool,
@@ -932,7 +963,7 @@ def build_query_text(
     filter_order = parse_filter_entries_from_argv(argv)
     filter_order = extend_filter_order_with_defaults(filter_order, args)
     filter_stages = build_filter_stages(args, filter_order)
-    with_stages = build_with_stages(argv)
+    with_stages = build_with_stages(args, argv)
 
     stages = [*with_stages, *filter_stages]
     stages.extend(build_order_stages(args, argv, include_builtin_ordering=include_ordering))
@@ -946,7 +977,7 @@ def build_query_text(
 
 
 def build_query(
-    args: FilterArgs,
+    args: QueryBuildArgs,
     argv: list[str],
     include_ordering: bool,
     include_slice: bool,
@@ -1071,14 +1102,13 @@ def resolve_exclude_set(args: object) -> set[str]:
     return config_module.load_exclude_list(exclude_file) or DEFAULT_EXCLUDE
 
 
-class DataLoadArgs(FilterArgs, Protocol):
+class DataLoadArgs(QueryBuildArgs, Protocol):
     """Protocol for loading and preprocessing data."""
 
     files: list[str] | None
     todo_states: str
     done_states: str
     width: int | None
-    with_tags_as_category: bool
 
 
 class SlicedDataLoadArgs(Protocol):
@@ -1136,9 +1166,6 @@ def load_and_process_data(
         normalized_files, todo_states, done_states
     )
     nodes = [node for root in roots for node in list(root)]
-
-    if args.with_tags_as_category:
-        nodes = preprocess_tags_as_category(nodes)
 
     include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
     query = build_query(

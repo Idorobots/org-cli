@@ -3938,10 +3938,51 @@ Add two extra query language functions that work on collections:
 
 These functions will usually be used as a processing step, i.e.: ~[false, true] | any~ or ~["foo", "bar"] | map(. | type == "string") | all~.
 
-*** TODO Replace --with-tags-as-category
+*** DONE Replace --with-tags-as-category
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 22:50] \\
+  c
+:END:
 Please replace the current implementation of =--with-tags-as-category= with the following query stage: ~(if .tags | length > 0 then .heading_category = .tags[0] else null); .~
 
 This CLI switch should be handled the same way as built-in filters and orderings in cli_common module.
+*** DONE src/org/cli_common.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 23:01]
+:END:
+
+In file src/org/cli_common.py around line 232, near the ~WITH_OPTIONS_FLAGS = {~
+
+#+begin_example
++WITH_OPTION_TO_STAGE = {
++    "--with-tags-as-category": "(if .tags | length > 0 then .heading_category = .tags[0] else null); .",
++}
+#+end_example
+
+Please make that more uniform with what is done for the filters (i.e. a full function that builds the stage). We anticipate more complicated with-enrichments to come.
+
+*** DONE src/org/cli_common.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 23:03]
+:END:
+
+In file src/org/cli_common.py around line 681, near the ~def extend_with_entries_with_defaults(~
+
+#+begin_example
++def _with_stage(arg_name: str, args: WithArgs) -> str | None:
++    """Build one query stage for a built-in enrichment option occurrence."""
++    if arg_name == "--with-tags-as-category" and args.with_tags_as_category:
++        return "(if .tags | length > 0 then .heading_category = .tags[0] else null); ."
++    return None
+#+end_example
+
+Inline this in the only call site there is for this function.
 *** TODO Filtering, ordering & enrichments
 - [ ] Use mutation for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
 - [X] Use mutation for property additions

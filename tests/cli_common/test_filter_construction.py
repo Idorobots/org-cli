@@ -174,6 +174,35 @@ def test_build_query_text_with_property_filter() -> None:
     assert query == '[ .[] | select(.properties["priority"] == "A") ]'
 
 
+def test_build_query_text_with_builtin_with_tags_as_category_stage() -> None:
+    """Built-in with-tags-as-category switch should add its query stage."""
+    from org.cli_common import build_query_text
+
+    args = make_args(with_tags_as_category=True)
+    argv = ["org", "stats", "summary", "--with-tags-as-category", "file.org"]
+
+    query = build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+    assert query == (
+        "[ .[] | (if .tags | length > 0 then .heading_category = .tags[0] else null); . ]"
+    )
+
+
+def test_build_query_text_with_tags_as_category_default_appended_when_missing_in_argv() -> None:
+    """Default with-tags-as-category should be appended when omitted from argv."""
+    from org.cli_common import build_query_text
+
+    args = make_args(with_tags_as_category=True, filter_tags=["work"])
+    argv = ["org", "stats", "summary", "--filter-tag", "work", "file.org"]
+
+    query = build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+    assert query == (
+        "[ .[] | (if .tags | length > 0 then .heading_category = .tags[0] else null); . "
+        '| select(.tags[] matches "work") ]'
+    )
+
+
 def test_build_query_text_with_filter_completed() -> None:
     """Completed filter should include repeated task completion states."""
     from org.cli_common import build_query_text
@@ -313,6 +342,36 @@ def test_build_query_text_custom_with_before_filters(monkeypatch: pytest.MonkeyP
 
     assert query.startswith('[ .[] | let "one" as $arg in (. + {"x": $arg}) | ')
     assert "| let null as $arg in (select(.tag != null)) |" in query
+
+
+def test_build_query_text_with_builtin_and_custom_with_stages_follow_argv_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Built-in and custom with stages should preserve CLI order."""
+    from org import config
+    from org.cli_common import build_query_text
+
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {"mark": '. + {"x": $arg}'})
+
+    args = make_args(with_tags_as_category=True, files=["file.org"])
+    argv = [
+        "org",
+        "tasks",
+        "list",
+        "--with-mark",
+        "one",
+        "--with-tags-as-category",
+        "file.org",
+    ]
+
+    query = build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+    assert query == (
+        '[ .[] | let "one" as $arg in (. + {"x": $arg}) '
+        "| (if .tags | length > 0 then .heading_category = .tags[0] else null); . ]"
+    )
 
 
 def test_build_query_text_custom_ordering_for_stats(monkeypatch: pytest.MonkeyPatch) -> None:
