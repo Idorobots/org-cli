@@ -17,8 +17,6 @@
   "with": {
     "numeric-gamify-exp": "(let .properties as $p in (if $p.gamify_exp then $p.gamify_exp = int($p.gamify_exp | match(\"^\\\\s*([+-]?[0-9]+)\\\\s*|\\\\(\\\\s*([+-]?[0-9]+)\\\\s+[+-]?[0-9]+\\\\s*\\\\)$\") as $m | $m[1] or $m[2]) else $p)); .",
 
-    "gamify-category": "(let .properties as $p in (if $p.gamify_exp then .heading_category = (if $p.gamify_exp < 10 then \"simple\" elif $p.gamify_exp >= 20 then \"hard\" else \"regular\") else .heading_category = \"regular\")); .",
-
-    "tags-as-category2": "(if .tags | length > 0 then .heading_category = [.tags[]][0] else null); ."
+    "gamify-category": "(let .properties as $p in (if $p.gamify_exp then .heading_category = (if $p.gamify_exp < 10 then \"simple\" elif $p.gamify_exp >= 20 then \"hard\" else \"regular\") else .heading_category = \"regular\")); ."
   }
 }
