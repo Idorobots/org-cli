@@ -247,6 +247,23 @@ def test_runtime_map_function() -> None:
     assert result == [[2, 4, 6]]
 
 
+def test_runtime_any_and_all_functions() -> None:
+    """any/all should evaluate collection truthiness as aggregate predicates."""
+    any_true = _execute("any", [False, True], None)
+    any_false = _execute("any", [False, 0, "", None], None)
+    all_true = _execute('map(. | type == "str") | all', ["foo", "bar"], None)
+    all_false = _execute("all", [True, 1, 0], None)
+    all_empty = _execute("all", [], None)
+    any_empty = _execute("any", [], None)
+
+    assert any_true == [True]
+    assert any_false == [False]
+    assert all_true == [True]
+    assert all_false == [False]
+    assert all_empty == [True]
+    assert any_empty == [False]
+
+
 def test_runtime_numeric_operators_and_slice_expression() -> None:
     """Arithmetic operators and dynamic slice bounds should work."""
     numeric = _execute("2 ** 3, 8 / 2, 7 mod 3, -7 rem 3, -7 quot 3", [None], None)
@@ -764,8 +781,9 @@ def test_runtime_comparison_operators_with_null_for_any_type() -> None:
 
 def test_runtime_function_arity_validation_for_no_arg_functions() -> None:
     """No-argument functions should reject unexpected argument expressions."""
-    with pytest.raises(QueryRuntimeError):
-        _execute("reverse(1)", [None], None)
+    for function_name in ["reverse", "any", "all"]:
+        with pytest.raises(QueryRuntimeError):
+            _execute(f"{function_name}(1)", [None], None)
 
 
 @pytest.mark.parametrize("function_name", ["select", "sort_by", "join", "map", "not"])
@@ -793,6 +811,13 @@ def test_runtime_map_requires_collection_input() -> None:
     """map should reject scalar inputs."""
     with pytest.raises(QueryRuntimeError):
         _execute("map(.)", 1, None)
+
+
+@pytest.mark.parametrize("function_name", ["any", "all"])
+def test_runtime_any_and_all_require_collection_input(function_name: str) -> None:
+    """any/all should reject scalar inputs."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(function_name, 1, None)
 
 
 def test_runtime_sort_by_requires_uniform_key_type() -> None:

@@ -38,6 +38,8 @@ from org.query_language.errors import QueryParseError
 
 KNOWN_FUNCTIONS = {
     "analyze",
+    "all",
+    "any",
     "bool",
     "float",
     "int",

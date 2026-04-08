@@ -43,6 +43,8 @@ from org.query_language.errors import QueryParseError
         "select((.depndencies[] | length) == 0)",
         ".[1:1 + $limit]",
         "sum",
+        "any",
+        "all",
         "max",
         "min",
         'join(",")',

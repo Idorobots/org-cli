@@ -114,6 +114,8 @@ Some functions are no-arg and are written without parentheses:
 reverse
 length
 sum
+any
+all
 ```
 
 ### Tuple expression
@@ -470,6 +472,27 @@ join(",")              # ["a","b","c"] => "a,b,c"
 
 ```text
 map(. * 2)             # [1,2,3] => [2,4,6]
+```
+
+### `any`
+
+- No args.
+- Expects collection input.
+- Returns `true` if any member is truthy.
+
+```text
+any                    # [false,true] => true
+```
+
+### `all`
+
+- No args.
+- Expects collection input.
+- Returns `true` if all members are truthy.
+- For empty collections returns `true`.
+
+```text
+["foo", "bar"] | map(. | type == "str") | all   # => true
 ```
 
 ### `type`

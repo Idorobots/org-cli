@@ -3928,6 +3928,20 @@ In file src/org/query_language/runtime.py around line 277, near the ~def _evalua
 #+end_example
 
 Not a great condition, especially for attributes accepting strings and =RichText=.
+*** DONE Query language any() & all()
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 22:35]
+:END:
+Add two extra query language functions that work on collections:
+- =any= - returns truthy value if any members of the collection passed to it are truthy
+- =all= - returns a truthy value if all members of the collection passed to it are truthy
+
+These functions will usually be used as a processing step, i.e.: ~[false, true] | any~ or ~["foo", "bar"] | map(. | type == "string") | all~.
+
+*** TODO Replace --with-tags-as-category
+Please replace the current implementation of =--with-tags-as-category= with the following query stage: ~(if .tags | length > 0 then .heading_category = .tags[0] else null); .~
+
+This CLI switch should be handled the same way as built-in filters and orderings in cli_common module.
 *** TODO Filtering, ordering & enrichments
 - [ ] Use mutation for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
 - [X] Use mutation for property additions

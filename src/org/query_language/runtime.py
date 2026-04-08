@@ -846,6 +846,8 @@ def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext)
     """Evaluate built-in function call expression."""
     no_arg_functions: dict[str, Callable[[Stream], Stream]] = {
         "analyze": _func_analyze,
+        "all": _func_all,
+        "any": _func_any,
         "reverse": _func_reverse,
         "unique": _func_unique,
         "length": _func_length,
@@ -1250,6 +1252,24 @@ def _func_sum(stream: Stream) -> Stream:
     for value in stream:
         values = _extract_numeric_collection(value)
         output.append(sum(values))
+    return output
+
+
+def _func_any(stream: Stream) -> Stream:
+    """Return whether any value in each collection is truthy."""
+    output = _stream()
+    for value in stream:
+        collection = _extract_collection(value)
+        output.append(any(bool(item) for item in collection))
+    return output
+
+
+def _func_all(stream: Stream) -> Stream:
+    """Return whether all values in each collection are truthy."""
+    output = _stream()
+    for value in stream:
+        collection = _extract_collection(value)
+        output.append(all(bool(item) for item in collection))
     return output
 
 

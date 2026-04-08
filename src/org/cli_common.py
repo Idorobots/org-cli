@@ -731,11 +731,18 @@ def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
             "select(.repeats + .deadline + .closed + .scheduled "
             f"| max <= timestamp({timestamp_value}))"
         )
-    # FIXME These two should also modify the .repeats property when mutation is added.
     elif arg_name == "--filter-completed" and args.filter_completed:
-        stage = "select(((.repeats | map(.after)) + .todo)[] in $done_states)"
+        stage = (
+            "select(if .repeats | length > 0"
+            " then .repeats | map(.is_completed) | any else .is_completed)"
+            " | .repeats = [.repeats[] | select(.is_completed)]; . "
+        )
     elif arg_name == "--filter-not-completed" and args.filter_not_completed:
-        stage = "select(not(((.repeats | map(.after)) + .todo)[] in $done_states))"
+        stage = (
+            "select(if .repeats | length > 0"
+            " then not(.repeats | map(.is_completed) | any) else not(.is_completed))"
+            " | .repeats = [.repeats[] | select(not(.is_completed))]; . "
+        )
     return stage
 
 

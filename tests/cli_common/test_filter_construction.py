@@ -183,7 +183,10 @@ def test_build_query_text_with_filter_completed() -> None:
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
-    assert query == ("[ .[] | select(((.repeats | map(.after)) + .todo)[] in $done_states) ]")
+    assert query == (
+        "[ .[] | select(if .repeats | length > 0 then .repeats | map(.is_completed) | any else .is_completed) "
+        "| .repeats = [.repeats[] | select(.is_completed)]; .  ]"
+    )
 
 
 def test_build_query_text_with_filter_not_completed() -> None:
@@ -195,7 +198,10 @@ def test_build_query_text_with_filter_not_completed() -> None:
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
-    assert query == ("[ .[] | select(not(((.repeats | map(.after)) + .todo)[] in $done_states)) ]")
+    assert query == (
+        "[ .[] | select(if .repeats | length > 0 then not(.repeats | map(.is_completed) | any) else not(.is_completed)) "
+        "| .repeats = [.repeats[] | select(not(.is_completed))]; .  ]"
+    )
 
 
 def test_build_query_logs_query_before_compile(caplog: pytest.LogCaptureFixture) -> None:
