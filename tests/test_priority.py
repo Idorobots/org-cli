@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from rich.text import Text
+
 from org.analyze import compute_priority_histogram
+from org.histogram import visual_len
 from org.tui import TaskLineConfig, format_task_line
 from tests.conftest import node_from_org
 
@@ -147,3 +150,85 @@ def test_format_task_line_with_priority_and_tags() -> None:
     assert "[#B]" in line
     assert ":TAG1:" in line
     assert "TODO" in line
+
+
+def test_format_task_line_renders_org_rich_text_title_content() -> None:
+    """Short task list title should render from rich title parts."""
+    nodes = node_from_org(
+        """
+* TODO *Bold* /Italic/ _Underline_ +Strike+ =Verbatim= ~InlineCode~ src_python{1+1} call_fn(1)
+"""
+    )
+
+    line = format_task_line(
+        nodes[0],
+        TaskLineConfig(
+            color_enabled=False,
+            done_states=["DONE"],
+            todo_states=["TODO"],
+        ),
+    )
+
+    assert "Bold" in line and "*Bold*" not in line
+    assert "Italic" in line and "/Italic/" not in line
+    assert "Underline" in line and "_Underline_" not in line
+    assert "Strike" in line and "+Strike+" not in line
+    assert "Verbatim" in line and "=Verbatim=" not in line
+    assert "InlineCode" in line and "~InlineCode~" not in line
+    assert "src_python{1+1}" in line
+    assert "call_fn(1)" in line
+
+
+def test_format_task_line_supports_links_and_preserves_sub_superscript_literals() -> None:
+    """Task list titles should include links and literal sub/superscript text."""
+    nodes = node_from_org(
+        """
+* TODO [[https://example.com/docs][Docs]] and https://example.com x^{2} H_{2}O
+"""
+    )
+
+    plain_line = format_task_line(
+        nodes[0],
+        TaskLineConfig(
+            color_enabled=False,
+            done_states=["DONE"],
+            todo_states=["TODO"],
+        ),
+    )
+    color_line = format_task_line(
+        nodes[0],
+        TaskLineConfig(
+            color_enabled=True,
+            done_states=["DONE"],
+            todo_states=["TODO"],
+        ),
+    )
+
+    assert "Docs" in plain_line
+    assert "[[https://example.com/docs][Docs]]" not in plain_line
+    assert "https://example.com" in plain_line
+    assert "x^{2}" in plain_line
+    assert "H_{2}O" in plain_line
+    assert "[link " in color_line
+
+
+def test_format_task_line_keeps_tag_alignment_with_rich_markup_heading() -> None:
+    """Rich-marked headings should align tags by visual width."""
+    nodes = node_from_org(
+        """
+* TODO 修正 *太字タイトル* の確認 :開発:
+"""
+    )
+
+    line = format_task_line(
+        nodes[0],
+        TaskLineConfig(
+            color_enabled=True,
+            done_states=["DONE"],
+            todo_states=["TODO"],
+            line_width=50,
+        ),
+    )
+
+    assert visual_len(line) == 50
+    assert Text.from_markup(line).plain.endswith(":開発:")

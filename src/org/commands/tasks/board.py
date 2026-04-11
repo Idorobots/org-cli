@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import typer
 from org_parser.document import Heading
 from rich import box
+from rich.cells import cell_len
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -16,8 +17,8 @@ from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
-from org.color import bright_blue, dim_white, escape_text, get_state_color
-from org.tui import build_console, processing_status, setup_output
+from org.color import escape_text, get_state_color
+from org.tui import build_console, heading_title_to_text, processing_status, setup_output
 
 
 @dataclass
@@ -82,39 +83,56 @@ def _state_prefix(
     done_states: list[str],
     todo_states: list[str],
     color_enabled: bool,
-) -> str:
-    """Build a colored state prefix string for a task panel title line."""
+) -> Text:
+    """Build a state prefix text fragment for a task panel title line."""
     state = node.todo or ""
     if not state:
-        return ""
+        return Text("")
     style = get_state_color(state, done_states, todo_states, color_enabled)
-    safe_state = escape_text(state, color_enabled)
     if color_enabled and style:
-        return f"[{style}]{safe_state}[/] "
-    return f"{safe_state} "
+        return Text(f"{state} ", style=style)
+    return Text(f"{state} ")
+
+
+def _task_metadata_text(node: Heading, color_enabled: bool) -> Text:
+    """Build priority and tags metadata text for one task panel."""
+    meta = Text("")
+
+    if node.priority:
+        if color_enabled:
+            meta.append(f"[#{node.priority}]", style="bold blue")
+        else:
+            meta.append(f"[#{node.priority}]")
+
+    if node.tags:
+        if meta.plain:
+            meta.append(" ")
+        tags_text = f":{':'.join(sorted(node.tags))}:"
+        if color_enabled:
+            meta.append(tags_text, style="dim white")
+        else:
+            meta.append(tags_text)
+
+    return meta
 
 
 def _build_task_panel(node: Heading, render: _PanelRenderConfig) -> Panel:
     """Build a visual panel for one task."""
-    heading = node.title_text if node.title_text else ""
-    content = escape_text(heading, render.color_enabled)
+    content = Text("")
 
     if render.coalesce_completed and node.todo and node.todo in render.done_states:
-        prefix = _state_prefix(node, render.done_states, render.todo_states, render.color_enabled)
-        content = f"{prefix}{content}"
+        content.append_text(
+            _state_prefix(node, render.done_states, render.todo_states, render.color_enabled)
+        )
 
-    priority_text = f"[#{node.priority}]" if node.priority else ""
-    tags_text = f":{':'.join(sorted(node.tags))}:" if node.tags else ""
-    if priority_text and tags_text:
-        meta = f"{bright_blue(priority_text, render.color_enabled)} {dim_white(tags_text, render.color_enabled)}"
-        content = f"{content}\n{meta}"
-    elif priority_text:
-        content = f"{content}\n{bright_blue(priority_text, render.color_enabled)}"
-    elif tags_text:
-        content = f"{content}\n{dim_white(tags_text, render.color_enabled)}"
+    content.append_text(heading_title_to_text(node))
 
-    text = Text.from_markup(content) if render.color_enabled else Text(content)
-    return Panel(text, expand=True, box=box.ROUNDED, padding=(0, 1))
+    meta = _task_metadata_text(node, render.color_enabled)
+    if meta.plain:
+        content.append("\n")
+        content.append_text(meta)
+
+    return Panel(content, expand=True, box=box.ROUNDED, padding=(0, 1))
 
 
 def _completed_header_state(done_states: list[str]) -> str:
@@ -214,8 +232,8 @@ def _resolve_tasks_limit(max_results: int | None) -> int:
 
 def _task_panel_height(node: Heading, width: int) -> int:
     """Estimate panel height for one task card."""
-    heading = node.title_text if node.title_text else ""
-    heading_lines = max(1, math.ceil(len(heading) / max(1, width)))
+    heading_width = cell_len(heading_title_to_text(node).plain)
+    heading_lines = max(1, math.ceil(heading_width / max(1, width)))
     has_metadata = bool(node.priority or node.tags)
     return heading_lines + (1 if has_metadata else 0) + 2
 

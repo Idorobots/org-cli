@@ -3494,7 +3494,7 @@ In file src/org/query_language/runtime.py around line 937, near the body of ~def
 
 =OrgRootNode= is not a subclass of =OrgNode= so there's no need for this if clause. Please remove it.
 
-** REWORKED Kanband board
+** REWORKED Kanband board                                                                      :TUI:
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-03-16 Mon 13:07] \\
   Needed some work, didn't exactly one-shot it.
@@ -3695,7 +3695,10 @@ In file src/org/commands/tasks/board.py around line 318, near the ~new file   sr
 #+end_example
 
 All of this processing should be done as part of the processing block.
-** TODO Mutable parse tree
+** DONE Mutable parse tree                                                             :Cleanup:CLI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-11 Sat 15:19]
+:END:
 *** DONE Use org-parser
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-04-06 Mon 15:31]
@@ -3997,23 +4000,21 @@ Do the same for unused ordering functions and enrichments. Remove tests that wer
 - [X] Use mutation for property additions
 - [X] Use mutation for numeric gamify exp
 
-*** org_parser.text.RichText rendering support
-Mostly for short-form tasks lists.
+*** DONE =org_parser.text.RichText= *rendering* +support+
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-11 Sat 15:18]
+:END:
+Update the rendering of the short-form task list heading titles to use the =title= rich-text property. That =org_parser= format should be translated to Rich's own rich text markup with support for bold, itallic, underline, strikethrough and verbatim text.
+Additionally:
+- Inline code should be presented as verbatim text.
+- Inline code blocks content should be rendered as verbatim text.
+- Inline bable call blocks should be rendered as verbatim text.
+- If Rich supports rendering links, that should also be supported.
+- If Rich supports super/subscripts then that should also be supported.
 
-** Agenda command
-Like Org Agenta, but CLI.
+Make sure that the text is aligned to the visual length, not the markup-length.
 
-- accept a date, default to today
-- select what the agenda shows, exclusions for deadlines, overdue etc.
-
-- Tasks to do on a given day including timestamp, state, heading and tags.
-- Tasks done on a given day
-- Tasks that are overdue
-- Deadlines that are overdue
-- Upcomming deadlines
-
-- ability to refile tasks to another file
-
+The same rich text rendering logic should be applied to the task board command. Each panel should render the rich-text in Rich.
 ** Tasks CRUD
 *** Tasks C**D
 - Adding new nodes
@@ -4028,6 +4029,20 @@ Like Org Agenta, but CLI.
 - Setting properties
 - Modifying the heading
 - Modifying the body
+
+** Agenda command
+Like Org Agenta, but CLI.
+
+- accept a date, default to today
+- select what the agenda shows, exclusions for deadlines, overdue etc.
+
+- Tasks to do on a given day including timestamp, state, heading and tags.
+- Tasks done on a given day
+- Tasks that are overdue
+- Deadlines that are overdue
+- Upcomming deadlines
+
+- ability to refile tasks to another file
 
 ** Workflow command
 
