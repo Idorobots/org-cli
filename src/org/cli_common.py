@@ -12,14 +12,12 @@ from pathlib import Path
 from typing import Protocol, cast
 
 import click
-import orgparse
 import typer
+from org_parser import Document
+from org_parser.document import Heading
 
 from org import config as config_module
 from org.analyze import TimeRange, normalize
-from org.filters import (
-    preprocess_tags_as_category,
-)
 from org.parse import load_root_nodes
 from org.query_language import (
     EvalContext,
@@ -144,6 +142,16 @@ class FilterArgs(Protocol):
     filter_not_completed: bool
 
 
+class WithArgs(Protocol):
+    """Protocol for built-in enrichment CLI arguments."""
+
+    with_tags_as_category: bool
+
+
+class QueryBuildArgs(FilterArgs, WithArgs, Protocol):
+    """Protocol for arguments used to build query pipelines."""
+
+
 def is_valid_regex(pattern: str, use_multiline: bool = False) -> bool:
     """Check if a string is a valid regex pattern."""
     try:
@@ -172,7 +180,7 @@ def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
     return (top_day.isoformat(), max_count)
 
 
-def get_most_recent_timestamp(node: orgparse.node.OrgNode) -> datetime | None:
+def get_most_recent_timestamp(node: Heading) -> datetime | None:
     """Get the most recent timestamp from a node.
 
     Args:
@@ -185,9 +193,7 @@ def get_most_recent_timestamp(node: orgparse.node.OrgNode) -> datetime | None:
     return max(timestamps) if timestamps else None
 
 
-def get_top_tasks(
-    nodes: list[orgparse.node.OrgNode], max_results: int
-) -> list[orgparse.node.OrgNode]:
+def get_top_tasks(nodes: list[Heading], max_results: int) -> list[Heading]:
     """Get top N nodes sorted by most recent timestamp.
 
     Args:
@@ -197,7 +203,7 @@ def get_top_tasks(
     Returns:
         List of nodes sorted by most recent timestamp (descending)
     """
-    nodes_with_timestamps: list[tuple[orgparse.node.OrgNode, datetime]] = []
+    nodes_with_timestamps: list[tuple[Heading, datetime]] = []
     for node in nodes:
         timestamp = get_most_recent_timestamp(node)
         if timestamp:
@@ -256,20 +262,6 @@ class CustomStageInvocation:
     name: str
     query: str
     arg_value: object
-
-
-def parse_filter_order_from_argv(argv: list[str]) -> list[str]:
-    """Parse filter option order from command-line arguments."""
-    filter_order: list[str] = []
-    for token in argv:
-        if token in FILTER_OPTIONS_WITH_VALUE or token in FILTER_OPTIONS_FLAGS:
-            filter_order.append(token)
-            continue
-        for option_name in FILTER_OPTIONS_WITH_VALUE:
-            if token.startswith(f"{option_name}="):
-                filter_order.append(option_name)
-                break
-    return filter_order
 
 
 def _extract_option_token(token: str) -> str:
@@ -479,16 +471,6 @@ def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) ->
             raise _required_custom_arg_error(option)
 
 
-def parse_order_values_from_argv(argv: list[str]) -> list[str]:
-    """Extract built-in ordering values in command-line argument order."""
-    values: list[str] = []
-    for token in argv:
-        value = ORDER_BY_OPTION_TO_VALUE.get(token)
-        if value is not None:
-            values.append(value)
-    return values
-
-
 def parse_filter_entries_from_argv(
     argv: list[str],
 ) -> list[str | CustomStageInvocation]:
@@ -601,19 +583,21 @@ def parse_order_entries_from_argv(
 
 def parse_with_entries_from_argv(
     argv: list[str],
-) -> list[CustomStageInvocation]:
-    """Parse custom enrichment switch occurrences in argv order."""
-    entries: list[CustomStageInvocation] = []
+) -> list[str | CustomStageInvocation]:
+    """Parse built-in and custom enrichment switch occurrences in argv order."""
+    entries: list[str | CustomStageInvocation] = []
     index = 0
+    builtins = WITH_OPTIONS_FLAGS
     while index < len(argv):
         token = argv[index]
         option = _extract_option_token(token)
         if option in WITH_OPTIONS_FLAGS:
+            entries.append(option)
             index += 1
             continue
 
         name = _custom_option_name(option, "with")
-        if name is None or name not in config_module.CONFIG_CUSTOM_WITH:
+        if name is None or name not in config_module.CONFIG_CUSTOM_WITH or option in builtins:
             index += 1
             continue
 
@@ -646,6 +630,23 @@ def parse_with_entries_from_argv(
         index = consumed_index + 1
 
     return entries
+
+
+def extend_with_entries_with_defaults(
+    with_entries: list[str | CustomStageInvocation],
+    args: WithArgs,
+) -> list[str | CustomStageInvocation]:
+    """Extend with-entry order to include config-provided built-in enrichments."""
+    expected_counts = {"--with-tags-as-category": 1 if args.with_tags_as_category else 0}
+
+    full_entries = list(with_entries)
+    for option_name, expected in expected_counts.items():
+        existing = sum(1 for entry in full_entries if entry == option_name)
+        missing = expected - existing
+        if missing > 0:
+            full_entries.extend([option_name] * missing)
+
+    return full_entries
 
 
 def count_filter_values(value: list[str] | None) -> int:
@@ -700,6 +701,13 @@ def _quote_string(value: str) -> str:
     return json.dumps(value)
 
 
+def _timestamp_source_literal(value: str, arg_name: str) -> str:
+    """Quote one parsed date argument as org timestamp source."""
+    parsed = parse_date_argument(value, arg_name).replace(second=0, microsecond=0)
+    source = f"<{parsed:%Y-%m-%d %a %H:%M}>"
+    return _quote_string(source)
+
+
 def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
     """Build query stage for non-indexed filter options."""
     stage: str | None = None
@@ -709,27 +717,36 @@ def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
         stage = f"select(.level == {args.filter_level})"
     elif arg_name == "--filter-repeats-above" and args.filter_repeats_above is not None:
         threshold = args.filter_repeats_above
-        stage = f"select(.repeated_tasks | length > {threshold})"
+        stage = f"select(.repeats | length > {threshold})"
     elif arg_name == "--filter-repeats-below" and args.filter_repeats_below is not None:
         threshold = args.filter_repeats_below
-        stage = f"select(.repeated_tasks | length < {threshold})"
+        stage = f"select(.repeats | length < {threshold})"
     elif arg_name == "--filter-date-from" and args.filter_date_from is not None:
-        timestamp_value = _quote_string(args.filter_date_from)
+        timestamp_value = _timestamp_source_literal(args.filter_date_from, arg_name)
         stage = (
-            "select(.repeated_tasks + .deadline + .closed + .scheduled "
+            "select(.repeats + .deadline + .closed + .scheduled "
             f"| max >= timestamp({timestamp_value}))"
         )
     elif arg_name == "--filter-date-until" and args.filter_date_until is not None:
-        timestamp_value = _quote_string(args.filter_date_until)
+        timestamp_value = _timestamp_source_literal(args.filter_date_until, arg_name)
         stage = (
-            "select(.repeated_tasks + .deadline + .closed + .scheduled "
+            "select(.repeats + .deadline + .closed + .scheduled "
             f"| max <= timestamp({timestamp_value}))"
         )
-    # FIXME These two should also modify the .repeated_tasks property when mutation is added.
     elif arg_name == "--filter-completed" and args.filter_completed:
-        stage = "select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys)"
+        stage = (
+            "select(if .repeats | length > 0"
+            " then .repeats | map(.is_completed) + [.is_completed] | any"
+            " else .is_completed)"
+            " | .repeats = [.repeats[] | select(.is_completed)]; . "
+        )
     elif arg_name == "--filter-not-completed" and args.filter_not_completed:
-        stage = "select(not(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys))"
+        stage = (
+            "select(if .repeats | length > 0"
+            " then not(.repeats | map(.is_completed) + [.is_completed] | any)"
+            " else not(.is_completed))"
+            " | .repeats = [.repeats[] | select(not(.is_completed))]; . "
+        )
     return stage
 
 
@@ -768,7 +785,7 @@ def _indexed_filter_stage(
     ):
         pattern = args.filter_headings[index_trackers["heading"]]
         index_trackers["heading"] += 1
-        return f"select(.heading matches {_quote_string(pattern)})"
+        return f"select(.title_text matches {_quote_string(pattern)})"
 
     if (
         arg_name == "--filter-body"
@@ -777,7 +794,7 @@ def _indexed_filter_stage(
     ):
         pattern = f"(?m){args.filter_bodies[index_trackers['body']]}"
         index_trackers["body"] += 1
-        return f"select(.body matches {_quote_string(pattern)})"
+        return f"select(.body_text matches {_quote_string(pattern)})"
 
     return None
 
@@ -872,7 +889,7 @@ def build_order_stages(
 
 def _builtin_order_stages(value: str) -> list[str]:
     """Build query stages for one built-in ordering value."""
-    timestamp_key_expr = ".repeated_tasks + .deadline + .closed + .scheduled | max"
+    timestamp_key_expr = ".repeats + .deadline + .closed + .scheduled | max"
     order_stages: dict[str, list[str]] = {
         "file-order": ["."],
         "file-order-reversed": ["reverse"],
@@ -883,17 +900,22 @@ def _builtin_order_stages(value: str) -> list[str]:
             "reverse",
             f"sort_by(({timestamp_key_expr}) != null)",
         ],
-        "timestamp-desc": ["sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"],
+        "timestamp-desc": ["sort_by(.repeats + .deadline + .closed + .scheduled | max)"],
     }
     return order_stages.get(value, [])
 
 
-def build_with_stages(argv: list[str]) -> list[str]:
-    """Build query stages for custom enrichment pipeline."""
-    invocations = parse_with_entries_from_argv(argv)
+def build_with_stages(args: WithArgs, argv: list[str]) -> list[str]:
+    """Build query stages for built-in and custom enrichment pipeline."""
+    entries = parse_with_entries_from_argv(argv)
+    entries = extend_with_entries_with_defaults(entries, args)
     stages: list[str] = []
-    for invocation in invocations:
-        stages.append(_custom_stage(invocation.query, invocation.arg_value))
+    for entry in entries:
+        if isinstance(entry, CustomStageInvocation):
+            stages.append(_custom_stage(entry.query, entry.arg_value))
+            continue
+        if entry == "--with-tags-as-category" and args.with_tags_as_category:
+            stages.append("(if .tags | length > 0 then .heading_category = .tags[0] else null); .")
     return stages
 
 
@@ -908,7 +930,7 @@ def collect_custom_context_vars(
 
 
 def build_query_text(
-    args: FilterArgs,
+    args: QueryBuildArgs,
     argv: list[str],
     include_ordering: bool,
     include_slice: bool,
@@ -919,7 +941,7 @@ def build_query_text(
     filter_order = parse_filter_entries_from_argv(argv)
     filter_order = extend_filter_order_with_defaults(filter_order, args)
     filter_stages = build_filter_stages(args, filter_order)
-    with_stages = build_with_stages(argv)
+    with_stages = build_with_stages(args, argv)
 
     stages = [*with_stages, *filter_stages]
     stages.extend(build_order_stages(args, argv, include_builtin_ordering=include_ordering))
@@ -933,7 +955,7 @@ def build_query_text(
 
 
 def build_query(
-    args: FilterArgs,
+    args: QueryBuildArgs,
     argv: list[str],
     include_ordering: bool,
     include_slice: bool,
@@ -1058,15 +1080,13 @@ def resolve_exclude_set(args: object) -> set[str]:
     return config_module.load_exclude_list(exclude_file) or DEFAULT_EXCLUDE
 
 
-class DataLoadArgs(FilterArgs, Protocol):
+class DataLoadArgs(QueryBuildArgs, Protocol):
     """Protocol for loading and preprocessing data."""
 
     files: list[str] | None
-    todo_keys: str
-    done_keys: str
+    todo_states: str
+    done_states: str
     width: int | None
-    with_tags_as_category: bool
-    category_property: str
 
 
 class SlicedDataLoadArgs(Protocol):
@@ -1080,38 +1100,38 @@ class RootDataLoadArgs(Protocol):
     """Protocol for loading root nodes without filters or enrichment."""
 
     files: list[str] | None
-    todo_keys: str
-    done_keys: str
+    todo_states: str
+    done_states: str
     width: int | None
 
 
 def _resolve_and_load_roots(
     args: RootDataLoadArgs,
-) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+) -> tuple[list[Document], list[str], list[str]]:
     """Resolve inputs and load org roots after validating todo/done keys."""
-    todo_keys = validate_and_parse_keys(args.todo_keys, "--todo-keys")
-    done_keys = validate_and_parse_keys(args.done_keys, "--done-keys")
-    return _load_roots_for_inputs(args.files, todo_keys, done_keys)
+    todo_states = validate_and_parse_keys(args.todo_states, "--todo-states")
+    done_states = validate_and_parse_keys(args.done_states, "--done-states")
+    return _load_roots_for_inputs(args.files, todo_states, done_states)
 
 
 def _load_roots_for_inputs(
-    files: list[str] | None, todo_keys: list[str], done_keys: list[str]
-) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+    files: list[str] | None, todo_states: list[str], done_states: list[str]
+) -> tuple[list[Document], list[str], list[str]]:
     """Resolve file inputs and load all org root nodes."""
     filenames = resolve_input_paths(files)
-    return load_root_nodes(filenames, todo_keys, done_keys)
+    return load_root_nodes(filenames, todo_states, done_states)
 
 
 def load_root_data(
     args: RootDataLoadArgs,
-) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+) -> tuple[list[Document], list[str], list[str]]:
     """Load org root nodes without filters, enrichment, or ordering."""
     return _resolve_and_load_roots(args)
 
 
 def load_and_process_data(
     args: DataLoadArgs,
-) -> tuple[list[orgparse.node.OrgNode], list[str], list[str]]:
+) -> tuple[list[Heading], list[str], list[str]]:
     """Load nodes, preprocess, and apply query-based filters/ordering."""
     include_ordering = hasattr(args, "order_by_level")
     validate_custom_switches(sys.argv, include_ordering)
@@ -1119,12 +1139,11 @@ def load_and_process_data(
     normalized_files = normalize_cli_files_for_custom_switches(args.files)
     args.files = normalized_files
 
-    todo_keys, done_keys = validate_global_arguments(args)
-    roots, todo_keys, done_keys = _load_roots_for_inputs(normalized_files, todo_keys, done_keys)
-    nodes = [node for root in roots for node in root[1:]]
-
-    if args.with_tags_as_category:
-        nodes = preprocess_tags_as_category(nodes, args.category_property)
+    todo_states, done_states = validate_global_arguments(args)
+    roots, todo_states, done_states = _load_roots_for_inputs(
+        normalized_files, todo_states, done_states
+    )
+    nodes = [node for root in roots for node in list(root)]
 
     include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
     query = build_query(
@@ -1132,9 +1151,8 @@ def load_and_process_data(
     )
 
     context_vars: dict[str, object] = {
-        "todo_keys": todo_keys,
-        "done_keys": done_keys,
-        "category_property": args.category_property,
+        "todo_states": todo_states,
+        "done_states": done_states,
     }
     context_vars.update(collect_custom_context_vars(sys.argv, normalized_files, include_ordering))
     if include_slice:
@@ -1154,6 +1172,6 @@ def load_and_process_data(
         flattened = cast(list[object], results[0])
     else:
         flattened = list(results)
-    nodes = [value for value in flattened if isinstance(value, orgparse.node.OrgNode)]
+    nodes = [value for value in flattened if isinstance(value, Heading)]
 
-    return nodes, todo_keys, done_keys
+    return nodes, todo_states, done_states

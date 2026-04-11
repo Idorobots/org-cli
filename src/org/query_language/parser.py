@@ -38,6 +38,8 @@ from org.query_language.errors import QueryParseError
 
 KNOWN_FUNCTIONS = {
     "analyze",
+    "all",
+    "any",
     "bool",
     "float",
     "int",
@@ -58,7 +60,7 @@ KNOWN_FUNCTIONS = {
     "type",
     "timestamp",
     "clock",
-    "repeated_task",
+    "repeat",
     "uuid",
     "not",
     "debug",
@@ -385,20 +387,22 @@ def _sequence_builder(_operator: str, left: Expr, right: Expr) -> Expr:
     return Sequence(left, right)
 
 
-def _assignment_builder(_operator: str, left: Expr, right: Expr) -> Expr:
-    """Construct dictionary assignment expression."""
-    return _build_assignment_expr(left, right)
+def _assignment_builder(operator: str, left: Expr, right: Expr) -> Expr:
+    """Construct assignment expression."""
+    return _build_assignment_expr(operator, left, right)
 
 
-def _build_assignment_expr(left: Expr, right: Expr) -> Expr:
+def _build_assignment_expr(operator: str, left: Expr, right: Expr) -> Expr:
     """Build assignment expression from supported assignment targets."""
+    if operator not in {"=", "+=", "-="}:
+        raise QueryParseError(f"Unsupported assignment operator: {operator}")
     if isinstance(left, FieldAccess):
-        return DictAssignment(left.base, StringLiteral(left.field), right)
+        return DictAssignment(operator, left.base, StringLiteral(left.field), right)
     if isinstance(left, Index):
-        return DictAssignment(left.base, left.index_expr, right)
+        return DictAssignment(operator, left.base, left.index_expr, right)
     if isinstance(left, BracketFieldAccess):
-        return DictAssignment(left.base, left.key_expr, right)
-    raise QueryParseError("Assignment target must be .field or [<field-subquery>] access")
+        return DictAssignment(operator, left.base, left.key_expr, right)
+    raise QueryParseError("Assignment target must be .field or [<field-or-index-subquery>] access")
 
 
 def _make_parser() -> Parser:
@@ -483,7 +487,8 @@ def _make_parser() -> Parser:
 
     let_binding = _build_let_binding_parser(comma, expr, identifier)
     as_binding = _build_as_binding_parser(let_binding | comma, identifier)
-    assignment = _chain_right(as_binding, _symbol("="), _assignment_builder)
+    assignment_op = _lexeme(string("+=") | string("-=") | string("="))
+    assignment = _chain_right(as_binding, assignment_op, _assignment_builder)
     sequence = _chain_left(assignment, _symbol(";"), _sequence_builder)
     pipe = _chain_left(sequence, _symbol("|"), _pipe_builder)
 

@@ -33,26 +33,28 @@ from org.query_language.errors import QueryParseError
         '.properties["foo"]',
         ".[0]",
         ".[0:10]",
-        ".children[1:2].heading",
+        ".children[1:2].title_text",
         ".[]",
         ".[] | reverse",
         'select(.properties["gamify_exp"] > 10)',
         "sort_by(.latest_timestamp) | reverse",
-        'select(.heading == "ID", .properties[$id] == "ID") | .children',
+        'select(.title_text == "ID", .properties[$id] == "ID") | .children',
         ".children[] | sort_by(.level) | reverse | .[0:10]",
         "select((.depndencies[] | length) == 0)",
         ".[1:1 + $limit]",
         "sum",
+        "any",
+        "all",
         "max",
         "min",
         'join(",")',
         "map(. * 2)",
         "type",
         "timestamp(.closed)",
-        "clock(.closed, .scheduled, true)",
-        'repeated_task(.closed, .todo, "DONE", null)',
+        "clock(.closed)",
+        'repeat(.closed, .todo, "DONE", null)',
         'not(.todo == "DONE")',
-        "str(.heading)",
+        "str(.title_text)",
         'int("42")',
         'float("3.14")',
         'bool("true")',
@@ -64,14 +66,16 @@ from org.query_language.errors import QueryParseError
         "-1",
         "-.priority",
         "1 - -2",
-        "let .heading as $h in $h",
-        'if .todo == "DONE" then .heading else "pending"',
-        'if .todo == "DONE" then .heading elif .todo == "TODO" then "todo" else "pending"',
+        "let .title_text as $h in $h",
+        'if .todo == "DONE" then .title_text else "pending"',
+        'if .todo == "DONE" then .title_text elif .todo == "TODO" then "todo" else "pending"',
         ". as $root | $root[]",
         '[ .[] | select(.todo == "DONE") ] | .[10:20]',
         "[]",
         "[1, 2, 3]",
         '.properties["x"] = 1',
+        '.properties["x"] += 1',
+        '.properties["x"] -= 1',
         ".properties[$key] = 1",
         ".properties.x = 1",
         '.properties["x"] = 1; .properties["x"]',
@@ -115,14 +119,14 @@ def test_parse_as_binding_shape() -> None:
 
 def test_parse_let_binding_shape() -> None:
     """Parser should parse let-binding nodes."""
-    expr = parse_query("let .heading as $h in $h")
+    expr = parse_query("let .title_text as $h in $h")
     assert isinstance(expr, LetBinding)
     assert expr.name == "h"
 
 
 def test_parse_if_else_shape() -> None:
     """Parser should parse if-then-else nodes."""
-    expr = parse_query('if .todo == "DONE" then .heading else "pending"')
+    expr = parse_query('if .todo == "DONE" then .title_text else "pending"')
     assert isinstance(expr, IfElse)
 
 
@@ -144,7 +148,7 @@ def test_parse_unary_minus_shape() -> None:
 
 def test_parse_fold_shape() -> None:
     """Parser should parse fold expressions."""
-    expr = parse_query("[ .[] | .heading ]")
+    expr = parse_query("[ .[] | .title_text ]")
     assert isinstance(expr, Fold)
 
 
@@ -152,6 +156,7 @@ def test_parse_dict_assignment_shape() -> None:
     """Parser should parse dictionary assignment expressions."""
     expr = parse_query('.properties["done"] = true')
     assert isinstance(expr, DictAssignment)
+    assert expr.operator == "="
     assert isinstance(expr.base, FieldAccess)
     assert isinstance(expr.key_expr, StringLiteral)
     assert expr.key_expr.value == "done"
@@ -161,6 +166,7 @@ def test_parse_dict_assignment_dynamic_key_shape() -> None:
     """Parser should parse assignments with computed bracket keys."""
     expr = parse_query(".properties[$key] = true")
     assert isinstance(expr, DictAssignment)
+    assert expr.operator == "="
     assert isinstance(expr.base, FieldAccess)
     assert isinstance(expr.key_expr, Variable)
 
@@ -169,9 +175,24 @@ def test_parse_dict_assignment_dot_target_lowering_shape() -> None:
     """Parser should lower dot assignments into string-key assignments."""
     expr = parse_query(".properties.done = true")
     assert isinstance(expr, DictAssignment)
+    assert expr.operator == "="
     assert isinstance(expr.base, FieldAccess)
     assert isinstance(expr.key_expr, StringLiteral)
     assert expr.key_expr.value == "done"
+
+
+def test_parse_append_assignment_shape() -> None:
+    """Parser should parse append assignment operator."""
+    expr = parse_query('.properties["done"] += true')
+    assert isinstance(expr, DictAssignment)
+    assert expr.operator == "+="
+
+
+def test_parse_remove_assignment_shape() -> None:
+    """Parser should parse remove assignment operator."""
+    expr = parse_query('.properties["done"] -= true')
+    assert isinstance(expr, DictAssignment)
+    assert expr.operator == "-="
 
 
 def test_parse_sequence_shape() -> None:
@@ -196,7 +217,7 @@ def test_parse_none_literal_is_not_identifier_string() -> None:
         "a +",
         ". as root",
         "let . as root in .",
-        'if .todo == "DONE" then .heading',
+        'if .todo == "DONE" then .title_text',
         ".[] = 1",
     ],
 )
@@ -215,7 +236,7 @@ def test_parse_error_does_not_include_keyword_boundary_regex() -> None:
 
 def test_parse_error_includes_query_pointer() -> None:
     """Syntax errors should include query text and pointer."""
-    query = ".[][] | select(not(.todo in $done_keys) | .todo"
+    query = ".[][] | select(not(.todo in $done_states) | .todo"
     with pytest.raises(QueryParseError) as exc_info:
         parse_query(query)
 

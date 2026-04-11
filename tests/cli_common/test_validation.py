@@ -21,14 +21,14 @@ from org.validation import (
 
 def test_validate_and_parse_keys_rejects_empty() -> None:
     """validate_and_parse_keys should exit on empty values."""
-    with pytest.raises(typer.BadParameter, match="--todo-keys cannot be empty"):
-        validate_and_parse_keys("", "--todo-keys")
+    with pytest.raises(typer.BadParameter, match="--todo-states cannot be empty"):
+        validate_and_parse_keys("", "--todo-states")
 
 
 def test_validate_and_parse_keys_rejects_pipe() -> None:
     """validate_and_parse_keys should reject pipe characters."""
     with pytest.raises(typer.BadParameter, match="pipe character"):
-        validate_and_parse_keys("TODO|WAIT", "--todo-keys")
+        validate_and_parse_keys("TODO|WAIT", "--todo-states")
 
 
 def test_parse_date_argument_invalid_format() -> None:
@@ -46,8 +46,8 @@ def test_parse_property_filter_requires_equals() -> None:
 def test_validate_global_arguments_invalid_regex() -> None:
     """validate_global_arguments should reject invalid regex patterns."""
     args = SimpleNamespace(
-        todo_keys="TODO",
-        done_keys="DONE",
+        todo_states="TODO",
+        done_states="DONE",
         filter_tags=["["],
         filter_headings=None,
         filter_bodies=None,
@@ -99,8 +99,8 @@ def test_validate_stats_arguments_errors(override: str, message: str) -> None:
 def test_validate_global_arguments_rejects_too_small_width() -> None:
     """validate_global_arguments should reject widths below 50."""
     args = SimpleNamespace(
-        todo_keys="TODO",
-        done_keys="DONE",
+        todo_states="TODO",
+        done_states="DONE",
         filter_tags=None,
         filter_headings=None,
         filter_bodies=None,

@@ -8,8 +8,29 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
 
-import orgparse
+from org_parser.document import Heading
+from org_parser.text import (
+    AngleLink,
+    Bold,
+    Code,
+    InlineBabelCall,
+    InlineObject,
+    InlineSourceBlock,
+    Italic,
+    LineBreak,
+    PlainLink,
+    PlainText,
+    RegularLink,
+    RichText,
+    StrikeThrough,
+    Subscript,
+    Superscript,
+    Underline,
+    Verbatim,
+)
+from rich.cells import cell_len
 from rich.console import Console
+from rich.style import Style
 from rich.text import Text
 
 from org.analyze import Group, Tag, TimeRange
@@ -190,8 +211,8 @@ class TopTasksSectionConfig:
 
     max_results: int
     color_enabled: bool
-    done_keys: list[str]
-    todo_keys: list[str]
+    done_states: list[str]
+    todo_states: list[str]
     indent: str
     line_width: int | None = None
 
@@ -201,8 +222,8 @@ class TaskLineConfig:
     """Configuration for rendering a single task line."""
 
     color_enabled: bool
-    done_keys: list[str]
-    todo_keys: list[str]
+    done_states: list[str]
+    todo_states: list[str]
     line_width: int | None = None
 
 
@@ -215,6 +236,7 @@ class _TaskLineParts:
     colored_state: str
     priority_text: str
     heading: str
+    heading_text: Text
 
 
 def _truncate_filename(filename: str, width: int) -> str:
@@ -245,13 +267,112 @@ def _pad_to_visual_width(text: str, width: int) -> str:
     return f"{text}{' ' * missing_width}"
 
 
-def _build_task_line_parts(node: orgparse.node.OrgNode, config: TaskLineConfig) -> _TaskLineParts:
+def _render_text_for_output(text: Text, color_enabled: bool) -> str:
+    """Render Rich Text either as markup or plain string."""
+    if color_enabled:
+        return text.markup
+    return text.plain
+
+
+def _truncate_rich_text_to_visual_width(text: Text, max_width: int) -> Text:
+    """Truncate Rich Text to visual width while preserving style spans."""
+    if max_width <= 0:
+        return Text("")
+    truncated = text.copy()
+    truncated.truncate(max_width, overflow="crop")
+    return truncated
+
+
+def _append_styled_inline_body(output: Text, body: list[InlineObject], style: str) -> None:
+    """Append inline body and apply one style span over it."""
+    start = len(output)
+    output.append_text(_inline_parts_to_text(body))
+    if len(output) > start:
+        output.stylize(style, start, len(output))
+
+
+def _append_link_text(output: Text, link_text: Text, target: str) -> None:
+    """Append link text and annotate it with a Rich link target."""
+    start = len(output)
+    output.append_text(link_text)
+    if target and len(output) > start:
+        output.stylize(Style(link=target), start, len(output))
+
+
+def _append_regular_link(output: Text, link: RegularLink) -> None:
+    """Append one regular link object."""
+    target = link.path
+    if link.description is None:
+        link_text = Text(target)
+    else:
+        link_text = _inline_parts_to_text(link.description)
+    _append_link_text(output, link_text, target)
+
+
+_STYLE_BY_MARKUP_TYPE: dict[type[InlineObject], str] = {
+    Bold: "bold",
+    Italic: "italic",
+    Underline: "underline",
+    StrikeThrough: "strike",
+}
+
+
+def _append_inline_part(output: Text, part: InlineObject) -> None:
+    """Append one org_parser inline object as Rich text."""
+    if isinstance(part, PlainText):
+        output.append(part.text)
+    elif isinstance(part, Bold | Italic | Underline | StrikeThrough):
+        style = _STYLE_BY_MARKUP_TYPE[type(part)]
+        _append_styled_inline_body(output, part.body, style)
+    elif isinstance(part, Verbatim | Code):
+        output.append(part.body, style="dim")
+    elif isinstance(part, InlineSourceBlock | InlineBabelCall):
+        output.append(str(part), style="dim")
+    elif isinstance(part, RegularLink):
+        _append_regular_link(output, part)
+    elif isinstance(part, PlainLink):
+        target = f"{part.link_type}:{part.path}"
+        _append_link_text(output, Text(target), target)
+    elif isinstance(part, AngleLink):
+        target = f"{part.link_type}:{part.path}" if part.link_type else part.path
+        _append_link_text(output, Text(target), target)
+    elif isinstance(part, Superscript | Subscript | LineBreak):
+        output.append(str(part))
+    else:
+        output.append(str(part))
+
+
+def _inline_parts_to_text(parts: list[InlineObject]) -> Text:
+    """Convert org_parser inline objects into Rich Text spans."""
+    output = Text()
+    for part in parts:
+        _append_inline_part(output, part)
+    return output
+
+
+def _heading_to_text(node: Heading) -> Text:
+    """Render heading title from rich title parts when available."""
+    title = getattr(node, "title", None)
+    if isinstance(title, RichText):
+        return _inline_parts_to_text(title.trimmed.parts)
+
+    heading = node.title_text.strip() if node.title_text else ""
+    return Text(heading)
+
+
+def heading_title_to_text(node: Heading) -> Text:
+    """Return heading title rendered as Rich Text spans."""
+    return _heading_to_text(node)
+
+
+def _build_task_line_parts(node: Heading, config: TaskLineConfig) -> _TaskLineParts:
     """Extract and format task line components."""
-    filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
+    filename = node.document.filename if node.document.filename else "<string>"
     filename_cell = _truncate_filename(filename, 15)
     colored_filename = dim_white(filename_cell, config.color_enabled)
     todo_state = node.todo if node.todo else ""
-    heading = node.heading if node.heading else ""
+    heading_text = heading_title_to_text(node)
+    heading = _render_text_for_output(heading_text, config.color_enabled)
     level = node.level if node.level is not None else 0
     level_prefix = "*" * level if level > 0 else ""
 
@@ -260,15 +381,12 @@ def _build_task_line_parts(node: orgparse.node.OrgNode, config: TaskLineConfig) 
         priority_display = f"[#{node.priority}]"
         priority_text = f" {bright_blue(priority_display, config.color_enabled)}"
 
-    if config.color_enabled:
-        heading = escape_text(heading, config.color_enabled)
-
     colored_state = ""
     if todo_state:
         state_style = get_state_color(
             todo_state,
-            config.done_keys,
-            config.todo_keys,
+            config.done_states,
+            config.todo_states,
             config.color_enabled,
         )
         if config.color_enabled and state_style:
@@ -276,7 +394,14 @@ def _build_task_line_parts(node: orgparse.node.OrgNode, config: TaskLineConfig) 
         else:
             colored_state = todo_state
 
-    return _TaskLineParts(colored_filename, level_prefix, colored_state, priority_text, heading)
+    return _TaskLineParts(
+        colored_filename,
+        level_prefix,
+        colored_state,
+        priority_text,
+        heading,
+        heading_text,
+    )
 
 
 def _format_line_with_parts(parts: _TaskLineParts) -> str:
@@ -299,7 +424,7 @@ def _resolve_task_line_width(config: TaskLineConfig, line: str) -> int:
 
 
 def _add_tags_to_line(
-    line: str, node: orgparse.node.OrgNode, parts: _TaskLineParts, config: TaskLineConfig
+    line: str, node: Heading, parts: _TaskLineParts, config: TaskLineConfig
 ) -> str:
     """Add tags to line with alignment and heading truncation."""
     sorted_tags = sorted(node.tags)
@@ -312,16 +437,23 @@ def _add_tags_to_line(
     available_space = line_width - tags_visual_len
 
     if line_visual_len > available_space:
-        heading_visual_len = visual_len(parts.heading)
+        heading_visual_len = cell_len(parts.heading_text.plain)
         target_heading_visual_len = heading_visual_len - (line_visual_len - available_space)
         if target_heading_visual_len > 0:
-            truncated_heading = _truncate_to_visual_width(parts.heading, target_heading_visual_len)
+            truncated_heading_text = _truncate_rich_text_to_visual_width(
+                parts.heading_text,
+                target_heading_visual_len,
+            )
+            truncated_heading = _render_text_for_output(
+                truncated_heading_text, config.color_enabled
+            )
             truncated_parts = _TaskLineParts(
                 parts.colored_filename,
                 parts.level_prefix,
                 parts.colored_state,
                 parts.priority_text,
                 truncated_heading,
+                truncated_heading_text,
             )
             line = _format_line_with_parts(truncated_parts)
 
@@ -333,7 +465,7 @@ def _add_tags_to_line(
 
 
 def format_task_line(
-    node: orgparse.node.OrgNode,
+    node: Heading,
     config: TaskLineConfig,
     indent: str = "",
 ) -> str:
@@ -511,7 +643,7 @@ def format_groups_section(
 
 
 def format_top_tasks_section(
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     config: TopTasksSectionConfig,
 ) -> str:
     """Return formatted output for the top tasks section."""
@@ -526,8 +658,8 @@ def format_top_tasks_section(
                 node,
                 TaskLineConfig(
                     color_enabled=config.color_enabled,
-                    done_keys=config.done_keys,
-                    todo_keys=config.todo_keys,
+                    done_states=config.done_states,
+                    todo_states=config.todo_states,
                     line_width=config.line_width,
                 ),
                 indent="  ",

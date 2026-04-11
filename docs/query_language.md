@@ -25,7 +25,7 @@ A query is an expression tree composed of these syntax classes:
 - **Function calls**: built-ins like `select(...)`, `sort_by(...)`, `sum`, `uuid`.
 - **Operators**: arithmetic, comparison, boolean, membership, regex match.
 - **Combinators**: tuple (`,`), variable binding (`as`), scoped binding (`let ... in`), conditional (`if ... then ... else ...`), pipeline (`|`), fold (`[ ... ]`).
-  sequencing (`;`), dictionary assignment (`=`, limited forms).
+  sequencing (`;`), assignment (`=`, `+=`, `-=`).
 
 ## 3) Syntax reference
 
@@ -51,11 +51,10 @@ Negative values use unary minus (`-subquery`), which is evaluated as `0 - subque
 
 Variables are referenced as `$name`.
 
-Common CLI-provided context variables include `$todo_keys`, `$done_keys`, `$offset`, `$limit`, and
-`$category_property`.
+Common CLI-provided context variables include `$todo_states`, `$done_states`, `$offset`, and `$limit`.
 
 ```text
-.[] | select(.todo in $done_keys)
+.[] | select(.todo in $done_states)
 ```
 
 ### Identity and grouping
@@ -73,7 +72,7 @@ Common CLI-provided context variables include `$todo_keys`, `$done_keys`, `$offs
 Dot field access:
 
 ```text
-.heading
+.title_text
 .properties.priority
 ```
 
@@ -105,7 +104,7 @@ Known functions can be called with `(...)` when they require arguments.
 
 ```text
 select(.todo == "DONE")
-sort_by(.heading)
+sort_by(.title_text)
 join(",")
 ```
 
@@ -115,6 +114,8 @@ Some functions are no-arg and are written without parentheses:
 reverse
 length
 sum
+any
+all
 ```
 
 ### Tuple expression
@@ -122,7 +123,7 @@ sum
 Comma builds tuples from expression outputs:
 
 ```text
-.todo, .heading
+.todo, .title_text
 ```
 
 ### Variable binding
@@ -139,7 +140,7 @@ Bind stage output to a variable:
 while evaluating the body, then restores/clears the variable afterwards.
 
 ```text
-let .heading as $h in ("The heading: " + $h)
+let .title_text as $h in ("The heading: " + $h)
 let "DONE" as $state in select(.todo == $state)
 ```
 
@@ -154,8 +155,8 @@ runs either branch based on truthiness.
 
 ```text
 2 | if . == 2 then "yes" else "no"
-.[] | if .todo == "DONE" then .heading else "pending"
-.[] | if .todo == "DONE" then .heading elif .todo == "TODO" then "todo" else "pending"
+.[] | if .todo == "DONE" then .title_text else "pending"
+.[] | if .todo == "DONE" then .title_text elif .todo == "TODO" then "todo" else "pending"
 ```
 
 ### Fold expression
@@ -163,35 +164,48 @@ runs either branch based on truthiness.
 `[ subquery ]` collects subquery output into a list, per input item.
 
 ```text
-[ .[] | .heading ]
+[ .[] | .title_text ]
 []
 ```
 
-### Dictionary assignment
+### Assignment
 
-Assignment is currently supported only for dictionary field writes:
+Assignment targets support field and bracket access forms:
 
-- `<subquery>.field = <value-subquery>`
-- `<subquery>[<field-subquery>] = <value-subquery>`
+- `<subquery>.field <op> <value-subquery>`
+- `<subquery>[<field-or-index-subquery>] <op> <value-subquery>`
+- Operators: `=`, `+=`, `-=`
 
-The target subquery must evaluate to dictionaries at runtime. For bracket assignment, the key subquery
-must evaluate to a string. Assignment mutates those dictionaries and returns the mutated dictionary
-stream.
+`=` writes a value and returns the modified field value.
+
+- For object-field writes, runtime first validates against property setter type annotations when available.
+- If setter type metadata is unavailable, object-field writes fall back to matching existing non-`null`
+  field value type.
+- For index writes, value type must match the existing non-`null` index value type.
+- For mapping/property writes (for example `.properties.foo`), assignment remains flexible and does not
+  enforce this type check.
+
+`+=` and `-=` mutate collection targets in place and return the modified collection.
+
+- `+=` appends one or more values.
+- `-=` removes matching values.
+- In-place collection mutation requires list/set target values.
 
 ```text
+.todo = "DONE"
 .properties.done = true
 .properties["priority"] = "A"
 .properties[$field_name] = "A"
+.tags += "new-tag"
+.properties["labels"] -= ["blocked"]
 ```
-
-No other assignment target forms are supported yet.
 
 ### Pipeline
 
 `left | right` feeds left output stream into right stage.
 
 ```text
-.[] | select(.todo == "DONE") | .heading
+.[] | select(.todo == "DONE") | .title_text
 ```
 
 ### Sequence
@@ -216,7 +230,7 @@ Highest to lowest:
 7. Boolean (`and`, `or`)
 8. Tuple (`,`)
 9. Binding (`as $name`)
-10. Assignment (`=`)
+10. Assignment (`=`, `+=`, `-=`)
 11. Sequence (`;`)
 12. Pipeline (`|`)
 
@@ -228,7 +242,7 @@ Examples below are minimal and syntactically valid. Output is shown as query-val
 
 - `==`, `!=`, `>`, `<`, `>=`, `<=`
 - Numeric and string operands compare directly.
-- When both operands are org date values (`OrgDate`, `OrgDateClock`, `OrgDateRepeatedTask`),
+- When both operands are org date values (`Timestamp`, `Clock`, `Repeat`),
   comparisons use their `start` values.
 - For ordering operators with `null`:
   - `a > null`, `a < null`, `null > a`, `null < a` are always `false`
@@ -238,7 +252,7 @@ Examples below are minimal and syntactically valid. Output is shown as query-val
 "b" > "a"             => true
 2 <= 2                => true
 .todo == "DONE"       => true/false per item
-timestamp("<2025-01-02 Thu>") < clock("<2025-01-03 Fri>", "<2025-01-03 Fri>") => true
+timestamp("<2025-01-02 Thu>") < clock("<2025-01-03 Fri>") => true
 timestamp("<2025-01-02 Thu>") > null => false
 null <= null => true
 1 >= null => false
@@ -249,7 +263,7 @@ null <= null => true
 - `left matches right` where both operands are strings.
 
 ```text
-.heading matches "^Fix"   => true/false
+.title_text matches "^Fix"   => true/false
 ```
 
 ### Membership
@@ -258,7 +272,7 @@ null <= null => true
 - Right side must be collection-like (`list`, `tuple`, `set`, `dict`, or `string`).
 
 ```text
-.todo in $done_keys
+.todo in $done_states
 "a" in "cat"             => true
 ```
 
@@ -342,7 +356,7 @@ bool("true")
 
 ### `ts(subquery)`
 
-- Converts each subquery result to `OrgDate`.
+- Converts each subquery result to `Timestamp`.
 - Accepts existing org-date values and org timestamp strings.
 
 ```text
@@ -439,7 +453,7 @@ min                    # ["z","a"] => "a"
 - Non-`null` keys must be one comparable category.
 
 ```text
-.[] | sort_by(.heading)         # ["b","a"] => ["b","a"] (desc)
+.[] | sort_by(.title_text)         # ["b","a"] => ["b","a"] (desc)
 ```
 
 ### `join(separator_expr)`
@@ -460,10 +474,31 @@ join(",")              # ["a","b","c"] => "a,b,c"
 map(. * 2)             # [1,2,3] => [2,4,6]
 ```
 
+### `any`
+
+- No args.
+- Expects collection input.
+- Returns `true` if any member is truthy.
+
+```text
+any                    # [false,true] => true
+```
+
+### `all`
+
+- No args.
+- Expects collection input.
+- Returns `true` if all members are truthy.
+- For empty collections returns `true`.
+
+```text
+["foo", "bar"] | map(. | type == "str") | all   # => true
+```
+
 ### `type`
 
 - No args.
-- Emits runtime type name (`null`, `int`, `str`, `OrgNode`, `OrgDate`, ...).
+- Emits runtime type name (`null`, `int`, `str`, `Heading`, `Timestamp`, ...).
 
 ```text
 .[] | type             # [null,1,"x"] => ["null","int","str"]
@@ -474,53 +509,50 @@ map(. * 2)             # [1,2,3] => [2,4,6]
 - Emits boolean negation of condition truthiness per item.
 
 ```text
-.[] | not(.todo in $done_keys)  # DONE=>false, TODO=>true
+.[] | not(.todo in $done_states)  # DONE=>false, TODO=>true
 ```
 
 ### `timestamp(...)`
 
-- Arity: 1, 2, or 3.
-- Forms:
-  - `timestamp(start)`
-  - `timestamp(start, end_or_null)`
-  - `timestamp(start, end_or_null, active_or_null)`
+- Arity: 1.
+- Form:
+  - `timestamp(source)`
 
 ```text
 timestamp("<2025-01-02 Thu>")
-timestamp("<2025-01-02 Thu>", "<2025-01-03 Fri>")
-timestamp("<2025-01-02 Thu>", null, false)
+timestamp("<2025-01-02 Thu>--<2025-01-03 Fri>")
+timestamp("[2025-01-02 Thu]")
 # => <2025-01-02 Thu>, <2025-01-02 Thu>--<2025-01-03 Fri>, [2025-01-02 Thu]
 ```
 
 ### `clock(...)`
 
-- Arity: 2 or 3.
-- Forms:
-  - `clock(start, end)`
-  - `clock(start, end, active_or_null)`
+- Arity: 1.
+- Form:
+  - `clock(source)`
 
 ```text
-clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:30>")
-# => [2025-01-02 Thu 10:00]--[2025-01-02 Thu 11:30]
+clock("<2025-01-02 Thu 10:00-11:30>")
+# => CLOCK: <2025-01-02 Thu 10:00-11:30>
 ```
 
-### `repeated_task(...)`
+### `repeat(...)`
 
 - Arity: 3 or 4.
 - Forms:
-  - `repeated_task(timestamp, before_or_null, after_or_null)`
-  - `repeated_task(timestamp, before_or_null, after_or_null, active_or_null)`
+  - `repeat(timestamp, before_or_null, after_or_null)`
+  - `repeat(timestamp, before_or_null, after_or_null, active_or_null)`
 
 ```text
-repeated_task("<2025-01-02 Thu>", "TODO", "DONE")
-repeated_task("<2025-01-02 Thu>", null, "DONE", true)
+repeat("<2025-01-02 Thu>", "TODO", "DONE")
+repeat("<2025-01-02 Thu>", null, "DONE", true)
 # => [2025-01-02 Thu], <2025-01-02 Thu>
 ```
 
 ### `analyze`
 
 - Arity: 0.
-- Input: stream of `OrgNode` values. Any non-`OrgNode` value (including `OrgRootNode`) raises a runtime error.
+- Input: stream of `Heading` values. Any non-`Heading` value (including `Document`) raises a runtime error.
 - Output: single `AnalysisResult` value.
 
 Aggregates all nodes in the stream into a complete analysis using default parameters: tag-based category (`"tags"`), no tag remapping, 5 max relations per tag, and `"CATEGORY"` as the category property.
@@ -559,7 +591,7 @@ Runtime values accepted/produced include:
 
 - Scalars: `null`, `bool`, `int`, `float`, `str`
 - Collections: `list`, `tuple`, `set`, `dict`
-- Org values: `OrgNode`, `OrgRootNode`, `OrgDate`, `OrgDateClock`, `OrgDateRepeatedTask`
+- Org values: `Heading`, `Document`, `Timestamp`, `Clock`, `Repeat`
 - Analysis values: `AnalysisResult`, `Tag`, `Group`, `TimeRange`, `Histogram`
 
 ```text
@@ -571,7 +603,7 @@ null
 true
 
 # collections
-[ .[] | .heading ]
+[ .[] | .title_text ]
 .[0]
 
 # org values
@@ -589,20 +621,20 @@ Notes:
 
 ```text
 # done headings
-.[] | select(.todo == "DONE") | .heading
+.[] | select(.todo == "DONE") | .title_text
 
 # count children for each top-level node
 .[] | .children | length
 
 # collect headings as one list
-[ .[] | .heading ]
+[ .[] | .title_text ]
 
 # use variables in pipeline
-. as $root | $root[] | .heading
+. as $root | $root[] | .title_text
 
 # dynamic slicing with CLI-provided vars offset/limit
 .[ $offset : $offset + $limit ]
 
 # find most recently modified tasks
-.[][] | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) | .heading
+.[][] | sort_by(.repeats + .deadline + .closed + .scheduled | max) | .title_text
 ```

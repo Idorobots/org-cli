@@ -4,17 +4,29 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable, Iterable
+import types
+from collections.abc import (
+    Callable,
+    Iterable,
+    Mapping,
+    MutableMapping,
+)
+from collections.abc import (
+    Sequence as CollectionSequence,
+)
 from dataclasses import dataclass
 from datetime import date, datetime
 from hashlib import sha256
 from itertools import product
 from math import trunc
-from typing import cast
+from typing import Any, Union, cast, get_args, get_origin, get_type_hints
 from uuid import uuid4
 
-from orgparse.date import OrgDate, OrgDateClock, OrgDateRepeatedTask
-from orgparse.node import OrgNode, OrgRootNode
+from org_parser import Document
+from org_parser.document import Heading
+from org_parser.element import Repeat
+from org_parser.text import RichText
+from org_parser.time import Clock, Timestamp
 
 from org.analyze import analyze as _analyze_nodes
 from org.query_language.ast import (
@@ -54,6 +66,15 @@ type ComparableKey = int | float | str | datetime
 
 
 logger = logging.getLogger("org")
+
+
+def _as_string_value(value: object) -> str | None:
+    """Return plain text for string-like values."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, RichText):
+        return value.text
+    return None
 
 
 def _stream(values: Iterable[object] = ()) -> Stream:
@@ -145,7 +166,7 @@ def _evaluate_dict_assignment(
     stream: Stream,
     context: EvalContext,
 ) -> Stream:
-    """Evaluate dictionary field assignment expressions."""
+    """Evaluate assignment expressions against object fields and collection indexes."""
     output = _stream()
     for item in stream:
         base_values = evaluate_expr(expr.base, _stream([item]), context)
@@ -156,13 +177,199 @@ def _evaluate_dict_assignment(
         value_key_base_pairs = _broadcast(value_values, _stream(key_base_pairs))
         for value, key_base_pair in value_key_base_pairs:
             key, base = cast(tuple[object, object], key_base_pair)
-            if not isinstance(base, dict):
-                raise QueryRuntimeError("Assignment target must evaluate to a dictionary")
-            if not isinstance(key, str):
-                raise QueryRuntimeError("Assignment key must evaluate to a string")
-            base[key] = value
-            output.append(base)
+            output.append(_apply_assignment(expr.operator, base, key, value))
     return output
+
+
+def _apply_assignment(operator: str, base: object, key: object, value: object) -> object:
+    """Apply one assignment operation and return assigned value."""
+    key_text = _as_string_value(key)
+    if key_text is not None:
+        if isinstance(base, MutableMapping):
+            return _assign_mapping_value(base, key_text, value, operator)
+        return _assign_object_field_value(base, key_text, value, operator)
+
+    if isinstance(key, int):
+        return _assign_index_value(base, key, value, operator)
+
+    raise QueryRuntimeError("Assignment key must evaluate to a string or integer")
+
+
+def _assign_mapping_value(
+    mapping: MutableMapping[str, object],
+    key: str,
+    value: object,
+    operator: str,
+) -> object:
+    """Assign one mapping key and return assigned value."""
+    if operator == "=":
+        mapping[key] = value
+        return mapping[key]
+
+    current_value = mapping.get(key)
+    updated_collection = _mutate_collection_for_assignment(current_value, value, operator)
+    mapping[key] = updated_collection
+    return mapping[key]
+
+
+def _assign_object_field_value(base: object, field: str, value: object, operator: str) -> object:
+    """Assign one object field and return assigned value."""
+    sentinel = object()
+    current_value = getattr(base, field, sentinel)
+    if current_value is sentinel:
+        raise QueryRuntimeError(f"Assignment target field does not exist: {field}")
+
+    if operator == "=":
+        _ensure_object_assignment_type_match(base, current_value, value, field)
+        _set_object_field(base, field, value)
+        return getattr(base, field)
+
+    updated_collection = _mutate_collection_for_assignment(current_value, value, operator)
+    if updated_collection is not current_value:
+        _set_object_field(base, field, updated_collection)
+    return getattr(base, field)
+
+
+def _set_object_field(base: object, field: str, value: object) -> None:
+    """Set one object field with writable-field validation."""
+    try:
+        setattr(base, field, value)
+    except (AttributeError, TypeError) as exc:
+        raise QueryRuntimeError(f"Assignment target field is not writable: {field}") from exc
+
+
+def _assign_index_value(base: object, index: int, value: object, operator: str) -> object:
+    """Assign one list index and return assigned value."""
+    if not isinstance(base, list):
+        raise QueryRuntimeError("Index assignment target must evaluate to a list")
+    if not (-len(base) <= index < len(base)):
+        raise QueryRuntimeError("Assignment index is out of bounds")
+
+    current_value = base[index]
+    if operator == "=":
+        _ensure_assignment_type_match(current_value, value, "index")
+        base[index] = value
+        return base[index]
+
+    updated_collection = _mutate_collection_for_assignment(current_value, value, operator)
+    base[index] = updated_collection
+    return base[index]
+
+
+def _ensure_object_assignment_type_match(
+    base: object,
+    current_value: object,
+    value: object,
+    field_name: str,
+) -> None:
+    """Validate object field assignment using setter annotation metadata when available."""
+    setter_annotation = _resolve_setter_value_annotation(base, field_name)
+    if setter_annotation is not None:
+        if _value_matches_annotation(value, setter_annotation):
+            return
+        raise QueryRuntimeError(
+            f"Assigned value type mismatch for {field_name}: "
+            f"expected {_format_type_annotation(setter_annotation)}, got {type(value).__name__}"
+        )
+
+    _ensure_assignment_type_match(current_value, value, field_name)
+
+
+def _resolve_setter_value_annotation(base: object, field_name: str) -> object | None:
+    """Resolve setter value annotation for one object property field."""
+    descriptor = getattr(type(base), field_name, None)
+    if not isinstance(descriptor, property) or descriptor.fset is None:
+        return None
+
+    setter = descriptor.fset
+    try:
+        type_hints = get_type_hints(setter)
+    except NameError, TypeError:
+        fallback_globals = dict(setter.__globals__)
+        fallback_globals.setdefault("Sequence", CollectionSequence)
+        try:
+            type_hints = get_type_hints(
+                setter,
+                globalns=fallback_globals,
+                localns=vars(type(base)),
+            )
+        except NameError, TypeError:
+            return None
+
+    return type_hints.get("value")
+
+
+def _value_matches_annotation(value: object, annotation: object) -> bool:
+    """Check if runtime value matches one resolved type annotation."""
+    if annotation is Any:
+        return True
+    if annotation is None or annotation is type(None):
+        return value is None
+
+    origin = get_origin(annotation)
+    if origin in {Union, types.UnionType}:
+        return any(_value_matches_annotation(value, option) for option in get_args(annotation))
+    if origin is not None:
+        return isinstance(value, origin) if isinstance(origin, type) else True
+    if isinstance(annotation, type):
+        return isinstance(value, annotation)
+    return True
+
+
+def _format_type_annotation(annotation: object) -> str:
+    """Format one annotation for runtime type mismatch errors."""
+    if annotation is Any:
+        return "any"
+    if annotation is None or annotation is type(None):
+        return "None"
+
+    origin = get_origin(annotation)
+    if origin in {Union, types.UnionType}:
+        return " | ".join(_format_type_annotation(option) for option in get_args(annotation))
+    if origin is not None:
+        return origin.__name__ if isinstance(origin, type) else str(origin)
+    if isinstance(annotation, type):
+        return annotation.__name__
+    return str(annotation)
+
+
+def _ensure_assignment_type_match(current_value: object, value: object, field_name: str) -> None:
+    """Ensure assignment value matches existing non-null field type."""
+    if current_value is None or value is None:
+        return
+    expected_type = type(current_value)
+    if isinstance(value, expected_type):
+        return
+    raise QueryRuntimeError(
+        f"Assigned value type mismatch for {field_name}: "
+        f"expected {expected_type.__name__}, got {type(value).__name__}"
+    )
+
+
+def _mutate_collection_for_assignment(collection: object, value: object, operator: str) -> object:
+    """Mutate one collection target for += or -= operators."""
+    if operator not in {"+=", "-="}:
+        raise QueryRuntimeError(f"Unsupported assignment operator: {operator}")
+
+    values = list(value) if isinstance(value, (list, tuple, set)) else [value]
+    if isinstance(collection, list):
+        if operator == "+=":
+            collection.extend(values)
+            return collection
+
+        collection[:] = [
+            existing for existing in collection if all(existing != removed for removed in values)
+        ]
+        return collection
+
+    if isinstance(collection, set):
+        if operator == "+=":
+            collection.update(values)
+        else:
+            collection.difference_update(values)
+        return collection
+
+    raise QueryRuntimeError("In-place collection mutation requires list or set assignment target")
 
 
 def _evaluate_as_binding(expr: AsBinding, stream: Stream, context: EvalContext) -> Stream:
@@ -227,14 +434,14 @@ def _resolve_field(value: object, field: str) -> object:
     """Resolve attribute-like field access with None fallback."""
     if value is None:
         return None
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return value.get(field)
 
     sentinel = object()
     attr_value = getattr(value, field, sentinel)
     if attr_value is sentinel:
         return None
-    return _normalize_org_date_value(attr_value)
+    return attr_value
 
 
 def _evaluate_bracket_field_access(
@@ -255,24 +462,28 @@ def _resolve_bracket_key(base: object, key: object) -> object:
     """Resolve one bracket key lookup with None fallback for misses."""
     if base is None:
         return None
-    if isinstance(key, str):
-        if isinstance(base, dict):
-            return base.get(key)
-        return _resolve_field(base, key)
-    if isinstance(key, int):
-        if isinstance(base, (list, tuple, str)):
-            if -len(base) <= key < len(base):
-                return _normalize_org_date_value(base[key])
-            return None
+
+    key_text = _as_string_value(key)
+    if key_text is not None:
+        if isinstance(base, Mapping):
+            return base.get(key_text)
+        return _resolve_field(base, key_text)
+
+    if not isinstance(key, int):
+        raise QueryRuntimeError("Bracket key must be a string or integer")
+
+    collection: list[object] | tuple[object, ...] | str
+    base_text = _as_string_value(base)
+    if base_text is not None:
+        collection = base_text
+    elif isinstance(base, (list, tuple)):
+        collection = base
+    else:
         raise QueryRuntimeError("Index access requires a list, tuple, or string")
-    raise QueryRuntimeError("Bracket key must be a string or integer")
 
-
-def _normalize_org_date_value(value: object) -> object:
-    """Normalize empty org date objects to null."""
-    if isinstance(value, OrgDate) and not bool(value):
-        return None
-    return value
+    if -len(collection) <= key < len(collection):
+        return collection[key]
+    return None
 
 
 def _evaluate_iterate(base: Stream) -> Stream:
@@ -281,8 +492,8 @@ def _evaluate_iterate(base: Stream) -> Stream:
     for value in base:
         if value is None:
             continue
-        if isinstance(value, OrgRootNode):
-            output.extend(list(value[1:]))
+        if isinstance(value, Document):
+            output.extend(list(value))
             continue
         if isinstance(value, (list, tuple, set)):
             output.extend(list(value))
@@ -307,12 +518,17 @@ def _index_one(base_value: object, index_value: object) -> object:
     """Apply one index operation."""
     if not isinstance(index_value, int):
         raise QueryRuntimeError("Index expression must evaluate to an integer")
-    if isinstance(base_value, OrgRootNode):
-        nodes = list(base_value[1:])
+    if isinstance(base_value, Document):
+        nodes = list(base_value)
         if -len(nodes) <= index_value < len(nodes):
             return nodes[index_value]
         return None
-    if isinstance(base_value, (list, tuple, str)):
+    text_value = _as_string_value(base_value)
+    if text_value is not None:
+        if -len(text_value) <= index_value < len(text_value):
+            return text_value[index_value]
+        return None
+    if isinstance(base_value, (list, tuple)):
         if -len(base_value) <= index_value < len(base_value):
             return base_value[index_value]
         return None
@@ -348,10 +564,15 @@ def _slice_one(base_value: object, start_value: object, end_value: object) -> ob
         raise QueryRuntimeError("Slice start must be an integer or null")
     if end_value is not None and not isinstance(end_value, int):
         raise QueryRuntimeError("Slice end must be an integer or null")
-    if isinstance(base_value, OrgRootNode):
-        nodes = list(base_value[1:])
+    if isinstance(base_value, Document):
+        nodes = list(base_value)
         return nodes[start_value:end_value]
-    if isinstance(base_value, (list, tuple, str)):
+    text_value = _as_string_value(base_value)
+    if text_value is not None:
+        start_index = start_value
+        end_index = end_value
+        return text_value[start_index:end_index]
+    if isinstance(base_value, (list, tuple)):
         start_index = start_value
         end_index = end_value
         return base_value[start_index:end_index]
@@ -373,10 +594,12 @@ def _apply_binary_operator(operator: str, left: object, right: object) -> object
     if operator in {">", "<", ">=", "<="}:
         return _apply_compare(operator, left, right)
     if operator == "matches":
-        if not isinstance(left, str) or not isinstance(right, str):
+        left_text = _as_string_value(left)
+        right_text = _as_string_value(right)
+        if left_text is None or right_text is None:
             raise QueryRuntimeError("matches operator requires two strings")
         # FIXME Potentially recompiles the same regex multiple times when broadcasting a scalar to stream.
-        return bool(re.compile(right).search(left))
+        return bool(re.compile(right_text).search(left_text))
     if operator in {"and", "or"}:
         return _apply_boolean(operator, left, right)
     if operator == "in":
@@ -419,13 +642,16 @@ def _apply_numeric_operator(operator: str, left: object, right: object) -> objec
 
 def _apply_extended_non_numeric_operator(operator: str, left: object, right: object) -> object:
     """Apply supported string and collection operators."""
-    if operator == "*" and isinstance(left, str):
+    left_text = _as_string_value(left)
+    right_text = _as_string_value(right)
+
+    if operator == "*" and left_text is not None:
         if not isinstance(right, int):
             raise QueryRuntimeError("* operator requires integer multiplier for string operands")
-        return left * right
+        return left_text * right
 
-    if operator == "+" and isinstance(left, str) and isinstance(right, str):
-        return left + right
+    if operator == "+" and left_text is not None and right_text is not None:
+        return left_text + right_text
 
     if operator == "+" and _is_collection_value(left):
         return _append_to_collection(left, right)
@@ -488,12 +714,15 @@ def _guard_non_zero(value: int | float, message: str) -> None:
 
 def _apply_in_operator(left: object, right: object) -> bool:
     """Apply membership operator."""
-    if not isinstance(right, (list, tuple, set, dict, str)):
-        raise QueryRuntimeError("in operator requires a collection on the right")
-    if isinstance(right, str):
-        if not isinstance(left, str):
+    right_text = _as_string_value(right)
+    if right_text is not None:
+        left_text = _as_string_value(left)
+        if left_text is None:
             return False
-        return left in right
+        return left_text in right_text
+
+    if not isinstance(right, (list, tuple, set, dict)):
+        raise QueryRuntimeError("in operator requires a collection on the right")
     right_collection = cast(
         list[object] | tuple[object, ...] | set[object] | dict[object, object],
         right,
@@ -503,9 +732,11 @@ def _apply_in_operator(left: object, right: object) -> bool:
 
 def _apply_equality(operator: str, left: object, right: object) -> bool:
     """Apply equality operators."""
-    if isinstance(left, OrgDate) and isinstance(right, OrgDate):
-        left = _org_date_start_for_comparison(left)
-        right = _org_date_start_for_comparison(right)
+    left_timestamp = _as_timestamp_comparable(left)
+    right_timestamp = _as_timestamp_comparable(right)
+    if left_timestamp is not None and right_timestamp is not None:
+        left = left_timestamp.start
+        right = right_timestamp.start
     if operator == "==":
         return left == right
     return left != right
@@ -519,27 +750,33 @@ def _apply_boolean(operator: str, left: object, right: object) -> object:
 
 
 def _apply_compare(operator: str, left: object, right: object) -> bool:
-    """Apply numeric, string, or OrgDate comparison operators."""
+    """Apply numeric, string, or Timestamp comparison operators."""
     if left is None or right is None:
         if operator in {">", "<"}:
             return False
         return left is None and right is None
 
-    is_org_date = isinstance(left, OrgDate) and isinstance(right, OrgDate)
+    left_timestamp = _as_timestamp_comparable(left)
+    right_timestamp = _as_timestamp_comparable(right)
+    is_org_date = left_timestamp is not None and right_timestamp is not None
     is_numeric = isinstance(left, (int, float)) and isinstance(right, (int, float))
-    is_string = isinstance(left, str) and isinstance(right, str)
+    left_text = _as_string_value(left)
+    right_text = _as_string_value(right)
+    is_string = left_text is not None and right_text is not None
     if not is_org_date and not is_numeric and not is_string:
-        raise QueryRuntimeError("Comparison operators require numeric, string, or OrgDate operands")
+        raise QueryRuntimeError(
+            "Comparison operators require numeric, string, or Timestamp operands"
+        )
     if is_org_date:
-        left_date = _org_date_start_for_comparison(cast(OrgDate, left))
-        right_date = _org_date_start_for_comparison(cast(OrgDate, right))
+        left_date = cast(Timestamp, left_timestamp).start
+        right_date = cast(Timestamp, right_timestamp).start
         return _apply_compare_datetime(operator, left_date, right_date)
     if is_numeric:
         left_value_num = cast(float | int, left)
         right_value_num = cast(float | int, right)
         return _apply_compare_numeric(operator, left_value_num, right_value_num)
-    left_value_str = cast(str, left)
-    right_value_str = cast(str, right)
+    left_value_str = cast(str, left_text)
+    right_value_str = cast(str, right_text)
     return _apply_compare_string(operator, left_value_str, right_value_str)
 
 
@@ -582,13 +819,15 @@ def _apply_compare_datetime(operator: str, left: datetime, right: datetime) -> b
     raise QueryRuntimeError(f"Unsupported comparison operator: {operator}")
 
 
-def _org_date_start_for_comparison(value: OrgDate) -> datetime:
-    """Return OrgDate start normalized for comparisons."""
-    if value.start is None:
-        raise QueryRuntimeError("Comparison operators require OrgDate values with start")
-    if isinstance(value.start, datetime):
-        return value.start
-    return datetime(value.start.year, value.start.month, value.start.day)
+def _as_timestamp_comparable(value: object) -> Timestamp | None:
+    """Convert Timestamp-like values into Timestamp for comparisons."""
+    if isinstance(value, Timestamp):
+        return value
+    if isinstance(value, Clock):
+        return value.timestamp
+    if isinstance(value, Repeat):
+        return value.timestamp
+    return None
 
 
 def _evaluate_tuple_expr(expr: TupleExpr, stream: Stream, context: EvalContext) -> Stream:
@@ -607,6 +846,8 @@ def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext)
     """Evaluate built-in function call expression."""
     no_arg_functions: dict[str, Callable[[Stream], Stream]] = {
         "analyze": _func_analyze,
+        "all": _func_all,
+        "any": _func_any,
         "reverse": _func_reverse,
         "unique": _func_unique,
         "length": _func_length,
@@ -632,7 +873,7 @@ def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext)
         "not": _func_not,
         "timestamp": _func_timestamp,
         "clock": _func_clock,
-        "repeated_task": _func_repeated_task,
+        "repeat": _func_repeat,
     }
 
     if expr.name in no_arg_functions:
@@ -685,28 +926,51 @@ def _ensure_arity(arguments: tuple[object, ...], expected: set[int], function_na
     raise QueryRuntimeError(f"{function_name} expects {allowed} argument(s)")
 
 
-def _parse_org_date(value: object) -> OrgDate:
-    """Convert runtime value into an OrgDate object."""
-    if isinstance(value, OrgDate):
+def _parse_timestamp(value: object) -> Timestamp:
+    """Convert runtime value into a Timestamp object."""
+    if isinstance(value, Timestamp):
         return value
-    if not isinstance(value, str):
-        raise QueryRuntimeError("timestamp values must evaluate to string, OrgDate, or null")
+    text_value = _as_string_value(value)
+    if text_value is None:
+        raise QueryRuntimeError("timestamp values must evaluate to string, Timestamp, or null")
 
-    parsed_values = OrgDate.list_from_str(value)
-    if parsed_values:
-        return parsed_values[0]
+    try:
+        return Timestamp.from_source(text_value)
+    except TypeError, ValueError:
+        try:
+            parsed = datetime.fromisoformat(text_value.replace(" ", "T"))
+            return Timestamp.from_datetime(parsed)
+        except ValueError as parse_exc:
+            raise QueryRuntimeError(f"Cannot parse timestamp: {text_value}") from parse_exc
 
-    fallback = OrgDate.from_str(value)
-    if fallback.start is None:
-        raise QueryRuntimeError(f"Cannot parse timestamp: {value}")
-    return fallback
+
+def _parse_timestamp_source(value: object, function_name: str) -> Timestamp:
+    """Parse one timestamp source string for constructor functions."""
+    text_value = _as_string_value(value)
+    if text_value is None:
+        raise QueryRuntimeError(f"{function_name} expects 1 argument(s)")
+    try:
+        return Timestamp.from_source(text_value)
+    except (TypeError, ValueError) as parse_exc:
+        raise QueryRuntimeError(f"Cannot parse timestamp: {text_value}") from parse_exc
 
 
-def _as_org_date_or_none(value: object) -> OrgDate | None:
-    """Convert optional timestamp value into OrgDate or null."""
-    if value is None:
-        return None
-    return _parse_org_date(value)
+def _timestamp_from_datetimes(
+    start: datetime,
+    end: datetime | None = None,
+    active: bool | None = None,
+) -> Timestamp:
+    """Create Timestamp value from datetime components."""
+    timestamp = Timestamp.from_datetime(start, is_active=True if active is None else active)
+    if end is not None:
+        timestamp.end_year = end.year
+        timestamp.end_month = end.month
+        timestamp.end_day = end.day
+        timestamp.end_hour = end.hour
+        timestamp.end_minute = end.minute
+    if active is not None:
+        timestamp.is_active = active
+    return timestamp
 
 
 def _as_active_or_none(value: object) -> bool | None:
@@ -722,8 +986,9 @@ def _as_state_or_none(value: object, field_name: str) -> str | None:
     """Convert optional state value into string or null."""
     if value is None:
         return None
-    if isinstance(value, str):
-        return value
+    text_value = _as_string_value(value)
+    if text_value is not None:
+        return text_value
     raise QueryRuntimeError(f"{field_name} value must evaluate to string or null")
 
 
@@ -784,12 +1049,12 @@ def _func_bool(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
 
 
 def _func_ts(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
-    """Convert argument values into OrgDate timestamps."""
+    """Convert argument values into Timestamp timestamps."""
     output = _stream()
     for item in stream:
         argument_values = evaluate_expr(argument, _stream([item]), context)
         for value in argument_values:
-            output.append(_parse_org_date(value))
+            output.append(_parse_timestamp(value))
     return output
 
 
@@ -797,9 +1062,10 @@ def _func_sha256(stream: Stream) -> Stream:
     """Hash each input string value with SHA-256."""
     output = _stream()
     for value in stream:
-        if not isinstance(value, str):
+        text_value = _as_string_value(value)
+        if text_value is None:
             raise QueryRuntimeError("sha256 requires string input values")
-        output.append(sha256(value.encode("utf-8")).hexdigest())
+        output.append(sha256(text_value.encode("utf-8")).hexdigest())
     return output
 
 
@@ -807,13 +1073,15 @@ def _func_match(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
     """Match input strings against regex argument values."""
     output = _stream()
     for item in stream:
-        if not isinstance(item, str):
+        item_text = _as_string_value(item)
+        if item_text is None:
             raise QueryRuntimeError("match requires string input values")
         regex_values = evaluate_expr(argument, _stream([item]), context)
         for regex_value in regex_values:
-            if not isinstance(regex_value, str):
+            regex_text = _as_string_value(regex_value)
+            if regex_text is None:
                 raise QueryRuntimeError("match requires string regex values")
-            match_result = re.search(regex_value, item)
+            match_result = re.search(regex_text, item_text)
             if match_result is None:
                 output.append(None)
                 continue
@@ -828,11 +1096,12 @@ def _convert_to_int(value: object) -> int:
         raise QueryRuntimeError("int accepts integer and string values")
     if isinstance(value, int):
         return value
-    if isinstance(value, str):
+    text_value = _as_string_value(value)
+    if text_value is not None:
         try:
-            return int(value)
+            return int(text_value)
         except ValueError as exc:
-            raise QueryRuntimeError(f"Cannot parse int: {value}") from exc
+            raise QueryRuntimeError(f"Cannot parse int: {text_value}") from exc
     raise QueryRuntimeError("int accepts integer and string values")
 
 
@@ -840,11 +1109,12 @@ def _convert_to_float(value: object) -> float:
     """Convert one value into float with query typing rules."""
     if isinstance(value, float):
         return value
-    if isinstance(value, str):
+    text_value = _as_string_value(value)
+    if text_value is not None:
         try:
-            return float(value)
+            return float(text_value)
         except ValueError as exc:
-            raise QueryRuntimeError(f"Cannot parse float: {value}") from exc
+            raise QueryRuntimeError(f"Cannot parse float: {text_value}") from exc
     raise QueryRuntimeError("float accepts float and string values")
 
 
@@ -852,13 +1122,14 @@ def _convert_to_bool(value: object) -> bool:
     """Convert one value into bool with query typing rules."""
     if isinstance(value, bool):
         return value
-    if isinstance(value, str):
-        lowered = value.lower()
+    text_value = _as_string_value(value)
+    if text_value is not None:
+        lowered = text_value.lower()
         if lowered == "true":
             return True
         if lowered == "false":
             return False
-        raise QueryRuntimeError(f"Cannot parse bool: {value}")
+        raise QueryRuntimeError(f"Cannot parse bool: {text_value}")
     raise QueryRuntimeError("bool accepts boolean and string values")
 
 
@@ -872,84 +1143,63 @@ def _func_not(stream: Stream, condition: Expr, context: EvalContext) -> Stream:
 
 
 def _func_timestamp(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
-    """Create OrgDate values from one, two, or three arguments."""
+    """Create Timestamp values from one source string argument."""
     output = _stream()
     for arguments in _iter_function_argument_values(stream, argument, context):
-        _ensure_arity(arguments, {1, 2, 3}, "timestamp")
-        start_date = _parse_org_date(arguments[0])
-
-        if len(arguments) == 1:
-            output.append(OrgDate(start_date.start, start_date.end, start_date.is_active()))
-            continue
-
-        end_date = _as_org_date_or_none(arguments[1])
-        end_value = None if end_date is None else end_date.start
-
-        if len(arguments) == 2:
-            output.append(OrgDate(start_date.start, end_value, start_date.is_active()))
-            continue
-
-        active = _as_active_or_none(arguments[2])
-        output.append(OrgDate(start_date.start, end_value, active))
+        _ensure_arity(arguments, {1}, "timestamp")
+        output.append(_parse_timestamp_source(arguments[0], "timestamp"))
     return output
 
 
 def _func_clock(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
-    """Create OrgDateClock values from two or three arguments."""
+    """Create Clock values from one source string argument."""
     output = _stream()
     for arguments in _iter_function_argument_values(stream, argument, context):
-        _ensure_arity(arguments, {2, 3}, "clock")
-        start_date = _parse_org_date(arguments[0])
-        end_date = _as_org_date_or_none(arguments[1])
-        if end_date is None:
-            raise QueryRuntimeError("clock end value cannot be null")
-        clock_ctor: Callable[..., OrgDateClock] = OrgDateClock
-        if len(arguments) == 2:
-            output.append(clock_ctor(start_date.start, end_date.start))
-            continue
-
-        active = _as_active_or_none(arguments[2])
-        output.append(clock_ctor(start_date.start, end_date.start, active=active))
+        _ensure_arity(arguments, {1}, "clock")
+        output.append(Clock(timestamp=_parse_timestamp_source(arguments[0], "clock")))
     return output
 
 
-def _func_repeated_task(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
-    """Create OrgDateRepeatedTask values from three or four arguments."""
+def _func_repeat(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Create Repeat values from three or four arguments."""
     output = _stream()
     for arguments in _iter_function_argument_values(stream, argument, context):
-        _ensure_arity(arguments, {3, 4}, "repeated_task")
-        start_date = _parse_org_date(arguments[0])
+        _ensure_arity(arguments, {3, 4}, "repeat")
+        start_timestamp = _parse_timestamp(arguments[0])
         before = _as_state_or_none(arguments[1], "before")
         after = _as_state_or_none(arguments[2], "after")
 
-        if len(arguments) == 3:
-            output.append(
-                OrgDateRepeatedTask(start_date.start, cast(str, before), cast(str, after))
-            )
-            continue
+        active_value = start_timestamp.is_active
+        if len(arguments) == 4:
+            parsed_active = _as_active_or_none(arguments[3])
+            active_value = True if parsed_active is None else parsed_active
 
-        active = _as_active_or_none(arguments[3])
         output.append(
-            OrgDateRepeatedTask(
-                start_date.start, cast(str, before), cast(str, after), active=active
+            Repeat(
+                after=cast(str, after),
+                before=cast(str, before),
+                timestamp=_timestamp_from_datetimes(start_timestamp.start, active=active_value),
             )
         )
     return output
 
 
 def _func_analyze(stream: Stream) -> Stream:
-    """Aggregate a stream of OrgNode values into a single AnalysisResult."""
-    nodes: list[OrgNode] = []
+    """Aggregate a stream of Heading values into a single AnalysisResult."""
+    nodes: list[Heading] = []
     for value in stream:
-        if not isinstance(value, OrgNode):
+        if not isinstance(value, Heading):
             raise QueryRuntimeError(
-                f"analyze requires a stream of OrgNode values, got {_type_name(value)}"
+                f"analyze requires a stream of Heading values, got {_type_name(value)}"
             )
         nodes.append(value)
     return _stream(
         [
             _analyze_nodes(
-                nodes, mapping={}, category="tags", max_relations=5, category_property="CATEGORY"
+                nodes,
+                mapping={},
+                category="tags",
+                max_relations=5,
             )
         ]
     )
@@ -982,10 +1232,14 @@ def _func_length(stream: Stream) -> Stream:
     """Return length for each stream value."""
     output = _stream()
     for value in stream:
-        if isinstance(value, OrgRootNode):
-            output.append(len(list(value[1:])))
+        if isinstance(value, Document):
+            output.append(len(list(value)))
             continue
-        if isinstance(value, (list, tuple, dict, set, str)):
+        text_value = _as_string_value(value)
+        if text_value is not None:
+            output.append(len(text_value))
+            continue
+        if isinstance(value, (list, tuple, dict, set)):
             output.append(len(value))
             continue
         output.append(None)
@@ -998,6 +1252,24 @@ def _func_sum(stream: Stream) -> Stream:
     for value in stream:
         values = _extract_numeric_collection(value)
         output.append(sum(values))
+    return output
+
+
+def _func_any(stream: Stream) -> Stream:
+    """Return whether any value in each collection is truthy."""
+    output = _stream()
+    for value in stream:
+        collection = _extract_collection(value)
+        output.append(any(bool(item) for item in collection))
+    return output
+
+
+def _func_all(stream: Stream) -> Stream:
+    """Return whether all values in each collection are truthy."""
+    output = _stream()
+    for value in stream:
+        collection = _extract_collection(value)
+        output.append(all(bool(item) for item in collection))
     return output
 
 
@@ -1051,19 +1323,25 @@ def _collection_extreme(value: object, mode: str) -> object:
 
 def _to_comparable_value(value: object) -> tuple[str, ComparableKey]:
     """Convert one value into a typed comparison key."""
-    if isinstance(value, (int, float)):
-        return ("number", value)
-    if isinstance(value, str):
-        return ("string", value)
-    if isinstance(value, datetime):
-        return ("date", value)
-    if isinstance(value, date):
-        return ("date", datetime(value.year, value.month, value.day))
-    if isinstance(value, OrgDate):
-        if value.start is None:
-            raise QueryRuntimeError("max/min cannot compare OrgDate with empty start")
-        return _to_comparable_value(value.start)
-    raise QueryRuntimeError(f"max/min cannot compare value of type {type(value).__name__}")
+    normalized = value
+    if isinstance(normalized, Clock | Repeat):
+        normalized = normalized.timestamp
+    if isinstance(normalized, Timestamp):
+        normalized = normalized.start
+
+    if isinstance(normalized, (int, float)):
+        result: tuple[str, ComparableKey] = ("number", normalized)
+    else:
+        normalized_text = _as_string_value(normalized)
+        if normalized_text is not None:
+            result = ("string", normalized_text)
+        elif isinstance(normalized, datetime):
+            result = ("date", normalized)
+        elif isinstance(normalized, date):
+            result = ("date", datetime(normalized.year, normalized.month, normalized.day))
+        else:
+            raise QueryRuntimeError(f"max/min cannot compare value of type {type(value).__name__}")
+    return result
 
 
 def _is_better_item(
@@ -1117,7 +1395,7 @@ def _func_sort_by(stream: Stream, key_expr: Expr, context: EvalContext) -> Strea
 
     for _, item in enumerate(stream):
         key_values = evaluate_expr(key_expr, _stream([item]), context)
-        key = _normalize_org_date_value(key_values[0] if key_values else None)
+        key = key_values[0] if key_values else None
         if key is None:
             without_key.append(item)
             continue
@@ -1150,10 +1428,11 @@ def _func_join(stream: Stream, separator_expr: Expr, context: EvalContext) -> St
     for item in stream:
         separator_values = evaluate_expr(separator_expr, _stream([item]), context)
         separator = separator_values[0] if separator_values else ""
-        if not isinstance(separator, str):
+        separator_text = _as_string_value(separator)
+        if separator_text is None:
             raise QueryRuntimeError("join separator must evaluate to a string")
         collection = _extract_collection(item)
-        output.append(separator.join(str(value) for value in collection))
+        output.append(separator_text.join(str(value) for value in collection))
     return output
 
 
@@ -1171,8 +1450,8 @@ def _func_map(stream: Stream, subquery: Expr, context: EvalContext) -> Stream:
 
 def _extract_collection(value: object) -> list[object]:
     """Extract a value as a query collection list."""
-    if isinstance(value, OrgRootNode):
-        return list(value[1:])
+    if isinstance(value, Document):
+        return list(value)
     if isinstance(value, (list, tuple, set)):
         return list(value)
     raise QueryRuntimeError("Operation requires a collection")

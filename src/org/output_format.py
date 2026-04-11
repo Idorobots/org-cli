@@ -10,10 +10,13 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import StrEnum
+from typing import cast
 
-import orgparse
-from orgparse.date import OrgDate
-from orgparse.node import OrgRootNode
+from org_parser import Document
+from org_parser.document import Heading
+from org_parser.element import Element, Properties, Repeat
+from org_parser.text import RichText
+from org_parser.time import Clock, Timestamp
 from rich.console import Console
 from rich.syntax import Syntax
 
@@ -187,10 +190,8 @@ def _prepare_output(
 
 def _to_org_input_text(value: object) -> str:
     """Convert arbitrary query value into org text for markdown conversion."""
-    if isinstance(value, orgparse.node.OrgNode | OrgRootNode):
+    if isinstance(value, Heading | Document):
         return str(value)
-    if isinstance(value, OrgDate) and not bool(value):
-        return "null"
     if value is None:
         return "null"
     if isinstance(value, bool):
@@ -244,45 +245,62 @@ def _org_to_pandoc_format(org_text: str, output_format: str, pandoc_args: list[s
 
 _NODE_EXPORTED_FIELDS = (
     "body",
-    "clock",
+    "category",
+    "clock_entries",
     "closed",
-    "datelist",
+    "column",
+    "counter",
     "deadline",
-    "heading",
+    "heading_category",
+    "heading_tags",
+    "is_comment",
+    "is_root",
+    "is_leaf",
     "level",
-    "linenumber",
+    "line",
+    "logbook",
     "priority",
     "properties",
-    "rangelist",
-    "repeated_tasks",
+    "repeats",
     "scheduled",
-    "shallow_tags",
     "tags",
+    "timestamps",
+    "title",
     "todo",
 )
 _ROOT_EXPORTED_FIELDS = (
+    "all_states",
+    "author",
     "body",
-    "datelist",
-    "env",
-    "heading",
-    "level",
-    "linenumber",
-    "properties",
-    "rangelist",
-    "shallow_tags",
-    "tags",
-)
-_ENV_EXPORTED_FIELDS = (
-    "all_todo_keys",
-    "done_keys",
+    "category",
+    "description",
+    "done_states",
+    "errors",
     "filename",
-    "todo_keys",
+    "is_root",
+    "is_leaf",
+    "keywords",
+    "logbook",
+    "properties",
+    "tags",
+    "title",
+    "todo",
+    "todo_states",
 )
-_DATE_EXPORTED_FIELDS = (
-    "active",
-    "end",
-    "duration",
+_TIMESTAMP_EXPORTED_FIELDS = (
+    "is_active",
     "start",
+    "end",
+)
+_CLOCK_EXPORTED_FIELDS = (
+    "duration",
+    "timestamp",
+)
+_REPEAT_EXPORTED_FIELDS = (
+    "after",
+    "before",
+    "body",
+    "timestamp",
 )
 
 
@@ -293,13 +311,33 @@ def _is_primitive_json_type(value: object) -> bool:
 
 def _exported_org_fields(value: object) -> tuple[str, ...]:
     """Return explicit exported field names for each org object type."""
-    if isinstance(value, OrgRootNode):
+    if isinstance(value, Document):
         return _ROOT_EXPORTED_FIELDS
-    if isinstance(value, orgparse.node.OrgNode):
+    if isinstance(value, Heading):
         return _NODE_EXPORTED_FIELDS
-    if isinstance(value, orgparse.node.OrgEnv):
-        return _ENV_EXPORTED_FIELDS
-    return _DATE_EXPORTED_FIELDS
+    if isinstance(value, Timestamp):
+        return _TIMESTAMP_EXPORTED_FIELDS
+    if isinstance(value, Clock):
+        return _CLOCK_EXPORTED_FIELDS
+    if isinstance(value, Repeat):
+        return _REPEAT_EXPORTED_FIELDS
+    return _element_exported_fields(cast(Element, value))
+
+
+def _element_exported_fields(value: Element) -> tuple[str, ...]:
+    """Return serializable public fields for generic Element values."""
+    exported_fields: list[str] = []
+    for field_name in dir(value):
+        if field_name.startswith("_"):
+            continue
+        try:
+            field_value = getattr(value, field_name)
+        except Exception:
+            continue
+        if callable(field_value):
+            continue
+        exported_fields.append(field_name)
+    return tuple(sorted(exported_fields))
 
 
 def _org_object_to_json_dict(value: object, seen: set[int]) -> dict[str, object]:
@@ -335,6 +373,8 @@ def _to_json_compatible(value: object, seen: set[int] | None = None) -> object:
     """Convert arbitrary values to JSON-serializable structures."""
     if _is_primitive_json_type(value):
         return value
+    if isinstance(value, RichText):
+        return value.text
 
     if seen is None:
         seen = set()
@@ -348,7 +388,10 @@ def _to_json_compatible(value: object, seen: set[int] | None = None) -> object:
         result = value.isoformat()
     elif isinstance(value, bytes):
         result = value.decode("utf-8", errors="replace")
-    elif isinstance(value, OrgDate | orgparse.node.OrgNode | OrgRootNode | orgparse.node.OrgEnv):
+    elif isinstance(value, Properties):
+        seen.add(obj_id)
+        result = {str(key): _to_json_compatible(item, seen) for key, item in value.items()}
+    elif isinstance(value, Timestamp | Clock | Repeat | Heading | Document | Element):
         seen.add(obj_id)
         result = _org_object_to_json_dict(value, seen)
     elif isinstance(value, AnalysisResult | Tag | Group | TimeRange | Histogram):

@@ -36,21 +36,21 @@ def test_colorize_wraps_when_enabled() -> None:
 
 def test_get_state_color_done_and_cancelled() -> None:
     """DONE states should be green, CANCELLED should be red."""
-    done_keys = ["DONE", "CANCELLED"]
-    todo_keys = ["TODO"]
+    done_states = ["DONE", "CANCELLED"]
+    todo_states = ["TODO"]
 
-    assert color.get_state_color("DONE", done_keys, todo_keys, True) == "bold green"
-    assert color.get_state_color("CANCELLED", done_keys, todo_keys, True) == "bold red"
+    assert color.get_state_color("DONE", done_states, todo_states, True) == "bold green"
+    assert color.get_state_color("CANCELLED", done_states, todo_states, True) == "bold red"
 
 
 def test_get_state_color_todo_and_unknown() -> None:
     """TODO/empty states should be dim white, unknown should be yellow."""
-    done_keys = ["DONE"]
-    todo_keys = ["TODO"]
+    done_states = ["DONE"]
+    todo_states = ["TODO"]
 
-    assert color.get_state_color("TODO", done_keys, todo_keys, True) == "dim white"
-    assert color.get_state_color("", done_keys, todo_keys, True) == "dim white"
-    assert color.get_state_color("BLOCKED", done_keys, todo_keys, True) == "bold yellow"
+    assert color.get_state_color("TODO", done_states, todo_states, True) == "dim white"
+    assert color.get_state_color("", done_states, todo_states, True) == "dim white"
+    assert color.get_state_color("BLOCKED", done_states, todo_states, True) == "bold yellow"
 
 
 def test_get_state_color_disabled_returns_empty() -> None:

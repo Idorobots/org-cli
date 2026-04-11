@@ -7,8 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-import orgparse
 import typer
+from org_parser.document import Heading
 from rich.console import Console
 from rich.layout import Layout
 from rich.panel import Panel
@@ -57,8 +57,8 @@ class StatsAllArgs:
     mapping: str | None
     mapping_inline: dict[str, str] | None
     exclude_inline: list[str] | None
-    todo_keys: str
-    done_keys: str
+    todo_states: str
+    done_states: str
     filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
@@ -77,7 +77,6 @@ class StatsAllArgs:
     max_tags: int
     use: str
     with_tags_as_category: bool
-    category_property: str
     max_relations: int
     min_group_size: int
     max_groups: int
@@ -88,8 +87,8 @@ class _TaskDisplayConfig:
     """Configuration for rendering task rows in stats all layout."""
 
     color_enabled: bool
-    done_keys: list[str]
-    todo_keys: list[str]
+    done_states: list[str]
+    todo_states: list[str]
     line_width: int
 
 
@@ -137,8 +136,8 @@ class _StatsAllDisplayConfig:
     exclude_set: set[str]
     date_from: datetime | None
     date_until: datetime | None
-    done_keys: list[str]
-    todo_keys: list[str]
+    done_states: list[str]
+    todo_states: list[str]
     color_enabled: bool
 
 
@@ -207,7 +206,7 @@ def format_tags_section(
 
 def format_stats_all_output(
     result: AnalysisResult,
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     args: StatsAllArgs,
     display_config: _StatsAllDisplayConfig,
     plot_width: int,
@@ -229,8 +228,8 @@ def format_stats_all_output(
                 SummaryDisplayConfig(
                     date_from=display_config.date_from,
                     date_until=display_config.date_until,
-                    done_keys=display_config.done_keys,
-                    todo_keys=display_config.todo_keys,
+                    done_states=display_config.done_states,
+                    todo_states=display_config.todo_states,
                     color_enabled=display_config.color_enabled,
                 ),
                 plot_width,
@@ -240,8 +239,8 @@ def format_stats_all_output(
                 TopTasksSectionConfig(
                     max_results=task_limit,
                     color_enabled=display_config.color_enabled,
-                    done_keys=display_config.done_keys,
-                    todo_keys=display_config.todo_keys,
+                    done_states=display_config.done_states,
+                    todo_states=display_config.todo_states,
                     line_width=plot_width,
                     indent="",
                 ),
@@ -335,7 +334,7 @@ def _build_panel(
 
 def _build_stats_all_panel_sections(
     result: AnalysisResult,
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     args: StatsAllArgs,
     display_config: _StatsAllDisplayConfig,
     config: _StatsAllSectionBuildConfig,
@@ -346,8 +345,8 @@ def _build_stats_all_panel_sections(
         SummaryDisplayConfig(
             date_from=display_config.date_from,
             date_until=display_config.date_until,
-            done_keys=display_config.done_keys,
-            todo_keys=display_config.todo_keys,
+            done_states=display_config.done_states,
+            todo_states=display_config.todo_states,
             color_enabled=display_config.color_enabled,
         ),
         config.panel_content_width,
@@ -363,8 +362,8 @@ def _build_stats_all_panel_sections(
         task_limit,
         _TaskDisplayConfig(
             color_enabled=display_config.color_enabled,
-            done_keys=display_config.done_keys,
-            todo_keys=display_config.todo_keys,
+            done_states=display_config.done_states,
+            todo_states=display_config.todo_states,
             line_width=config.panel_content_width,
         ),
     )
@@ -416,7 +415,7 @@ def _build_stats_all_panel_sections(
 
 
 def _format_tasks_body(
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     max_results: int,
     config: _TaskDisplayConfig,
 ) -> str:
@@ -430,8 +429,8 @@ def _format_tasks_body(
             node,
             TaskLineConfig(
                 color_enabled=config.color_enabled,
-                done_keys=config.done_keys,
-                todo_keys=config.todo_keys,
+                done_states=config.done_states,
+                todo_states=config.todo_states,
                 line_width=config.line_width,
             ),
             indent="",
@@ -509,7 +508,7 @@ def _format_tags_body(
 
 def _render_single_column_stats_all_layout(
     result: AnalysisResult,
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     args: StatsAllArgs,
     display_config: _StatsAllDisplayConfig,
     console_width: int,
@@ -545,7 +544,7 @@ def _render_single_column_stats_all_layout(
 def render_stats_all_layout(
     console: Console,
     result: AnalysisResult,
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     args: StatsAllArgs,
     display_config: _StatsAllDisplayConfig,
 ) -> tuple[Layout, int]:
@@ -669,9 +668,9 @@ def run_stats(args: StatsAllArgs) -> None:
     with processing_status(console, color_enabled):
         mapping = resolve_mapping(args)
         exclude_set = resolve_exclude_set(args)
-        nodes, todo_keys, done_keys = load_and_process_data(args)
+        nodes, todo_states, done_states = load_and_process_data(args)
         if nodes:
-            result = analyze(nodes, mapping, args.use, args.max_relations, args.category_property)
+            result = analyze(nodes, mapping, args.use, args.max_relations)
             date_from, date_until = resolve_date_filters(args)
             layout, layout_height = render_stats_all_layout(
                 console,
@@ -682,8 +681,8 @@ def run_stats(args: StatsAllArgs) -> None:
                     exclude_set=exclude_set,
                     date_from=date_from,
                     date_until=date_until,
-                    done_keys=done_keys,
-                    todo_keys=todo_keys,
+                    done_states=done_states,
+                    todo_states=todo_states,
                     color_enabled=color_enabled,
                 ),
             )
@@ -722,15 +721,15 @@ def register(app: typer.Typer) -> None:
             metavar="FILE",
             help="JSON file containing tag mappings (dict[str, str])",
         ),
-        todo_keys: str = typer.Option(
+        todo_states: str = typer.Option(
             "TODO",
-            "--todo-keys",
+            "--todo-states",
             metavar="KEYS",
             help="Comma-separated list of incomplete task states",
         ),
-        done_keys: str = typer.Option(
+        done_states: str = typer.Option(
             "DONE",
-            "--done-keys",
+            "--done-states",
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
@@ -846,13 +845,7 @@ def register(app: typer.Typer) -> None:
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
-            help="Preprocess nodes to set category property based on first tag",
-        ),
-        category_property: str = typer.Option(
-            "CATEGORY",
-            "--category-property",
-            metavar="PROPERTY",
-            help="Property name to use for category histogram and filtering",
+            help="Preprocess nodes to set category from first tag",
         ),
         max_relations: int = typer.Option(
             5,
@@ -881,8 +874,8 @@ def register(app: typer.Typer) -> None:
             mapping=mapping,
             mapping_inline=None,
             exclude_inline=None,
-            todo_keys=todo_keys,
-            done_keys=done_keys,
+            todo_states=todo_states,
+            done_states=done_states,
             filter_priority=filter_priority,
             filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
@@ -901,7 +894,6 @@ def register(app: typer.Typer) -> None:
             max_tags=max_tags,
             use=use,
             with_tags_as_category=with_tags_as_category,
-            category_property=category_property,
             max_relations=max_relations,
             min_group_size=min_group_size,
             max_groups=max_groups,

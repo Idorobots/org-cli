@@ -34,11 +34,10 @@ class FilterArgsStub:
     order_by_timestamp_desc: bool = False
     offset: int = 0
     max_results: int = 10
-    todo_keys: str = "TODO"
-    done_keys: str = "DONE"
+    todo_states: str = "TODO"
+    done_states: str = "DONE"
     width: int | None = None
     with_tags_as_category: bool = False
-    category_property: str = "CATEGORY"
 
 
 def make_args(**overrides: object) -> FilterArgsStub:
@@ -47,56 +46,6 @@ def make_args(**overrides: object) -> FilterArgsStub:
     for key, value in overrides.items():
         setattr(args, key, value)
     return args
-
-
-def test_parse_filter_order_from_argv() -> None:
-    """Filter order should follow argv position."""
-    from org.cli_common import parse_filter_order_from_argv
-
-    argv = [
-        "org",
-        "tasks",
-        "list",
-        "--filter-priority",
-        "A",
-        "--filter-tag",
-        "work$",
-        "file.org",
-    ]
-
-    result = parse_filter_order_from_argv(argv)
-
-    assert result == ["--filter-priority", "--filter-tag"]
-
-
-def test_parse_filter_order_from_argv_supports_equals_form() -> None:
-    """Filter order parsing should support --opt=value form."""
-    from org.cli_common import parse_filter_order_from_argv
-
-    argv = ["org", "tasks", "list", "--filter-level=2", "--filter-tag=work", "file.org"]
-
-    result = parse_filter_order_from_argv(argv)
-
-    assert result == ["--filter-level", "--filter-tag"]
-
-
-def test_parse_order_values_from_argv() -> None:
-    """Ordering switches should preserve command-line occurrence order."""
-    from org.cli_common import parse_order_values_from_argv
-
-    argv = [
-        "org",
-        "tasks",
-        "list",
-        "--order-by-level",
-        "--order-by-timestamp-asc",
-        "--order-by-level",
-        "file.org",
-    ]
-
-    result = parse_order_values_from_argv(argv)
-
-    assert result == ["level", "timestamp-asc", "level"]
 
 
 def test_build_query_text_filters_only() -> None:
@@ -130,7 +79,7 @@ def test_build_query_text_with_ordering_and_slice() -> None:
 
     assert query == (
         '[ .[] | select(.tags[] matches "work") '
-        "| sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) ]"
+        "| sort_by(.repeats + .deadline + .closed + .scheduled | max) ]"
         "[$offset:($offset + $limit)]"
     )
 
@@ -145,9 +94,9 @@ def test_build_query_text_with_timestamp_asc_keeps_none_last() -> None:
     query = build_query_text(args, argv, include_ordering=True, include_slice=False)
 
     assert query == (
-        "[ .[] | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) "
+        "[ .[] | sort_by(.repeats + .deadline + .closed + .scheduled | max) "
         "| reverse "
-        "| sort_by((.repeated_tasks + .deadline + .closed + .scheduled | max) != null) ]"
+        "| sort_by((.repeats + .deadline + .closed + .scheduled | max) != null) ]"
     )
 
 
@@ -175,6 +124,35 @@ def test_build_query_text_with_property_filter() -> None:
     assert query == '[ .[] | select(.properties["priority"] == "A") ]'
 
 
+def test_build_query_text_with_builtin_with_tags_as_category_stage() -> None:
+    """Built-in with-tags-as-category switch should add its query stage."""
+    from org.cli_common import build_query_text
+
+    args = make_args(with_tags_as_category=True)
+    argv = ["org", "stats", "summary", "--with-tags-as-category", "file.org"]
+
+    query = build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+    assert query == (
+        "[ .[] | (if .tags | length > 0 then .heading_category = .tags[0] else null); . ]"
+    )
+
+
+def test_build_query_text_with_tags_as_category_default_appended_when_missing_in_argv() -> None:
+    """Default with-tags-as-category should be appended when omitted from argv."""
+    from org.cli_common import build_query_text
+
+    args = make_args(with_tags_as_category=True, filter_tags=["work"])
+    argv = ["org", "stats", "summary", "--filter-tag", "work", "file.org"]
+
+    query = build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+    assert query == (
+        "[ .[] | (if .tags | length > 0 then .heading_category = .tags[0] else null); . "
+        '| select(.tags[] matches "work") ]'
+    )
+
+
 def test_build_query_text_with_filter_completed() -> None:
     """Completed filter should include repeated task completion states."""
     from org.cli_common import build_query_text
@@ -184,7 +162,11 @@ def test_build_query_text_with_filter_completed() -> None:
 
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
-    assert query == ("[ .[] | select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys) ]")
+    assert query == (
+        "[ .[] | select(if .repeats | length > 0 then .repeats | map(.is_completed) + "
+        "[.is_completed] | any else .is_completed) "
+        "| .repeats = [.repeats[] | select(.is_completed)]; .  ]"
+    )
 
 
 def test_build_query_text_with_filter_not_completed() -> None:
@@ -197,7 +179,9 @@ def test_build_query_text_with_filter_not_completed() -> None:
     query = build_query_text(args, argv, include_ordering=False, include_slice=False)
 
     assert query == (
-        "[ .[] | select(not(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys)) ]"
+        "[ .[] | select(if .repeats | length > 0 then not(.repeats | map(.is_completed) + "
+        "[.is_completed] | any) else not(.is_completed)) "
+        "| .repeats = [.repeats[] | select(not(.is_completed))]; .  ]"
     )
 
 
@@ -312,6 +296,36 @@ def test_build_query_text_custom_with_before_filters(monkeypatch: pytest.MonkeyP
     assert "| let null as $arg in (select(.tag != null)) |" in query
 
 
+def test_build_query_text_with_builtin_and_custom_with_stages_follow_argv_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Built-in and custom with stages should preserve CLI order."""
+    from org import config
+    from org.cli_common import build_query_text
+
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_FILTERS", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_ORDER_BY", {})
+    monkeypatch.setattr(config, "CONFIG_CUSTOM_WITH", {"mark": '. + {"x": $arg}'})
+
+    args = make_args(with_tags_as_category=True, files=["file.org"])
+    argv = [
+        "org",
+        "tasks",
+        "list",
+        "--with-mark",
+        "one",
+        "--with-tags-as-category",
+        "file.org",
+    ]
+
+    query = build_query_text(args, argv, include_ordering=False, include_slice=False)
+
+    assert query == (
+        '[ .[] | let "one" as $arg in (. + {"x": $arg}) '
+        "| (if .tags | length > 0 then .heading_category = .tags[0] else null); . ]"
+    )
+
+
 def test_build_query_text_custom_ordering_for_stats(monkeypatch: pytest.MonkeyPatch) -> None:
     """Custom order-by switches should work even when built-in ordering is disabled."""
     from org import config
@@ -340,8 +354,7 @@ def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixtu
         load_and_process_data(args)
 
     assert "Query context:" in caplog.text
-    assert "'todo_keys': ['TODO']" in caplog.text
-    assert "'category_property': 'CATEGORY'" in caplog.text
+    assert "'todo_states': ['TODO']" in caplog.text
 
 
 def test_build_query_text_preserves_mixed_ordering_cli_order(
@@ -369,7 +382,7 @@ def test_build_query_text_preserves_mixed_ordering_cli_order(
 
     assert query == (
         "[ .[] | let null as $arg in (sort_by(.priority))"
-        " | sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max) ]"
+        " | sort_by(.repeats + .deadline + .closed + .scheduled | max) ]"
     )
 
 

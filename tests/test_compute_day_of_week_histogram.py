@@ -137,20 +137,6 @@ CLOSED: [2023-10-22 Sun 09:00]
     assert histogram.values["Sunday"] == 1
 
 
-def test_compute_day_of_week_histogram_with_datelist() -> None:
-    """Test task with datelist timestamps (timestamps in body)."""
-    nodes = node_from_org("""
-* DONE Task
-[2023-10-23 Mon 14:30]
-[2023-10-24 Tue 10:00]
-""")
-
-    histogram = compute_day_of_week_histogram(nodes)
-
-    assert histogram.values["Monday"] == 1
-    assert histogram.values["Tuesday"] == 1
-
-
 def test_compute_day_of_week_histogram_scheduled_and_deadline() -> None:
     """Test tasks with scheduled and deadline timestamps."""
     nodes = node_from_org("""

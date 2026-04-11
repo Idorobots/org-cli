@@ -167,13 +167,15 @@ def bright_blue(text: str, enabled: bool) -> str:
     return colorize(text, "bold blue", enabled)
 
 
-def get_state_color(state: str, done_keys: list[str], todo_keys: list[str], enabled: bool) -> str:
+def get_state_color(
+    state: str, done_states: list[str], todo_states: list[str], enabled: bool
+) -> str:
     """Get appropriate style for a task state.
 
     Args:
         state: Task state (e.g., "DONE", "TODO", "CANCELLED")
-        done_keys: List of done state keywords
-        todo_keys: List of todo state keywords
+        done_states: List of done state keywords
+        todo_states: List of todo state keywords
         enabled: Whether coloring is enabled
 
     Returns:
@@ -182,12 +184,12 @@ def get_state_color(state: str, done_keys: list[str], todo_keys: list[str], enab
     if not enabled:
         return ""
 
-    if state in done_keys:
+    if state in done_states:
         if state == "CANCELLED":
             return "bold red"
         return "bold green"
 
-    if state in todo_keys or state == "" or state.lower() == "null":
+    if state in todo_states or state == "" or state.lower() == "null":
         return "dim white"
 
     return "bold yellow"

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-from typing import cast
 
-import orgparse
+import org_parser
 import pytest
-from orgparse.date import OrgDate, OrgDateClock, OrgDateRepeatedTask
-from orgparse.node import OrgRootNode
+from org_parser import Document
+from org_parser.element import Repeat
+from org_parser.text import RichText
+from org_parser.time import Clock, Timestamp
 
 from org.query_language import EvalContext, QueryRuntimeError, Stream, compile_query_text
 from tests.conftest import node_from_org
@@ -42,7 +43,7 @@ def _sample_root() -> object:
 
 * TODO Second
 """
-    root = orgparse.loads(org_text)
+    root = org_parser.loads(org_text)
     assert root is not None
     return root
 
@@ -50,28 +51,28 @@ def _sample_root() -> object:
 def test_runtime_select_done_nodes() -> None:
     """select() should filter nodes by todo state."""
     nodes = _sample_nodes()
-    result = _execute('.[] | select(.todo == "DONE") | .heading', nodes, None)
+    result = _execute('.[] | select(.todo == "DONE") | .title_text', nodes, None)
     assert result == ["Parent", "Zeta child"]
 
 
 def test_runtime_select_not_null_todo_filters_missing_values() -> None:
     """Comparing against null should treat missing todo as null."""
     nodes = [*node_from_org("* DONE Keep\n* Plain\n")]
-    result = _execute(".[] | select(.todo != null) | .heading", nodes, None)
+    result = _execute(".[] | select(.todo != null) | .title_text", nodes, None)
     assert result == ["Keep"]
 
 
 def test_runtime_reverse_and_index() -> None:
     """reverse and index should return the last child heading."""
     nodes = _sample_nodes()
-    result = _execute(".[0].children | reverse | .[0].heading", nodes, None)
+    result = _execute(".[0].children | reverse | .[0].title_text", nodes, None)
     assert result == ["Zeta child"]
 
 
 def test_runtime_sort_by_heading_descending() -> None:
     """sort_by should order by heading descending."""
     nodes = _sample_nodes()
-    result = _execute(".[0].children | .[] | sort_by(.heading) | .heading", nodes, None)
+    result = _execute(".[0].children | .[] | sort_by(.title_text) | .title_text", nodes, None)
     assert result == ["Zeta child", "Alpha child"]
 
 
@@ -88,8 +89,8 @@ SCHEDULED: <2024-01-12 Fri>
         )
     ]
     query = (
-        ".[] | sort_by(.repeated_tasks + .deadline + .closed + .scheduled"
-        " | [ .[] | select(.) ] | max) | .heading"
+        ".[] | sort_by(.repeats + .deadline + .closed + .scheduled"
+        " | [ .[] | select(.) ] | max) | .title_text"
     )
 
     result = _execute(query, nodes, None)
@@ -134,11 +135,11 @@ def test_runtime_slice_out_of_bounds_returns_empty_collection() -> None:
 def test_runtime_matches_and_membership() -> None:
     """matches and in should work in select conditions."""
     nodes = _sample_nodes()
-    matches_result = _execute('.[] | select(.heading matches "^P") | .heading', nodes, None)
+    matches_result = _execute('.[] | select(.title_text matches "^P") | .title_text', nodes, None)
     in_result = _execute(
-        ".[] | select(.todo in $done_keys) | .todo",
+        ".[] | select(.todo in $done_states) | .todo",
         nodes,
-        {"done_keys": ["DONE"]},
+        {"done_states": ["DONE"]},
     )
     assert matches_result == ["Parent"]
     assert in_result == ["DONE", "DONE"]
@@ -147,7 +148,7 @@ def test_runtime_matches_and_membership() -> None:
 def test_runtime_comma_builds_tuples() -> None:
     """Comma expressions should produce tuple values."""
     nodes = _sample_nodes()
-    result = _execute(".[] | .todo, .heading", nodes, None)
+    result = _execute(".[] | .todo, .title_text", nodes, None)
     assert result[0] == ("DONE", "Parent")
 
 
@@ -155,15 +156,15 @@ def test_runtime_type_mismatch_raises_exception() -> None:
     """Type mismatch in operator should raise query runtime error."""
     nodes = _sample_nodes()
     with pytest.raises(QueryRuntimeError):
-        _execute(".[] | select(.heading > 1)", nodes, None)
+        _execute(".[] | select(.title_text > 1)", nodes, None)
 
 
 def test_runtime_root_node_is_iterable_indexable_and_sliceable() -> None:
-    """OrgRootNode should behave like a collection in query operators."""
+    """Document should behave like a collection in query operators."""
     root = _sample_root()
-    result_iterate = _execute(".[0][] | .heading", [root], None)
-    result_index = _execute(".[0][0].heading", [root], None)
-    result_slice = _execute(".[0][0:2] | .[] | .heading", [root], None)
+    result_iterate = _execute(".[0][] | .title_text", [root], None)
+    result_index = _execute(".[0][0].title_text", [root], None)
+    result_slice = _execute(".[0][0:2] | .[] | .title_text", [root], None)
 
     assert result_iterate == ["Parent", "Alpha child", "Zeta child", "Second"]
     assert result_index == ["Parent"]
@@ -190,7 +191,7 @@ def test_runtime_max_and_min_functions() -> None:
 
 
 def test_runtime_max_and_min_for_org_dates_compare_by_start() -> None:
-    """max/min should compare OrgDate values by start value."""
+    """max/min should compare Timestamp values by start value."""
     dates = [
         _execute('timestamp("<2025-01-02 Thu 10:00>")', [None], None)[0],
         _execute('timestamp("<2025-01-02 Thu 09:00>")', [None], None)[0],
@@ -246,6 +247,23 @@ def test_runtime_map_function() -> None:
     assert result == [[2, 4, 6]]
 
 
+def test_runtime_any_and_all_functions() -> None:
+    """any/all should evaluate collection truthiness as aggregate predicates."""
+    any_true = _execute("any", [False, True], None)
+    any_false = _execute("any", [False, 0, "", None], None)
+    all_true = _execute('map(. | type == "str") | all', ["foo", "bar"], None)
+    all_false = _execute("all", [True, 1, 0], None)
+    all_empty = _execute("all", [], None)
+    any_empty = _execute("any", [], None)
+
+    assert any_true == [True]
+    assert any_false == [False]
+    assert all_true == [True]
+    assert all_false == [False]
+    assert all_empty == [True]
+    assert any_empty == [False]
+
+
 def test_runtime_numeric_operators_and_slice_expression() -> None:
     """Arithmetic operators and dynamic slice bounds should work."""
     numeric = _execute("2 ** 3, 8 / 2, 7 mod 3, -7 rem 3, -7 quot 3", [None], None)
@@ -279,13 +297,13 @@ def test_runtime_type_function() -> None:
     node = next(iter(node_from_org("* TODO Task\n")))
     repeated = _execute('timestamp("<2025-01-02 Thu>")', [None], None)[0]
     result = _execute(".[] | type", [None, 1, "x", node, repeated], None)
-    assert result == ["null", "int", "str", "OrgNode", "OrgDate"]
+    assert result == ["null", "int", "str", "Heading", "Timestamp"]
 
 
 def test_runtime_not_function() -> None:
     """not should invert subquery truthiness."""
     nodes = _sample_nodes()
-    result = _execute(".[] | not(.todo in $done_keys)", nodes, {"done_keys": ["DONE"]})
+    result = _execute(".[] | not(.todo in $done_states)", nodes, {"done_states": ["DONE"]})
     assert result == [False, True, False, True]
 
 
@@ -330,8 +348,64 @@ def test_runtime_cast_functions_convert_supported_values() -> None:
         )
     ]
     assert len(timestamp_value) == 1
-    assert isinstance(timestamp_value[0], OrgDate)
-    assert str(timestamp_value[0]) == "<2026-03-01 Sun 10:00--12:00>"
+    assert isinstance(timestamp_value[0], Timestamp)
+    assert str(timestamp_value[0]) == "<2026-03-01 Sun 10:00-12:00>"
+
+
+def test_runtime_string_operators_accept_richtext_values() -> None:
+    """String operators should accept RichText by using plain text values."""
+    values = [RichText("abc"), RichText("ab")]
+    result = _execute(
+        '.[0] == "abc", .[0] matches "a.c", .[1] * 2, .[1] + "c", .[1] in "zabx"',
+        values,
+        None,
+    )
+
+    assert result == [(True, True, "abab", "abc", True)]
+
+
+def test_runtime_string_functions_accept_richtext_values() -> None:
+    """String-accepting functions should accept RichText values."""
+    converted = _execute(
+        "int(.[0]), float(.[1]), bool(.[2])",
+        [RichText("42"), RichText("3.5"), RichText("TRUE")],
+        None,
+    )
+    hashed = _execute("sha256", RichText("abc"), None)
+    matched = _execute('match("a(.)")', RichText("ab"), None)
+    timestamp_value = _execute("timestamp(.[0])", [RichText("<2025-01-02 Thu>")], None)[0]
+    clock_value = _execute("clock(.[0])", [RichText("<2025-01-02 Thu 10:00-11:00>")], None)[0]
+    repeat_value = _execute(
+        "repeat(.[0], .[1], .[2])",
+        [RichText("<2025-01-02 Thu>"), RichText("TODO"), RichText("DONE")],
+        None,
+    )[0]
+
+    assert converted == [(42, 3.5, True)]
+    assert hashed == ["ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"]
+    assert matched == [["ab", "b"]]
+    assert isinstance(timestamp_value, Timestamp)
+    assert str(timestamp_value) == "<2025-01-02 Thu>"
+    assert isinstance(clock_value, Clock)
+    assert str(clock_value) == "CLOCK: <2025-01-02 Thu 10:00-11:00>\n"
+    assert isinstance(repeat_value, Repeat)
+    assert repeat_value.before == "TODO"
+    assert repeat_value.after == "DONE"
+
+
+def test_runtime_string_accessors_accept_richtext_values() -> None:
+    """Accessors that operate on strings should accept RichText values."""
+    indexed_and_sliced = _execute(".[0][1], .[0][1:3]", [RichText("abcd")], None)
+    length_value = _execute("length", RichText("abcd"), None)
+    joined = _execute(
+        ". as $root | $root[0] | join($root[1])",
+        [[1, 2, 3], RichText("|")],
+        None,
+    )
+
+    assert indexed_and_sliced == [("b", "bc")]
+    assert length_value == [4]
+    assert joined == ["1|2|3"]
 
 
 def test_runtime_sha256_function_hashes_supported_values() -> None:
@@ -351,7 +425,7 @@ def test_runtime_if_expression_evaluates_selected_branch() -> None:
     """if should evaluate then/else branch based on condition truthiness."""
     direct = _execute('2 | if . == 2 then "yes" else "no"', [None], None)
     nodes = _sample_nodes()
-    per_item = _execute('.[] | if .todo == "DONE" then .heading else "pending"', nodes, None)
+    per_item = _execute('.[] | if .todo == "DONE" then .title_text else "pending"', nodes, None)
 
     assert direct == ["yes"]
     assert per_item == ["Parent", "pending", "Zeta child", "pending"]
@@ -410,47 +484,50 @@ def test_runtime_cast_and_match_validation_errors() -> None:
         _execute('.[] | match("x")', [1], None)
 
 
-def test_runtime_timestamp_function_with_supported_arities() -> None:
-    """timestamp should create OrgDate values for one, two, and three arguments."""
+def test_runtime_timestamp_function_accepts_source_strings() -> None:
+    """timestamp should parse Timestamp source strings directly."""
     one = _execute('timestamp("<2025-01-02 Thu>")', [None], None)[0]
-    two = _execute('timestamp("<2025-01-02 Thu>", "<2025-01-03 Fri>")', [None], None)[0]
-    three = _execute('timestamp("<2025-01-02 Thu>", null, false)', [None], None)[0]
+    two = _execute('timestamp("<2025-01-02 Thu>--<2025-01-03 Fri>")', [None], None)[0]
+    three = _execute('timestamp("[2025-01-02 Thu]")', [None], None)[0]
 
     assert str(one) == "<2025-01-02 Thu>"
     assert str(two) == "<2025-01-02 Thu>--<2025-01-03 Fri>"
     assert str(three) == "[2025-01-02 Thu]"
 
 
-def test_runtime_clock_function_with_supported_arities() -> None:
-    """clock should create OrgDateClock values with computed durations."""
-    two = _execute('clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:30>")', [None], None)[0]
-    three = _execute(
-        'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:30>", true)', [None], None
-    )[0]
+def test_runtime_clock_function_accepts_source_strings() -> None:
+    """clock should parse one timestamp source string into a Clock."""
+    active = _execute('clock("<2025-01-02 Thu 10:00-11:30>")', [None], None)[0]
+    inactive = _execute('clock("[2025-01-02 Thu 10:00-11:30]")', [None], None)[0]
 
-    assert isinstance(two, OrgDateClock)
-    assert two.duration.total_seconds() == 5400
-    assert str(two) == "[2025-01-02 Thu 10:00]--[2025-01-02 Thu 11:30]"
-    assert str(three) == "<2025-01-02 Thu 10:00>--<2025-01-02 Thu 11:30>"
+    assert isinstance(active, Clock)
+    assert isinstance(inactive, Clock)
+    assert active.duration is None
+    assert active.timestamp is not None
+    assert active.timestamp.end is not None
+    assert active.timestamp.end.hour == 11
+    assert active.timestamp.end.minute == 30
+    assert str(active) == "CLOCK: <2025-01-02 Thu 10:00-11:30>\n"
+    assert str(inactive) == "CLOCK: [2025-01-02 Thu 10:00-11:30]\n"
 
 
-def test_runtime_repeated_task_function_with_supported_arities() -> None:
-    """repeated_task should create OrgDateRepeatedTask values."""
-    three = _execute('repeated_task("<2025-01-02 Thu>", "TODO", null)', [None], None)[0]
+def test_runtime_repeat_function_with_supported_arities() -> None:
+    """repeat should create Repeat values."""
+    three = _execute('repeat("<2025-01-02 Thu>", "TODO", "DONE")', [None], None)[0]
     four = _execute(
-        'repeated_task("<2025-01-02 Thu>", null, "DONE", true)',
+        'repeat("<2025-01-02 Thu>", "TODO", "DONE", true)',
         [None],
         None,
     )[0]
 
-    assert isinstance(three, OrgDateRepeatedTask)
+    assert isinstance(three, Repeat)
     assert three.before is not None and three.before == "TODO"
-    assert cast(object, three.after) is None
-    assert str(three) == "[2025-01-02 Thu]"
-    assert isinstance(four, OrgDateRepeatedTask)
-    assert cast(object, four.before) is None
+    assert three.after is not None and three.after == "DONE"
+    assert str(three) == '- State "DONE"       from "TODO"       <2025-01-02 Thu 00:00>\n'
+    assert isinstance(four, Repeat)
+    assert four.before is not None and four.before == "TODO"
     assert four.after is not None and four.after == "DONE"
-    assert str(four) == "<2025-01-02 Thu>"
+    assert str(four) == '- State "DONE"       from "TODO"       <2025-01-02 Thu 00:00>\n'
 
 
 def test_runtime_string_and_collection_operator_extensions() -> None:
@@ -494,17 +571,17 @@ def test_runtime_constructor_function_validation_errors() -> None:
     with pytest.raises(QueryRuntimeError):
         _execute('timestamp("not a timestamp")', [None], None)
     with pytest.raises(QueryRuntimeError):
-        _execute('timestamp("<2025-01-02 Thu>", null, "yes")', [None], None)
+        _execute('timestamp("<2025-01-02 Thu>", null)', [None], None)
     with pytest.raises(QueryRuntimeError):
-        _execute('clock("<2025-01-02 Thu 10:00>", null)', [None], None)
+        _execute('clock("<2025-01-02 Thu 10:00-11:30>", null)', [None], None)
     with pytest.raises(QueryRuntimeError):
-        _execute('repeated_task("<2025-01-02 Thu>", 1, "DONE")', [None], None)
+        _execute('repeat("<2025-01-02 Thu>", 1, "DONE")', [None], None)
 
 
 def test_runtime_as_binding_visible_in_pipeline() -> None:
     """as-binding should define variables for downstream pipe stages."""
     root = _sample_root()
-    typed_root = root if isinstance(root, OrgRootNode) else None
+    typed_root = root if isinstance(root, Document) else None
     assert typed_root is not None
     result = _execute(". as $root | $root[], ($root[] | .children | length)", [typed_root], None)
 
@@ -514,9 +591,9 @@ def test_runtime_as_binding_visible_in_pipeline() -> None:
 def test_runtime_fold_operator() -> None:
     """Fold operator should collect subquery streams into lists."""
     nodes = _sample_nodes()
-    folded = _execute('[ .[] | select(.todo == "DONE") | .heading ]', nodes, None)
+    folded = _execute('[ .[] | select(.todo == "DONE") | .title_text ]', nodes, None)
     tuple_fold = _execute("[1, 2, 3]", [None], None)
-    scalar_fold = _execute(".[] | [ .heading ]", nodes, None)
+    scalar_fold = _execute(".[] | [ .title_text ]", nodes, None)
     empty_fold = _execute("[]", [None], None)
 
     assert folded == [["Parent", "Zeta child"]]
@@ -527,7 +604,7 @@ def test_runtime_fold_operator() -> None:
 
 def test_runtime_returns_stream_type() -> None:
     """Compiled queries should return Stream instances."""
-    compiled = compile_query_text(".[] | .heading")
+    compiled = compile_query_text(".[] | .title_text")
     result = compiled(Stream([_sample_nodes()]), EvalContext({}))
     assert isinstance(result, Stream)
 
@@ -604,15 +681,15 @@ def test_runtime_string_comparison_operators() -> None:
 
 
 def test_runtime_org_date_comparison_operators_use_start_values() -> None:
-    """Date comparisons should work across OrgDate variants using start values."""
+    """Date comparisons should work across Timestamp variants using start values."""
     timestamp_value = _execute('timestamp("<2025-01-02 Thu 10:00>")', [None], None)[0]
     clock_same_start = _execute(
-        'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 11:00>")',
+        'clock("<2025-01-02 Thu 10:00-11:00>")',
         [None],
         None,
     )[0]
     repeated_later = _execute(
-        'repeated_task("<2025-01-03 Fri 09:00>", "TODO", "DONE")',
+        'repeat("<2025-01-03 Fri 09:00>", "TODO", "DONE")',
         [None],
         None,
     )[0]
@@ -704,8 +781,9 @@ def test_runtime_comparison_operators_with_null_for_any_type() -> None:
 
 def test_runtime_function_arity_validation_for_no_arg_functions() -> None:
     """No-argument functions should reject unexpected argument expressions."""
-    with pytest.raises(QueryRuntimeError):
-        _execute("reverse(1)", [None], None)
+    for function_name in ["reverse", "any", "all"]:
+        with pytest.raises(QueryRuntimeError):
+            _execute(f"{function_name}(1)", [None], None)
 
 
 @pytest.mark.parametrize("function_name", ["select", "sort_by", "join", "map", "not"])
@@ -733,6 +811,13 @@ def test_runtime_map_requires_collection_input() -> None:
     """map should reject scalar inputs."""
     with pytest.raises(QueryRuntimeError):
         _execute("map(.)", 1, None)
+
+
+@pytest.mark.parametrize("function_name", ["any", "all"])
+def test_runtime_any_and_all_require_collection_input(function_name: str) -> None:
+    """any/all should reject scalar inputs."""
+    with pytest.raises(QueryRuntimeError):
+        _execute(function_name, 1, None)
 
 
 def test_runtime_sort_by_requires_uniform_key_type() -> None:
@@ -770,12 +855,12 @@ def test_runtime_unique_length_and_reverse_variants() -> None:
 def test_runtime_constructor_functions_validate_supported_arities() -> None:
     """Constructor functions should reject unsupported argument counts."""
     with pytest.raises(QueryRuntimeError):
-        _execute("timestamp(1, 2, 3, 4)", [None], None)
+        _execute('timestamp("<2025-01-02 Thu>", "<2025-01-03 Fri>")', [None], None)
     with pytest.raises(QueryRuntimeError):
-        _execute('clock("<2025-01-02 Thu>", "<2025-01-03 Fri>", true, false)', [None], None)
+        _execute('clock("<2025-01-02 Thu 10:00-11:00>", true)', [None], None)
     with pytest.raises(QueryRuntimeError):
         _execute(
-            'repeated_task("<2025-01-02 Thu>", "TODO", "DONE", true, false)',
+            'repeat("<2025-01-02 Thu>", "TODO", "DONE", true, false)',
             [None],
             None,
         )
@@ -784,7 +869,7 @@ def test_runtime_constructor_functions_validate_supported_arities() -> None:
 def test_runtime_bracket_field_access_variants() -> None:
     """Bracket field access should work for dicts, nodes, and null bases."""
     dict_value = _execute('.[0]["key"]', [{"key": 7}], None)
-    node_value = _execute('.[0]["heading"]', _sample_nodes(), None)
+    node_value = _execute('.[0]["title_text"]', _sample_nodes(), None)
     null_value = _execute('.[0]["missing"]', [None], None)
 
     assert dict_value == [7]
@@ -792,21 +877,58 @@ def test_runtime_bracket_field_access_variants() -> None:
     assert null_value == [None]
 
 
+def test_runtime_heading_properties_support_dot_and_bracket_access() -> None:
+    """Heading properties should expose keys via dot and bracket access."""
+    nodes = [
+        *node_from_org("""
+* Task
+:PROPERTIES:
+:key: 23
+:END:
+""")
+    ]
+
+    dot_result = _execute(".[] | .properties.key", nodes, None)
+    bracket_result = _execute('.[] | .properties["key"]', nodes, None)
+
+    assert dot_result == ["23"]
+    assert bracket_result == ["23"]
+
+
+def test_runtime_heading_properties_support_assignment() -> None:
+    """Heading property values should be assignable via dot and bracket targets."""
+    nodes = [
+        *node_from_org("""
+* Task
+:PROPERTIES:
+:key: 23
+:END:
+""")
+    ]
+
+    dot_update = _execute('.[] | .properties.key = "99"; .properties.key', nodes, None)
+    bracket_update = _execute('.[] | .properties["key"] = "42"; .properties["key"]', nodes, None)
+
+    assert dot_update == ["99"]
+    assert bracket_update == ["42"]
+    assert nodes[0].properties["key"] == "42"
+
+
 def test_runtime_dict_assignment_sets_and_overwrites_values() -> None:
-    """Dictionary assignment should set and overwrite dictionary keys."""
+    """Assignment should set and overwrite dictionary keys."""
     values = [{"x": 1}, {}]
     result = _execute('.[] | .["x"] = 2', values, None)
 
-    assert result == [{"x": 2}, {"x": 2}]
+    assert result == [2, 2]
     assert values == [{"x": 2}, {"x": 2}]
 
 
 def test_runtime_dict_assignment_with_dot_target() -> None:
-    """Dictionary assignment should work with dot field targets."""
+    """Assignment should work with dot field targets."""
     values = [{"meta": {}}, {"meta": {"done": False}}]
     result = _execute(".[] | .meta.done = true", values, None)
 
-    assert result == [{"done": True}, {"done": True}]
+    assert result == [True, True]
     assert values == [{"meta": {"done": True}}, {"meta": {"done": True}}]
 
 
@@ -820,6 +942,15 @@ def test_runtime_dict_assignment_with_dynamic_key_expression() -> None:
         {"k": "done", "meta": {"done": True}},
         {"k": "state", "meta": {"state": True}},
     ]
+
+
+def test_runtime_dict_assignment_accepts_richtext_keys() -> None:
+    """Dictionary assignment should accept RichText keys."""
+    values = [{"k": RichText("done"), "meta": {}}]
+    result = _execute('.[] | .meta[.["k"]] = true; .meta["done"]', values, None)
+
+    assert result == [True]
+    assert values[0]["meta"] == {"done": True}
 
 
 def test_runtime_sequence_evaluates_side_effects_before_returning_right_value() -> None:
@@ -841,6 +972,79 @@ def test_runtime_dict_assignment_requires_string_key() -> None:
     """Dictionary assignment should reject non-string key values."""
     with pytest.raises(QueryRuntimeError):
         _execute(".[] | .[$k] = 1", [{}], {"k": 1})
+
+
+def test_runtime_object_field_assignment_returns_field_value() -> None:
+    """Object field assignment should update and return assigned field value."""
+    nodes = [*node_from_org("* TODO Keep\n")]
+    result = _execute('.[] | .todo = "DONE"', nodes, None)
+
+    assert result == ["DONE"]
+    assert nodes[0].todo == "DONE"
+
+
+def test_runtime_object_field_assignment_uses_setter_type_for_string_like_union() -> None:
+    """Object field assignment should allow setter-accepted union member types."""
+    nodes = [*node_from_org("* TODO Keep\n")]
+    result = _execute('.[] | .title = "Changed"; .title_text', nodes, None)
+
+    assert result == ["Changed"]
+    assert nodes[0].title_text == "Changed"
+
+
+def test_runtime_object_field_assignment_uses_setter_type_for_mapping_union() -> None:
+    """Object field assignment should allow dict values accepted by property setter."""
+    nodes = [*node_from_org("* TODO Keep\n")]
+    result = _execute('.[] | .properties = $props; .properties["x"]', nodes, {"props": {"x": "1"}})
+
+    assert result == ["1"]
+    assert nodes[0].properties["x"] == "1"
+
+
+def test_runtime_object_field_assignment_rejects_type_mismatch() -> None:
+    """Object field assignment should reject values of a different type."""
+    nodes = [*node_from_org("* TODO Keep\n")]
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[] | .todo = 1", nodes, None)
+
+
+def test_runtime_object_field_assignment_rejects_type_mismatch_when_current_value_is_null() -> None:
+    """Object field assignment should validate setter type even when current field value is null."""
+    nodes = [*node_from_org("* Keep\n")]
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[] | .todo = 1", nodes, None)
+
+
+def test_runtime_object_field_assignment_requires_writable_field() -> None:
+    """Object field assignment should fail for read-only fields."""
+    nodes = [*node_from_org("* TODO Keep\n")]
+    with pytest.raises(QueryRuntimeError):
+        _execute('.[] | .title_text = "Changed"', nodes, None)
+
+
+def test_runtime_append_assignment_mutates_collection_in_place() -> None:
+    """Append assignment should mutate target collections and return them."""
+    values = [{"items": [1, 2]}, {"items": [3]}]
+    result = _execute(".[] | .items += [4, 5]", values, None)
+
+    assert result == [[1, 2, 4, 5], [3, 4, 5]]
+    assert values == [{"items": [1, 2, 4, 5]}, {"items": [3, 4, 5]}]
+
+
+def test_runtime_remove_assignment_mutates_collection_in_place() -> None:
+    """Remove assignment should mutate target collections and return them."""
+    values = [{"items": [1, 2, 2, 3]}, {"items": [2, 4]}]
+    result = _execute(".[] | .items -= [2]", values, None)
+
+    assert result == [[1, 3], [4]]
+    assert values == [{"items": [1, 3]}, {"items": [4]}]
+
+
+def test_runtime_collection_mutation_assignment_requires_collection_target() -> None:
+    """Collection mutation assignments should reject non-collection target values."""
+    values = [{"items": 1}]
+    with pytest.raises(QueryRuntimeError):
+        _execute(".[] | .items += 2", values, None)
 
 
 def test_runtime_iterate_skips_null_values() -> None:
@@ -905,42 +1109,38 @@ def test_runtime_length_supports_org_root() -> None:
 def test_runtime_join_supports_org_root_collection_extraction() -> None:
     """join should accept org roots as collection values."""
     root = _sample_root()
-    result = _execute('.[0] | map(.heading) | join(",")', [root], None)
+    result = _execute('.[0] | map(.title_text) | join(",")', [root], None)
     assert result == ["Parent,Alpha child,Zeta child,Second"]
 
 
 def test_runtime_iter_function_arguments_skip_empty_parts() -> None:
     """Function argument expansion should skip combinations with empty parts."""
-    result = _execute('timestamp(select(null), "<2025-01-02 Thu>")', [None], None)
+    result = _execute("timestamp(select(null))", [None], None)
     assert result == []
 
 
-def test_runtime_parse_org_date_accepts_orgdate_values() -> None:
-    """timestamp should accept already-parsed OrgDate values."""
-    result = _execute('timestamp(timestamp("<2025-01-02 Thu>"))', [None], None)
-    assert [str(value) for value in result] == ["<2025-01-02 Thu>"]
+def test_runtime_timestamp_constructor_rejects_timestamp_values() -> None:
+    """timestamp constructor should accept source strings only."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('timestamp(timestamp("<2025-01-02 Thu>"))', [None], None)
 
 
-def test_runtime_parse_org_date_rejects_non_string_non_orgdate() -> None:
-    """timestamp should reject non-string and non-OrgDate values."""
+def test_runtime_parse_org_date_rejects_non_string_input() -> None:
+    """timestamp should reject non-string input values."""
     with pytest.raises(QueryRuntimeError):
         _execute("timestamp(1)", [None], None)
 
 
 def test_runtime_parse_org_date_rejects_unparseable_strings() -> None:
-    """timestamp should fail for values that cannot be parsed as OrgDate."""
+    """timestamp should fail for values that cannot be parsed as Timestamp."""
     with pytest.raises(QueryRuntimeError):
         _execute('timestamp("xyz")', [None], None)
 
 
-def test_runtime_constructor_functions_accept_null_for_optional_active_flag() -> None:
-    """Constructor active flags should accept null where supported."""
-    result = _execute(
-        'clock("<2025-01-02 Thu 10:00>", "<2025-01-02 Thu 10:30>", null)',
-        [None],
-        None,
-    )
-    assert len(result) == 1
+def test_runtime_clock_constructor_rejects_non_string_input() -> None:
+    """clock should reject non-string constructor values."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("clock(1)", [None], None)
 
 
 def test_runtime_unique_skips_duplicate_stream_values() -> None:

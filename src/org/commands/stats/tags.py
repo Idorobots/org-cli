@@ -50,8 +50,8 @@ class TagsArgs:
     mapping: str | None
     mapping_inline: dict[str, str] | None
     exclude_inline: list[str] | None
-    todo_keys: str
-    done_keys: str
+    todo_states: str
+    done_states: str
     filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
@@ -71,7 +71,6 @@ class TagsArgs:
     use: str
     tags: list[str] | None
     with_tags_as_category: bool
-    category_property: str
     max_relations: int
     min_group_size: int
     max_groups: int
@@ -235,15 +234,15 @@ def register(app: typer.Typer) -> None:
             metavar="FILE",
             help="JSON file containing tag mappings (dict[str, str])",
         ),
-        todo_keys: str = typer.Option(
+        todo_states: str = typer.Option(
             "TODO",
-            "--todo-keys",
+            "--todo-states",
             metavar="KEYS",
             help="Comma-separated list of incomplete task states",
         ),
-        done_keys: str = typer.Option(
+        done_states: str = typer.Option(
             "DONE",
-            "--done-keys",
+            "--done-states",
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
@@ -359,13 +358,7 @@ def register(app: typer.Typer) -> None:
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
-            help="Preprocess nodes to set category property based on first tag",
-        ),
-        category_property: str = typer.Option(
-            "CATEGORY",
-            "--category-property",
-            metavar="PROPERTY",
-            help="Property name to use for category histogram and filtering",
+            help="Preprocess nodes to set category from first tag",
         ),
         max_relations: int = typer.Option(
             5,
@@ -382,8 +375,8 @@ def register(app: typer.Typer) -> None:
             mapping=mapping,
             mapping_inline=None,
             exclude_inline=None,
-            todo_keys=todo_keys,
-            done_keys=done_keys,
+            todo_states=todo_states,
+            done_states=done_states,
             filter_priority=filter_priority,
             filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
@@ -403,7 +396,6 @@ def register(app: typer.Typer) -> None:
             use=use,
             tags=tags,
             with_tags_as_category=with_tags_as_category,
-            category_property=category_property,
             max_relations=max_relations,
             min_group_size=2,
             max_groups=0,

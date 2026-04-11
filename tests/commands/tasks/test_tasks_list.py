@@ -32,8 +32,8 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         mapping=None,
         mapping_inline=None,
         exclude_inline=None,
-        todo_keys="TODO",
-        done_keys="DONE",
+        todo_states="TODO",
+        done_states="DONE",
         filter_priority=None,
         filter_level=None,
         filter_repeats_above=None,
@@ -58,7 +58,6 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         order_by_timestamp_asc=False,
         order_by_timestamp_desc=False,
         with_tags_as_category=False,
-        category_property="CATEGORY",
         out=OutputFormat.ORG,
         out_theme="github-dark",
         pandoc_args=None,
@@ -303,7 +302,7 @@ def test_run_tasks_list_json_emits_array_for_multiple_nodes(
     parsed = json.loads(captured)
     assert isinstance(parsed, list)
     assert len(parsed) == 2
-    assert parsed[0]["type"] == "OrgNode"
+    assert parsed[0]["type"] == "Heading"
     assert "env" not in parsed[0]
 
 
@@ -320,7 +319,7 @@ def test_run_tasks_list_json_emits_single_value_for_single_node(
 
     parsed = json.loads(captured)
     assert isinstance(parsed, dict)
-    assert parsed["type"] == "OrgNode"
+    assert parsed["type"] == "Heading"
 
 
 def test_run_tasks_list_json_no_results_emits_empty_array(

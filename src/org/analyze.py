@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-import orgparse
+from org_parser.document import Heading
 
 from org.histogram import Histogram
 from org.timestamp import extract_timestamp_any
@@ -240,7 +240,7 @@ def normalize(tags: set[str], mapping: dict[str, str]) -> set[str]:
     return {mapped(mapping, t) for t in norm}
 
 
-def _extract_items(node: orgparse.node.OrgNode, mapping: dict[str, str], category: str) -> set[str]:
+def _extract_items(node: Heading, mapping: dict[str, str], category: str) -> set[str]:
     """Extract and normalize items from a node based on category.
 
     Args:
@@ -255,11 +255,11 @@ def _extract_items(node: orgparse.node.OrgNode, mapping: dict[str, str], categor
         stripped_tags = {t.strip() for t in node.tags}
         return {mapped(mapping, t) for t in stripped_tags}
     if category == "heading":
-        return normalize(set(node.heading.split()), mapping)
-    return normalize(set(node.body.split()), mapping)
+        return normalize(set(node.title_text.split()), mapping)
+    return normalize(set(node.body_text.split()), mapping)
 
 
-def compute_task_stats(nodes: list[orgparse.node.OrgNode]) -> tuple[int, int]:
+def compute_task_stats(nodes: list[Heading]) -> tuple[int, int]:
     """Compute total task count and maximum repeat count.
 
     Args:
@@ -272,8 +272,8 @@ def compute_task_stats(nodes: list[orgparse.node.OrgNode]) -> tuple[int, int]:
     max_repeat_count = 0
 
     for node in nodes:
-        total = total + max(1, len(node.repeated_tasks))
-        max_repeat_count = max(max_repeat_count, len(node.repeated_tasks))
+        total = total + max(1, len(node.repeats))
+        max_repeat_count = max(max_repeat_count, len(node.repeats))
 
     return (total, max_repeat_count)
 
@@ -312,7 +312,7 @@ def compute_avg_tasks_per_day(timerange: TimeRange, total_count: int) -> float:
     return total_count / days_spanned
 
 
-def compute_task_state_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogram:
+def compute_task_state_histogram(nodes: list[Heading]) -> Histogram:
     """Compute histogram of task states across all nodes.
 
     Counts states from repeated tasks if present, otherwise uses node.todo.
@@ -326,8 +326,8 @@ def compute_task_state_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogra
     task_states = Histogram(values={})
 
     for node in nodes:
-        if node.repeated_tasks:
-            for repeated_task in node.repeated_tasks:
+        if node.repeats:
+            for repeated_task in node.repeats:
                 repeat_state = repeated_task.after or "null"
                 task_states.update(repeat_state, 1)
         else:
@@ -337,7 +337,7 @@ def compute_task_state_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogra
     return task_states
 
 
-def compute_day_of_week_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogram:
+def compute_day_of_week_histogram(nodes: list[Heading]) -> Histogram:
     """Compute histogram of task completion days across all tasks.
 
     Extracts timestamps from all tasks and counts by day of week.
@@ -352,7 +352,7 @@ def compute_day_of_week_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogr
     task_days = Histogram(values={})
 
     for node in nodes:
-        count = max(1, len(node.repeated_tasks))
+        count = max(1, len(node.repeats))
         timestamps = extract_timestamp_any(node)
 
         if timestamps:
@@ -365,26 +365,13 @@ def compute_day_of_week_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogr
     return task_days
 
 
-def compute_category_histogram(
-    nodes: list[orgparse.node.OrgNode], category_property: str
-) -> Histogram:
-    """Compute histogram based on category property value.
-
-    Reads category from node.properties[category_property].
-    If the property doesn't exist or is empty, categorizes as "null".
-
-    Args:
-        nodes: List of org-mode nodes
-        category_property: Name of property to read category from
-
-    Returns:
-        Histogram with counts for each category value
-    """
+def compute_category_histogram(nodes: list[Heading]) -> Histogram:
+    """Compute histogram based on effective heading category values."""
     task_categories = Histogram(values={})
 
     for node in nodes:
-        count = max(1, len(node.repeated_tasks))
-        category_value = node.properties.get(category_property)
+        count = max(1, len(node.repeats))
+        category_value = node.category
         if category_value is None or str(category_value) == "":
             category = "null"
         else:
@@ -394,7 +381,7 @@ def compute_category_histogram(
     return task_categories
 
 
-def compute_priority_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogram:
+def compute_priority_histogram(nodes: list[Heading]) -> Histogram:
     """Compute histogram of task priorities across all nodes.
 
     Counts priorities from all tasks (including repeats).
@@ -409,7 +396,7 @@ def compute_priority_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogram:
     task_priorities = Histogram(values={})
 
     for node in nodes:
-        count = max(1, len(node.repeated_tasks))
+        count = max(1, len(node.repeats))
         priority = node.priority
         priority_key = "null" if priority is None or str(priority) == "" else str(priority)
         task_priorities.update(priority_key, count)
@@ -417,7 +404,7 @@ def compute_priority_histogram(nodes: list[orgparse.node.OrgNode]) -> Histogram:
     return task_priorities
 
 
-def compute_global_timerange(nodes: list[orgparse.node.OrgNode]) -> TimeRange:
+def compute_global_timerange(nodes: list[Heading]) -> TimeRange:
     """Compute global time range across all tasks.
 
     Extracts timestamps from all tasks and builds a unified TimeRange.
@@ -439,7 +426,7 @@ def compute_global_timerange(nodes: list[orgparse.node.OrgNode]) -> TimeRange:
 
 
 def compute_frequencies(
-    nodes: list[orgparse.node.OrgNode], mapping: dict[str, str], category: str
+    nodes: list[Heading], mapping: dict[str, str], category: str
 ) -> dict[str, Frequency]:
     """Compute frequency statistics for all nodes in a given category.
 
@@ -458,7 +445,7 @@ def compute_frequencies(
 
     for node in nodes:
         items = _extract_items(node, mapping, category)
-        count = max(1, len(node.repeated_tasks))
+        count = max(1, len(node.repeats))
 
         for item in items:
             if item not in frequencies:
@@ -469,7 +456,7 @@ def compute_frequencies(
 
 
 def compute_relations(
-    nodes: list[orgparse.node.OrgNode], mapping: dict[str, str], category: str
+    nodes: list[Heading], mapping: dict[str, str], category: str
 ) -> dict[str, Relations]:
     """Compute pair-wise relations for all nodes in a given category.
 
@@ -488,7 +475,7 @@ def compute_relations(
 
     for node in nodes:
         items = _extract_items(node, mapping, category)
-        count = max(1, len(node.repeated_tasks))
+        count = max(1, len(node.repeats))
 
         items_list = sorted(items)
         for i in range(len(items_list)):
@@ -512,7 +499,7 @@ def compute_relations(
 
 
 def compute_time_ranges(
-    nodes: list[orgparse.node.OrgNode], mapping: dict[str, str], category: str
+    nodes: list[Heading], mapping: dict[str, str], category: str
 ) -> dict[str, TimeRange]:
     """Compute time ranges for all tasks in a given category.
 
@@ -624,7 +611,7 @@ def compute_per_tag_statistics(
 def compute_groups(
     tags: dict[str, Tag],
     max_relations: int,
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     mapping: dict[str, str],
     category: str,
 ) -> list[Group]:
@@ -707,7 +694,7 @@ def compute_groups(
             scc_set = set(group.tags)
 
             if node_items & scc_set:
-                group.total_tasks += max(1, len(org_node.repeated_tasks))
+                group.total_tasks += max(1, len(org_node.repeats))
 
     for group in groups:
         group.avg_tasks_per_day = compute_avg_tasks_per_day(group.time_range, group.total_tasks)
@@ -717,7 +704,7 @@ def compute_groups(
 
 
 def compute_explicit_groups(
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     mapping: dict[str, str],
     category: str,
     group_items: list[list[str]],
@@ -748,7 +735,7 @@ def compute_explicit_groups(
         for node in nodes:
             node_items = _extract_items(node, mapping, category)
             if node_items & group_set:
-                total_tasks += max(1, len(node.repeated_tasks))
+                total_tasks += max(1, len(node.repeats))
 
         if total_tasks == 0:
             continue
@@ -771,20 +758,18 @@ def compute_explicit_groups(
 
 
 def analyze(
-    nodes: list[orgparse.node.OrgNode],
+    nodes: list[Heading],
     mapping: dict[str, str],
     category: str,
     max_relations: int,
-    category_property: str,
 ) -> AnalysisResult:
     """Analyze org-mode nodes and extract task statistics.
 
     Args:
-        nodes: List of org-mode nodes from orgparse
+        nodes: List of org-mode nodes
         mapping: Dictionary mapping tags to canonical forms
         category: Which datum to analyze - "tags", "heading", or "body"
         max_relations: Maximum number of relations to consider for grouping
-        category_property: Name of property to use for category histogram
 
     Returns:
         AnalysisResult containing task counts and Tag objects for the selected category
@@ -795,7 +780,7 @@ def analyze(
     tags = compute_per_tag_statistics(tag_frequencies, tag_relations, tag_time_ranges)
     tag_groups = compute_groups(tags, max_relations, nodes, mapping, category)
     task_states = compute_task_state_histogram(nodes)
-    task_categories = compute_category_histogram(nodes, category_property)
+    task_categories = compute_category_histogram(nodes)
     task_priorities = compute_priority_histogram(nodes)
     task_days = compute_day_of_week_histogram(nodes)
     global_timerange = compute_global_timerange(nodes)

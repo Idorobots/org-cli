@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-import orgparse
+from org_parser.document import Heading
 
 
 def normalize_timestamp(ts: datetime | date) -> datetime:
@@ -19,7 +19,7 @@ def normalize_timestamp(ts: datetime | date) -> datetime:
     return ts
 
 
-def extract_timestamp(node: orgparse.node.OrgNode, done_keys: list[str]) -> list[datetime]:
+def extract_timestamp(node: Heading, done_states: list[str]) -> list[datetime]:
     """Extract timestamps from a node following priority rules.
 
     Priority order:
@@ -31,28 +31,28 @@ def extract_timestamp(node: orgparse.node.OrgNode, done_keys: list[str]) -> list
 
     Args:
         node: Org-mode node to extract timestamps from
-        done_keys: List of completion state keywords
+        done_states: List of completion state keywords
 
     Returns:
         List of datetime objects (may be empty if no timestamps found)
     """
     timestamps = []
 
-    if node.repeated_tasks and any(rt.after in done_keys for rt in node.repeated_tasks):
-        timestamps.extend([rt.start for rt in node.repeated_tasks if rt.after in done_keys])
-    elif node.closed and node.closed.start:
+    if node.repeats and any(rt.after in done_states for rt in node.repeats):
+        timestamps.extend([rt.timestamp.start for rt in node.repeats if rt.after in done_states])
+    elif node.closed:
         timestamps.append(node.closed.start)
-    elif node.scheduled and node.scheduled.start:
+    elif node.scheduled:
         timestamps.append(node.scheduled.start)
-    elif node.deadline and node.deadline.start:
+    elif node.deadline:
         timestamps.append(node.deadline.start)
-    elif node.datelist:
-        timestamps.extend([d.start for d in node.datelist if d.start])
+    elif node.timestamps:
+        timestamps.extend([timestamp.start for timestamp in node.timestamps])
 
     return [normalize_timestamp(t) for t in timestamps]
 
 
-def extract_timestamp_any(node: orgparse.node.OrgNode) -> list[datetime]:
+def extract_timestamp_any(node: Heading) -> list[datetime]:
     """Extract timestamps from a node without filtering by completion state.
 
     Priority order:
@@ -70,15 +70,15 @@ def extract_timestamp_any(node: orgparse.node.OrgNode) -> list[datetime]:
     """
     timestamps = []
 
-    if node.repeated_tasks:
-        timestamps.extend([rt.start for rt in node.repeated_tasks])
-    elif node.closed and node.closed.start:
+    if node.repeats:
+        timestamps.extend([rt.timestamp.start for rt in node.repeats])
+    elif node.closed:
         timestamps.append(node.closed.start)
-    elif node.scheduled and node.scheduled.start:
+    elif node.scheduled:
         timestamps.append(node.scheduled.start)
-    elif node.deadline and node.deadline.start:
+    elif node.deadline:
         timestamps.append(node.deadline.start)
-    elif node.datelist:
-        timestamps.extend([d.start for d in node.datelist if d.start])
+    elif node.timestamps:
+        timestamps.extend([timestamp.start for timestamp in node.timestamps])
 
     return [normalize_timestamp(t) for t in timestamps]

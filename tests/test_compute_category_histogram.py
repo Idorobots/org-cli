@@ -6,7 +6,7 @@ from tests.conftest import node_from_org
 
 def test_compute_category_histogram_empty_nodes() -> None:
     """Empty input should produce an empty histogram."""
-    histogram = compute_category_histogram([], "CATEGORY")
+    histogram = compute_category_histogram([])
     assert histogram.values == {}
 
 
@@ -29,7 +29,7 @@ def test_compute_category_histogram_counts_category_values() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, "CATEGORY")
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["simple"] == 2
     assert histogram.values["hard"] == 1
@@ -39,7 +39,7 @@ def test_compute_category_histogram_uses_null_for_missing_category() -> None:
     """Missing category property should be recorded as null."""
     nodes = node_from_org("* DONE Task\n")
 
-    histogram = compute_category_histogram(nodes, "CATEGORY")
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["null"] == 1
 
@@ -53,29 +53,9 @@ def test_compute_category_histogram_uses_null_for_empty_category() -> None:
 :END:
 """)
 
-    histogram = compute_category_histogram(nodes, "CATEGORY")
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["null"] == 1
-
-
-def test_compute_category_histogram_supports_custom_property_name() -> None:
-    """Histogram should read categories from a custom property key."""
-    nodes = node_from_org("""
-* DONE Task 1
-:PROPERTIES:
-:TASK_TYPE: alpha
-:END:
-
-* DONE Task 2
-:PROPERTIES:
-:TASK_TYPE: beta
-:END:
-""")
-
-    histogram = compute_category_histogram(nodes, "TASK_TYPE")
-
-    assert histogram.values["alpha"] == 1
-    assert histogram.values["beta"] == 1
 
 
 def test_compute_category_histogram_counts_repeats() -> None:
@@ -89,6 +69,6 @@ def test_compute_category_histogram_counts_repeats() -> None:
 - State "DONE"       from "TODO"       [2024-01-03 Wed 10:00]
 """)
 
-    histogram = compute_category_histogram(nodes, "CATEGORY")
+    histogram = compute_category_histogram(nodes)
 
     assert histogram.values["simple"] == 2

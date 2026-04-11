@@ -14,7 +14,7 @@ poetry run org query [OPTIONS] QUERY [FILE ...]
 
 - `--limit`, `-n` - Limit emitted values.
 - `--offset` - Skip first N emitted values.
-- `--todo-keys`, `--done-keys` - Define completion key sets visible to query variables.
+- `--todo-states`, `--done-states` - Define completion key sets visible to query variables.
 - `--color/--no-color` - Force color mode.
 - `--out` - Output format (`org`, `json`, or any Pandoc writer format such as `gfm`, `html5`, `rst`, `pdf`).
 - `--out-theme` - Pygments syntax-highlighting theme for renderable output formats (default: `github-dark`).
@@ -27,13 +27,13 @@ When you use `--offset` or `--limit`, include `$offset` and `$limit` in the quer
 1) Fetch headings from all tasks
 
 ```bash
-poetry run org query '.[][] | .heading' examples/ARCHIVE_small
+poetry run org query '.[][] | .title_text' examples/ARCHIVE_small
 ```
 
 2) Fetch headings of completed tasks
 
 ```bash
-poetry run org query '.[][] | select(.todo in $done_keys) | .heading' \
+poetry run org query '.[][] | select(.todo in $done_states) | .title_text' \
   examples/ARCHIVE_small
 ```
 
@@ -48,7 +48,7 @@ Prepare a document for team onboarding to Ejabberd.
 3) Fetch a paged window of headings
 
 ```bash
-poetry run org query '[ .[][] | .heading ][ $offset : $offset + $limit ]' \
+poetry run org query '[ .[][] | .title_text ][ $offset : $offset + $limit ]' \
   --offset 5 \
   --limit 5 \
   examples/ARCHIVE_small
@@ -57,7 +57,7 @@ poetry run org query '[ .[][] | .heading ][ $offset : $offset + $limit ]' \
 4) Fetch headings for tasks tagged `Debugging`, then page results
 
 ```bash
-poetry run org query '[ .[][] | select("Debugging" in .tags) | .heading ][ $offset : $offset + $limit ]' \
+poetry run org query '[ .[][] | select("Debugging" in .tags) | .title_text ][ $offset : $offset + $limit ]' \
   --offset 2 \
   --limit 8 \
   examples/ARCHIVE_small
@@ -66,7 +66,7 @@ poetry run org query '[ .[][] | select("Debugging" in .tags) | .heading ][ $offs
 5) Fetch tasks that are not completed yet
 
 ```bash
-poetry run org query '[ .[][] | select(not(.todo in $done_keys)) ][ $offset : $offset + $limit ]' \
+poetry run org query '[ .[][] | select(not(.todo in $done_states)) ][ $offset : $offset + $limit ]' \
   --offset 0 \
   --limit 5 \
   examples/ARCHIVE_small
@@ -100,7 +100,7 @@ SCHEDULED: <2023-10-19 czw>
 6) Export markdown with a custom Pygments theme
 
 ```bash
-poetry run org query '.[][] | .heading' \
+poetry run org query '.[][] | .title_text' \
   --out gfm \
   --out-theme monokai \
   examples/ARCHIVE_small

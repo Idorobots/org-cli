@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Protocol, cast
+from typing import Protocol
 
-import orgparse
 import typer
+from org_parser import loads
+from org_parser.document import Document, Heading
 
 
 class FilterSpec(Protocol):
     """Protocol for filtering node lists."""
 
-    def filter(self, nodes: list[orgparse.node.OrgNode]) -> list[orgparse.node.OrgNode]:
+    def filter(self, nodes: list[Heading]) -> list[Heading]:
         """Filter nodes and return the filtered list."""
         raise NotImplementedError
 
@@ -32,28 +33,28 @@ def _read_org_file(name: str) -> str:
         raise typer.BadParameter(f"Permission denied for '{name}'") from err
 
 
-def _prepend_todo_config(contents: str, todo_keys: list[str], done_keys: list[str]) -> str:
+def _prepend_todo_config(contents: str, todo_states: list[str], done_states: list[str]) -> str:
     """Prepend TODO keyword configuration to file contents."""
-    todo_config = f"#+TODO: {' '.join(todo_keys)} | {' '.join(done_keys)}\n\n"
+    todo_config = f"#+TODO: {' '.join(todo_states)} | {' '.join(done_states)}\n\n"
     return todo_config + contents
 
 
 def load_root_nodes(
     filenames: list[str],
-    todo_keys: list[str],
-    done_keys: list[str],
-) -> tuple[list[orgparse.node.OrgRootNode], list[str], list[str]]:
+    todo_states: list[str],
+    done_states: list[str],
+) -> tuple[list[Document], list[str], list[str]]:
     """Load org-mode files and return root nodes with merged todo/done keys."""
-    roots: list[orgparse.node.OrgRootNode] = []
-    all_todo_keys: set[str] = set(todo_keys)
-    all_done_keys: set[str] = set(done_keys)
+    roots: list[Document] = []
+    all_todo_states: set[str] = set(todo_states)
+    all_done_states: set[str] = set(done_states)
 
     for name in filenames:
         contents = _read_org_file(name)
-        contents = _prepend_todo_config(contents, todo_keys, done_keys)
-        root = cast(orgparse.node.OrgRootNode, orgparse.loads(contents, filename=name))
-        all_todo_keys = all_todo_keys.union(set(root.env.todo_keys))
-        all_done_keys = all_done_keys.union(set(root.env.done_keys))
+        contents = _prepend_todo_config(contents, todo_states, done_states)
+        root = loads(contents, filename=name)
+        all_todo_states = all_todo_states.union(set(root.todo_states))
+        all_done_states = all_done_states.union(set(root.done_states))
         roots.append(root)
 
-    return roots, list(all_todo_keys), list(all_done_keys)
+    return roots, list(all_todo_states), list(all_done_states)

@@ -7,10 +7,13 @@ import os
 
 import click
 import pytest
+from org_parser.element import Repeat
+from org_parser.text import RichText
+from org_parser.time import Clock, Timestamp
 from typer.testing import CliRunner
 
 from org.cli import app
-from org.commands.query import QueryArgs, run_query
+from org.commands.query import QueryArgs, _is_org_object, run_query
 from org.output_format import OutputFormat, OutputFormatError
 
 
@@ -26,8 +29,8 @@ def _make_args(files: list[str], query: str, **overrides: object) -> QueryArgs:
         mapping=None,
         mapping_inline=None,
         exclude_inline=None,
-        todo_keys="TODO",
-        done_keys="DONE",
+        todo_states="TODO",
+        done_states="DONE",
         color_flag=False,
         width=None,
         max_results=10,
@@ -85,7 +88,7 @@ def test_run_query_default_org_uses_plain_formatter_for_string_results(
 ) -> None:
     """Default org output should print plain lines for string-only results."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = _make_args([fixture_path], ".[] | .children | .[] | .heading")
+    args = _make_args([fixture_path], ".[] | .children | .[] | .title_text")
 
     def _fake_compiled_query(_stream: object, _context: object) -> list[object]:
         return ["alpha", "beta"]
@@ -159,13 +162,13 @@ def test_query_syntax_error_shows_pointer_without_invalid_value_prefix() -> None
 
     result = runner.invoke(
         app,
-        ["query", ".[][] | select(not(.todo in $done_keys) | .todo", fixture_path],
+        ["query", ".[][] | select(not(.todo in $done_states) | .todo", fixture_path],
     )
 
     assert result.exit_code != 0
     assert "Invalid query syntax:" in result.output
     assert "Invalid value:" not in result.output
-    assert ".[][] | select(not(.todo in $done_keys) | .todo" in result.output
+    assert ".[][] | select(not(.todo in $done_states) | .todo" in result.output
     assert "^" in result.output
 
 
@@ -342,10 +345,9 @@ def test_run_query_json_root_result_is_single_object(capsys: pytest.CaptureFixtu
 
     parsed = json.loads(captured)
     assert isinstance(parsed, dict)
-    assert parsed["type"] == "OrgRootNode"
-    assert "env" in parsed
-    assert isinstance(parsed["env"], dict)
-    assert "nodes" not in parsed["env"]
+    assert parsed["type"] == "Document"
+    assert "filename" in parsed
+    assert "todo_states" in parsed
 
 
 def test_run_query_json_node_result_excludes_env(capsys: pytest.CaptureFixture[str]) -> None:
@@ -358,7 +360,7 @@ def test_run_query_json_node_result_excludes_env(capsys: pytest.CaptureFixture[s
 
     parsed = json.loads(captured)
     assert isinstance(parsed, dict)
-    assert parsed["type"] == "OrgNode"
+    assert parsed["type"] == "Heading"
     assert "env" not in parsed
 
 
@@ -391,6 +393,23 @@ def test_run_query_json_preserves_multiple_collection_results(
     assert isinstance(parsed, list)
     assert len(parsed) == 2
     assert all(isinstance(item, list) for item in parsed)
+
+
+def test_is_org_object_supports_org_parser_text_and_element_types() -> None:
+    """Org formatter detection should include rich text and element values."""
+    timestamp = Timestamp.from_source("<2025-01-02 Thu>")
+    clock = Clock(timestamp=Timestamp.from_source("<2025-01-02 Thu 10:00-11:00>"))
+    repeat = Repeat(
+        before="TODO",
+        after="DONE",
+        timestamp=Timestamp.from_source("<2025-01-02 Thu>"),
+    )
+
+    assert _is_org_object(timestamp)
+    assert _is_org_object(clock)
+    assert _is_org_object(repeat)
+    assert _is_org_object(RichText("text"))
+    assert not _is_org_object({"key": "value"})
 
 
 def test_run_query_invalid_pandoc_args_is_usage_error() -> None:

@@ -183,16 +183,16 @@ def test_load_root_nodes_valid() -> None:
     roots, _, _ = load_root_nodes([fixture_path], ["TODO"], ["DONE"])
 
     assert len(roots) == 1
-    assert len(list(roots[0][1:])) > 0
+    assert len(list(roots[0])) > 0
 
 
-def test_load_root_nodes_todo_keys() -> None:
+def test_load_root_nodes_todo_states() -> None:
     """Test loading todo keys from root nodes."""
     from org.parse import load_root_nodes
 
-    fixture_path = os.path.join(FIXTURES_DIR, "todo_keys.org")
-    roots, todo_keys, done_keys = load_root_nodes([fixture_path], ["TODO"], ["DONE"])
+    fixture_path = os.path.join(FIXTURES_DIR, "todo_states.org")
+    roots, todo_states, done_states = load_root_nodes([fixture_path], ["TODO"], ["DONE"])
 
     assert len(roots) == 1
-    assert set(todo_keys) == {"TODO", "STARTED"}
-    assert set(done_keys) == {"DONE", "CANCELLED"}
+    assert set(todo_states) == {"TODO", "STARTED"}
+    assert set(done_states) == {"DONE", "CANCELLED"}

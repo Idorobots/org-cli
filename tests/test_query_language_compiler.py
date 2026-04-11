@@ -16,6 +16,6 @@ def test_compile_expr_returns_executable_callable() -> None:
 
 def test_compile_query_text_parses_and_executes_expression() -> None:
     """compile_query_text should parse query text and run the result."""
-    compiled = compile_query_text(".[] | .heading")
-    result = compiled(Stream([[{"heading": "Task"}]]), EvalContext({}))
+    compiled = compile_query_text(".[] | .title_text")
+    result = compiled(Stream([[{"title_text": "Task"}]]), EvalContext({}))
     assert result == ["Task"]

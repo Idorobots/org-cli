@@ -3494,7 +3494,7 @@ In file src/org/query_language/runtime.py around line 937, near the body of ~def
 
 =OrgRootNode= is not a subclass of =OrgNode= so there's no need for this if clause. Please remove it.
 
-** REWORKED Kanband board
+** REWORKED Kanband board                                                                      :TUI:
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-03-16 Mon 13:07] \\
   Needed some work, didn't exactly one-shot it.
@@ -3695,36 +3695,326 @@ In file src/org/commands/tasks/board.py around line 318, near the ~new file   sr
 #+end_example
 
 All of this processing should be done as part of the processing block.
-** Agenda command
-Like Org Agenta, but CLI.
+** DONE Mutable parse tree                                                             :Cleanup:CLI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-11 Sat 15:19]
+:END:
+*** DONE Use org-parser
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-06 Mon 15:31]
+:END:
+Create a plan for the replacement of orgparse with =org-parser= library. The documentation for that library can be found here: https://blog.idorobots.org/org-parser/
 
-- accept a date, default to today
-- select what the agenda shows, exclusions for deadlines, overdue etc.
+Implement the plan from @plans/orgparse-to-org-parser.md
 
-- Tasks to do on a given day including timestamp, state, heading and tags.
-- Tasks done on a given day
-- Tasks that are overdue
-- Deadlines that are overdue
-- Upcomming deadlines
+*** CANCELLED src/org/cli_common.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-04-04 Sat 17:18] \\
+  It made some provisions to coerce non-timestamp Clock and Repeat into timestamps.
+:END:
 
-- ability to refile tasks to another file
+In file src/org/cli_common.py around line 884, near the ~def _builtin_order_stages(value: str) -> list[str]:~
 
-** Mutable parse tree
-*** Use org_parser
-- Bump the library version
-- Use it for repeated task filtering - =select(((.repeated_tasks | map(.after)) + .todo)[] in $done_keys) | .repeated_tasks = [.repeated_tasks[] | select(.after in $done_keys)]=
-- Use it for property additions
-- Use it for numeric gamify exp
+#+begin_example
+         ],
+-        "timestamp-desc": ["sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"],
++        "timestamp-desc": ["sort_by(.repeats + .deadline + .closed + .scheduled | max)"],
+#+end_example
 
-*** Query language mutation
-- ~a = b~ assignment operator
-- ~+=~ append
-- ~-=~ remove
-- ~properties.foo = none~ set/delete property
-- update the documentation in docs/query_language.md
+This might be a problem as =Repeat= is not a timestamp-derived class.
+*** DONE src/org/commands/query.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 18:54]
+:END:
 
-*** org_parser.text.RichText support
+In file src/org/commands/query.py around line 57, near the ~class QueryOutputFormatter(Protocol):~
 
+#+begin_example
+     """Return whether value is an org node or org date object."""
+-    return isinstance(value, orgparse.node.OrgNode | OrgRootNode | OrgDate)
++    return isinstance(value, Heading | Document | Timestamp)
+#+end_example
+
+This is likely missing Clock and Repeat.
+
+Arguably, all the =Elements= and =RichText= objects could be supported, including =Timestamp= and =Clock=.
+
+For JSON format, =RichText= should render as a string (just the =.text= attribute). =Element= subclasses should render as full objects with a =type= with the exception of =Properties= - this can ramain as-is.
+*** DONE tests/commands/tasks/test_tasks_list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-06 Mon 15:31]
+:END:
+
+In file tests/commands/tasks/test_tasks_list.py around line 403, near the ~def test_run_tasks_list_unicode_heading_aligns_tags_to_visual_width(~
+
+#+begin_example
+-        handle.write("* TODO 修正タスク名の確認 :開発:\n")
++        # FIXME This needs a unicode tag for better test coverage.
++        handle.write("* TODO 修正タスク名の確認 :dev:\n")
+#+end_example
+
+Needs a tree-sitter grammar update.
+*** CANCELLED src/org/output_format.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-04-04 Sat 17:31] \\
+  Turns out it's already available.
+:END:
+
+In file src/org/output_format.py around line 300, near the ~_CLOCK_EXPORTED_FIELDS = (~
+
+#+begin_example
+-    "body",
++    # "body", # FIXME Needs to be added.
+#+end_example
+
+Not exposed by org-parser currently.
+*** DONE src/org/query_language/runtime.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 17:47]
+:END:
+
+In file src/org/query_language/runtime.py around line 290, near the ~def _resolve_bracket_key(base: object, key: object) -> object:~
+
+#+begin_example
++def _normalize_timestamp_value(value: object) -> object:
++    """Normalize timestamp-like values for runtime evaluation."""
+     return value
+#+end_example
+
+This is no longer needed and should be removed.
+*** DONE src/org/query_language/runtime.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 17:50]
+:END:
+
+In file src/org/query_language/runtime.py around line 601, near the ~def _apply_compare_datetime(operator: str, left: datetime, right: datetime) -> b~
+
+#+begin_example
++def _org_date_start_for_comparison(value: Timestamp) -> datetime:
++    """Return Timestamp start normalized for comparisons."""
++    return value.start
+#+end_example
+
+This can be removed as well. No need for the wrapper.
+*** DONE src/org/query_language/runtime.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 18:00]
+:END:
+
+In file src/org/query_language/runtime.py around line 937, near the ~def _func_not(stream: Stream, condition: Expr, context: EvalContext) -> Stream:~
+
+#+begin_example
+ def _func_timestamp(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+-    """Create OrgDate values from one, two, or three arguments."""
++    """Create Timestamp values from one, two, or three arguments."""
+     output = _stream()
+     for arguments in _iter_function_argument_values(stream, argument, context):
+         _ensure_arity(arguments, {1, 2, 3}, "timestamp")
+-        start_date = _parse_org_date(arguments[0])
++        start_value = _parse_timestamp(arguments[0])
++        start = start_value.start
++        active_value: bool | None = start_value.is_active
++        end: datetime | None = None
+ 
+-        if len(arguments) == 1:
+-            output.append(OrgDate(start_date.start, start_date.end, start_date.is_active()))
+-            continue
+-
+-        end_date = _as_org_date_or_none(arguments[1])
+-        end_value = None if end_date is None else end_date.start
++        if len(arguments) >= 2:
++            end_value = _as_timestamp_or_none(arguments[1])
++            end = None if end_value is None else end_value.start
+ 
+-        if len(arguments) == 2:
+-            output.append(OrgDate(start_date.start, end_value, start_date.is_active()))
+-            continue
++        if len(arguments) == 3:
++            active_value = _as_active_or_none(arguments[2])
+ 
+-        active = _as_active_or_none(arguments[2])
+-        output.append(OrgDate(start_date.start, end_value, active))
++        output.append(_timestamp_from_datetimes(start, end, active_value))
+     return output
+#+end_example
+
+This and the analogous =Clock= constructors can be simplified to just accept a single string and use =from_source= on that.
+*** DONE Rename the =repeated_task= query language function to =repeat=
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 18:09]
+:END:
+Adjust the code, constructor and the documentation.
+*** DONE Property extraction doesn't work
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 18:15]
+:END:
+Given the following task:
+
+#+begin_example
+,* Task
+:PROPERTIES:
+:key: 23
+:END:
+#+end_example
+
+#+begin_example
+org query '.[][].properties.key'
+#+end_example
+
+Results in a null value, even though =.[][].properties= does return a non-null value. Make sure that property access does indeed work and allows fetching specific keys. Make sure that setting property values also works.
+
+*** DONE Query language should support =RichText=
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-04 Sat 18:34]
+:END:
+All query language functions/constructs that accept strings should also accept org-parser =RichText=. They can rely on the =.text= attribute for now.
+
+*** DONE Rename =todo_keys= and =done_keys= to =todo_states= and =done_states=
+:LOGBOOK:
+- State "DONE"       from              [2026-04-07 Tue 01:08]
+:END:
+*** DONE Query language mutation
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-07 Tue 18:10]
+:END:
+Extend the query language with mutation syntax rules:
+- ~a = b~ assignment operator allows assigning any writable field of an object with a specified value. If the value type does not match the field type, an exception should be raised. The returned value should be the modified field value.
+- ~a.properties.foo = null~ - special case of the above that currently works for properties. It should remain working.
+- ~a += b~ append a value to a collection of values in-place, returning the modified collection.
+- ~a -= b~ remove a value from a collection of values in place, returning the modiied collection.
+
+Update the documentation in docs/query_language.md.
+
+*** DONE src/org/query_language/runtime.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-07 Tue 19:15]
+:END:
+
+In file src/org/query_language/runtime.py around line 277, near the ~def _evaluate_dict_assignment(~
+
+#+begin_example
++def _ensure_assignment_type_match(current_value: object, value: object, field_name: str) -> None:
++    """Ensure assignment value matches existing non-null field type."""
++    if current_value is None or value is None:
++        return
++    expected_type = type(current_value)
++    if isinstance(value, expected_type):
++        return
++    raise QueryRuntimeError(
++        f"Assigned value type mismatch for {field_name}: "
++        f"expected {expected_type.__name__}, got {type(value).__name__}"
++    )
+#+end_example
+
+Not a great condition, especially for attributes accepting strings and =RichText=.
+*** DONE Query language any() & all()
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 22:35]
+:END:
+Add two extra query language functions that work on collections:
+- =any= - returns truthy value if any members of the collection passed to it are truthy
+- =all= - returns a truthy value if all members of the collection passed to it are truthy
+
+These functions will usually be used as a processing step, i.e.: ~[false, true] | any~ or ~["foo", "bar"] | map(. | type == "string") | all~.
+
+*** DONE Replace --with-tags-as-category
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 22:50] \\
+  c
+:END:
+Please replace the current implementation of =--with-tags-as-category= with the following query stage: ~(if .tags | length > 0 then .heading_category = .tags[0] else null); .~
+
+This CLI switch should be handled the same way as built-in filters and orderings in cli_common module.
+*** DONE src/org/cli_common.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 23:01]
+:END:
+
+In file src/org/cli_common.py around line 232, near the ~WITH_OPTIONS_FLAGS = {~
+
+#+begin_example
++WITH_OPTION_TO_STAGE = {
++    "--with-tags-as-category": "(if .tags | length > 0 then .heading_category = .tags[0] else null); .",
++}
+#+end_example
+
+Please make that more uniform with what is done for the filters (i.e. a full function that builds the stage). We anticipate more complicated with-enrichments to come.
+
+*** DONE src/org/cli_common.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 23:03]
+:END:
+
+In file src/org/cli_common.py around line 681, near the ~def extend_with_entries_with_defaults(~
+
+#+begin_example
++def _with_stage(arg_name: str, args: WithArgs) -> str | None:
++    """Build one query stage for a built-in enrichment option occurrence."""
++    if arg_name == "--with-tags-as-category" and args.with_tags_as_category:
++        return "(if .tags | length > 0 then .heading_category = .tags[0] else null); ."
++    return None
+#+end_example
+
+Inline this in the only call site there is for this function.
+*** DONE Remove any unused filter_* functions from filters.py
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 23:11]
+:END:
+Do the same for unused ordering functions and enrichments. Remove tests that were created for those functions.
+
+*** DONE Filtering, ordering & enrichments
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-08 Wed 23:11]
+:END:
+- [X] Use mutation for repeated task filtering - =select(((.repeats | map(.after)) + .todo)[] in $done_keys) | .repeats = [.repeats[] | select(.after in $done_keys)]=
+- [X] Use mutation for property additions
+- [X] Use mutation for numeric gamify exp
+
+*** DONE =org_parser.text.RichText= *rendering* +support+
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-11 Sat 15:18]
+:END:
+Update the rendering of the short-form task list heading titles to use the =title= rich-text property. That =org_parser= format should be translated to Rich's own rich text markup with support for bold, itallic, underline, strikethrough and verbatim text.
+Additionally:
+- Inline code should be presented as verbatim text.
+- Inline code blocks content should be rendered as verbatim text.
+- Inline bable call blocks should be rendered as verbatim text.
+- If Rich supports rendering links, that should also be supported.
+- If Rich supports super/subscripts then that should also be supported.
+
+Make sure that the text is aligned to the visual length, not the markup-length.
+
+The same rich text rendering logic should be applied to the task board command. Each panel should render the rich-text in Rich.
 ** Tasks CRUD
 *** Tasks C**D
 - Adding new nodes
@@ -3739,6 +4029,20 @@ Like Org Agenta, but CLI.
 - Setting properties
 - Modifying the heading
 - Modifying the body
+
+** Agenda command
+Like Org Agenta, but CLI.
+
+- accept a date, default to today
+- select what the agenda shows, exclusions for deadlines, overdue etc.
+
+- Tasks to do on a given day including timestamp, state, heading and tags.
+- Tasks done on a given day
+- Tasks that are overdue
+- Deadlines that are overdue
+- Upcomming deadlines
+
+- ability to refile tasks to another file
 
 ** Workflow command
 
@@ -3900,3 +4204,7 @@ query_engine.retrieve("How to fetch a list of tasks completed last year?")
 ** Website for org-cli
 - Publish the package
 - Add a static site for org-cli.idorobots.org on github pages.
+** Parallelize document processing
+** LSP server
+- Error checks
+- Value auto-complete

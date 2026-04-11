@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import click
-import orgparse
 import typer
+from org_parser.document import Heading
 from rich.console import Console
 from rich.syntax import Syntax
 
@@ -49,8 +49,8 @@ class ListArgs:
     mapping: str | None
     mapping_inline: dict[str, str] | None
     exclude_inline: list[str] | None
-    todo_keys: str
-    done_keys: str
+    todo_states: str
+    done_states: str
     filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
@@ -75,7 +75,6 @@ class ListArgs:
     order_by_timestamp_asc: bool
     order_by_timestamp_desc: bool
     with_tags_as_category: bool
-    category_property: str
     out: str
     out_theme: str
     pandoc_args: str | None
@@ -85,11 +84,11 @@ class ListArgs:
 class TasksListRenderInput:
     """Render input for tasks list output formatters."""
 
-    nodes: list[orgparse.node.OrgNode]
+    nodes: list[Heading]
     console: Console
     color_enabled: bool
-    done_keys: list[str]
-    todo_keys: list[str]
+    done_states: list[str]
+    todo_states: list[str]
     details: bool
     line_width: int | None
     out_theme: str
@@ -112,8 +111,8 @@ def _format_short_task_list(data: TasksListRenderInput) -> str:
             node,
             TaskLineConfig(
                 color_enabled=data.color_enabled,
-                done_keys=data.done_keys,
-                todo_keys=data.todo_keys,
+                done_states=data.done_states,
+                todo_states=data.todo_states,
                 line_width=data.line_width,
             ),
         )
@@ -122,16 +121,14 @@ def _format_short_task_list(data: TasksListRenderInput) -> str:
     return lines_to_text(lines)
 
 
-def _prepare_detailed_task_list(
-    nodes: list[orgparse.node.OrgNode], out_theme: str
-) -> PreparedOutput:
+def _prepare_detailed_task_list(nodes: list[Heading], out_theme: str) -> PreparedOutput:
     """Prepare detailed list of tasks with syntax highlighting."""
     theme = _normalize_syntax_theme(out_theme)
     operations: list[OutputOperation] = []
     for idx, node in enumerate(nodes):
         if idx > 0:
             operations.append(OutputOperation(kind="console_print", text="", markup=False))
-        filename = node.env.filename if hasattr(node, "env") and node.env.filename else "unknown"
+        filename = node.document.filename if node.document.filename else "unknown"
         node_text = str(node).rstrip()
         org_block = f"# {filename}\n{node_text}" if node_text else f"# {filename}"
         operations.append(
@@ -296,15 +293,15 @@ def run_tasks_list(args: ListArgs) -> None:
     except OutputFormatError as exc:
         raise click.UsageError(str(exc)) from exc
     with processing_status(console, color_enabled):
-        nodes, todo_keys, done_keys = load_and_process_data(args)
+        nodes, todo_states, done_states = load_and_process_data(args)
         try:
             prepared_output = formatter.prepare(
                 TasksListRenderInput(
                     nodes=nodes,
                     console=console,
                     color_enabled=color_enabled,
-                    done_keys=done_keys,
-                    todo_keys=todo_keys,
+                    done_states=done_states,
+                    todo_states=todo_states,
                     details=args.details,
                     line_width=console.width,
                     out_theme=args.out_theme,
@@ -354,15 +351,15 @@ def register(app: typer.Typer) -> None:
             metavar="FILE",
             help="JSON file containing tag mappings (dict[str, str])",
         ),
-        todo_keys: str = typer.Option(
+        todo_states: str = typer.Option(
             "TODO",
-            "--todo-keys",
+            "--todo-states",
             metavar="KEYS",
             help="Comma-separated list of incomplete task states",
         ),
-        done_keys: str = typer.Option(
+        done_states: str = typer.Option(
             "DONE",
-            "--done-keys",
+            "--done-states",
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
@@ -507,13 +504,7 @@ def register(app: typer.Typer) -> None:
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
-            help="Preprocess nodes to set category property based on first tag",
-        ),
-        category_property: str = typer.Option(
-            "CATEGORY",
-            "--category-property",
-            metavar="PROPERTY",
-            help="Property name to use for category histogram and filtering",
+            help="Preprocess nodes to set category from first tag",
         ),
         out: str = typer.Option(
             OutputFormat.ORG,
@@ -540,8 +531,8 @@ def register(app: typer.Typer) -> None:
             mapping=mapping,
             mapping_inline=None,
             exclude_inline=None,
-            todo_keys=todo_keys,
-            done_keys=done_keys,
+            todo_states=todo_states,
+            done_states=done_states,
             filter_priority=filter_priority,
             filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
@@ -566,7 +557,6 @@ def register(app: typer.Typer) -> None:
             order_by_timestamp_asc=order_by_timestamp_asc,
             order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
-            category_property=category_property,
             out=out,
             out_theme=out_theme,
             pandoc_args=pandoc_args,

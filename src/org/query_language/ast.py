@@ -162,8 +162,9 @@ class Fold(Expr):
 
 @dataclass(frozen=True, slots=True)
 class DictAssignment(Expr):
-    """Dictionary field assignment expression."""
+    """Mutation assignment expression for field/index targets."""
 
+    operator: str
     base: Expr
     key_expr: Expr
     value: Expr

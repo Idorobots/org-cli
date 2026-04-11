@@ -8,8 +8,11 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import cast
 
-import orgparse
+import org_parser
 import pytest
+from org_parser.document import Heading
+from org_parser.element import Keyword
+from org_parser.text import RichText
 from rich.console import Console
 from rich.syntax import Syntax
 
@@ -232,11 +235,11 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
 
     prepared_output = formatter.prepare(
         tasks_list_command.TasksListRenderInput(
-            nodes=[cast(orgparse.node.OrgNode, _FakeNode())],
+            nodes=[cast(Heading, _FakeNode())],
             console=cast(Console, console),
             color_enabled=True,
-            done_keys=["DONE"],
-            todo_keys=["TODO"],
+            done_states=["DONE"],
+            todo_states=["TODO"],
             details=False,
             line_width=None,
             out_theme="monokai",
@@ -382,6 +385,32 @@ def test_to_json_compatible_serializes_analysis_result_with_type_field() -> None
     assert dev_tag["name"] == "dev"
 
 
+def test_to_json_compatible_serializes_richtext_as_plain_string() -> None:
+    """RichText values should serialize as their plain text."""
+    assert output_format._to_json_compatible(RichText("hello")) == "hello"
+
+
+def test_to_json_compatible_serializes_generic_element_with_type() -> None:
+    """Generic org elements should serialize as typed JSON objects."""
+    keyword = Keyword(key="TITLE", value=RichText("Doc"))
+
+    result = output_format._to_json_compatible(keyword)
+
+    assert isinstance(result, dict)
+    assert result["type"] == "Keyword"
+    assert result["key"] == "TITLE"
+    assert result["value"] == "Doc"
+
+
+def test_to_json_compatible_keeps_properties_as_mapping() -> None:
+    """Properties should remain mapping-like JSON objects."""
+    heading = next(iter(org_parser.loads("* Task\n:PROPERTIES:\n:key: 23\n:END:\n")))
+
+    result = output_format._to_json_compatible(heading.properties)
+
+    assert result == {"key": "23"}
+
+
 def test_json_tasks_formatter_uses_json_syntax_when_color_enabled() -> None:
     """JSON tasks formatter should syntax-highlight JSON output with color."""
     console = _FakeConsole()
@@ -392,8 +421,8 @@ def test_json_tasks_formatter_uses_json_syntax_when_color_enabled() -> None:
             nodes=[],
             console=cast(Console, console),
             color_enabled=True,
-            done_keys=["DONE"],
-            todo_keys=["TODO"],
+            done_states=["DONE"],
+            todo_states=["TODO"],
             details=False,
             line_width=None,
             out_theme="monokai",

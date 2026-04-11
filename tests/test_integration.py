@@ -2,7 +2,8 @@
 
 import os
 
-import orgparse
+import org_parser
+from org_parser.document import Heading
 
 from org.analyze import analyze
 
@@ -10,13 +11,13 @@ from org.analyze import analyze
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
-def load_org_file(filename: str) -> list[orgparse.node.OrgNode]:
+def load_org_file(filename: str) -> list[Heading]:
     """Load and parse an Org-mode file."""
     filepath = os.path.join(FIXTURES_DIR, filename)
     with open(filepath) as f:
         contents = f.read().replace("24:00", "00:00")
-        ns = orgparse.loads(contents)
-        return list(ns[1:])
+        ns = org_parser.loads(contents)
+        return list(ns)
 
 
 def test_integration_all_fixtures_parseable() -> None:
@@ -32,7 +33,7 @@ def test_integration_all_fixtures_parseable() -> None:
 
     for fixture_file in fixture_files:
         nodes = load_org_file(fixture_file)
-        result = analyze(nodes, {}, category="tags", max_relations=3, category_property="CATEGORY")
+        result = analyze(nodes, {}, category="tags", max_relations=3)
 
         assert result.total_tasks >= 0
         assert isinstance(result.task_states.values, dict)
@@ -43,7 +44,7 @@ def test_integration_24_00_time_handling() -> None:
     """Test that 24:00 timestamps are handled correctly."""
     nodes = load_org_file("edge_cases.org")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, category_property="CATEGORY")
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks >= 0
 
@@ -61,7 +62,6 @@ def test_integration_with_mapping() -> None:
         },
         category="tags",
         max_relations=3,
-        category_property="CATEGORY",
     )
 
     assert result.total_tasks > 0

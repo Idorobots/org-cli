@@ -47,8 +47,8 @@ class SummaryArgs:
     mapping: str | None
     mapping_inline: dict[str, str] | None
     exclude_inline: list[str] | None
-    todo_keys: str
-    done_keys: str
+    todo_states: str
+    done_states: str
     filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
@@ -65,7 +65,6 @@ class SummaryArgs:
     width: int | None
     max_results: int | None
     with_tags_as_category: bool
-    category_property: str
 
 
 @dataclass(frozen=True)
@@ -74,8 +73,8 @@ class SummaryDisplayConfig:
 
     date_from: datetime | None
     date_until: datetime | None
-    done_keys: list[str]
-    todo_keys: list[str]
+    done_states: list[str]
+    todo_states: list[str]
     color_enabled: bool
 
 
@@ -86,12 +85,12 @@ def _validate_summary_arguments(args: SummaryArgs) -> None:
 
 
 def _build_task_state_order(
-    task_states: Histogram, done_keys: list[str], todo_keys: list[str]
+    task_states: Histogram, done_states: list[str], todo_states: list[str]
 ) -> list[str]:
     """Build task-state histogram order grouped and alphabetized."""
     present_states = {state for state, count in task_states.values.items() if count > 0}
-    sorted_done = [state for state in sorted(done_keys) if state in present_states]
-    sorted_todo = [state for state in sorted(todo_keys) if state in present_states]
+    sorted_done = [state for state in sorted(done_states) if state in present_states]
+    sorted_todo = [state for state in sorted(todo_states) if state in present_states]
     grouped = set(sorted_done).union(set(sorted_todo))
     remaining_states = sorted(state for state in present_states if state not in grouped)
     return sorted_done + sorted_todo + remaining_states
@@ -106,8 +105,8 @@ def format_tasks_summary(
     """Return formatted global task statistics without tag/group sections."""
     date_from = display_config.date_from
     date_until = display_config.date_until
-    done_keys = display_config.done_keys
-    todo_keys = display_config.todo_keys
+    done_states = display_config.done_states
+    todo_states = display_config.todo_states
     color_enabled = display_config.color_enabled
 
     lines: list[str] = []
@@ -141,7 +140,7 @@ def format_tasks_summary(
         lines.append(f"Max tasks on a single day: {max_single_value}")
         lines.append(f"Max repeats of a single task: {max_repeat_value}")
 
-    state_order = _build_task_state_order(result.task_states, done_keys, todo_keys)
+    state_order = _build_task_state_order(result.task_states, done_states, todo_states)
     lines.extend(
         format_histogram_section(
             "Task states:",
@@ -152,8 +151,8 @@ def format_tasks_summary(
                 render_config=RenderConfig(
                     color_enabled=color_enabled,
                     histogram_type="task_states",
-                    done_keys=done_keys,
-                    todo_keys=todo_keys,
+                    done_states=done_states,
+                    todo_states=todo_states,
                 ),
                 indent="",
             ),
@@ -219,7 +218,7 @@ def run_stats_summary(args: SummaryArgs) -> None:
     console = build_console(color_enabled, args.width)
     _validate_summary_arguments(args)
     with processing_status(console, color_enabled):
-        nodes, todo_keys, done_keys = load_and_process_data(args)
+        nodes, todo_states, done_states = load_and_process_data(args)
 
         if not nodes:
             output = None
@@ -234,7 +233,7 @@ def run_stats_summary(args: SummaryArgs) -> None:
                 total_tasks=total_tasks,
                 unique_tasks=unique_tasks,
                 task_states=compute_task_state_histogram(nodes),
-                task_categories=compute_category_histogram(nodes, args.category_property),
+                task_categories=compute_category_histogram(nodes),
                 task_priorities=compute_priority_histogram(nodes),
                 task_days=compute_day_of_week_histogram(nodes),
                 timerange=global_timerange,
@@ -252,8 +251,8 @@ def run_stats_summary(args: SummaryArgs) -> None:
                 SummaryDisplayConfig(
                     date_from=date_from,
                     date_until=date_until,
-                    done_keys=done_keys,
-                    todo_keys=todo_keys,
+                    done_states=done_states,
+                    todo_states=todo_states,
                     color_enabled=color_enabled,
                 ),
                 console.width,
@@ -295,15 +294,15 @@ def register(app: typer.Typer) -> None:
             metavar="FILE",
             help="JSON file containing tag mappings (dict[str, str])",
         ),
-        todo_keys: str = typer.Option(
+        todo_states: str = typer.Option(
             "TODO",
-            "--todo-keys",
+            "--todo-states",
             metavar="KEYS",
             help="Comma-separated list of incomplete task states",
         ),
-        done_keys: str = typer.Option(
+        done_states: str = typer.Option(
             "DONE",
-            "--done-keys",
+            "--done-states",
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
@@ -407,13 +406,7 @@ def register(app: typer.Typer) -> None:
         with_tags_as_category: bool = typer.Option(
             False,
             "--with-tags-as-category",
-            help="Preprocess nodes to set category property based on first tag",
-        ),
-        category_property: str = typer.Option(
-            "CATEGORY",
-            "--category-property",
-            metavar="PROPERTY",
-            help="Property name to use for category histogram and filtering",
+            help="Preprocess nodes to set category from first tag",
         ),
     ) -> None:
         """Show overall task stats without tag sections."""
@@ -424,8 +417,8 @@ def register(app: typer.Typer) -> None:
             mapping=mapping,
             mapping_inline=None,
             exclude_inline=None,
-            todo_keys=todo_keys,
-            done_keys=done_keys,
+            todo_states=todo_states,
+            done_states=done_states,
             filter_priority=filter_priority,
             filter_level=filter_level,
             filter_repeats_above=filter_repeats_above,
@@ -442,7 +435,6 @@ def register(app: typer.Typer) -> None:
             width=width,
             max_results=max_results,
             with_tags_as_category=with_tags_as_category,
-            category_property=category_property,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "stats summary")

@@ -31,7 +31,7 @@ Custom switch argument handling:
 ```json
 {
   "defaults": {
-    "--done-keys": "DONE,CANCELLED,DELEGATED",
+    "--done-states": "DONE,CANCELLED,DELEGATED",
     "--buckets": 80,
     "--filter-priority": "A",
     "--mapping": "examples/mapping_example.json",
@@ -42,7 +42,7 @@ Custom switch argument handling:
     "has-todo": "select(.todo != none)"
   },
   "order-by": {
-    "recent-first": "sort_by(.repeated_tasks + .deadline + .closed + .scheduled | max)"
+    "recent-first": "sort_by(.repeats + .deadline + .closed + .scheduled | max)"
   },
   "with": {
     "priority-value": ".properties.priority_value = .priority"
@@ -58,8 +58,8 @@ Run jq-style queries over your Org Mode tasks.
 
 ```bash
 # Expand all nodes, select completed tasks, extract heading, return a page of results
-poetry run org query '[ .[][] | select(.todo in $done_keys) | .heading ][$offset: $offset + $limit]' \
-  --done-keys DONE,CANCELLED \
+poetry run org query '[ .[][] | select(.todo in $done_states) | .title_text ][$offset: $offset + $limit]' \
+  --done-states DONE,CANCELLED \
   --max-results 10 \
   --offset 10 \
   examples/ARCHIVE_small
@@ -112,7 +112,6 @@ Show task-only metrics and histograms.
 
 ```bash
 poetry run org stats summary \
-  --category-property CATEGORY \
   --with-tags-as-category \
   --filter-date-from 2023-10-20 \
   --filter-date-until 2023-11-15 \
@@ -169,8 +168,8 @@ Display matching tasks as a workflow-style board with one column per todo state 
 
 ```bash
 poetry run org tasks board \
-  --todo-keys TODO,WAITING,INPROGRESS \
-  --done-keys DONE,CANCELLED \
+  --todo-states TODO,WAITING,INPROGRESS \
+  --done-states DONE,CANCELLED \
   examples/ARCHIVE_small
 ```
 

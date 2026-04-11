@@ -1,6 +1,6 @@
 """Tests for the analyze() function - integration tests only."""
 
-import orgparse
+from org_parser.document import Heading
 
 from org.analyze import analyze
 from tests.conftest import node_from_org
@@ -8,8 +8,8 @@ from tests.conftest import node_from_org
 
 def test_analyze_empty_nodes() -> None:
     """Test analyze with empty nodes list."""
-    nodes: list[orgparse.node.OrgNode] = []
-    result = analyze(nodes, {}, category="tags", max_relations=3, category_property="CATEGORY")
+    nodes: list[Heading] = []
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 0
     assert result.task_states.values.get("DONE", 0) == 0
@@ -21,7 +21,7 @@ def test_analyze_single_done_task() -> None:
     """Test analyze with a single DONE task."""
     nodes = node_from_org("* DONE Write tests :Testing:\nUnit tests\n")
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, category_property="CATEGORY")
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 1
     assert result.task_states.values["DONE"] == 1
@@ -38,7 +38,7 @@ def test_analyze_multiple_tasks() -> None:
 * TODO Task 3 :Tag1:
 """)
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, category_property="CATEGORY")
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 3
     assert result.task_states.values["DONE"] == 2
@@ -53,7 +53,7 @@ def test_analyze_tag_frequencies() -> None:
 * DONE Task 3 :Tag1:
 """)
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, category_property="CATEGORY")
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.tags["Tag1"].total_tasks == 2
     assert result.tags["Tag2"].total_tasks == 2
@@ -68,7 +68,7 @@ def test_analyze_heading_word_frequencies() -> None:
 * DONE Another one
 """)
 
-    result = analyze(nodes, {}, category="heading", max_relations=3, category_property="CATEGORY")
+    result = analyze(nodes, {}, category="heading", max_relations=3)
 
     assert result.tags["one"].total_tasks == 2
     assert result.tags["two"].total_tasks == 1
@@ -84,7 +84,7 @@ This body text
 This body text
 """)
 
-    result = analyze(nodes, {}, category="body", max_relations=3, category_property="CATEGORY")
+    result = analyze(nodes, {}, category="body", max_relations=3)
 
     assert result.tags["body"].total_tasks == 2
     assert result.tags["text"].total_tasks == 2
@@ -98,7 +98,7 @@ def test_analyze_with_custom_mapping() -> None:
 * DONE Task 2 :Tag1:
 """)
 
-    result = analyze(nodes, mapping, category="tags", max_relations=3, category_property="CATEGORY")
+    result = analyze(nodes, mapping, category="tags", max_relations=3)
 
     assert "oldtag" not in result.tags
     assert "Tag1" not in result.tags
@@ -111,12 +111,8 @@ def test_analyze_mapping_affects_all_categories() -> None:
     mapping = {"fix": "bugfix"}
     nodes = node_from_org("* DONE fix the bug\nSome fix here\n")
 
-    result_heading = analyze(
-        nodes, mapping, category="heading", max_relations=3, category_property="CATEGORY"
-    )
-    result_body = analyze(
-        nodes, mapping, category="body", max_relations=3, category_property="CATEGORY"
-    )
+    result_heading = analyze(nodes, mapping, category="heading", max_relations=3)
+    result_body = analyze(nodes, mapping, category="body", max_relations=3)
 
     assert "fix" not in result_heading.tags
     assert "bugfix" in result_heading.tags
@@ -132,7 +128,7 @@ def test_analyze_all_task_states_mixed() -> None:
 * DONE Another completed task
 """)
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, category_property="CATEGORY")
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 3
     assert result.task_states.values["DONE"] == 2
@@ -147,7 +143,7 @@ def test_analyze_accumulates_across_nodes() -> None:
 * DONE Task :Tag1:Tag3:
 """)
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, category_property="CATEGORY")
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     assert result.total_tasks == 3
     assert result.tags["Tag1"].total_tasks == 2
@@ -164,7 +160,7 @@ def test_analyze_state_counts_match_total_tasks() -> None:
 * CANCELLED Task 4
 """)
 
-    result = analyze(nodes, {}, category="tags", max_relations=3, category_property="CATEGORY")
+    result = analyze(nodes, {}, category="tags", max_relations=3)
 
     state_sum = sum(result.task_states.values.values())
     assert state_sum == result.total_tasks

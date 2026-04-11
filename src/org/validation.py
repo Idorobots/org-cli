@@ -12,8 +12,8 @@ import typer
 class GlobalArgs(Protocol):
     """Protocol for arguments used in global validation."""
 
-    todo_keys: str
-    done_keys: str
+    todo_states: str
+    done_states: str
     filter_tags: list[str] | None
     filter_headings: list[str] | None
     filter_bodies: list[str] | None
@@ -171,13 +171,13 @@ def validate_global_arguments(args: GlobalArgs) -> tuple[list[str], list[str]]:
         args: Parsed command-line arguments
 
     Returns:
-        Tuple of (todo_keys, done_keys)
+        Tuple of (todo_states, done_states)
 
     Raises:
         typer.BadParameter: If validation fails
     """
-    todo_keys = validate_and_parse_keys(args.todo_keys, "--todo-keys")
-    done_keys = validate_and_parse_keys(args.done_keys, "--done-keys")
+    todo_states = validate_and_parse_keys(args.todo_states, "--todo-states")
+    done_states = validate_and_parse_keys(args.done_states, "--done-states")
 
     if args.filter_tags:
         for pattern in args.filter_tags:
@@ -194,7 +194,7 @@ def validate_global_arguments(args: GlobalArgs) -> tuple[list[str], list[str]]:
     if args.width is not None and args.width < 50:
         raise typer.BadParameter("--width must be at least 50")
 
-    return (todo_keys, done_keys)
+    return (todo_states, done_states)
 
 
 def validate_stats_arguments(args: StatsArgs) -> None:

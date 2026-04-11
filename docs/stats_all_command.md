@@ -15,7 +15,7 @@ poetry run org stats all [OPTIONS] [FILE ...]
 - `--max-groups` - Limit GROUPS section items (`0` hides section).
 - `--min-group-size` - Skip small groups.
 - `--max-relations` - Limit relation entries per item.
-- `--with-tags-as-category`, `--category-property` - Control category derivation.
+- `--with-tags-as-category` - Derive category from first tag.
 
 ## Available filters
 
