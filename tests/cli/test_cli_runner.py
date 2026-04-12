@@ -154,6 +154,52 @@ def test_cli_runner_tasks_board_renders_columns() -> None:
     assert "WAITING" in result.stdout
 
 
+def test_cli_runner_tasks_create_writes_heading(tmp_path: Path) -> None:
+    """CliRunner should create a new task heading in the selected file."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text("* TODO Existing\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "create",
+            "--todo",
+            "TODO",
+            "--title",
+            "Update docs",
+            "--tag",
+            "Docs",
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    updated = fixture_path.read_text(encoding="utf-8")
+    assert "* TODO Update docs :Docs:" in updated
+
+
+def test_cli_runner_tasks_create_requires_heading_component(tmp_path: Path) -> None:
+    """CliRunner should reject tasks create without heading components."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text("* TODO Existing\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "create",
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    combined_output = result.stdout + result.stderr
+    assert "Task heading is empty" in combined_output
+
+
 def test_cli_runner_allows_missing_files_when_some_exist() -> None:
     """Missing file paths should warn while command still succeeds."""
     runner = CliRunner()

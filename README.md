@@ -173,6 +173,19 @@ poetry run org tasks board \
   examples/ARCHIVE_small
 ```
 
+### `org tasks create`
+
+Create a new heading in an Org file.
+
+```bash
+poetry run org tasks create \
+  --todo TODO \
+  --title "Update docs" \
+  --tag Docs \
+  --body "Refresh command documentation" \
+  ROADMAP.org
+```
+
 ## Notes
 
 - Command docs and defaults: [docs/index.md](docs/index.md)

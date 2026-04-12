@@ -4015,11 +4015,116 @@ Additionally:
 Make sure that the text is aligned to the visual length, not the markup-length.
 
 The same rich text rendering logic should be applied to the task board command. Each panel should render the rich-text in Rich.
-** Tasks CRUD
-*** Tasks C**D
-- Adding new nodes
+** TODO Tasks CRUD
+*** DONE Tasks create
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-13 Mon 00:18]
+:END:
+Add a new command =tasks create= that allows creating new tasks. The command should accept the following CLI switches:
+
+- =--level= - optional, specifies the level of the task, should be 1 by default unless attached to a parent heading,
+- =--todo= - optional, specifies the TODO state of the newly created task,
+- =--priority= - optional, specifies the priority of the newly created task,
+- =--is-comment= - optional, specifies if the task should be a COMMENT task,
+- =--title= - optional, specifies the heading title text of the task,
+- =--counter= - optional, specifies the completion counter content,
+- =--tag= optional, specifies the tag to attach to the task (it can be specified multiple times for multiple tags),
+- =--heading= - optional, mutually exclusive with (=--tag=, =--counter=, =--title=, =--is-comment=, =--priority=, =--todo= and =--level=), specifies the entire heading line for the task,
+- =--deadline= - optional, specifies the deadline timestamp of the task,
+- =--scheduled= - optional, specifies the scheduled timestamp of the task,
+- =--closed= - optional, specifies the closed timestamp of the task,
+- =--property= - optional, specifies a property key=value pair to attach to the task (can be specified multiple times for multiple properties),
+- =--category= - optional, specifies the task category,
+- =--id= - optional, specifies the ID to use for the task,
+- =--body= - optional, specifies the task body (should just be attached as a string),
+- =--parent= - optional, specifies the ID or title of the heading this newly created heading should be a child of, by default new headings should be attached as top-level headings in a document. If the parent does not exist the command should report an error,
+- =--file= - optional, specifies the specific Org document the heading should be attached to. By default, it should be the first file passed to the command via the usual means.
+
+The command should rely on the =Heading.from_source= function as a means of validating the well-formedness of the task.
+The result of running the command should be that the selected file is updated with a new Org Mode task created to the specification passed via the CLI switches.
+
+Here are some usage examples:
+#+begin_example
+# Create a top-level task in the default file.
+org tasks create --todo TODO --title "Update the docs" --tag Docs --body "Update the documentation..."
+
+# Create a top-level task in path/to/file.org file
+org tasks create --title "Do some stuff" path/to/file.org
+
+# Create a top-level task in path/to/another/file.org file
+org tasks create --title "Do some stuff" --file path/to/another/file.org path/to/file.org path/to/another/file.org
+
+# Create a task as a child of another task in the default file.
+org tasks create --title "Do some stuff" --parent "Update the docs"
+#+end_example
+
+**** DONE src/org/commands/tasks/create.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-12 Sun 23:00]
+:END:
+
+In file src/org/commands/tasks/create.py around line 335, near the ~Head~
+
+#+begin_example
++def _insert_task_at_line(content: str, task_source: str, line_number: int) -> str:
++    """Insert task source before the specified 0-based line index."""
++    lines = content.splitlines(keepends=True)
++    prefix = "".join(lines[:line_number])
++    suffix = "".join(lines[line_number:])
++
++    if prefix and not prefix.endswith("\n"):
++        prefix = f"{prefix}\n"
++
++    task_block = task_source.rstrip("\n") + "\n"
++    return f"{prefix}{task_block}{suffix}"
+#+end_example
+
+I don't like this approach, instead load the document with =org_parser=, insert the task under the parent by adding it to the =children= of the specified node and then =org_parser.dump= the document back into a file.
+**** DONE src/org/commands/tasks/create.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-12 Sun 23:10]
+:END:
+
+In file src/org/commands/tasks/create.py around line 130, near the ~Head~
+
+#+begin_example
++
++    id_matches = [node for node in nodes if node.id == selector]
++    if len(id_matches) > 1:
++        raise typer.BadParameter(f"--parent is ambiguous, multiple headings with id '{selector}'")
++    if len(id_matches) == 1:
++        return id_matches[0]
+#+end_example
+
+This can be done with =document.heading_by_id()= function.
+There is no need to check for duplicate IDs when a match is found using the =heading_by_id=.
+**** DONE At least one heading line component should be required
+:PROPERTIES:
+:capture_time: [2026-04-12 Sun 23:11]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Query language improvements][Query language improvements]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-13 Mon 00:12]
+:END:
+It is possible to attempt to create a task like this:
+#+begin_example
+org tasks create path/to/file.org
+#+end_example
+
+This doesn't work, because the templated task does not have a heading line component.
+
+It should be mandatory to specified either =--heding= or any of this set: =--todo=, =--is-comment=, =--title=
+*** Task delete
 - Removing nodes
-- Moving nodes between headings
+
+--id
+--title
 
 *** Tasks **U*
 - Changing TODO state
@@ -4029,6 +4134,8 @@ The same rich text rendering logic should be applied to the task board command. 
 - Setting properties
 - Modifying the heading
 - Modifying the body
+- Moving nodes between headings
+- Adding repeats
 
 ** Agenda command
 Like Org Agenta, but CLI.
