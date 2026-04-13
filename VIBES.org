@@ -4120,22 +4120,57 @@ org tasks create path/to/file.org
 This doesn't work, because the templated task does not have a heading line component.
 
 It should be mandatory to specified either =--heding= or any of this set: =--todo=, =--is-comment=, =--title=
-*** Task delete
-- Removing nodes
+*** DONE Task delete
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-13 Mon 20:38]
+:END:
+Add a new command =tasks delete= that allows removing tasks from a document. The command should accept the following CLI switches:
 
---id
---title
+- =--title= - optional, specifies the heading title text of the task to be removed.
+- =--id= - optional, specifies the ID of the task to be removed,
 
-*** Tasks **U*
-- Changing TODO state
-  + Update repeats
-  + Update completion dates
-- Setting tags
-- Setting properties
-- Modifying the heading
-- Modifying the body
-- Moving nodes between headings
-- Adding repeats
+Exactly one identifier must be specified, either ID or the title. If none are specified, then the command should report an error. If multiple tasks match it should also result in an error.
+
+The result of running the command should be an update to the file that removes the specified task along with all of its subtrees.
+
+*** Tasks update
+Add a new command =tasks update= that allows updating tasks contents. The command should accept the following CLI switches:
+
+- =--query-title= - optional, specifies the heading title text of the task to be updated,
+- =--query-id= - mandatory, specifies the ID to use for the task to be updated,
+
+Exactly one identifier must be specified, either ID or the title. If none are specified, then the command should report an error. If multiple tasks match it should also result in an error.
+
+- =--level= - optional, specifies the new level of the task, must be at least 1 more than the parent or 1 for top-level headings,
+- =--todo= - optional, specifies the new TODO state of the task; passing an empty string should remove the field entirely,
+- =--priority= - optional, specifies the new priority of the task; passing an empty string should remove the field entirely,
+- =--comment= - optional, specifies the boolean COMMENT flag of the task; values other than =true= or =false= should be rejected,
+- =--title= - optional, specifies the new heading title text of the task; passing an empty string should remove the field entirely,
+- =--id= - optional, specifies the new ID of the task; passing an empty string should remove the field entirely,
+- =--counter= - optional, specifies the completion counter content; passing an empty string should remove the field entirely,
+- =--deadline= - optional, specifies the new deadline timestamp of the task; passing an empty string should remove the field entirely,
+- =--scheduled= - optional, specifies the new scheduled timestamp of the task; passing an empty string should remove the field entirely,
+- =--closed= - optional, specifies the new closed timestamp of the task; passing an empty string should remove the field entirely,
+- =--category= - optional, specifies the new task category; passing an empty string should remove the field entirely,
+- =--body= - optional, specifies the new task body (should just be attached as a string),
+- =--parent= - optional, specifies the ID or title of the heading this updated heading should become a child of; when specified with an empty string, the heading should be moved to the top level; the command should error out if the parent doesn't exist or if the parent is the same as the updated task or one of its descenants (to prevent loops); the level of the task should be adjusted to be 1-more than the parent,
+
+- =--tags= optional, specifies the list of tags to set on a task; passing an empty string should remove the field entirely,
+- =--properties= - optional, specifies property key=value pair to attach to the task (can be specified multiple times for multiple properties),
+
+- =--clock=
+- =--repeat=
+
+The command should rely on =org_parser= mutation to make the changes and then dump the entire modified document to file.
+The result of running the command should be an updated file that reflects the changes applied to the selected task.
+
+*** Command updates
+- In =tasks create=, rename the =--is-comment= switch to just =--comment= and make it accept a boolean value.
+- In =tasks delete=, rename the =--title= and =--id= to =--query-title= and =--query-id==.
+- All tasks created with =tasks create= should have a default ID assigned to them, if =--id= is not passed, generate a UUID.
+- =tasks create= should have a way to accept a string via stdin.
+- Rename =tasks create= to =tasks add= and =tasks delete= to =tasks remove=.
+- =--query= parameter for finding tasks to be removed/updated.
 
 ** Agenda command
 Like Org Agenta, but CLI.

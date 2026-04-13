@@ -4,6 +4,7 @@ import typer
 
 from org.commands.tasks import board as tasks_board
 from org.commands.tasks import create as tasks_create
+from org.commands.tasks import delete as tasks_delete
 from org.commands.tasks import list as tasks_list
 
 
@@ -15,5 +16,6 @@ def register(app: typer.Typer) -> None:
     )
     tasks_board.register(tasks_app)
     tasks_create.register(tasks_app)
+    tasks_delete.register(tasks_app)
     tasks_list.register(tasks_app)
     app.add_typer(tasks_app, name="tasks")

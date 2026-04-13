@@ -200,6 +200,81 @@ def test_cli_runner_tasks_create_requires_heading_component(tmp_path: Path) -> N
     assert "Task heading is empty" in combined_output
 
 
+def test_cli_runner_tasks_delete_removes_heading(tmp_path: Path) -> None:
+    """CliRunner should delete a task heading and its subtree."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text(
+        "* TODO Keep\n* TODO Remove me\n** TODO Child\n* TODO Tail\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "delete",
+            "--title",
+            "Remove me",
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    updated = fixture_path.read_text(encoding="utf-8")
+    assert "Remove me" not in updated
+    assert "Child" not in updated
+    assert "Keep" in updated
+    assert "Tail" in updated
+
+
+def test_cli_runner_tasks_delete_requires_identifier(tmp_path: Path) -> None:
+    """CliRunner should reject tasks delete without title and id selectors."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text("* TODO Keep\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "delete",
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    combined_output = result.stdout + result.stderr
+    assert "exactly one task identifier" in combined_output
+
+
+def test_cli_runner_tasks_delete_rejects_title_and_id_together(tmp_path: Path) -> None:
+    """CliRunner should reject tasks delete when both selectors are provided."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "delete",
+            "--title",
+            "Keep",
+            "--id",
+            "task-1",
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    combined_output = result.stdout + result.stderr
+    assert "exactly one task identifier" in combined_output
+
+
 def test_cli_runner_allows_missing_files_when_some_exist() -> None:
     """Missing file paths should warn while command still succeeds."""
     runner = CliRunner()
