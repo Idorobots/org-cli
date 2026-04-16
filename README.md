@@ -186,6 +186,16 @@ poetry run org tasks create \
   ROADMAP.org
 ```
 
+### `org tasks delete`
+
+Delete one task heading (including its subtree) by title or ID.
+
+```bash
+poetry run org tasks delete \
+  --title "Update docs" \
+  ROADMAP.org
+```
+
 ## Notes
 
 - Command docs and defaults: [docs/index.md](docs/index.md)

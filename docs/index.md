@@ -12,6 +12,7 @@
 - `org tasks list` - Short or detailed task listing with ordering. See [tasks_list_command.md](tasks_list_command.md).
 - `org tasks board` - Workflow-style board view of active tasks. See [tasks_board_command.md](tasks_board_command.md).
 - `org tasks create` - Create new task headings in Org files. See [tasks_create_command.md](tasks_create_command.md).
+- `org tasks delete` - Delete one task heading and its subtree from Org files. See [tasks_delete_command.md](tasks_delete_command.md).
 
 For query syntax details, use [query_language.md](query_language.md).
 

@@ -4133,6 +4133,12 @@ Exactly one identifier must be specified, either ID or the title. If none are sp
 
 The result of running the command should be an update to the file that removes the specified task along with all of its subtrees.
 
+**** DONE Task detele command documentation
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-16 Thu 13:02]
+:END:
+Add a documentation page for the =tasks delete= command that will describe its usage and all accepted CLI switches.
+
 *** Tasks update
 Add a new command =tasks update= that allows updating tasks contents. The command should accept the following CLI switches:
 
