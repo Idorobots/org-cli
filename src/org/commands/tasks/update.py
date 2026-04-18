@@ -41,15 +41,6 @@ class UpdateArgs:
     properties: str | None
 
 
-@dataclass(frozen=True)
-class _MatchedTask:
-    """One matched task with document context."""
-
-    filename: str
-    document: Document
-    heading: Heading
-
-
 def _normalize_selector(value: str | None, option_name: str) -> str | None:
     """Normalize optional selector value and reject blank strings."""
     if value is None:
@@ -91,12 +82,13 @@ def _load_document(path: str) -> Document:
         raise typer.BadParameter(f"Unable to parse '{path}': {err}") from err
 
 
-def _save_document(document: Document, path: str) -> None:
+def _save_document(document: Document) -> None:
     """Persist updated org document back to disk."""
     try:
-        org_parser.dump(document, path)
+        org_parser.dump(document)
     except PermissionError as err:
-        raise typer.BadParameter(f"Permission denied for '{path}'") from err
+        filename = document.filename if document.filename else "<unknown>"
+        raise typer.BadParameter(f"Permission denied for '{filename}'") from err
 
 
 def _title_matches(document: Document, title: str | None) -> list[Heading]:
@@ -114,14 +106,6 @@ def _id_matches(document: Document, query_id: str | None) -> list[Heading]:
     if heading is None:
         return []
     return [heading]
-
-
-def _resolve_matches(document: Document, title: str | None, query_id: str | None) -> list[Heading]:
-    """Resolve unique matches for title and ID selectors in one document."""
-    unique_matches: dict[int, Heading] = {}
-    for heading in [*_title_matches(document, title), *_id_matches(document, query_id)]:
-        unique_matches[id(heading)] = heading
-    return list(unique_matches.values())
 
 
 def _parse_comment_flag(value: str) -> bool:
@@ -146,7 +130,7 @@ def _parse_counter(value: str) -> CompletionCounter | None:
     return CompletionCounter(normalized)
 
 
-def _parse_timestamp(value: str, option_name: str) -> Timestamp | None:
+def _parse_timestamp(value: str) -> Timestamp | None:
     """Parse one timestamp option into Timestamp or None."""
     normalized = _normalize_optional_value(value)
     if normalized is None:
@@ -154,7 +138,7 @@ def _parse_timestamp(value: str, option_name: str) -> Timestamp | None:
     try:
         return Timestamp.from_source(normalized)
     except (TypeError, ValueError) as err:
-        raise typer.BadParameter(f"{option_name} must be a valid Org timestamp") from err
+        raise typer.BadParameter(f"Value {value!r} is not a valid Org timestamp") from err
 
 
 def _parse_tags(value: str) -> list[str]:
@@ -194,11 +178,11 @@ def _parse_properties(value: str) -> dict[str, str]:
 
 def _resolve_parent_heading(document: Document, parent_value: str) -> Heading:
     """Resolve one parent heading by id first, then title."""
-    id_match = document.heading_by_id(parent_value)
-    if id_match is not None:
-        return id_match
+    id_matches = _id_matches(document, parent_value)
+    if id_matches:
+        return id_matches[0]
 
-    title_matches = [node for node in list(document) if node.title_text.strip() == parent_value]
+    title_matches = _title_matches(document, parent_value)
     if len(title_matches) > 1:
         raise typer.BadParameter(
             f"--parent is ambiguous, multiple headings with title '{parent_value}'"
@@ -230,8 +214,6 @@ def _validate_parent_target(heading: Heading, parent_heading: Heading | None) ->
 def _move_heading(heading: Heading, parent_heading: Heading | None) -> None:
     """Move heading under a new parent or to top-level."""
     current_parent = heading.parent
-    if current_parent is None:
-        raise typer.BadParameter("Unable to move heading without a parent node")
     current_parent.children.remove(heading)
 
     if parent_heading is None:
@@ -244,8 +226,6 @@ def _validate_level(level: int, parent_level: int) -> None:
     """Validate requested level against parent level rules."""
     if level < 1:
         raise typer.BadParameter("--level must be greater than or equal to 1")
-    if parent_level == 0 and level != 1:
-        raise typer.BadParameter("--level must be 1 for top-level headings")
     if parent_level > 0 and level <= parent_level:
         raise typer.BadParameter("--level must be greater than parent level")
 
@@ -279,19 +259,17 @@ def _resolve_target_parent(document: Document, parent_value: str) -> Heading | N
 def _apply_parent_and_level_updates(args: UpdateArgs, heading: Heading) -> None:
     """Apply parent and level updates while enforcing hierarchy rules."""
     parent_value = args.parent
-    parent_specified = parent_value is not None
     target_parent: Heading | None = None
 
-    if parent_specified:
-        assert parent_value is not None
+    if parent_value is not None:
         target_parent = _resolve_target_parent(heading.document, parent_value)
         _validate_parent_target(heading, target_parent)
         _move_heading(heading, target_parent)
 
-    if not parent_specified and args.level is None:
+    if parent_value is None and args.level is None:
         return
 
-    if parent_specified:
+    if parent_value is not None:
         parent_level = target_parent.level if target_parent is not None else 0
         if args.level is None:
             target_level = parent_level + 1 if parent_level > 0 else 1
@@ -325,11 +303,11 @@ def _apply_heading_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
 def _apply_planning_updates(args: UpdateArgs, heading: Heading) -> None:
     """Apply planning timestamp updates."""
     if args.scheduled is not None:
-        heading.scheduled = _parse_timestamp(args.scheduled, "--scheduled")
+        heading.scheduled = _parse_timestamp(args.scheduled)
     if args.deadline is not None:
-        heading.deadline = _parse_timestamp(args.deadline, "--deadline")
+        heading.deadline = _parse_timestamp(args.deadline)
     if args.closed is not None:
-        heading.closed = _parse_timestamp(args.closed, "--closed")
+        heading.closed = _parse_timestamp(args.closed)
 
 
 def _apply_org_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
@@ -358,22 +336,24 @@ def run_tasks_update(args: UpdateArgs) -> None:
     query_title, query_id = _validate_identifiers(args)
     filenames = resolve_input_paths(args.files)
 
-    matches: list[_MatchedTask] = []
+    matches: list[Heading] = []
     for filename in filenames:
         document = _load_document(filename)
-        for heading in _resolve_matches(document, query_title, query_id):
-            matches.append(_MatchedTask(filename=filename, document=document, heading=heading))
+        selector_matches = _id_matches(document, query_id)
+        if query_id is None:
+            selector_matches = _title_matches(document, query_title)
+        matches.extend(selector_matches)
 
     if not matches:
         raise typer.BadParameter("No task matches the provided selector")
     if len(matches) > 1:
         raise typer.BadParameter("Task selector is ambiguous, multiple tasks match")
 
-    match = matches[0]
-    _apply_parent_and_level_updates(args, match.heading)
-    _apply_field_updates(args, match.heading)
-    match.document.sync_heading_id_index()
-    _save_document(match.document, match.filename)
+    heading = matches[0]
+    _apply_parent_and_level_updates(args, heading)
+    _apply_field_updates(args, heading)
+    heading.document.sync_heading_id_index()
+    _save_document(heading.document)
 
 
 def register(app: typer.Typer) -> None:

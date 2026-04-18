@@ -4120,9 +4120,9 @@ org tasks create path/to/file.org
 This doesn't work, because the templated task does not have a heading line component.
 
 It should be mandatory to specified either =--heding= or any of this set: =--todo=, =--is-comment=, =--title=
-*** DONE Task delete
+*** REWORKED Task delete
 :LOGBOOK:
-- State "DONE"       from "TODO"       [2026-04-13 Mon 20:38]
+- State "REWORKED"       from "TODO"       [2026-04-13 Mon 20:38]
 :END:
 Add a new command =tasks delete= that allows removing tasks from a document. The command should accept the following CLI switches:
 
@@ -4139,7 +4139,11 @@ The result of running the command should be an update to the file that removes t
 :END:
 Add a documentation page for the =tasks delete= command that will describe its usage and all accepted CLI switches.
 
-*** TODO Tasks update
+*** REWORKED Tasks update
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 14:42] \\
+  Needed some work.
+:END:
 Add a new command =tasks update= that allows updating tasks contents. The command should accept the following CLI switches:
 
 - =--query-title= - optional, specifies the task to be updated by its heading title text,
@@ -4176,9 +4180,12 @@ org tasks update --query-id 23 --title "Foo"
 org tasks update --query-title "Foo" --todo DONE --closed "<2026-04-13>"
 #+end_example
 
-**** TODO src/org/commands/tasks/update.py
+**** DONE src/org/commands/tasks/update.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:14]
 :END:
 
 In file src/org/commands/tasks/update.py around line 43, near the ~new file   src/org/commands/tasks/update.py~
@@ -4195,9 +4202,12 @@ In file src/org/commands/tasks/update.py around line 43, near the ~new file   sr
 #+end_example
 
 A heading already has a =.document= property that itself has a =.filename= property. Do we really need a separate class for that?
-**** TODO src/org/commands/tasks/update.py
+**** DONE src/org/commands/tasks/update.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:16]
 :END:
 
 In file src/org/commands/tasks/update.py around line 125, near the ~new file   src/org/commands/tasks/update.py~
@@ -4212,9 +4222,12 @@ In file src/org/commands/tasks/update.py around line 125, near the ~new file   s
 #+end_example
 
 Since we accept either id or title matches, there's never going to be duplicates. We don't really need this function.
-**** TODO src/org/commands/tasks/update.py
+**** DONE src/org/commands/tasks/update.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:40]
 :END:
 
 In file src/org/commands/tasks/update.py around line 202, near the ~new file   src/org/commands/tasks/update.py~
@@ -4229,9 +4242,12 @@ In file src/org/commands/tasks/update.py around line 202, near the ~new file   s
 #+end_example
 
 Should reuse the =_*_matches= functions.
-**** TODO src/org/commands/tasks/update.py
+**** DONE src/org/commands/tasks/update.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:40]
 :END:
 
 In file src/org/commands/tasks/update.py around line 235, near the ~new file   src/org/commands/tasks/update.py~
@@ -4244,9 +4260,12 @@ In file src/org/commands/tasks/update.py around line 235, near the ~new file   s
 #+end_example
 
 Why is that? It should be possible to move any heading under a parent node.
-**** TODO src/org/commands/tasks/update.py
+**** DONE src/org/commands/tasks/update.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:40]
 :END:
 
 In file src/org/commands/tasks/update.py around line 249, near the ~new file   src/org/commands/tasks/update.py~
@@ -4258,9 +4277,12 @@ In file src/org/commands/tasks/update.py around line 249, near the ~new file   s
 #+end_example
 
 This is not factual. A document can have a heading of level 2 in the top level.
-**** TODO src/org/commands/tasks/update.py
+**** DONE src/org/commands/tasks/update.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:40]
 :END:
 
 In file src/org/commands/tasks/update.py around line 287, near the ~new file   src/org/commands/tasks/update.py~
@@ -4271,9 +4293,12 @@ In file src/org/commands/tasks/update.py around line 287, near the ~new file   s
 #+end_example
 
 Don't use =assert= in non-test code. Why did linter let that in?
-**** TODO src/org/commands/tasks/update.py
+**** DONE src/org/commands/tasks/update.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:39]
 :END:
 
 In file src/org/commands/tasks/update.py around line 333, near the ~new file   src/org/commands/tasks/update.py~
@@ -4289,6 +4314,7 @@ In file src/org/commands/tasks/update.py around line 333, near the ~new file   s
 #+end_example
 
 I don't like that we're passing the option name just for the error message.
+
 *** TODO Fine-grained edits
 Add the following additional CLI switches for the =tasks update= command:
 

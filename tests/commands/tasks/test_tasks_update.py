@@ -195,6 +195,20 @@ def test_run_tasks_update_moves_to_top_level_when_parent_is_empty_string(tmp_pat
     assert child.parent is root
 
 
+def test_run_tasks_update_allows_explicit_top_level_level_above_one(tmp_path: Path) -> None:
+    """Update should allow explicit level updates for top-level headings above one."""
+    source = tmp_path / "tasks.org"
+    source.write_text("** TODO Task\n", encoding="utf-8")
+    args = make_update_args([str(source)], query_id=None, query_title="Task", level=3)
+
+    tasks_update.run_tasks_update(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    task = next(iter(root))
+    assert task.level == 3
+    assert task.parent is root
+
+
 def test_run_tasks_update_rejects_parent_descendant_loop(tmp_path: Path) -> None:
     """Update should reject moving a heading under one of its descendants."""
     source = tmp_path / "tasks.org"

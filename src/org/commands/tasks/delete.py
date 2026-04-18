@@ -23,15 +23,6 @@ class DeleteArgs:
     id_value: str | None
 
 
-@dataclass(frozen=True)
-class _MatchedTask:
-    """One matched task with document context."""
-
-    filename: str
-    document: Document
-    heading: Heading
-
-
 def _normalize_selector(value: str | None, option_name: str) -> str | None:
     """Normalize optional selector value and reject blank strings."""
     if value is None:
@@ -65,12 +56,13 @@ def _load_document(path: str) -> Document:
         raise typer.BadParameter(f"Unable to parse '{path}': {err}") from err
 
 
-def _save_document(document: Document, path: str) -> None:
+def _save_document(document: Document) -> None:
     """Persist updated org document back to disk."""
     try:
-        org_parser.dump(document, path)
+        org_parser.dump(document)
     except PermissionError as err:
-        raise typer.BadParameter(f"Permission denied for '{path}'") from err
+        filename = document.filename if document.filename else "<unknown>"
+        raise typer.BadParameter(f"Permission denied for '{filename}'") from err
 
 
 def _title_matches(document: Document, title: str | None) -> list[Heading]:
@@ -111,20 +103,20 @@ def run_tasks_delete(args: DeleteArgs) -> None:
     title, id_value = _validate_identifiers(args)
     filenames = resolve_input_paths(args.files)
 
-    matches: list[_MatchedTask] = []
+    matches: list[Heading] = []
     for filename in filenames:
         document = _load_document(filename)
         for heading in _resolve_matches(document, title, id_value):
-            matches.append(_MatchedTask(filename=filename, document=document, heading=heading))
+            matches.append(heading)
 
     if not matches:
         raise typer.BadParameter("No task matches the provided selector")
     if len(matches) > 1:
         raise typer.BadParameter("Task selector is ambiguous, multiple tasks match")
 
-    match = matches[0]
-    _remove_heading(match.heading)
-    _save_document(match.document, match.filename)
+    heading = matches[0]
+    _remove_heading(heading)
+    _save_document(heading.document)
 
 
 def register(app: typer.Typer) -> None:

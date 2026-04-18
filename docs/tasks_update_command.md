@@ -43,7 +43,7 @@ Provide exactly one selector: `--query-title` or `--query-id`.
 - Parent lookup errors on missing parent or ambiguous title matches.
 - Parent cannot be the updated task itself or one of its descendants.
 - `--level` must be greater than parent level for child headings.
-- Top-level headings must use level `1`.
+- Top-level headings can use any positive level.
 - If `--parent` is provided without `--level`, level is adjusted automatically (`parent + 1`, or `1` for top-level).
 
 ## Examples
