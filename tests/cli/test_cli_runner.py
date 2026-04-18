@@ -275,6 +275,82 @@ def test_cli_runner_tasks_delete_rejects_title_and_id_together(tmp_path: Path) -
     assert "exactly one task identifier" in combined_output
 
 
+def test_cli_runner_tasks_update_updates_heading(tmp_path: Path) -> None:
+    """CliRunner should update a task heading selected by query ID."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "update",
+            "--query-id",
+            "task-1",
+            "--title",
+            "Updated",
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    updated = fixture_path.read_text(encoding="utf-8")
+    assert "* TODO Updated" in updated
+
+
+def test_cli_runner_tasks_update_requires_identifier(tmp_path: Path) -> None:
+    """CliRunner should reject tasks update without selector options."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text("* TODO Keep\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "update",
+            "--title",
+            "Updated",
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    combined_output = result.stdout + result.stderr
+    assert "exactly one task identifier" in combined_output
+
+
+def test_cli_runner_tasks_update_rejects_invalid_comment(tmp_path: Path) -> None:
+    """CliRunner should reject --comment values other than true or false."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "update",
+            "--query-id",
+            "task-1",
+            "--comment",
+            "maybe",
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    combined_output = result.stdout + result.stderr
+    assert "--comment must be either" in combined_output
+
+
 def test_cli_runner_allows_missing_files_when_some_exist() -> None:
     """Missing file paths should warn while command still succeeds."""
     runner = CliRunner()

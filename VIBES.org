@@ -4015,7 +4015,7 @@ Additionally:
 Make sure that the text is aligned to the visual length, not the markup-length.
 
 The same rich text rendering logic should be applied to the task board command. Each panel should render the rich-text in Rich.
-** TODO Tasks CRUD
+** TODO Tasks CRUD                                                                        :CLI:CRUD:
 *** DONE Tasks create
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-04-13 Mon 00:18]
@@ -4139,11 +4139,11 @@ The result of running the command should be an update to the file that removes t
 :END:
 Add a documentation page for the =tasks delete= command that will describe its usage and all accepted CLI switches.
 
-*** Tasks update
+*** TODO Tasks update
 Add a new command =tasks update= that allows updating tasks contents. The command should accept the following CLI switches:
 
-- =--query-title= - optional, specifies the heading title text of the task to be updated,
-- =--query-id= - mandatory, specifies the ID to use for the task to be updated,
+- =--query-title= - optional, specifies the task to be updated by its heading title text,
+- =--query-id= - optional, specifies the task to be updated by its ID,
 
 Exactly one identifier must be specified, either ID or the title. If none are specified, then the command should report an error. If multiple tasks match it should also result in an error.
 
@@ -4162,21 +4162,158 @@ Exactly one identifier must be specified, either ID or the title. If none are sp
 - =--parent= - optional, specifies the ID or title of the heading this updated heading should become a child of; when specified with an empty string, the heading should be moved to the top level; the command should error out if the parent doesn't exist or if the parent is the same as the updated task or one of its descenants (to prevent loops); the level of the task should be adjusted to be 1-more than the parent,
 
 - =--tags= optional, specifies the list of tags to set on a task; passing an empty string should remove the field entirely,
-- =--properties= - optional, specifies property key=value pair to attach to the task (can be specified multiple times for multiple properties),
-
-- =--clock=
-- =--repeat=
+- =--properties= - optional, specifies property dictionary (JSON object format) to attach to the task; passing an empty string should remove the field entirely,
 
 The command should rely on =org_parser= mutation to make the changes and then dump the entire modified document to file.
 The result of running the command should be an updated file that reflects the changes applied to the selected task.
 
-*** Command updates
-- In =tasks create=, rename the =--is-comment= switch to just =--comment= and make it accept a boolean value.
-- In =tasks delete=, rename the =--title= and =--id= to =--query-title= and =--query-id==.
-- All tasks created with =tasks create= should have a default ID assigned to them, if =--id= is not passed, generate a UUID.
-- =tasks create= should have a way to accept a string via stdin.
-- Rename =tasks create= to =tasks add= and =tasks delete= to =tasks remove=.
-- =--query= parameter for finding tasks to be removed/updated.
+Here are some examples:
+#+begin_example
+# Update title of a task
+org tasks update --query-id 23 --title "Foo"
+
+# Update TODO state of a task and set a closed date
+org tasks update --query-title "Foo" --todo DONE --closed "<2026-04-13>"
+#+end_example
+
+**** TODO src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/tasks/update.py around line 43, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++
++@dataclass(frozen=True)
++class _MatchedTask:
++    """One matched task with document context."""
++
++    filename: str
++    document: Document
++    heading: Heading
+#+end_example
+
+A heading already has a =.document= property that itself has a =.filename= property. Do we really need a separate class for that?
+**** TODO src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/tasks/update.py around line 125, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++def _resolve_matches(document: Document, title: str | None, query_id: str | None) -> list[Heading]:
++    """Resolve unique matches for title and ID selectors in one document."""
++    unique_matches: dict[int, Heading] = {}
++    for heading in [*_title_matches(document, title), *_id_matches(document, query_id)]:
++        unique_matches[id(heading)] = heading
++    return list(unique_matches.values())
+#+end_example
+
+Since we accept either id or title matches, there's never going to be duplicates. We don't really need this function.
+**** TODO src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/tasks/update.py around line 202, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++    id_match = document.heading_by_id(parent_value)
++    if id_match is not None:
++        return id_match
++
++    title_matches = [node for node in list(document) if node.title_text.strip() == parent_value]
+
+#+end_example
+
+Should reuse the =_*_matches= functions.
+**** TODO src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/tasks/update.py around line 235, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++    current_parent = heading.parent
++    if current_parent is None:
++        raise typer.BadParameter("Unable to move heading without a parent node")
+
+#+end_example
+
+Why is that? It should be possible to move any heading under a parent node.
+**** TODO src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/tasks/update.py around line 249, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++    if parent_level == 0 and level != 1:
++        raise typer.BadParameter("--level must be 1 for top-level headings")
+
+#+end_example
+
+This is not factual. A document can have a heading of level 2 in the top level.
+**** TODO src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/tasks/update.py around line 287, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++        assert parent_value is not None
+
+#+end_example
+
+Don't use =assert= in non-test code. Why did linter let that in?
+**** TODO src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/tasks/update.py around line 333, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++    if args.scheduled is not None:
++        heading.scheduled = _parse_timestamp(args.scheduled, "--scheduled")
++    if args.deadline is not None:
++        heading.deadline = _parse_timestamp(args.deadline, "--deadline")
++    if args.closed is not None:
++        heading.closed = _parse_timestamp(args.closed, "--closed")
+
+#+end_example
+
+I don't like that we're passing the option name just for the error message.
+*** TODO Fine-grained edits
+Add the following additional CLI switches for the =tasks update= command:
+
+- =--add-clock-entry= - adds an individual clock entry to the specified task, should accept a string representation of the clock entry,
+- =--remove-clock-entry= - removes a specified clock entry from the specified task,
+- =--add-repeat= - adds an individual repeat to the specified task, should accept a string representation of the repeat,
+- =--remove-repeat= - removes a specified repeat from the specified task,
+- =--add-tag= - adds an individual tag to the specified task,
+- =--remove-tag= - removes an individial tag from the specified task,
+- ~--add-property P=V~ - adds a property to the specified task,
+- =--remove-property P= - removes a specified property from the specified task,
+
+*** TODO File move CLI switch
+- =--file= - moves the heading to another file saving both the origin and destination files.
+
+*** TODO Command refactor
+Refactor the new task commands as follows:
+- [ ] In =tasks create=, rename the =--is-comment= switch to just =--comment= and make it accept a boolean value.
+- [ ] In =tasks create=, update the =--tag= and =--property= switches to =--tags= and =--properties=, tags should accept a list of tags, while properties should accept a JSON object that it sets as the properties of the newly created task,
+- [ ] In =tasks delete=, rename the =--title= and =--id= to =--query-title= and =--query-id==.
+- [ ] All tasks created with =tasks create= should have a default ID assigned to them, if =--id= is not passed, generate a UUID.
+- [ ] =tasks create= should have a way to accept a string via stdin.
+- [ ] Add =--query= parameter for finding tasks to be removed/updated by a generic query language query. The switch should be available in =tasks delete= and =tasks update=.
+- [ ] Rename =tasks create= to =tasks add= and =tasks delete= to =tasks remove=.
+
 
 ** Agenda command
 Like Org Agenta, but CLI.

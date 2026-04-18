@@ -1,0 +1,523 @@
+"""Tasks update command."""
+
+from __future__ import annotations
+
+import json
+import sys
+from dataclasses import dataclass
+
+import org_parser
+import typer
+from org_parser.document import Document, Heading
+from org_parser.text import CompletionCounter
+from org_parser.time import Timestamp
+
+from org import config as config_module
+from org.cli_common import resolve_input_paths
+
+
+@dataclass
+class UpdateArgs:
+    """Arguments for the tasks update command."""
+
+    files: list[str] | None
+    config: str
+    query_title: str | None
+    query_id: str | None
+    level: int | None
+    todo: str | None
+    priority: str | None
+    comment: str | None
+    title: str | None
+    id_value: str | None
+    counter: str | None
+    deadline: str | None
+    scheduled: str | None
+    closed: str | None
+    category: str | None
+    body: str | None
+    parent: str | None
+    tags: str | None
+    properties: str | None
+
+
+@dataclass(frozen=True)
+class _MatchedTask:
+    """One matched task with document context."""
+
+    filename: str
+    document: Document
+    heading: Heading
+
+
+def _normalize_selector(value: str | None, option_name: str) -> str | None:
+    """Normalize optional selector value and reject blank strings."""
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        raise typer.BadParameter(f"{option_name} cannot be empty")
+    return normalized
+
+
+def _normalize_optional_value(value: str) -> str | None:
+    """Return stripped value or None for blank input."""
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return normalized
+
+
+def _validate_identifiers(args: UpdateArgs) -> tuple[str | None, str | None]:
+    """Validate task selectors and return normalized values."""
+    normalized_title = _normalize_selector(args.query_title, "--query-title")
+    normalized_id = _normalize_selector(args.query_id, "--query-id")
+    if normalized_title is None and normalized_id is None:
+        raise typer.BadParameter("Provide exactly one task identifier: --query-title or --query-id")
+    if normalized_title is not None and normalized_id is not None:
+        raise typer.BadParameter("Provide exactly one task identifier: --query-title or --query-id")
+    return normalized_title, normalized_id
+
+
+def _load_document(path: str) -> Document:
+    """Load org document from file for mutation."""
+    try:
+        return org_parser.load(path)
+    except FileNotFoundError as err:
+        raise typer.BadParameter(f"File '{path}' not found") from err
+    except PermissionError as err:
+        raise typer.BadParameter(f"Permission denied for '{path}'") from err
+    except ValueError as err:
+        raise typer.BadParameter(f"Unable to parse '{path}': {err}") from err
+
+
+def _save_document(document: Document, path: str) -> None:
+    """Persist updated org document back to disk."""
+    try:
+        org_parser.dump(document, path)
+    except PermissionError as err:
+        raise typer.BadParameter(f"Permission denied for '{path}'") from err
+
+
+def _title_matches(document: Document, title: str | None) -> list[Heading]:
+    """Return headings matching title selector in one document."""
+    if title is None:
+        return []
+    return [node for node in list(document) if node.title_text.strip() == title]
+
+
+def _id_matches(document: Document, query_id: str | None) -> list[Heading]:
+    """Return heading matching ID selector in one document."""
+    if query_id is None:
+        return []
+    heading = document.heading_by_id(query_id)
+    if heading is None:
+        return []
+    return [heading]
+
+
+def _resolve_matches(document: Document, title: str | None, query_id: str | None) -> list[Heading]:
+    """Resolve unique matches for title and ID selectors in one document."""
+    unique_matches: dict[int, Heading] = {}
+    for heading in [*_title_matches(document, title), *_id_matches(document, query_id)]:
+        unique_matches[id(heading)] = heading
+    return list(unique_matches.values())
+
+
+def _parse_comment_flag(value: str) -> bool:
+    """Parse --comment value as strict true/false."""
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise typer.BadParameter("--comment must be either 'true' or 'false'")
+
+
+def _parse_counter(value: str) -> CompletionCounter | None:
+    """Parse --counter value into completion counter or None."""
+    normalized = _normalize_optional_value(value)
+    if normalized is None:
+        return None
+    if normalized.startswith("[") and normalized.endswith("]"):
+        normalized = normalized[1:-1].strip()
+    if not normalized:
+        return None
+    return CompletionCounter(normalized)
+
+
+def _parse_timestamp(value: str, option_name: str) -> Timestamp | None:
+    """Parse one timestamp option into Timestamp or None."""
+    normalized = _normalize_optional_value(value)
+    if normalized is None:
+        return None
+    try:
+        return Timestamp.from_source(normalized)
+    except (TypeError, ValueError) as err:
+        raise typer.BadParameter(f"{option_name} must be a valid Org timestamp") from err
+
+
+def _parse_tags(value: str) -> list[str]:
+    """Parse --tags value into a list of tag strings."""
+    normalized = value.strip()
+    if not normalized:
+        return []
+    tags = [tag.strip() for tag in normalized.split(",")]
+    if not tags or any(not tag for tag in tags):
+        raise typer.BadParameter("--tags must be a comma-separated list of non-empty tags")
+    return tags
+
+
+def _parse_properties(value: str) -> dict[str, str]:
+    """Parse --properties JSON value into a string dictionary."""
+    normalized = value.strip()
+    if not normalized:
+        return {}
+
+    try:
+        loaded = json.loads(normalized)
+    except json.JSONDecodeError as err:
+        raise typer.BadParameter("--properties must be a valid JSON object") from err
+
+    if not isinstance(loaded, dict):
+        raise typer.BadParameter("--properties must be a JSON object")
+
+    parsed: dict[str, str] = {}
+    for key, property_value in loaded.items():
+        if not isinstance(key, str) or not key.strip():
+            raise typer.BadParameter("--properties keys must be non-empty strings")
+        if not isinstance(property_value, str):
+            raise typer.BadParameter("--properties values must be strings")
+        parsed[key] = property_value
+    return parsed
+
+
+def _resolve_parent_heading(document: Document, parent_value: str) -> Heading:
+    """Resolve one parent heading by id first, then title."""
+    id_match = document.heading_by_id(parent_value)
+    if id_match is not None:
+        return id_match
+
+    title_matches = [node for node in list(document) if node.title_text.strip() == parent_value]
+    if len(title_matches) > 1:
+        raise typer.BadParameter(
+            f"--parent is ambiguous, multiple headings with title '{parent_value}'"
+        )
+    if len(title_matches) == 1:
+        return title_matches[0]
+    raise typer.BadParameter(f"--parent '{parent_value}' was not found")
+
+
+def _iter_descendants(heading: Heading) -> list[Heading]:
+    """Return heading descendants as a flat list."""
+    descendants: list[Heading] = []
+    for child in heading.children:
+        descendants.append(child)
+        descendants.extend(_iter_descendants(child))
+    return descendants
+
+
+def _validate_parent_target(heading: Heading, parent_heading: Heading | None) -> None:
+    """Validate parent target does not create loops."""
+    if parent_heading is None:
+        return
+    if parent_heading is heading:
+        raise typer.BadParameter("--parent cannot point to the task being updated")
+    if parent_heading in _iter_descendants(heading):
+        raise typer.BadParameter("--parent cannot point to a descendant of the updated task")
+
+
+def _move_heading(heading: Heading, parent_heading: Heading | None) -> None:
+    """Move heading under a new parent or to top-level."""
+    current_parent = heading.parent
+    if current_parent is None:
+        raise typer.BadParameter("Unable to move heading without a parent node")
+    current_parent.children.remove(heading)
+
+    if parent_heading is None:
+        heading.document.children.append(heading)
+    else:
+        parent_heading.children.append(heading)
+
+
+def _validate_level(level: int, parent_level: int) -> None:
+    """Validate requested level against parent level rules."""
+    if level < 1:
+        raise typer.BadParameter("--level must be greater than or equal to 1")
+    if parent_level == 0 and level != 1:
+        raise typer.BadParameter("--level must be 1 for top-level headings")
+    if parent_level > 0 and level <= parent_level:
+        raise typer.BadParameter("--level must be greater than parent level")
+
+
+def _heading_parent_level(heading: Heading) -> int:
+    """Return parent level for heading, using 0 for document root."""
+    if isinstance(heading.parent, Heading):
+        return heading.parent.level
+    return 0
+
+
+def _apply_subtree_level(heading: Heading, new_level: int) -> None:
+    """Apply heading level and shift descendants by the same delta."""
+    level_delta = new_level - heading.level
+    if level_delta == 0:
+        return
+
+    heading.level = new_level
+    for descendant in _iter_descendants(heading):
+        descendant.level += level_delta
+
+
+def _resolve_target_parent(document: Document, parent_value: str) -> Heading | None:
+    """Resolve --parent option to heading or top-level target."""
+    normalized = parent_value.strip()
+    if not normalized:
+        return None
+    return _resolve_parent_heading(document, normalized)
+
+
+def _apply_parent_and_level_updates(args: UpdateArgs, heading: Heading) -> None:
+    """Apply parent and level updates while enforcing hierarchy rules."""
+    parent_value = args.parent
+    parent_specified = parent_value is not None
+    target_parent: Heading | None = None
+
+    if parent_specified:
+        assert parent_value is not None
+        target_parent = _resolve_target_parent(heading.document, parent_value)
+        _validate_parent_target(heading, target_parent)
+        _move_heading(heading, target_parent)
+
+    if not parent_specified and args.level is None:
+        return
+
+    if parent_specified:
+        parent_level = target_parent.level if target_parent is not None else 0
+        if args.level is None:
+            target_level = parent_level + 1 if parent_level > 0 else 1
+        else:
+            _validate_level(args.level, parent_level)
+            target_level = args.level
+    else:
+        parent_level = _heading_parent_level(heading)
+        if args.level is None:
+            return
+        _validate_level(args.level, parent_level)
+        target_level = args.level
+
+    _apply_subtree_level(heading, target_level)
+
+
+def _apply_heading_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
+    """Apply heading-line metadata updates."""
+    if args.todo is not None:
+        heading.todo = _normalize_optional_value(args.todo)
+    if args.priority is not None:
+        heading.priority = _normalize_optional_value(args.priority)
+    if args.comment is not None:
+        heading.is_comment = _parse_comment_flag(args.comment)
+    if args.title is not None:
+        heading.title = _normalize_optional_value(args.title)
+    if args.counter is not None:
+        heading.counter = _parse_counter(args.counter)
+
+
+def _apply_planning_updates(args: UpdateArgs, heading: Heading) -> None:
+    """Apply planning timestamp updates."""
+    if args.scheduled is not None:
+        heading.scheduled = _parse_timestamp(args.scheduled, "--scheduled")
+    if args.deadline is not None:
+        heading.deadline = _parse_timestamp(args.deadline, "--deadline")
+    if args.closed is not None:
+        heading.closed = _parse_timestamp(args.closed, "--closed")
+
+
+def _apply_org_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
+    """Apply tags/properties/category/id metadata updates."""
+    if args.tags is not None:
+        heading.heading_tags = _parse_tags(args.tags)
+    if args.properties is not None:
+        heading.properties = _parse_properties(args.properties)
+    if args.category is not None:
+        heading.heading_category = _normalize_optional_value(args.category)
+    if args.id_value is not None:
+        heading.id = _normalize_optional_value(args.id_value)
+
+
+def _apply_field_updates(args: UpdateArgs, heading: Heading) -> None:
+    """Apply non-hierarchy field updates to one heading."""
+    _apply_heading_metadata_updates(args, heading)
+    _apply_planning_updates(args, heading)
+    _apply_org_metadata_updates(args, heading)
+    if args.body is not None:
+        heading.body = args.body
+
+
+def run_tasks_update(args: UpdateArgs) -> None:
+    """Run the tasks update command."""
+    query_title, query_id = _validate_identifiers(args)
+    filenames = resolve_input_paths(args.files)
+
+    matches: list[_MatchedTask] = []
+    for filename in filenames:
+        document = _load_document(filename)
+        for heading in _resolve_matches(document, query_title, query_id):
+            matches.append(_MatchedTask(filename=filename, document=document, heading=heading))
+
+    if not matches:
+        raise typer.BadParameter("No task matches the provided selector")
+    if len(matches) > 1:
+        raise typer.BadParameter("Task selector is ambiguous, multiple tasks match")
+
+    match = matches[0]
+    _apply_parent_and_level_updates(args, match.heading)
+    _apply_field_updates(args, match.heading)
+    match.document.sync_heading_id_index()
+    _save_document(match.document, match.filename)
+
+
+def register(app: typer.Typer) -> None:
+    """Register the tasks update command."""
+
+    @app.command("update")
+    def tasks_update(  # noqa: PLR0913
+        files: list[str] | None = typer.Argument(  # noqa: B008
+            None,
+            metavar="FILE",
+            help="Org-mode archive files or directories to search",
+        ),
+        config: str = typer.Option(
+            ".org-cli.json",
+            "--config",
+            metavar="FILE",
+            help="Config file name to load from current directory",
+        ),
+        query_title: str | None = typer.Option(
+            None,
+            "--query-title",
+            metavar="TEXT",
+            help="Heading title text of the task to update",
+        ),
+        query_id: str | None = typer.Option(
+            None,
+            "--query-id",
+            metavar="TEXT",
+            help="ID of the task to update",
+        ),
+        level: int | None = typer.Option(
+            None,
+            "--level",
+            metavar="N",
+            help="New heading level",
+        ),
+        todo: str | None = typer.Option(
+            None,
+            "--todo",
+            metavar="KEY",
+            help="New TODO state (empty string clears)",
+        ),
+        priority: str | None = typer.Option(
+            None,
+            "--priority",
+            metavar="P",
+            help="New priority marker (empty string clears)",
+        ),
+        comment: str | None = typer.Option(
+            None,
+            "--comment",
+            metavar="BOOL",
+            help="Set COMMENT flag using true or false",
+        ),
+        title: str | None = typer.Option(
+            None,
+            "--title",
+            metavar="TEXT",
+            help="New heading title text (empty string clears)",
+        ),
+        id_value: str | None = typer.Option(
+            None,
+            "--id",
+            metavar="TEXT",
+            help="New ID property value (empty string clears)",
+        ),
+        counter: str | None = typer.Option(
+            None,
+            "--counter",
+            metavar="COUNTER",
+            help="New completion counter (empty string clears)",
+        ),
+        deadline: str | None = typer.Option(
+            None,
+            "--deadline",
+            metavar="TIMESTAMP",
+            help="New deadline timestamp (empty string clears)",
+        ),
+        scheduled: str | None = typer.Option(
+            None,
+            "--scheduled",
+            metavar="TIMESTAMP",
+            help="New scheduled timestamp (empty string clears)",
+        ),
+        closed: str | None = typer.Option(
+            None,
+            "--closed",
+            metavar="TIMESTAMP",
+            help="New closed timestamp (empty string clears)",
+        ),
+        category: str | None = typer.Option(
+            None,
+            "--category",
+            metavar="TEXT",
+            help="New CATEGORY property value (empty string clears)",
+        ),
+        body: str | None = typer.Option(
+            None,
+            "--body",
+            metavar="TEXT",
+            help="New task body text",
+        ),
+        parent: str | None = typer.Option(
+            None,
+            "--parent",
+            metavar="ID_OR_TITLE",
+            help="Move task under parent ID/title (empty string moves to top-level)",
+        ),
+        tags: str | None = typer.Option(
+            None,
+            "--tags",
+            metavar="TAG1,TAG2",
+            help="Comma-separated tags to set (empty string clears)",
+        ),
+        properties: str | None = typer.Option(
+            None,
+            "--properties",
+            metavar="JSON",
+            help="Properties JSON object to set (empty string clears)",
+        ),
+    ) -> None:
+        """Update one task heading and persist the modified org document."""
+        args = UpdateArgs(
+            files=files,
+            config=config,
+            query_title=query_title,
+            query_id=query_id,
+            level=level,
+            todo=todo,
+            priority=priority,
+            comment=comment,
+            title=title,
+            id_value=id_value,
+            counter=counter,
+            deadline=deadline,
+            scheduled=scheduled,
+            closed=closed,
+            category=category,
+            body=body,
+            parent=parent,
+            tags=tags,
+            properties=properties,
+        )
+        config_module.apply_config_defaults(args)
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks update")
+        config_module.log_command_arguments(args, "tasks update")
+        run_tasks_update(args)

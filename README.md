@@ -186,6 +186,18 @@ poetry run org tasks create \
   ROADMAP.org
 ```
 
+### `org tasks update`
+
+Update one task heading selected by query ID or title.
+
+```bash
+poetry run org tasks update \
+  --query-id task-1 \
+  --todo DONE \
+  --closed "<2026-04-13>" \
+  ROADMAP.org
+```
+
 ### `org tasks delete`
 
 Delete one task heading (including its subtree) by title or ID.
