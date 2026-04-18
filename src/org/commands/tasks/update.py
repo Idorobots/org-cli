@@ -87,7 +87,7 @@ def _save_document(document: Document) -> None:
     try:
         org_parser.dump(document)
     except PermissionError as err:
-        filename = document.filename if document.filename else "<unknown>"
+        filename = document.filename or "<unknown>"
         raise typer.BadParameter(f"Permission denied for '{filename}'") from err
 
 
@@ -185,7 +185,7 @@ def _resolve_parent_heading(document: Document, parent_value: str) -> Heading:
     title_matches = _title_matches(document, parent_value)
     if len(title_matches) > 1:
         raise typer.BadParameter(
-            f"--parent is ambiguous, multiple headings with title '{parent_value}'"
+            f"--parent is ambiguous, multiple headings with title '{parent_value}'",
         )
     if len(title_matches) == 1:
         return title_matches[0]

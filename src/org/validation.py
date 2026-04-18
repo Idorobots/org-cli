@@ -61,7 +61,7 @@ def parse_date_argument(date_str: str, arg_name: str) -> datetime:
         ]
         formats_str = ", ".join(supported_formats)
         raise typer.BadParameter(
-            f"{arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'"
+            f"{arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'",
         )
 
     try:
@@ -83,7 +83,7 @@ def parse_date_argument(date_str: str, arg_name: str) -> datetime:
     ]
     formats_str = ", ".join(supported_formats)
     raise typer.BadParameter(
-        f"{arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'"
+        f"{arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'",
     )
 
 
@@ -103,7 +103,7 @@ def parse_property_filter(property_str: str) -> tuple[str, str]:
     """
     if "=" not in property_str:
         raise typer.BadParameter(
-            f"--filter-property must be in KEY=VALUE format, got '{property_str}'"
+            f"--filter-property must be in KEY=VALUE format, got '{property_str}'",
         )
 
     parts = property_str.split("=", 1)
@@ -134,7 +134,12 @@ def validate_and_parse_keys(keys_str: str, option_name: str) -> list[str]:
     return keys
 
 
-def validate_pattern(pattern: str, option_name: str, use_multiline: bool = False) -> None:
+def validate_pattern(
+    pattern: str,
+    option_name: str,
+    *,
+    use_multiline: bool = False,
+) -> None:
     """Validate that a string is a valid regex pattern.
 
     Args:
@@ -152,7 +157,7 @@ def validate_pattern(pattern: str, option_name: str, use_multiline: bool = False
             re.compile(pattern)
     except re.error as err:
         raise typer.BadParameter(
-            f"Invalid regex pattern for {option_name}: '{pattern}'\n{err}"
+            f"Invalid regex pattern for {option_name}: '{pattern}'\n{err}",
         ) from err
 
 

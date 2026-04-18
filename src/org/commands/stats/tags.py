@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from typing import TYPE_CHECKING
 
 import typer
 
@@ -38,6 +38,10 @@ from org.tui import (
     setup_output,
 )
 from org.validation import validate_stats_arguments
+
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 @dataclass
@@ -132,7 +136,7 @@ def format_tags(
                     name_indent="",
                     stats_indent="  ",
                 ),
-            )
+            ),
         )
 
     return lines_to_text(apply_indent(lines, indent))
@@ -214,7 +218,9 @@ def register(app: typer.Typer) -> None:
     )
     def stats_tags(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
-            None, metavar="FILE", help="Org-mode archive files or directories to analyze"
+            None,
+            metavar="FILE",
+            help="Org-mode archive files or directories to analyze",
         ),
         config: str = typer.Option(
             ".org-cli.json",
@@ -312,7 +318,10 @@ def register(app: typer.Typer) -> None:
             None,
             "--filter-body",
             metavar="REGEX",
-            help="Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)",
+            help=(
+                "Filter tasks where body matches regex (case-sensitive, multiline, "
+                "can specify multiple)"
+            ),
         ),
         filter_completed: bool = typer.Option(
             False,

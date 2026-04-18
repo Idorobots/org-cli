@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from typing import TYPE_CHECKING
 
 import typer
 
@@ -35,6 +35,10 @@ from org.tui import (
     processing_status,
     setup_output,
 )
+
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 @dataclass
@@ -85,7 +89,9 @@ def _validate_summary_arguments(args: SummaryArgs) -> None:
 
 
 def _build_task_state_order(
-    task_states: Histogram, done_states: list[str], todo_states: list[str]
+    task_states: Histogram,
+    done_states: list[str],
+    todo_states: list[str],
 ) -> list[str]:
     """Build task-state histogram order grouped and alphabetized."""
     present_states = {state for state, count in task_states.values.items() if count > 0}
@@ -123,7 +129,7 @@ def format_tasks_summary(
                     indent="",
                     plot_width=plot_width,
                 ),
-            )
+            ),
         )
 
     total_tasks_value = magenta(str(result.total_tasks), color_enabled)
@@ -156,7 +162,7 @@ def format_tasks_summary(
                 ),
                 indent="",
             ),
-        )
+        ),
     )
 
     priority_order = sorted(result.task_priorities.values.keys())
@@ -170,7 +176,7 @@ def format_tasks_summary(
                 render_config=RenderConfig(color_enabled=color_enabled),
                 indent="",
             ),
-        )
+        ),
     )
 
     category_order = sorted(result.task_categories.values.keys())
@@ -184,7 +190,7 @@ def format_tasks_summary(
                 render_config=RenderConfig(color_enabled=color_enabled),
                 indent="",
             ),
-        )
+        ),
     )
 
     day_order = [
@@ -206,7 +212,7 @@ def format_tasks_summary(
                 render_config=RenderConfig(color_enabled=color_enabled),
                 indent="",
             ),
-        )
+        ),
     )
 
     return lines_to_text(apply_indent(lines, indent))
@@ -274,7 +280,9 @@ def register(app: typer.Typer) -> None:
     )
     def stats_summary(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
-            None, metavar="FILE", help="Org-mode archive files or directories to analyze"
+            None,
+            metavar="FILE",
+            help="Org-mode archive files or directories to analyze",
         ),
         config: str = typer.Option(
             ".org-cli.json",
@@ -372,7 +380,10 @@ def register(app: typer.Typer) -> None:
             None,
             "--filter-body",
             metavar="REGEX",
-            help="Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)",
+            help=(
+                "Filter tasks where body matches regex (case-sensitive, multiline, "
+                "can specify multiple)"
+            ),
         ),
         filter_completed: bool = typer.Option(
             False,

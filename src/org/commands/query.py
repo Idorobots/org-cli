@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 import click
 import typer
@@ -14,7 +14,6 @@ from org_parser.document import Heading
 from org_parser.element import Element
 from org_parser.text import RichText
 from org_parser.time import Timestamp
-from rich.console import Console
 from rich.syntax import Syntax
 
 from org import config as config_module
@@ -43,13 +42,21 @@ from org.query_language import (
 from org.tui import build_console, processing_status, setup_output
 
 
+if TYPE_CHECKING:
+    from rich.console import Console
+
+
 class QueryOutputFormatter(Protocol):
     """Formatter interface for the query command."""
 
     include_filenames: bool
 
     def prepare(
-        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+        self,
+        values: list[object],
+        console: Console,
+        color_enabled: bool,
+        out_theme: str,
     ) -> PreparedOutput:
         """Prepare query output values for rendering."""
         ...
@@ -63,11 +70,11 @@ def _is_org_object(value: object) -> bool:
 def _format_org_block(value: object) -> str:
     """Build org-formatted text block for one value."""
     if isinstance(value, Heading):
-        filename = value.document.filename if value.document.filename else "unknown"
+        filename = value.document.filename or "unknown"
         node_text = str(value).rstrip()
         return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
     if isinstance(value, Document):
-        filename = value.filename if value.filename else "unknown"
+        filename = value.filename or "unknown"
         node_text = str(value).rstrip()
         return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
     return str(value)
@@ -79,24 +86,31 @@ class OrgQueryOutputFormatter:
     include_filenames = True
 
     def prepare(
-        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+        self,
+        values: list[object],
+        console: Console,
+        color_enabled: bool,
+        out_theme: str,
     ) -> PreparedOutput:
+        """Prepare query values for org, text, or JSON output."""
         del console
         if not values:
             return PreparedOutput(
-                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+                operations=(
+                    OutputOperation(kind="console_print", text="No results", markup=False),
+                ),
             )
 
         if values and all(_is_org_object(value) for value in values):
             return self._prepare_org_values(values, out_theme)
 
         if all(isinstance(value, str) for value in values):
-            string_values = cast(list[str], values)
+            string_values = cast("list[str]", values)
             return PreparedOutput(
                 operations=tuple(
                     OutputOperation(kind="console_print", text=value, markup=False)
                     for value in string_values
-                )
+                ),
             )
 
         return _prepare_output(
@@ -123,7 +137,7 @@ class OrgQueryOutputFormatter:
                         line_numbers=False,
                         word_wrap=True,
                     ),
-                )
+                ),
             )
         return PreparedOutput(operations=tuple(operations))
 
@@ -134,16 +148,24 @@ class PandocQueryOutputFormatter:
     include_filenames = False
 
     def __init__(self, output_format: str, pandoc_args: str | None) -> None:
+        """Initialize formatter options for pandoc-based rendering."""
         self.output_format = output_format
         self.pandoc_args = _parse_pandoc_args(pandoc_args)
 
     def prepare(
-        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+        self,
+        values: list[object],
+        console: Console,
+        color_enabled: bool,
+        out_theme: str,
     ) -> PreparedOutput:
+        """Prepare query values and render them through pandoc."""
         del console
         if not values:
             return PreparedOutput(
-                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+                operations=(
+                    OutputOperation(kind="console_print", text="No results", markup=False),
+                ),
             )
         formatted_text = _org_to_pandoc_format(
             _build_org_document(values),
@@ -159,8 +181,13 @@ class JsonQueryOutputFormatter:
     include_filenames = False
 
     def prepare(
-        self, values: list[object], console: Console, color_enabled: bool, out_theme: str
+        self,
+        values: list[object],
+        console: Console,
+        color_enabled: bool,
+        out_theme: str,
     ) -> PreparedOutput:
+        """Prepare query values as JSON output."""
         del console
         return _prepare_output(
             json.dumps(_json_output_payload(values), ensure_ascii=True),
@@ -233,7 +260,7 @@ def run_query(args: QueryArgs) -> None:
                 "limit": args.max_results,
                 "todo_states": todo_states,
                 "done_states": done_states,
-            }
+            },
         )
         try:
             stream_nodes = Stream([roots])
@@ -249,7 +276,10 @@ def run_query(args: QueryArgs) -> None:
 
         try:
             prepared_output = formatter.prepare(
-                output_values, console, color_enabled, args.out_theme
+                output_values,
+                console,
+                color_enabled,
+                args.out_theme,
             )
         except OutputFormatError as exc:
             raise click.UsageError(str(exc)) from exc
@@ -264,7 +294,9 @@ def register(app: typer.Typer) -> None:
     def query_command(  # noqa: PLR0913
         query: str = typer.Argument(..., metavar="QUERY", help="jq-style query expression"),
         files: list[str] | None = typer.Argument(  # noqa: B008
-            None, metavar="FILE", help="Org-mode archive files or directories to analyze"
+            None,
+            metavar="FILE",
+            help="Org-mode archive files or directories to analyze",
         ),
         config: str = typer.Option(
             ".org-cli.json",

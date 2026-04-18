@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import org_parser
 import pytest
@@ -10,6 +10,10 @@ import typer
 from org_parser.document import Heading
 
 from org.commands.tasks import update as tasks_update
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def make_update_args(files: list[str], **overrides: object) -> tasks_update.UpdateArgs:
@@ -80,12 +84,12 @@ def test_run_tasks_update_requires_exactly_one_identifier(tmp_path: Path) -> Non
 
     with pytest.raises(typer.BadParameter, match="exactly one task identifier"):
         tasks_update.run_tasks_update(
-            make_update_args([str(source)], query_id=None, query_title=None)
+            make_update_args([str(source)], query_id=None, query_title=None),
         )
 
     with pytest.raises(typer.BadParameter, match="exactly one task identifier"):
         tasks_update.run_tasks_update(
-            make_update_args([str(source)], query_id="task-1", query_title="Keep")
+            make_update_args([str(source)], query_id="task-1", query_title="Keep"),
         )
 
 
@@ -165,7 +169,11 @@ def test_run_tasks_update_moves_to_parent_with_explicit_consistent_level(tmp_pat
         encoding="utf-8",
     )
     args = make_update_args(
-        [str(source)], query_id=None, query_title="Child", parent="Other", level=3
+        [str(source)],
+        query_id=None,
+        query_title="Child",
+        parent="Other",
+        level=3,
     )
 
     tasks_update.run_tasks_update(args)

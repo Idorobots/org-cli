@@ -5,10 +5,9 @@ from __future__ import annotations
 import json
 import os
 import sys
-from collections.abc import Iterator
 from contextlib import contextmanager
 from io import StringIO
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 import pytest
@@ -18,6 +17,11 @@ from rich.console import Console
 from org.commands.tasks import list as tasks_list
 from org.histogram import visual_len
 from org.output_format import OutputFormat, OutputFormatError
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
@@ -68,7 +72,8 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
 
 
 def test_run_tasks_list_no_results(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tasks list should report when filters return no results."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -82,7 +87,8 @@ def test_run_tasks_list_no_results(
 
 
 def test_run_tasks_list_details_output(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tasks list should render detailed output with file headers."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -97,7 +103,8 @@ def test_run_tasks_list_details_output(
 
 
 def test_run_tasks_list_short_output(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tasks list should render short output lines in order."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -116,7 +123,8 @@ def test_run_tasks_list_short_output(
 
 
 def test_run_tasks_list_offset_applied(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tasks list should apply offset before max results."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -133,7 +141,8 @@ def test_run_tasks_list_offset_applied(
 
 
 def test_run_tasks_list_short_output_aligns_tags_to_width(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Short list should right-align tags to configured width."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -150,7 +159,8 @@ def test_run_tasks_list_short_output_aligns_tags_to_width(
 
 
 def test_run_tasks_list_short_output_truncates_filename_and_heading_for_tags(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Short list should keep 15-column filename and truncate heading when needed."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -169,7 +179,8 @@ def test_run_tasks_list_short_output_truncates_filename_and_heading_for_tags(
 
 
 def test_run_tasks_list_offset_no_results(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tasks list should report no results after offset."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -192,7 +203,8 @@ def test_run_tasks_list_negative_max_results_raises_bad_parameter() -> None:
 
 
 def test_run_tasks_list_markdown_converts_nodes_to_single_document(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Markdown tasks formatter should invoke pandoc with markdown output."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -218,7 +230,8 @@ def test_run_tasks_list_markdown_converts_nodes_to_single_document(
 
 
 def test_run_tasks_list_accepts_arbitrary_pandoc_output_format(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tasks list should route non-org/json --out values through pandoc."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -267,7 +280,8 @@ def test_run_tasks_list_markdown_pandoc_error_is_usage_error(
 
 
 def test_run_tasks_list_pandoc_empty_results_prints_no_results(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pandoc tasks output should preserve empty-result messaging."""
 
@@ -289,7 +303,8 @@ def test_run_tasks_list_pandoc_empty_results_prints_no_results(
 
 
 def test_run_tasks_list_json_emits_array_for_multiple_nodes(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """JSON tasks output should be an array when multiple tasks are present."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -307,7 +322,8 @@ def test_run_tasks_list_json_emits_array_for_multiple_nodes(
 
 
 def test_run_tasks_list_json_emits_single_value_for_single_node(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """JSON tasks output should be one object when one task remains."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -323,14 +339,17 @@ def test_run_tasks_list_json_emits_single_value_for_single_node(
 
 
 def test_run_tasks_list_json_no_results_emits_empty_array(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """JSON tasks output should emit an empty array when no tasks match."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_list_args([fixture_path], out=OutputFormat.JSON, filter_tags=["nomatch$"])
 
     monkeypatch.setattr(
-        sys, "argv", ["org", "tasks", "list", "--out", "json", "--filter-tag", "nomatch$"]
+        sys,
+        "argv",
+        ["org", "tasks", "list", "--out", "json", "--filter-tag", "nomatch$"],
     )
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
@@ -340,7 +359,8 @@ def test_run_tasks_list_json_no_results_emits_empty_array(
 
 
 def test_run_tasks_list_json_max_results_zero_emits_empty_array(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """JSON tasks output should stay valid JSON when max results is zero."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -364,7 +384,8 @@ def test_run_tasks_list_invalid_pandoc_args_is_usage_error() -> None:
 
 
 def test_run_tasks_list_defaults_limit_to_all_results_with_paging(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Tasks list should default --limit to all results and use pager on overflow."""
     fixture_path = os.path.join(tmp_path, "tasks.org")
@@ -395,7 +416,9 @@ def test_run_tasks_list_defaults_limit_to_all_results_with_paging(
 
 
 def test_run_tasks_list_unicode_heading_aligns_tags_to_visual_width(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Short list should align tags correctly for wide unicode headings."""
     fixture_path = os.path.join(tmp_path, "unicode.org")
@@ -414,13 +437,15 @@ def test_run_tasks_list_unicode_heading_aligns_tags_to_visual_width(
 
 
 def test_run_tasks_list_details_wraps_long_lines_to_console_width(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Detailed list should wrap long lines to fit console width."""
     fixture_path = os.path.join(tmp_path, "details.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
-            "* TODO This is a very long heading that should wrap around the viewport width\n"
+            "* TODO This is a very long heading that should wrap around the viewport width\n",
         )
 
     args = make_list_args([fixture_path], details=True, width=60, max_results=1)
@@ -434,10 +459,10 @@ def test_run_tasks_list_details_wraps_long_lines_to_console_width(
 
 
 def test_run_tasks_list_uses_pager_for_org_output_when_overflowing(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Org output should use pager when rendered lines exceed console height."""
-
     fixture_path = os.path.join(tmp_path, "many.org")
     tasks = "\n".join(f"* TODO Task {index}" for index in range(12))
     with open(fixture_path, "w", encoding="utf-8") as handle:
@@ -469,7 +494,8 @@ def test_run_tasks_list_uses_pager_for_org_output_when_overflowing(
 
 
 def test_run_tasks_list_skips_pager_when_limit_below_console_height(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Org output should skip pager when requested limit is below console height."""
     fixture_path = os.path.join(tmp_path, "small-limit.org")
@@ -503,10 +529,10 @@ def test_run_tasks_list_skips_pager_when_limit_below_console_height(
 
 
 def test_run_tasks_list_does_not_use_pager_for_json_output_when_overflowing(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Non-org output should not use pager even when output exceeds height."""
-
     fixture_path = os.path.join(tmp_path, "many-json.org")
     tasks = "\n".join(f"* TODO Task {index}" for index in range(12))
     with open(fixture_path, "w", encoding="utf-8") as handle:

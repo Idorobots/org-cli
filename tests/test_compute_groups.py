@@ -11,7 +11,7 @@ def make_tag(
     time_range: TimeRange | None = None,
     total_tasks: int = 0,
 ) -> Tag:
-    """Helper to create a Tag with specified relations."""
+    """Create a Tag with specified relations."""
     return Tag(
         name=name,
         relations=relations_dict,

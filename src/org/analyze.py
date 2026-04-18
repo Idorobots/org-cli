@@ -2,11 +2,14 @@
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-
-from org_parser.document import Heading
+from typing import TYPE_CHECKING
 
 from org.histogram import Histogram
 from org.timestamp import extract_timestamp_any
+
+
+if TYPE_CHECKING:
+    from org_parser.document import Heading
 
 
 @dataclass
@@ -426,7 +429,9 @@ def compute_global_timerange(nodes: list[Heading]) -> TimeRange:
 
 
 def compute_frequencies(
-    nodes: list[Heading], mapping: dict[str, str], category: str
+    nodes: list[Heading],
+    mapping: dict[str, str],
+    category: str,
 ) -> dict[str, Frequency]:
     """Compute frequency statistics for all nodes in a given category.
 
@@ -456,7 +461,9 @@ def compute_frequencies(
 
 
 def compute_relations(
-    nodes: list[Heading], mapping: dict[str, str], category: str
+    nodes: list[Heading],
+    mapping: dict[str, str],
+    category: str,
 ) -> dict[str, Relations]:
     """Compute pair-wise relations for all nodes in a given category.
 
@@ -499,7 +506,9 @@ def compute_relations(
 
 
 def compute_time_ranges(
-    nodes: list[Heading], mapping: dict[str, str], category: str
+    nodes: list[Heading],
+    mapping: dict[str, str],
+    category: str,
 ) -> dict[str, TimeRange]:
     """Compute time ranges for all tasks in a given category.
 
@@ -608,7 +617,7 @@ def compute_per_tag_statistics(
     return tags
 
 
-def compute_groups(
+def compute_groups(  # noqa: C901
     tags: dict[str, Tag],
     max_relations: int,
     nodes: list[Heading],
@@ -683,10 +692,10 @@ def compute_groups(
                 total_tasks=0,
                 avg_tasks_per_day=0,
                 max_single_day_count=0,
-            )
+            ),
         )
 
-    # NOTE: Nodes is a much larger list, so we make sure to iterate that only once for better performance.
+    # NOTE: Nodes is much larger, so iterate it only once for better performance.
     for org_node in nodes:
         node_items = _extract_items(org_node, mapping, category)
 
@@ -751,7 +760,7 @@ def compute_explicit_groups(
                 total_tasks=total_tasks,
                 avg_tasks_per_day=avg_tasks_per_day,
                 max_single_day_count=max_single_day,
-            )
+            ),
         )
 
     return groups

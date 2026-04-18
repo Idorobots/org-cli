@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import org_parser
 import typer
-from org_parser.document import Document, Heading
 
 from org import config as config_module
 from org.cli_common import resolve_input_paths
+
+
+if TYPE_CHECKING:
+    from org_parser.document import Document, Heading
 
 
 @dataclass
@@ -61,7 +65,7 @@ def _save_document(document: Document) -> None:
     try:
         org_parser.dump(document)
     except PermissionError as err:
-        filename = document.filename if document.filename else "<unknown>"
+        filename = document.filename or "<unknown>"
         raise typer.BadParameter(f"Permission denied for '{filename}'") from err
 
 
@@ -106,8 +110,7 @@ def run_tasks_delete(args: DeleteArgs) -> None:
     matches: list[Heading] = []
     for filename in filenames:
         document = _load_document(filename)
-        for heading in _resolve_matches(document, title, id_value):
-            matches.append(heading)
+        matches.extend(_resolve_matches(document, title, id_value))
 
     if not matches:
         raise typer.BadParameter("No task matches the provided selector")

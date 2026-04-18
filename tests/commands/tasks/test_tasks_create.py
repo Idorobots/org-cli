@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import org_parser
 import pytest
 import typer
 
 from org.commands.tasks import create as tasks_create
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def make_create_args(files: list[str], **overrides: object) -> tasks_create.CreateArgs:

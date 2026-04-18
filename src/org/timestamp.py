@@ -1,12 +1,15 @@
 """Timestamp extraction and normalization functions."""
 
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
-from org_parser.document import Heading
+
+if TYPE_CHECKING:
+    from org_parser.document import Heading
 
 
 def normalize_timestamp(ts: datetime | date) -> datetime:
-    """Normalize all timestamps to use the datetime format
+    """Normalize all timestamps to use the datetime format.
 
     Args:
         ts: datetime or date

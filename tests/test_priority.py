@@ -19,7 +19,7 @@ def test_compute_priority_histogram_with_priorities() -> None:
 * TODO [#B] Task B
 
 * TODO [#A] Another A
-"""
+""",
     )
 
     histogram = compute_priority_histogram(nodes)
@@ -35,7 +35,7 @@ def test_compute_priority_histogram_without_priorities() -> None:
 * TODO Task without priority
 
 * TODO Another task
-"""
+""",
     )
 
     histogram = compute_priority_histogram(nodes)
@@ -48,7 +48,7 @@ def test_format_task_line_with_priority() -> None:
     nodes = node_from_org(
         """
 * TODO [#A] Task with priority
-"""
+""",
     )
 
     line = format_task_line(
@@ -69,7 +69,7 @@ def test_format_task_line_without_priority() -> None:
     nodes = node_from_org(
         """
 * TODO Task without priority
-"""
+""",
     )
 
     line = format_task_line(
@@ -90,7 +90,7 @@ def test_format_task_line_with_tags() -> None:
     nodes = node_from_org(
         """
 * TODO Task with tags  :TAG1:TAG2:
-"""
+""",
     )
 
     line = format_task_line(
@@ -112,7 +112,7 @@ def test_format_task_line_without_tags() -> None:
     nodes = node_from_org(
         """
 * TODO Task without tags
-"""
+""",
     )
 
     line = format_task_line(
@@ -134,7 +134,7 @@ def test_format_task_line_with_priority_and_tags() -> None:
     nodes = node_from_org(
         """
 * TODO [#B] Task with both  :TAG1:
-"""
+""",
     )
 
     line = format_task_line(
@@ -157,7 +157,7 @@ def test_format_task_line_renders_org_rich_text_title_content() -> None:
     nodes = node_from_org(
         """
 * TODO *Bold* /Italic/ _Underline_ +Strike+ =Verbatim= ~InlineCode~ src_python{1+1} call_fn(1)
-"""
+""",
     )
 
     line = format_task_line(
@@ -184,7 +184,7 @@ def test_format_task_line_supports_links_and_preserves_sub_superscript_literals(
     nodes = node_from_org(
         """
 * TODO [[https://example.com/docs][Docs]] and https://example.com x^{2} H_{2}O
-"""
+""",
     )
 
     plain_line = format_task_line(
@@ -217,7 +217,7 @@ def test_format_task_line_keeps_tag_alignment_with_rich_markup_heading() -> None
     nodes = node_from_org(
         """
 * TODO 修正 *太字タイトル* の確認 :開発:
-"""
+""",
     )
 
     line = format_task_line(

@@ -168,7 +168,10 @@ def bright_blue(text: str, enabled: bool) -> str:
 
 
 def get_state_color(
-    state: str, done_states: list[str], todo_states: list[str], enabled: bool
+    state: str,
+    done_states: list[str],
+    todo_states: list[str],
+    enabled: bool,
 ) -> str:
     """Get appropriate style for a task state.
 

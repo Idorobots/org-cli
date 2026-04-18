@@ -6,14 +6,12 @@ import io
 import logging
 from datetime import datetime
 from types import SimpleNamespace
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import org_parser
 import pytest
-from org_parser.document import Heading
 from org_parser.element import Keyword
 from org_parser.text import RichText
-from rich.console import Console
 from rich.syntax import Syntax
 
 from org import output_format
@@ -21,6 +19,11 @@ from org.analyze import AnalysisResult, Group, Tag, TimeRange
 from org.commands import query as query_command
 from org.commands.tasks import list as tasks_list_command
 from org.histogram import Histogram
+
+
+if TYPE_CHECKING:
+    from org_parser.document import Heading
+    from rich.console import Console
 
 
 class _FakeConsole:
@@ -139,7 +142,7 @@ def test_prepare_output_uses_syntax_when_color_and_mapped_format() -> None:
     console = _FakeConsole()
     prepared_output = output_format._prepare_output("# title", True, "gfm", "monokai")
 
-    output_format.print_prepared_output(cast(Console, console), prepared_output)
+    output_format.print_prepared_output(cast("Console", console), prepared_output)
 
     assert console.file.getvalue() == ""
     assert len(console.renderables) == 1
@@ -155,7 +158,7 @@ def test_prepare_output_falls_back_to_plain_when_not_mapped() -> None:
     console = _FakeConsole()
     prepared_output = output_format._prepare_output("payload", True, "not-real", "monokai")
 
-    output_format.print_prepared_output(cast(Console, console), prepared_output)
+    output_format.print_prepared_output(cast("Console", console), prepared_output)
 
     assert console.file.getvalue() == "payload\n"
     assert console.renderables == []
@@ -172,7 +175,7 @@ def test_prepare_output_falls_back_to_binary_write_on_decode_error() -> None:
     assert operation.data == b"\x00\xe4\x10"
 
     with pytest.raises(output_format.OutputFormatError, match="binary output is not supported"):
-        output_format.print_prepared_output(cast(Console, console), prepared_output)
+        output_format.print_prepared_output(cast("Console", console), prepared_output)
 
 
 def test_pandoc_query_formatter_uses_syntax_when_color_enabled(
@@ -187,8 +190,8 @@ def test_pandoc_query_formatter_uses_syntax_when_color_enabled(
         lambda _org_text, _output, _args: "# title",
     )
 
-    prepared_output = formatter.prepare(["* TODO test"], cast(Console, console), True, "monokai")
-    output_format.print_prepared_output(cast(Console, console), prepared_output)
+    prepared_output = formatter.prepare(["* TODO test"], cast("Console", console), True, "monokai")
+    output_format.print_prepared_output(cast("Console", console), prepared_output)
 
     assert console.file.getvalue() == ""
     assert len(console.renderables) == 1
@@ -204,8 +207,8 @@ def test_json_query_formatter_uses_json_syntax_when_color_enabled() -> None:
     console = _FakeConsole()
     formatter = query_command.JsonQueryOutputFormatter()
 
-    prepared_output = formatter.prepare([{"ok": True}], cast(Console, console), True, "monokai")
-    output_format.print_prepared_output(cast(Console, console), prepared_output)
+    prepared_output = formatter.prepare([{"ok": True}], cast("Console", console), True, "monokai")
+    output_format.print_prepared_output(cast("Console", console), prepared_output)
 
     assert console.file.getvalue() == ""
     assert len(console.renderables) == 1
@@ -235,17 +238,17 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
 
     prepared_output = formatter.prepare(
         tasks_list_command.TasksListRenderInput(
-            nodes=[cast(Heading, _FakeNode())],
-            console=cast(Console, console),
+            nodes=[cast("Heading", _FakeNode())],
+            console=cast("Console", console),
             color_enabled=True,
             done_states=["DONE"],
             todo_states=["TODO"],
             details=False,
             line_width=None,
             out_theme="monokai",
-        )
+        ),
     )
-    output_format.print_prepared_output(cast(Console, console), prepared_output)
+    output_format.print_prepared_output(cast("Console", console), prepared_output)
 
     assert console.file.getvalue() == ""
     assert len(console.renderables) == 1
@@ -419,16 +422,16 @@ def test_json_tasks_formatter_uses_json_syntax_when_color_enabled() -> None:
     prepared_output = formatter.prepare(
         tasks_list_command.TasksListRenderInput(
             nodes=[],
-            console=cast(Console, console),
+            console=cast("Console", console),
             color_enabled=True,
             done_states=["DONE"],
             todo_states=["TODO"],
             details=False,
             line_width=None,
             out_theme="monokai",
-        )
+        ),
     )
-    output_format.print_prepared_output(cast(Console, console), prepared_output)
+    output_format.print_prepared_output(cast("Console", console), prepared_output)
 
     assert console.file.getvalue() == ""
     assert len(console.renderables) == 1

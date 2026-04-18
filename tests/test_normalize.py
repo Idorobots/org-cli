@@ -50,7 +50,8 @@ def test_normalize_applies_mapping() -> None:
     """Test that tags are mapped to canonical forms."""
     tags = {"test", "sysadmin", "unix", "webdev"}
     result = normalize(
-        tags, {"test": "testing", "sysadmin": "devops", "unix": "linux", "webdev": "frontend"}
+        tags,
+        {"test": "testing", "sysadmin": "devops", "unix": "linux", "webdev": "frontend"},
     )
     assert "testing" in result
     assert "devops" in result
@@ -84,7 +85,8 @@ def test_normalize_complex_scenario() -> None:
     """Test normalization with multiple transformations."""
     tags = {"Test.", ":SysAdmin:", "  UNIX  ", "webdev!"}
     result = normalize(
-        tags, {"test": "testing", "webdev": "frontend", "sysadmin": "devops", "unix": "linux"}
+        tags,
+        {"test": "testing", "webdev": "frontend", "sysadmin": "devops", "unix": "linux"},
     )
     # test. -> test -> testing (mapped)
     # :sysadmin: -> sysadmin -> devops (mapped)

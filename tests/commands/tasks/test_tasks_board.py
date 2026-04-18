@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Iterator
 from contextlib import contextmanager
 from io import StringIO
+from typing import TYPE_CHECKING
 
 import pytest
 import typer
@@ -15,6 +15,10 @@ from rich.text import Text
 
 from org.commands.tasks import board as tasks_board
 from tests.conftest import node_from_org
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
@@ -62,7 +66,8 @@ def make_board_args(files: list[str], **overrides: object) -> tasks_board.BoardA
 
 
 def test_run_tasks_board_renders_expected_columns(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Board should render NOT STARTED, todo columns, and COMPLETED."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
@@ -99,7 +104,8 @@ def test_run_tasks_board_renders_expected_columns(
 
 
 def test_run_tasks_board_preserves_order_in_column(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Board should keep per-column order from filtered/ordered task list."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -121,7 +127,8 @@ def test_run_tasks_board_preserves_order_in_column(
 
 
 def test_run_tasks_board_does_not_hide_unknown_or_empty_states(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unknown and empty task states should still be visible on the board."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
@@ -136,7 +143,8 @@ def test_run_tasks_board_does_not_hide_unknown_or_empty_states(
 
 
 def test_run_tasks_board_no_results(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Board should print No results when filters remove all tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -160,7 +168,8 @@ def test_run_tasks_board_rejects_width_below_80(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_run_tasks_board_limit_applies_before_grouping(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Board should respect --limit when selecting processed tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -175,7 +184,8 @@ def test_run_tasks_board_limit_applies_before_grouping(
 
 
 def test_run_tasks_board_offset_applies_before_grouping(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Board should respect --offset when selecting processed tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -214,7 +224,8 @@ def test_run_tasks_board_negative_offset_raises_bad_parameter(
 
 
 def test_run_tasks_board_uses_pager_when_render_exceeds_console_height(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: os.PathLike[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
 ) -> None:
     """Board output should use pager when rendered board exceeds viewport height."""
     fixture_path = os.path.join(tmp_path, "many_tasks_board.org")
@@ -248,7 +259,8 @@ def test_run_tasks_board_uses_pager_when_render_exceeds_console_height(
 
 
 def test_run_tasks_board_coalesce_completed_true_shows_completed_column(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With coalesce_completed=True, all done tasks appear under a single COMPLETED column."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
@@ -271,7 +283,8 @@ def test_run_tasks_board_coalesce_completed_true_shows_completed_column(
 
 
 def test_run_tasks_board_coalesce_completed_true_prefixes_state_in_panel(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With coalesce_completed=True, each completed task panel shows its state in the title."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
@@ -293,7 +306,8 @@ def test_run_tasks_board_coalesce_completed_true_prefixes_state_in_panel(
 
 
 def test_run_tasks_board_coalesce_completed_false_shows_individual_done_columns(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With coalesce_completed=False, each done state gets its own column header."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
@@ -320,7 +334,8 @@ def test_run_tasks_board_coalesce_completed_false_shows_individual_done_columns(
 
 
 def test_run_tasks_board_coalesce_completed_false_done_columns_ordered_after_todo_columns(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With coalesce_completed=False, done key columns appear to the right of todo key columns."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
@@ -355,7 +370,8 @@ def test_run_tasks_board_coalesce_completed_false_done_columns_ordered_after_tod
 
 
 def test_run_tasks_board_coalesce_completed_false_tasks_in_correct_columns(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With coalesce_completed=False, tasks appear under their specific done state column."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
@@ -383,9 +399,11 @@ def test_run_tasks_board_coalesce_completed_false_tasks_in_correct_columns(
 def test_build_task_panel_renders_rich_title_content() -> None:
     """Task board panels should render heading RichText with Rich styles."""
     nodes = node_from_org(
-        """
-* TODO *Bold* /Italic/ _Underline_ +Strike+ =Verbatim= ~InlineCode~ [[https://example.com/docs][Docs]] x^{2} H_{2}O src_python{1+1} call_fn(1)
-"""
+        (
+            "* TODO *Bold* /Italic/ _Underline_ +Strike+ =Verbatim= ~InlineCode~ "
+            "[[https://example.com/docs][Docs]] x^{2} H_{2}O src_python{1+1} "
+            "call_fn(1)\n"
+        ),
     )
 
     panel = tasks_board._build_task_panel(
@@ -422,14 +440,16 @@ def test_build_task_panel_renders_rich_title_content() -> None:
 
 
 def test_run_tasks_board_renders_rich_title_plain_output(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: os.PathLike[str]
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
 ) -> None:
     """Board command should print rich title text without org inline delimiters."""
     fixture_path = os.path.join(tmp_path, "rich_board.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
             "* TODO *Bold* /Italic/ _Underline_ +Strike+ =Verbatim= ~InlineCode~ "
-            "[[https://example.com/docs][Docs]] x^{2} H_{2}O src_python{1+1} call_fn(1)\n"
+            "[[https://example.com/docs][Docs]] x^{2} H_{2}O src_python{1+1} call_fn(1)\n",
         )
 
     args = make_board_args([fixture_path], width=120)

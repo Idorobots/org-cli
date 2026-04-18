@@ -134,8 +134,9 @@ def load_exclude_list(filepath: str | None) -> set[str]:
     if filepath is None:
         return set()
 
+    path = Path(filepath)
     try:
-        with open(filepath, encoding="utf-8") as f:
+        with path.open(encoding="utf-8") as f:
             return normalize_exclude_values(list(f))
     except FileNotFoundError as err:
         raise typer.BadParameter(f"Exclude list file '{filepath}' not found") from err
@@ -158,8 +159,9 @@ def load_mapping(filepath: str | None) -> dict[str, str]:
     if filepath is None:
         return {}
 
+    path = Path(filepath)
     try:
-        with open(filepath, encoding="utf-8") as f:
+        with path.open(encoding="utf-8") as f:
             mapping = json.load(f)
 
         if not isinstance(mapping, dict):
@@ -169,14 +171,14 @@ def load_mapping(filepath: str | None) -> dict[str, str]:
             if not isinstance(key, str) or not isinstance(value, str):
                 raise typer.BadParameter(f"All keys and values in '{filepath}' must be strings")
 
-        return mapping
-
     except FileNotFoundError as err:
         raise typer.BadParameter(f"Mapping file '{filepath}' not found") from err
     except PermissionError as err:
         raise typer.BadParameter(f"Permission denied for '{filepath}'") from err
     except json.JSONDecodeError as err:
         raise typer.BadParameter(f"Invalid JSON in '{filepath}': {err}") from err
+    else:
+        return mapping
 
 
 @dataclass
@@ -228,8 +230,9 @@ def load_config(filepath: str) -> tuple[dict[str, object], bool]:
     Returns:
         Tuple of (config dict, malformed flag)
     """
+    path = Path(filepath)
     try:
-        with open(filepath, encoding="utf-8") as f:
+        with path.open(encoding="utf-8") as f:
             config = json.load(f)
     except FileNotFoundError:
         return ({}, False)
@@ -253,15 +256,15 @@ def is_valid_date_argument(value: str) -> bool:
 
     try:
         datetime.fromisoformat(value)
-        return True
     except ValueError:
-        pass
-
-    try:
-        datetime.fromisoformat(value.replace(" ", "T"))
+        try:
+            datetime.fromisoformat(value.replace(" ", "T"))
+        except ValueError:
+            return False
+        else:
+            return True
+    else:
         return True
-    except ValueError:
-        return False
 
 
 def is_valid_keys_string(value: str) -> bool:
@@ -323,7 +326,7 @@ def validate_int_option(value: object, min_value: int | None) -> int | None:
     return value
 
 
-def is_valid_regex(pattern: str, use_multiline: bool = False) -> bool:
+def is_valid_regex(pattern: str, *, use_multiline: bool = False) -> bool:
     """Check if a string is a valid regex pattern."""
     try:
         if use_multiline:
@@ -493,7 +496,11 @@ def apply_config_entry(
             or key in options.list_options
         ):
             return apply_config_entry_by_options(
-                key, value, defaults, context.append_defaults, options
+                key,
+                value,
+                defaults,
+                context.append_defaults,
+                options,
             )
 
     return False
@@ -533,7 +540,7 @@ def parse_config_sections(
         return None
 
     return (
-        cast(dict[str, object], defaults_section),
+        cast("dict[str, object]", defaults_section),
         dict(filter_section),
         dict(order_by_section),
         dict(with_section),
@@ -725,7 +732,7 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
         key: value for key, value in defaults.items() if key not in task_command_disallowed
     }
     tasks_board_disallowed = task_command_disallowed.union(
-        {"details", "out", "out_theme", "pandoc_args"}
+        {"details", "out", "out_theme", "pandoc_args"},
     )
     tasks_board_defaults = {
         key: value for key, value in defaults.items() if key not in tasks_board_disallowed
@@ -783,8 +790,9 @@ def log_applied_config_defaults(_args: object, _argv: list[str], command_name: s
             continue
         entries.append(
             _format_default_log_entry(
-                option_name, _redact_inline_config_value(option_name, default_value)
-            )
+                option_name,
+                _redact_inline_config_value(option_name, default_value),
+            ),
         )
 
     for dest, values in sorted(CONFIG_APPEND_DEFAULTS.items(), key=lambda item: item[0]):
@@ -792,7 +800,10 @@ def log_applied_config_defaults(_args: object, _argv: list[str], command_name: s
         if option_name is None:
             continue
         entries.append(
-            _format_default_log_entry(option_name, _redact_inline_config_value(option_name, values))
+            _format_default_log_entry(
+                option_name,
+                _redact_inline_config_value(option_name, values),
+            ),
         )
 
     for dest, option_name in (
@@ -833,11 +844,11 @@ def apply_config_defaults(args: object) -> None:
         if getattr(args, dest, None) is None:
             setattr(args, dest, values)
 
-    mapping_inline = cast(dict[str, str] | None, CONFIG_INLINE_DEFAULTS.get("mapping_inline"))
-    exclude_inline = cast(list[str] | None, CONFIG_INLINE_DEFAULTS.get("exclude_inline"))
+    mapping_inline = cast("dict[str, str] | None", CONFIG_INLINE_DEFAULTS.get("mapping_inline"))
+    exclude_inline = cast("list[str] | None", CONFIG_INLINE_DEFAULTS.get("exclude_inline"))
     if hasattr(args, "mapping_inline"):
-        target = cast(ConfigDefaultsTarget, args)
+        target = cast("ConfigDefaultsTarget", args)
         target.mapping_inline = mapping_inline if mapping_inline is not None else None
     if hasattr(args, "exclude_inline"):
-        target = cast(ConfigDefaultsTarget, args)
+        target = cast("ConfigDefaultsTarget", args)
         target.exclude_inline = exclude_inline if exclude_inline is not None else None

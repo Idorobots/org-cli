@@ -76,7 +76,8 @@ def _validate_required_heading_components(args: CreateArgs) -> None:
     if args.heading is not None or has_structured_heading_component:
         return
     raise typer.BadParameter(
-        "Task heading is empty. Provide --heading or at least one of: --todo, --is-comment, --title"
+        "Task heading is empty. Provide --heading or at least one of: "
+        "--todo, --is-comment, --title",
     )
 
 
@@ -120,7 +121,7 @@ def _resolve_parent_heading(document: Document, parent_value: str) -> Heading:
     title_matches = [node for node in nodes if node.title_text.strip() == selector]
     if len(title_matches) > 1:
         raise typer.BadParameter(
-            f"--parent is ambiguous, multiple headings with title '{selector}'"
+            f"--parent is ambiguous, multiple headings with title '{selector}'",
         )
     if len(title_matches) == 1:
         return title_matches[0]
@@ -155,7 +156,7 @@ def _resolve_level(level: int | None, parent_level: int | None) -> int:
             raise typer.BadParameter("--level must be greater than or equal to 1")
         if parent_level is not None and level <= parent_level:
             raise typer.BadParameter(
-                "--level must be greater than parent level when --parent is used"
+                "--level must be greater than parent level when --parent is used",
             )
         return level
 

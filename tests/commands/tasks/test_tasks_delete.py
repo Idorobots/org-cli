@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import org_parser
 import pytest
 import typer
 
 from org.commands.tasks import delete as tasks_delete
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def make_delete_args(files: list[str], **overrides: object) -> tasks_delete.DeleteArgs:

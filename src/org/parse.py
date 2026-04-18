@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Protocol
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol
 
 import typer
 from org_parser import loads
-from org_parser.document import Document, Heading
+
+
+if TYPE_CHECKING:
+    from org_parser.document import Document, Heading
 
 
 class FilterSpec(Protocol):
@@ -23,8 +27,9 @@ logger = logging.getLogger("org")
 
 def _read_org_file(name: str) -> str:
     """Read one org file and normalize unsupported time values."""
+    path = Path(name)
     try:
-        with open(name, encoding="utf-8") as f:
+        with path.open(encoding="utf-8") as f:
             logger.info("Processing %s...", name)
             return f.read().replace("24:00", "00:00")
     except FileNotFoundError as err:

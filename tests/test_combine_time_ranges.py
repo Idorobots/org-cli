@@ -120,7 +120,8 @@ def test_combine_time_ranges_mixed_present_and_missing() -> None:
         ),
     }
     result = _combine_time_ranges(
-        tag_time_ranges, ["missing1", "python", "missing2", "java", "missing3"]
+        tag_time_ranges,
+        ["missing1", "python", "missing2", "java", "missing3"],
     )
 
     assert result.earliest == datetime(2023, 1, 1)

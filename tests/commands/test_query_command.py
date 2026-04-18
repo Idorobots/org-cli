@@ -84,7 +84,8 @@ def test_run_query_org_root_results_render_with_file_header(
 
 
 def test_run_query_default_org_uses_plain_formatter_for_string_results(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Default org output should print plain lines for string-only results."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -94,7 +95,8 @@ def test_run_query_default_org_uses_plain_formatter_for_string_results(
         return ["alpha", "beta"]
 
     monkeypatch.setattr(
-        "org.commands.query.compile_query_text", lambda _query: _fake_compiled_query
+        "org.commands.query.compile_query_text",
+        lambda _query: _fake_compiled_query,
     )
     monkeypatch.setattr(
         "org.commands.query.load_root_data",
@@ -108,7 +110,8 @@ def test_run_query_default_org_uses_plain_formatter_for_string_results(
 
 
 def test_run_query_default_org_uses_json_formatter_for_mixed_results(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Default org output should fall back to JSON for mixed-type results."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -118,7 +121,8 @@ def test_run_query_default_org_uses_json_formatter_for_mixed_results(
         return ["alpha", 1, None]
 
     monkeypatch.setattr(
-        "org.commands.query.compile_query_text", lambda _query: _fake_compiled_query
+        "org.commands.query.compile_query_text",
+        lambda _query: _fake_compiled_query,
     )
     monkeypatch.setattr(
         "org.commands.query.load_root_data",
@@ -132,7 +136,8 @@ def test_run_query_default_org_uses_json_formatter_for_mixed_results(
 
 
 def test_run_query_default_org_uses_json_formatter_for_none_result(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Default org output should print JSON null for non-org None results."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -142,7 +147,8 @@ def test_run_query_default_org_uses_json_formatter_for_none_result(
         return [None]
 
     monkeypatch.setattr(
-        "org.commands.query.compile_query_text", lambda _query: _fake_compiled_query
+        "org.commands.query.compile_query_text",
+        lambda _query: _fake_compiled_query,
     )
     monkeypatch.setattr(
         "org.commands.query.load_root_data",
@@ -217,7 +223,8 @@ def test_query_runtime_error_is_reported_as_usage_error() -> None:
 
 
 def test_run_query_markdown_converts_org_results(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Markdown query formatter should invoke pandoc with markdown output."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -241,7 +248,8 @@ def test_run_query_markdown_converts_org_results(
 
 
 def test_run_query_markdown_converts_scalar_results(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Markdown query formatter should pass scalar outputs to pandoc."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -314,7 +322,8 @@ def test_run_query_markdown_pandoc_error_is_usage_error(monkeypatch: pytest.Monk
 
 
 def test_run_query_pandoc_empty_results_prints_no_results(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pandoc query output should preserve empty-result messaging."""
 

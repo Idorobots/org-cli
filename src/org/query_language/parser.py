@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import ast
-from collections.abc import Callable, Generator
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from parsy import ParseError, Parser, eof, forward_declaration, generate, regex, seq, string
 
@@ -34,6 +33,10 @@ from org.query_language.ast import (
     Variable,
 )
 from org.query_language.errors import QueryParseError
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator
 
 
 KNOWN_FUNCTIONS = {
@@ -138,7 +141,7 @@ def _build_value_parser(
     null_literal = _lexeme(_keyword("null")).result(NoneLiteral())
     variable = (_symbol("$") >> identifier).map(Variable)
     number_literal = number_token.map(
-        lambda v: NumberLiteral(float(v)) if "." in v else NumberLiteral(int(v))
+        lambda v: NumberLiteral(float(v)) if "." in v else NumberLiteral(int(v)),
     )
     string_literal = string_token.map(lambda v: StringLiteral(_decode_string(v)))
     return (
@@ -222,7 +225,7 @@ def _build_dot_expression_parser(identifier: Parser, bracket_postfix: Parser) ->
             first_bracket_result = yield bracket_postfix.optional()
             if first_bracket_result is not None and not isinstance(first_bracket_result, tuple):
                 raise QueryParseError("Invalid bracket postfix")
-            first_bracket = cast(PostfixOp | None, first_bracket_result)
+            first_bracket = cast("PostfixOp | None", first_bracket_result)
             current = (
                 Identity() if first_bracket is None else _apply_postfix(Identity(), first_bracket)
             )
@@ -232,7 +235,7 @@ def _build_dot_expression_parser(identifier: Parser, bracket_postfix: Parser) ->
         rest_result = yield postfix.many()
         if not isinstance(rest_result, list):
             raise QueryParseError("Invalid postfix chain")
-        rest = cast(list[PostfixOp], rest_result)
+        rest = cast("list[PostfixOp]", rest_result)
         for op in rest:
             current = _apply_postfix(current, op)
         yield regex(r"\s*")
@@ -298,7 +301,6 @@ def _build_let_binding_parser(value_expr: Parser, body_expr: Parser, identifier:
 
 def _build_if_else_parser(expr: Parser) -> Parser:
     """Build parser for conditional if-then-elif-else expressions."""
-
     elif_clause = seq(
         _lexeme(_keyword("elif")) >> (expr << _lexeme(_keyword("then"))),
         expr,
@@ -317,7 +319,7 @@ def _build_if_else_parser(expr: Parser) -> Parser:
         elif_clauses_result = yield elif_clause.many()
         if not isinstance(elif_clauses_result, list):
             raise QueryParseError("Invalid elif clauses")
-        elif_clauses = cast(list[tuple[object, object]], elif_clauses_result)
+        elif_clauses = cast("list[tuple[object, object]]", elif_clauses_result)
 
         yield _lexeme(_keyword("else"))
         else_result = yield expr
@@ -335,7 +337,7 @@ def _build_if_else_parser(expr: Parser) -> Parser:
         current_else: Expr = else_result
         for branch_condition, branch_then in reversed(branches):
             current_else = IfElse(branch_condition, branch_then, current_else)
-        return cast(IfElse, current_else)
+        return cast("IfElse", current_else)
 
     return if_else
 
@@ -359,7 +361,7 @@ def _build_postfix_chain_parser(
         rest_result = yield postfix.many()
         if not isinstance(rest_result, list):
             raise QueryParseError("Invalid postfix chain")
-        rest = cast(list[PostfixOp], rest_result)
+        rest = cast("list[PostfixOp]", rest_result)
         for op in rest:
             current = _apply_postfix(current, op)
         return current
@@ -462,7 +464,7 @@ def _make_parser() -> Parser:
         return current
 
     mult_op = _lexeme(
-        string("*") | string("/") | _keyword("mod") | _keyword("rem") | _keyword("quot")
+        string("*") | string("/") | _keyword("mod") | _keyword("rem") | _keyword("quot"),
     )
     additive_op = _lexeme(string("+") | string("-"))
     multiply = _chain_left(unary, mult_op, _binary_builder)
@@ -477,7 +479,7 @@ def _make_parser() -> Parser:
         | string(">")
         | string("<")
         | _keyword("matches")
-        | _keyword("in")
+        | _keyword("in"),
     )
     bool_op = _lexeme(_keyword("and") | _keyword("or"))
 
@@ -507,7 +509,7 @@ def _build_as_binding_parser(term: Parser, identifier: Parser) -> Parser:
         bindings_result = yield (_lexeme(_keyword("as")) >> _symbol("$") >> identifier).many()
         if not isinstance(bindings_result, list):
             raise QueryParseError("Invalid binding list")
-        bindings = cast(list[str], bindings_result)
+        bindings = cast("list[str]", bindings_result)
 
         current: Expr = source_result
         for name in bindings:
@@ -517,7 +519,7 @@ def _build_as_binding_parser(term: Parser, identifier: Parser) -> Parser:
     return parser
 
 
-def _apply_postfix(base: Expr, op: PostfixOp) -> Expr:
+def _apply_postfix(base: Expr, op: PostfixOp) -> Expr:  # noqa: C901
     """Apply one postfix operator to an expression."""
     match op:
         case ("field", field):
@@ -562,7 +564,7 @@ def _chain_left(
             raise QueryParseError("Invalid operator chain")
 
         current: Expr = left_result
-        rest = cast(list[tuple[object, object]], rest_result)
+        rest = cast("list[tuple[object, object]]", rest_result)
         for operator, right in rest:
             if not isinstance(operator, str):
                 raise QueryParseError("Invalid operator")
@@ -590,7 +592,7 @@ def _chain_right(
         rest_result = yield seq(op, term).many()
         if not isinstance(rest_result, list):
             raise QueryParseError("Invalid operator chain")
-        rest = cast(list[tuple[object, object]], rest_result)
+        rest = cast("list[tuple[object, object]]", rest_result)
 
         if not rest:
             return left_result
@@ -624,7 +626,7 @@ def _chain_comma(term: Parser) -> Parser:
         rest_result = yield (_symbol(",") >> term).many()
         if not isinstance(rest_result, list):
             raise QueryParseError("Invalid tuple expression")
-        rest = cast(list[Expr], rest_result)
+        rest = cast("list[Expr]", rest_result)
         if not rest:
             return first_result
         return TupleExpr((first_result, *rest))

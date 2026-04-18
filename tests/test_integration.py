@@ -1,11 +1,15 @@
 """Integration tests using real Org-mode files."""
 
 import os
+from typing import TYPE_CHECKING
 
 import org_parser
-from org_parser.document import Heading
 
 from org.analyze import analyze
+
+
+if TYPE_CHECKING:
+    from org_parser.document import Heading
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")

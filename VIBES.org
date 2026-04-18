@@ -4498,6 +4498,14 @@ Like linting and formatting.
 ** Documentation
 - Document the CLI
 - Document the config format
+** REWORKED Tighten Ruff lint policy in =pyproject.toml= (prefer =select = ["ALL"]=)
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 16:00] \\
+  Needed extra manual work.
+:END:
+  - Evaluate switching =[tool.ruff.lint].select= to =["ALL"]=.
+  - Keep an explicit =ignore= list only for justified exceptions, with a short rationale per rule.
+  - Ensure commonly useful rule families are enabled (at minimum: =S=, =PT=, =TRY=, =PERF=, =D=, =TID=, =A=, =C90=, =G=).
 ** Better heading & body parsing
 ** MCP server / RAG command
 #+begin_example

@@ -5,9 +5,9 @@ from __future__ import annotations
 import math
 import sys
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import typer
-from org_parser.document import Heading
 from rich import box
 from rich.cells import cell_len
 from rich.console import Group, RenderableType
@@ -19,6 +19,10 @@ from org import config as config_module
 from org.cli_common import load_and_process_data
 from org.color import escape_text, get_state_color
 from org.tui import build_console, heading_title_to_text, processing_status, setup_output
+
+
+if TYPE_CHECKING:
+    from org_parser.document import Heading
 
 
 @dataclass
@@ -122,7 +126,7 @@ def _build_task_panel(node: Heading, render: _PanelRenderConfig) -> Panel:
 
     if render.coalesce_completed and node.todo and node.todo in render.done_states:
         content.append_text(
-            _state_prefix(node, render.done_states, render.todo_states, render.color_enabled)
+            _state_prefix(node, render.done_states, render.todo_states, render.color_enabled),
         )
 
     content.append_text(heading_title_to_text(node))
@@ -161,7 +165,9 @@ def _column_title_markup(
 
 
 def _initial_columns(
-    todo_states: list[str], done_states: list[str], coalesce_completed: bool
+    todo_states: list[str],
+    done_states: list[str],
+    coalesce_completed: bool,
 ) -> dict[str, list[Heading]]:
     """Create mutable board columns keyed by title."""
     columns: dict[str, list[Heading]] = {"NOT STARTED": []}
@@ -255,7 +261,9 @@ def _estimate_board_height(columns: list[_BoardColumn], panel_content_width: int
 
 
 def _resolve_header_state(
-    column: _BoardColumn, done_states: list[str], coalesce_completed: bool
+    column: _BoardColumn,
+    done_states: list[str],
+    coalesce_completed: bool,
 ) -> str:
     """Resolve the state name used for coloring a column header."""
     if column.title == "NOT STARTED":
@@ -309,7 +317,7 @@ def run_tasks_board(args: BoardArgs) -> None:
         for column in columns:
             state = _resolve_header_state(column, done_states, args.coalesce_completed)
             header_row.append(
-                _column_title_markup(column.title, state, done_states, todo_states, color_enabled)
+                _column_title_markup(column.title, state, done_states, todo_states, color_enabled),
             )
         table.add_row(*header_row)
 
@@ -348,7 +356,9 @@ def register(app: typer.Typer) -> None:
     )
     def tasks_board(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
-            None, metavar="FILE", help="Org-mode archive files or directories to analyze"
+            None,
+            metavar="FILE",
+            help="Org-mode archive files or directories to analyze",
         ),
         config: str = typer.Option(
             ".org-cli.json",
@@ -446,7 +456,10 @@ def register(app: typer.Typer) -> None:
             None,
             "--filter-body",
             metavar="REGEX",
-            help="Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)",
+            help=(
+                "Filter tasks where body matches regex (case-sensitive, multiline, "
+                "can specify multiple)"
+            ),
         ),
         filter_completed: bool = typer.Option(
             False,

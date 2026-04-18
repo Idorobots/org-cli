@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 import typer
@@ -15,6 +15,10 @@ from org.cli_common import (
     resolve_input_paths,
 )
 from org.validation import parse_group_values
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_normalize_show_value_applies_mapping() -> None:
@@ -63,7 +67,8 @@ def test_resolve_input_paths_missing(tmp_path: Path) -> None:
 
 
 def test_resolve_input_paths_warns_and_keeps_existing(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Missing paths should warn while existing files are still processed."""
     existing = tmp_path / "one.org"
@@ -78,7 +83,8 @@ def test_resolve_input_paths_warns_and_keeps_existing(
 
 
 def test_resolve_input_paths_skips_missing_globbed_files_in_verbose(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Missing files discovered from directory glob should be logged and skipped."""
     existing = tmp_path / "one.org"

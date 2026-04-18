@@ -5,12 +5,10 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import click
 import typer
-from org_parser.document import Heading
-from rich.console import Console
 from rich.syntax import Syntax
 
 from org import config as config_module
@@ -37,6 +35,11 @@ from org.tui import (
     processing_status,
     setup_output,
 )
+
+
+if TYPE_CHECKING:
+    from org_parser.document import Heading
+    from rich.console import Console
 
 
 @dataclass
@@ -128,16 +131,20 @@ def _prepare_detailed_task_list(nodes: list[Heading], out_theme: str) -> Prepare
     for idx, node in enumerate(nodes):
         if idx > 0:
             operations.append(OutputOperation(kind="console_print", text="", markup=False))
-        filename = node.document.filename if node.document.filename else "unknown"
+        filename = node.document.filename or "unknown"
         node_text = str(node).rstrip()
         org_block = f"# {filename}\n{node_text}" if node_text else f"# {filename}"
         operations.append(
             OutputOperation(
                 kind="console_print",
                 renderable=Syntax(
-                    org_block, "org", theme=theme, line_numbers=False, word_wrap=True
+                    org_block,
+                    "org",
+                    theme=theme,
+                    line_numbers=False,
+                    word_wrap=True,
                 ),
-            )
+            ),
         )
     return PreparedOutput(operations=tuple(operations))
 
@@ -148,9 +155,12 @@ class OrgTasksListOutputFormatter:
     include_filenames = True
 
     def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
+        """Prepare tasks list output in org or short-list form."""
         if not data.nodes:
             return PreparedOutput(
-                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+                operations=(
+                    OutputOperation(kind="console_print", text="No results", markup=False),
+                ),
             )
 
         if data.details:
@@ -166,11 +176,11 @@ class OrgTasksListOutputFormatter:
                         color_enabled=data.color_enabled,
                         end="",
                     ),
-                )
+                ),
             )
 
         return PreparedOutput(
-            operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+            operations=(OutputOperation(kind="console_print", text="No results", markup=False),),
         )
 
 
@@ -180,13 +190,17 @@ class PandocTasksListOutputFormatter:
     include_filenames = False
 
     def __init__(self, output_format: str, pandoc_args: str | None) -> None:
+        """Initialize formatter options for pandoc-based task rendering."""
         self.output_format = output_format
         self.pandoc_args = _parse_pandoc_args(pandoc_args)
 
     def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
+        """Prepare tasks list output and convert it with pandoc."""
         if not data.nodes:
             return PreparedOutput(
-                operations=(OutputOperation(kind="console_print", text="No results", markup=False),)
+                operations=(
+                    OutputOperation(kind="console_print", text="No results", markup=False),
+                ),
             )
         formatted_text = _org_to_pandoc_format(
             _build_org_document(list(data.nodes)),
@@ -207,6 +221,7 @@ class JsonTasksListOutputFormatter:
     include_filenames = False
 
     def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
+        """Prepare tasks list output as JSON."""
         payload = _json_output_payload(list(data.nodes))
         return _prepare_output(
             json.dumps(payload, ensure_ascii=True),
@@ -221,7 +236,8 @@ _JSON_TASKS_LIST_FORMATTER = JsonTasksListOutputFormatter()
 
 
 def get_tasks_list_formatter(
-    output_format: str, pandoc_args: str | None
+    output_format: str,
+    pandoc_args: str | None,
 ) -> TasksListOutputFormatter:
     """Return tasks list formatter for selected output format."""
     normalized_output = output_format.strip().lower()
@@ -248,7 +264,10 @@ def _line_count(text: str) -> int:
 
 
 def _should_page_prepared_output(
-    prepared_output: PreparedOutput, *, details: bool, console_height: int
+    prepared_output: PreparedOutput,
+    *,
+    details: bool,
+    console_height: int,
 ) -> bool:
     """Estimate whether prepared output should be displayed via pager."""
     if details:
@@ -305,7 +324,7 @@ def run_tasks_list(args: ListArgs) -> None:
                     details=args.details,
                     line_width=console.width,
                     out_theme=args.out_theme,
-                )
+                ),
             )
         except OutputFormatError as exc:
             raise click.UsageError(str(exc)) from exc
@@ -331,7 +350,9 @@ def register(app: typer.Typer) -> None:
     )
     def tasks_list(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
-            None, metavar="FILE", help="Org-mode archive files or directories to analyze"
+            None,
+            metavar="FILE",
+            help="Org-mode archive files or directories to analyze",
         ),
         config: str = typer.Option(
             ".org-cli.json",
@@ -429,7 +450,10 @@ def register(app: typer.Typer) -> None:
             None,
             "--filter-body",
             metavar="REGEX",
-            help="Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)",
+            help=(
+                "Filter tasks where body matches regex (case-sensitive, multiline, "
+                "can specify multiple)"
+            ),
         ),
         filter_completed: bool = typer.Option(
             False,

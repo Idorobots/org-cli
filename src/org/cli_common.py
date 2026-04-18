@@ -7,13 +7,11 @@ import logging
 import re
 import sys
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 import click
 import typer
-from org_parser import Document
 from org_parser.document import Heading
 
 from org import config as config_module
@@ -26,7 +24,6 @@ from org.query_language import (
     Stream,
     compile_query_text,
 )
-from org.query_language.compiler import CompiledQuery
 from org.timestamp import extract_timestamp_any
 from org.validation import (
     parse_date_argument,
@@ -35,6 +32,14 @@ from org.validation import (
     validate_and_parse_keys,
     validate_global_arguments,
 )
+
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from org_parser import Document
+
+    from org.query_language.compiler import CompiledQuery
 
 
 MAP: dict[str, str] = {}
@@ -118,7 +123,7 @@ DEFAULT_EXCLUDE = TAGS.union(HEADING).union(
         "scheduled",
         "suspended",
         "",
-    }
+    },
 )
 
 
@@ -152,7 +157,7 @@ class QueryBuildArgs(FilterArgs, WithArgs, Protocol):
     """Protocol for arguments used to build query pipelines."""
 
 
-def is_valid_regex(pattern: str, use_multiline: bool = False) -> bool:
+def is_valid_regex(pattern: str, *, use_multiline: bool = False) -> bool:
     """Check if a string is a valid regex pattern."""
     try:
         if use_multiline:
@@ -436,13 +441,13 @@ def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) ->
     """Validate prefixed custom switches against configured/built-in options."""
     builtin_order_options = set(ORDER_BY_OPTION_TO_VALUE) if include_builtin_ordering else set()
     allowed_filter_options = FILTER_OPTIONS_WITH_VALUE.union(FILTER_OPTIONS_FLAGS).union(
-        {f"--filter-{name}" for name in config_module.CONFIG_CUSTOM_FILTERS}
+        {f"--filter-{name}" for name in config_module.CONFIG_CUSTOM_FILTERS},
     )
     allowed_order_options = builtin_order_options.union(
-        {f"--order-by-{name}" for name in config_module.CONFIG_CUSTOM_ORDER_BY}
+        {f"--order-by-{name}" for name in config_module.CONFIG_CUSTOM_ORDER_BY},
     )
     allowed_with_options = WITH_OPTIONS_FLAGS.union(
-        {f"--with-{name}" for name in config_module.CONFIG_CUSTOM_WITH}
+        {f"--with-{name}" for name in config_module.CONFIG_CUSTOM_WITH},
     )
 
     for index, token in enumerate(argv):
@@ -500,7 +505,7 @@ def parse_filter_entries_from_argv(
                     name=name,
                     query=query,
                     raw_arg=token.split("=", 1)[1],
-                )
+                ),
             )
             index += 1
             continue
@@ -516,7 +521,7 @@ def parse_filter_entries_from_argv(
                 name=name,
                 query=query,
                 raw_arg=custom_arg,
-            )
+            ),
         )
         index = consumed_index + 1
 
@@ -558,7 +563,7 @@ def parse_order_entries_from_argv(
                     name=name,
                     query=query,
                     raw_arg=token.split("=", 1)[1],
-                )
+                ),
             )
             index += 1
             continue
@@ -574,7 +579,7 @@ def parse_order_entries_from_argv(
                 name=name,
                 query=query,
                 raw_arg=custom_arg,
-            )
+            ),
         )
         index = consumed_index + 1
 
@@ -609,7 +614,7 @@ def parse_with_entries_from_argv(
                     name=name,
                     query=query,
                     raw_arg=token.split("=", 1)[1],
-                )
+                ),
             )
             index += 1
             continue
@@ -625,7 +630,7 @@ def parse_with_entries_from_argv(
                 name=name,
                 query=query,
                 raw_arg=custom_arg,
-            )
+            ),
         )
         index = consumed_index + 1
 
@@ -655,7 +660,8 @@ def count_filter_values(value: list[str] | None) -> int:
 
 
 def extend_filter_order_with_defaults(
-    filter_order: list[str | CustomStageInvocation], args: FilterArgs
+    filter_order: list[str | CustomStageInvocation],
+    args: FilterArgs,
 ) -> list[str | CustomStageInvocation]:
     """Extend filter order to include config-provided filters."""
     filter_headings = getattr(args, "filter_headings", None)
@@ -751,7 +757,9 @@ def _simple_filter_stage(arg_name: str, args: FilterArgs) -> str | None:
 
 
 def _indexed_filter_stage(
-    arg_name: str, args: FilterArgs, index_trackers: dict[str, int]
+    arg_name: str,
+    args: FilterArgs,
+    index_trackers: dict[str, int],
 ) -> str | None:
     """Build query stage for indexed multi-value filter options."""
     if (
@@ -760,7 +768,7 @@ def _indexed_filter_stage(
         and index_trackers["property"] < len(args.filter_properties)
     ):
         property_name, property_value = parse_property_filter(
-            args.filter_properties[index_trackers["property"]]
+            args.filter_properties[index_trackers["property"]],
         )
         index_trackers["property"] += 1
         return (
@@ -853,10 +861,7 @@ def build_order_stages(
     order_entries = parse_order_entries_from_argv(argv, include_builtin_ordering)
     order_values: list[str | CustomStageInvocation]
     if include_builtin_ordering:
-        builtin_order_values: list[str] = []
-        for entry in order_entries:
-            if isinstance(entry, str):
-                builtin_order_values.append(entry)
+        builtin_order_values = [entry for entry in order_entries if isinstance(entry, str)]
 
         expected_builtins = extend_order_values_with_defaults(builtin_order_values, args)
         remaining_builtin_counts: dict[str, int] = {}
@@ -985,7 +990,9 @@ def dedupe_values(values: list[str]) -> list[str]:
 
 
 def resolve_group_values(
-    groups: list[str] | None, mapping: dict[str, str], category: str
+    groups: list[str] | None,
+    mapping: dict[str, str],
+    category: str,
 ) -> list[list[str]] | None:
     """Resolve explicit group values from CLI arguments."""
     if groups is None:
@@ -1009,7 +1016,7 @@ def resolve_group_values(
     return resolved_groups
 
 
-def resolve_input_paths(inputs: list[str] | None) -> list[str]:
+def resolve_input_paths(inputs: list[str] | None) -> list[str]:  # noqa: C901
     """Resolve CLI inputs into a list of org files to process.
 
     Args:
@@ -1115,7 +1122,9 @@ def _resolve_and_load_roots(
 
 
 def _load_roots_for_inputs(
-    files: list[str] | None, todo_states: list[str], done_states: list[str]
+    files: list[str] | None,
+    todo_states: list[str],
+    done_states: list[str],
 ) -> tuple[list[Document], list[str], list[str]]:
     """Resolve file inputs and load all org root nodes."""
     filenames = resolve_input_paths(files)
@@ -1141,13 +1150,18 @@ def load_and_process_data(
 
     todo_states, done_states = validate_global_arguments(args)
     roots, todo_states, done_states = _load_roots_for_inputs(
-        normalized_files, todo_states, done_states
+        normalized_files,
+        todo_states,
+        done_states,
     )
     nodes = [node for root in roots for node in list(root)]
 
     include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
     query = build_query(
-        args, sys.argv, include_ordering=include_ordering, include_slice=include_slice
+        args,
+        sys.argv,
+        include_ordering=include_ordering,
+        include_slice=include_slice,
     )
 
     context_vars: dict[str, object] = {
@@ -1156,7 +1170,7 @@ def load_and_process_data(
     }
     context_vars.update(collect_custom_context_vars(sys.argv, normalized_files, include_ordering))
     if include_slice:
-        sliced_args = cast(SlicedDataLoadArgs, args)
+        sliced_args = cast("SlicedDataLoadArgs", args)
         context_vars["offset"] = sliced_args.offset
         context_vars["limit"] = sliced_args.max_results
 
@@ -1169,7 +1183,7 @@ def load_and_process_data(
 
     flattened: list[object]
     if len(results) == 1 and isinstance(results[0], list):
-        flattened = cast(list[object], results[0])
+        flattened = cast("list[object]", results[0])
     else:
         flattened = list(results)
     nodes = [value for value in flattened if isinstance(value, Heading)]

@@ -85,8 +85,8 @@ SCHEDULED: <2024-01-10 Wed>
 * TODO Newer
 SCHEDULED: <2024-01-12 Fri>
 * TODO Missing
-"""
-        )
+""",
+        ),
     ]
     query = (
         ".[] | sort_by(.repeats + .deadline + .closed + .scheduled"
@@ -268,7 +268,9 @@ def test_runtime_numeric_operators_and_slice_expression() -> None:
     """Arithmetic operators and dynamic slice bounds should work."""
     numeric = _execute("2 ** 3, 8 / 2, 7 mod 3, -7 rem 3, -7 quot 3", [None], None)
     sliced = _execute(
-        ".[ $offset : $offset + $limit ]", [10, 20, 30, 40], {"offset": 1, "limit": 2}
+        ".[ $offset : $offset + $limit ]",
+        [10, 20, 30, 40],
+        {"offset": 1, "limit": 2},
     )
 
     assert numeric == [(8, 4.0, 1, -1, -2)]
@@ -345,7 +347,7 @@ def test_runtime_cast_functions_convert_supported_values() -> None:
             42,
             3.5,
             True,
-        )
+        ),
     ]
     assert len(timestamp_value) == 1
     assert isinstance(timestamp_value[0], Timestamp)
@@ -434,7 +436,11 @@ def test_runtime_if_expression_evaluates_selected_branch() -> None:
 def test_runtime_if_expression_supports_elif_branches() -> None:
     """if should evaluate the first matching elif branch before else."""
     result = _execute(
-        '.[0][] | if . == 1 then "one" elif . == 2 then "two" elif . == 3 then "three" else "other"',
+        (
+            '.[0][] | if . == 1 then "one" '
+            'elif . == 2 then "two" '
+            'elif . == 3 then "three" else "other"'
+        ),
         [[1, 2, 3, 4]],
         None,
     )
@@ -775,7 +781,7 @@ def test_runtime_comparison_operators_with_null_for_any_type() -> None:
             True,
             False,
             False,
-        )
+        ),
     ]
 
 
@@ -885,7 +891,7 @@ def test_runtime_heading_properties_support_dot_and_bracket_access() -> None:
 :PROPERTIES:
 :key: 23
 :END:
-""")
+"""),
     ]
 
     dot_result = _execute(".[] | .properties.key", nodes, None)
@@ -903,7 +909,7 @@ def test_runtime_heading_properties_support_assignment() -> None:
 :PROPERTIES:
 :key: 23
 :END:
-""")
+"""),
     ]
 
     dot_update = _execute('.[] | .properties.key = "99"; .properties.key', nodes, None)
