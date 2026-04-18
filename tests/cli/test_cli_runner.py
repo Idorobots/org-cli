@@ -351,6 +351,42 @@ def test_cli_runner_tasks_update_rejects_invalid_comment(tmp_path: Path) -> None
     assert "--comment must be either" in combined_output
 
 
+def test_cli_runner_tasks_update_supports_fine_grained_repeatable_switches(tmp_path: Path) -> None:
+    """CliRunner should support repeatable fine-grained update switches."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text(
+        "* TODO Keep :old:\n:PROPERTIES:\n:ID: task-1\n:OLD: value\n:END:\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "update",
+            "--query-id",
+            "task-1",
+            "--add-tag",
+            "new",
+            "--remove-tag",
+            "old",
+            "--add-property",
+            "A=1",
+            "--remove-property",
+            "OLD",
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    updated = fixture_path.read_text(encoding="utf-8")
+    assert ":new:" in updated
+    assert ":old:" not in updated
+    assert ":A: 1" in updated
+    assert ":OLD: value" not in updated
+
+
 def test_cli_runner_allows_missing_files_when_some_exist() -> None:
     """Missing file paths should warn while command still succeeds."""
     runner = CliRunner()

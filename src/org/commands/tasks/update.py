@@ -9,8 +9,9 @@ from dataclasses import dataclass
 import org_parser
 import typer
 from org_parser.document import Document, Heading
+from org_parser.element import ListItem, Repeat
 from org_parser.text import CompletionCounter
-from org_parser.time import Timestamp
+from org_parser.time import Clock, Timestamp
 
 from org import config as config_module
 from org.cli_common import resolve_input_paths
@@ -39,6 +40,14 @@ class UpdateArgs:
     parent: str | None
     tags: str | None
     properties: str | None
+    add_clock_entry: list[str] | None
+    remove_clock_entry: list[str] | None
+    add_repeat: list[str] | None
+    remove_repeat: list[str] | None
+    add_tag: list[str] | None
+    remove_tag: list[str] | None
+    add_property: list[str] | None
+    remove_property: list[str] | None
 
 
 def _normalize_selector(value: str | None, option_name: str) -> str | None:
@@ -174,6 +183,77 @@ def _parse_properties(value: str) -> dict[str, str]:
             raise typer.BadParameter("--properties values must be strings")
         parsed[key] = property_value
     return parsed
+
+
+def _parse_property_option(value: str, option_name: str) -> tuple[str, str]:
+    """Parse one property value in KEY=VALUE format."""
+    if "=" not in value:
+        raise typer.BadParameter(f"{option_name} must be in KEY=VALUE format, got {value!r}")
+
+    key, property_value = value.split("=", 1)
+    normalized_key = key.strip()
+    if not normalized_key:
+        raise typer.BadParameter(f"{option_name} key cannot be empty")
+    return normalized_key, property_value
+
+
+def _parse_property_key(value: str, option_name: str) -> str:
+    """Parse one property key from remove-property style options."""
+    normalized = value.strip()
+    if not normalized:
+        raise typer.BadParameter(f"{option_name} key cannot be empty")
+    return normalized
+
+
+def _parse_tag_option(value: str, option_name: str) -> str:
+    """Parse one tag value from add/remove-tag options."""
+    normalized = value.strip()
+    if not normalized:
+        raise typer.BadParameter(f"{option_name} cannot be empty")
+    return normalized
+
+
+def _parse_clock_entry(value: str, option_name: str) -> Clock:
+    """Parse one clock entry line into a Clock object."""
+    normalized = _normalize_selector(value, option_name)
+    if normalized is None:
+        raise typer.BadParameter(f"{option_name} cannot be empty")
+    try:
+        return Clock.from_source(normalized)
+    except (TypeError, ValueError) as err:
+        raise typer.BadParameter(f"Value {value!r} is not a valid Org clock entry") from err
+
+
+def _parse_repeat_entry(value: str, option_name: str, document: Document) -> Repeat:
+    """Parse one repeat line into a Repeat object."""
+    normalized = _normalize_selector(value, option_name)
+    if normalized is None:
+        raise typer.BadParameter(f"{option_name} cannot be empty")
+
+    try:
+        list_item = ListItem.from_source(normalized)
+    except (TypeError, ValueError) as err:
+        raise typer.BadParameter(f"Value {value!r} is not a valid Org repeat entry") from err
+
+    # FIXME: Switch to ListItem.document once org_parser exposes it reliably.
+    repeat = Repeat.from_list_item(list_item, document)
+    if repeat is None:
+        raise typer.BadParameter(f"Value {value!r} is not a valid Org repeat entry")
+    return Repeat(after=repeat.after, before=repeat.before, timestamp=repeat.timestamp)
+
+
+def _clock_entry_key(clock_entry: Clock) -> tuple[str, str]:
+    """Build a stable key for matching clock entries."""
+    timestamp_text = "" if clock_entry.timestamp is None else str(clock_entry.timestamp)
+    duration_text = "" if clock_entry.duration is None else clock_entry.duration
+    return (timestamp_text, duration_text)
+
+
+def _repeat_key(repeat: Repeat) -> tuple[str, str, str]:
+    """Build a stable key for matching repeat entries."""
+    before = "" if repeat.before is None else repeat.before
+    after = "" if repeat.after is None else repeat.after
+    return (before, after, str(repeat.timestamp))
 
 
 def _resolve_parent_heading(document: Document, parent_value: str) -> Heading:
@@ -322,11 +402,112 @@ def _apply_org_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
         heading.id = _normalize_optional_value(args.id_value)
 
 
+def _apply_tag_updates(args: UpdateArgs, heading: Heading) -> None:
+    """Apply fine-grained tag add/remove updates."""
+    if args.add_tag is not None:
+        for raw_tag in args.add_tag:
+            tag = _parse_tag_option(raw_tag, "--add-tag")
+            if tag in heading.heading_tags:
+                continue
+            heading.heading_tags.append(tag)
+
+    if args.remove_tag is not None:
+        for raw_tag in args.remove_tag:
+            tag = _parse_tag_option(raw_tag, "--remove-tag")
+            if tag not in heading.heading_tags:
+                raise typer.BadParameter(f"--remove-tag target {tag!r} is not present on the task")
+            heading.heading_tags.remove(tag)
+
+
+def _apply_property_updates(args: UpdateArgs, heading: Heading) -> None:
+    """Apply fine-grained property add/remove updates."""
+    if args.add_property is not None:
+        for raw_property in args.add_property:
+            key, value = _parse_property_option(raw_property, "--add-property")
+            heading.properties[key] = value
+
+    if args.remove_property is not None:
+        for raw_property in args.remove_property:
+            key = _parse_property_key(raw_property, "--remove-property")
+            if key not in heading.properties:
+                raise typer.BadParameter(
+                    f"--remove-property target {key!r} is not present on the task",
+                )
+            del heading.properties[key]
+
+
+def _apply_clock_entry_updates(args: UpdateArgs, heading: Heading) -> None:
+    """Apply fine-grained clock entry add/remove updates."""
+    if args.add_clock_entry is not None:
+        for raw_clock_entry in args.add_clock_entry:
+            clock_entry = _parse_clock_entry(raw_clock_entry, "--add-clock-entry")
+            heading.clock_entries.append(clock_entry)
+
+    if args.remove_clock_entry is not None:
+        for raw_clock_entry in args.remove_clock_entry:
+            target_clock_entry = _parse_clock_entry(raw_clock_entry, "--remove-clock-entry")
+            target_key = _clock_entry_key(target_clock_entry)
+            matching_entry = next(
+                (
+                    clock_entry
+                    for clock_entry in heading.clock_entries
+                    if _clock_entry_key(clock_entry) == target_key
+                ),
+                None,
+            )
+            if matching_entry is None:
+                raise typer.BadParameter(
+                    "--remove-clock-entry target is not present on the task",
+                )
+            heading.clock_entries.remove(matching_entry)
+
+
+def _apply_repeat_updates(args: UpdateArgs, heading: Heading) -> None:
+    """Apply fine-grained repeat add/remove updates."""
+    if args.add_repeat is not None:
+        for raw_repeat in args.add_repeat:
+            repeat = _parse_repeat_entry(raw_repeat, "--add-repeat", heading.document)
+            heading.repeats.append(repeat)
+
+    if args.remove_repeat is not None:
+        for raw_repeat in args.remove_repeat:
+            target_repeat = _parse_repeat_entry(raw_repeat, "--remove-repeat", heading.document)
+            target_key = _repeat_key(target_repeat)
+            matching_entry = next(
+                (repeat for repeat in heading.repeats if _repeat_key(repeat) == target_key),
+                None,
+            )
+            if matching_entry is None:
+                raise typer.BadParameter("--remove-repeat target is not present on the task")
+            heading.repeats.remove(matching_entry)
+
+
+def _apply_fine_grained_org_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
+    """Apply fine-grained Org metadata updates after bulk replacements."""
+    _apply_tag_updates(args, heading)
+    _apply_property_updates(args, heading)
+    _apply_clock_entry_updates(args, heading)
+    _apply_repeat_updates(args, heading)
+
+
+def _validate_update_option_conflicts(args: UpdateArgs) -> None:
+    """Reject mutually-exclusive bulk and fine-grained update switches."""
+    if args.tags is not None and (args.add_tag is not None or args.remove_tag is not None):
+        raise typer.BadParameter("--tags cannot be combined with --add-tag or --remove-tag")
+    if args.properties is not None and (
+        args.add_property is not None or args.remove_property is not None
+    ):
+        raise typer.BadParameter(
+            "--properties cannot be combined with --add-property or --remove-property",
+        )
+
+
 def _apply_field_updates(args: UpdateArgs, heading: Heading) -> None:
     """Apply non-hierarchy field updates to one heading."""
     _apply_heading_metadata_updates(args, heading)
     _apply_planning_updates(args, heading)
     _apply_org_metadata_updates(args, heading)
+    _apply_fine_grained_org_metadata_updates(args, heading)
     if args.body is not None:
         heading.body = args.body
 
@@ -334,6 +515,7 @@ def _apply_field_updates(args: UpdateArgs, heading: Heading) -> None:
 def run_tasks_update(args: UpdateArgs) -> None:
     """Run the tasks update command."""
     query_title, query_id = _validate_identifiers(args)
+    _validate_update_option_conflicts(args)
     filenames = resolve_input_paths(args.files)
 
     matches: list[Heading] = []
@@ -474,6 +656,54 @@ def register(app: typer.Typer) -> None:
             metavar="JSON",
             help="Properties JSON object to set (empty string clears)",
         ),
+        add_clock_entry: list[str] | None = typer.Option(  # noqa: B008
+            None,
+            "--add-clock-entry",
+            metavar="TEXT",
+            help="Clock entry to add (repeatable)",
+        ),
+        remove_clock_entry: list[str] | None = typer.Option(  # noqa: B008
+            None,
+            "--remove-clock-entry",
+            metavar="TEXT",
+            help="Clock entry to remove (repeatable)",
+        ),
+        add_repeat: list[str] | None = typer.Option(  # noqa: B008
+            None,
+            "--add-repeat",
+            metavar="TEXT",
+            help="Repeat entry to add (repeatable)",
+        ),
+        remove_repeat: list[str] | None = typer.Option(  # noqa: B008
+            None,
+            "--remove-repeat",
+            metavar="TEXT",
+            help="Repeat entry to remove (repeatable)",
+        ),
+        add_tag: list[str] | None = typer.Option(  # noqa: B008
+            None,
+            "--add-tag",
+            metavar="TAG",
+            help="Tag to add (repeatable)",
+        ),
+        remove_tag: list[str] | None = typer.Option(  # noqa: B008
+            None,
+            "--remove-tag",
+            metavar="TAG",
+            help="Tag to remove (repeatable)",
+        ),
+        add_property: list[str] | None = typer.Option(  # noqa: B008
+            None,
+            "--add-property",
+            metavar="P=V",
+            help="Property to add in P=V format (repeatable)",
+        ),
+        remove_property: list[str] | None = typer.Option(  # noqa: B008
+            None,
+            "--remove-property",
+            metavar="P",
+            help="Property key to remove (repeatable)",
+        ),
     ) -> None:
         """Update one task heading and persist the modified org document."""
         args = UpdateArgs(
@@ -496,6 +726,14 @@ def register(app: typer.Typer) -> None:
             parent=parent,
             tags=tags,
             properties=properties,
+            add_clock_entry=add_clock_entry,
+            remove_clock_entry=remove_clock_entry,
+            add_repeat=add_repeat,
+            remove_repeat=remove_repeat,
+            add_tag=add_tag,
+            remove_tag=remove_tag,
+            add_property=add_property,
+            remove_property=remove_property,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks update")

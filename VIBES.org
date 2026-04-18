@@ -4315,7 +4315,10 @@ In file src/org/commands/tasks/update.py around line 333, near the ~new file   s
 
 I don't like that we're passing the option name just for the error message.
 
-*** TODO Fine-grained edits
+*** DONE Fine-grained edits
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 19:09]
+:END:
 Add the following additional CLI switches for the =tasks update= command:
 
 - =--add-clock-entry= - adds an individual clock entry to the specified task, should accept a string representation of the clock entry,
@@ -4327,19 +4330,62 @@ Add the following additional CLI switches for the =tasks update= command:
 - ~--add-property P=V~ - adds a property to the specified task,
 - =--remove-property P= - removes a specified property from the specified task,
 
+**** DONE src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 19:09]
+:END:
+
+In file src/org/commands/tasks/update.py around line 245, near the ~def _parse_properties(value: str) -> dict[str, str]:~
+
+#+begin_example
+
++    source = f"* Task\n:LOGBOOK:\n{normalized}\n:END:\n"
++    try:
++        document = org_parser.loads(source)
++    except (TypeError, ValueError) as err:
++        raise typer.BadParameter(f"Value {value!r} is not a valid Org repeat entry") from err
++
++    heading = next(iter(document), None)
++    if heading is None or len(heading.repeats) != 1:
++        raise typer.BadParameter(f"Value {value!r} is not a valid Org repeat entry")
++
++    repeat = heading.repeats[0]
++    return Repeat(after=repeat.after, before=repeat.before, timestamp=repeat.timestamp)
+
+#+end_example
+
+Instead, this should be done with =Repeat.from_list_item(ListItem.from_source())=.
 *** TODO File move CLI switch
+Add the following CLI switch to =tasks update=:
 - =--file= - moves the heading to another file saving both the origin and destination files.
 
+*** TODO Task query selector
+In =tasks delete=, rename the =--title= and =--id= to =--query-title= and =--query-id==.
+
+Add =--query= parameter for finding tasks to be removed/updated by a generic query language query. The switch should be available in =tasks delete= and =tasks update= and it should be mutually exclusive with =--query-title= and =--query-id= (only one of the three must be specified).
+
+Both =tasks delete= and =tasks update= should prepare a query language query for selecting the matching task and run that query against the document files for extraction. The queries' results should be checked for correct type and uniqueness.
+
+Here's an example:
+#+begin_example
+# Remove a specific task with a given title text.
+org tasks delete --query '.title_text == "Test"'
+#+end_example
+
 *** TODO Command refactor
+There seems to be a lot of duplication between tasks delete and tasks update commands. Please refactor the common bits and move them to a common module that both commands can re-use.
+
 Refactor the new task commands as follows:
 - [ ] In =tasks create=, rename the =--is-comment= switch to just =--comment= and make it accept a boolean value.
 - [ ] In =tasks create=, update the =--tag= and =--property= switches to =--tags= and =--properties=, tags should accept a list of tags, while properties should accept a JSON object that it sets as the properties of the newly created task,
-- [ ] In =tasks delete=, rename the =--title= and =--id= to =--query-title= and =--query-id==.
 - [ ] All tasks created with =tasks create= should have a default ID assigned to them, if =--id= is not passed, generate a UUID.
-- [ ] =tasks create= should have a way to accept a string via stdin.
-- [ ] Add =--query= parameter for finding tasks to be removed/updated by a generic query language query. The switch should be available in =tasks delete= and =tasks update=.
 - [ ] Rename =tasks create= to =tasks add= and =tasks delete= to =tasks remove=.
 
+*** TODO Simplified creation
+The =tasks create= command should have a way to accept a string via stdin.
 
 ** Agenda command
 Like Org Agenta, but CLI.

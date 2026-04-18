@@ -38,6 +38,14 @@ def make_update_args(files: list[str], **overrides: object) -> tasks_update.Upda
         parent=None,
         tags=None,
         properties=None,
+        add_clock_entry=None,
+        remove_clock_entry=None,
+        add_repeat=None,
+        remove_repeat=None,
+        add_tag=None,
+        remove_tag=None,
+        add_property=None,
+        remove_property=None,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -248,3 +256,204 @@ def test_run_tasks_update_rejects_non_object_properties_json(tmp_path: Path) -> 
 
     with pytest.raises(typer.BadParameter, match="JSON object"):
         tasks_update.run_tasks_update(args)
+
+
+def test_run_tasks_update_applies_fine_grained_tag_updates(tmp_path: Path) -> None:
+    """Update should support adding and removing individual tags."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep :a:\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    args = make_update_args([str(source)], add_tag=["b"], remove_tag=["a"])
+
+    tasks_update.run_tasks_update(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    node = next(iter(root))
+    assert node.tags == ["b"]
+
+
+def test_run_tasks_update_rejects_remove_tag_when_target_missing(tmp_path: Path) -> None:
+    """Update should error when --remove-tag target does not exist."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    args = make_update_args([str(source)], remove_tag=["missing"])
+
+    with pytest.raises(typer.BadParameter, match="--remove-tag target"):
+        tasks_update.run_tasks_update(args)
+
+
+def test_run_tasks_update_applies_fine_grained_property_updates(tmp_path: Path) -> None:
+    """Update should support adding and removing individual properties."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:OLD: value\n:END:\n",
+        encoding="utf-8",
+    )
+    args = make_update_args(
+        [str(source)],
+        add_property=["A=1", "B=two"],
+        remove_property=["OLD"],
+    )
+
+    tasks_update.run_tasks_update(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    node = next(iter(root))
+    assert dict(node.properties) == {"ID": "task-1", "A": "1", "B": "two"}
+
+
+def test_run_tasks_update_rejects_remove_property_when_target_missing(tmp_path: Path) -> None:
+    """Update should error when --remove-property target does not exist."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    args = make_update_args([str(source)], remove_property=["MISSING"])
+
+    with pytest.raises(typer.BadParameter, match="--remove-property target"):
+        tasks_update.run_tasks_update(args)
+
+
+def test_run_tasks_update_rejects_add_property_without_separator(tmp_path: Path) -> None:
+    """Update should reject --add-property values that are not KEY=VALUE."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    args = make_update_args([str(source)], add_property=["NOPE"])
+
+    with pytest.raises(typer.BadParameter, match="--add-property must be in KEY=VALUE"):
+        tasks_update.run_tasks_update(args)
+
+
+def test_run_tasks_update_applies_fine_grained_clock_entry_updates(tmp_path: Path) -> None:
+    """Update should support adding and removing individual clock entries."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    clock_entry = "CLOCK: [2026-04-14 Tue 09:00]--[2026-04-14 Tue 10:00] =>  1:00"
+
+    tasks_update.run_tasks_update(make_update_args([str(source)], add_clock_entry=[clock_entry]))
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    node = next(iter(root))
+    assert len(node.clock_entries) == 1
+
+    tasks_update.run_tasks_update(make_update_args([str(source)], remove_clock_entry=[clock_entry]))
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    node = next(iter(root))
+    assert len(node.clock_entries) == 0
+
+
+def test_run_tasks_update_rejects_remove_clock_entry_when_target_missing(tmp_path: Path) -> None:
+    """Update should error when --remove-clock-entry target does not exist."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    clock_entry = "CLOCK: [2026-04-14 Tue 09:00]--[2026-04-14 Tue 10:00] =>  1:00"
+    args = make_update_args([str(source)], remove_clock_entry=[clock_entry])
+
+    with pytest.raises(typer.BadParameter, match="--remove-clock-entry target"):
+        tasks_update.run_tasks_update(args)
+
+
+def test_run_tasks_update_rejects_invalid_clock_entry_string(tmp_path: Path) -> None:
+    """Update should reject malformed clock entry strings."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    args = make_update_args([str(source)], add_clock_entry=["[2026-04-14 Tue 09:00]"])
+
+    with pytest.raises(typer.BadParameter, match="valid Org clock entry"):
+        tasks_update.run_tasks_update(args)
+
+
+def test_run_tasks_update_applies_fine_grained_repeat_updates(tmp_path: Path) -> None:
+    """Update should support adding and removing individual repeats."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    repeat = '- State "DONE" from "TODO" [2026-04-14 Tue 09:00]'
+
+    tasks_update.run_tasks_update(make_update_args([str(source)], add_repeat=[repeat]))
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    node = next(iter(root))
+    assert len(node.repeats) == 1
+    assert node.repeats[0].before == "TODO"
+    assert node.repeats[0].after == "DONE"
+
+    tasks_update.run_tasks_update(make_update_args([str(source)], remove_repeat=[repeat]))
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    node = next(iter(root))
+    assert len(node.repeats) == 0
+
+
+def test_run_tasks_update_rejects_remove_repeat_when_target_missing(tmp_path: Path) -> None:
+    """Update should error when --remove-repeat target does not exist."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    repeat = '- State "DONE" from "TODO" [2026-04-14 Tue 09:00]'
+    args = make_update_args([str(source)], remove_repeat=[repeat])
+
+    with pytest.raises(typer.BadParameter, match="--remove-repeat target"):
+        tasks_update.run_tasks_update(args)
+
+
+def test_run_tasks_update_rejects_invalid_repeat_string(tmp_path: Path) -> None:
+    """Update should reject malformed repeat entry strings."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    args = make_update_args([str(source)], add_repeat=["- [ ] not-a-repeat"])
+
+    with pytest.raises(typer.BadParameter, match="valid Org repeat entry"):
+        tasks_update.run_tasks_update(args)
+
+
+def test_run_tasks_update_rejects_mixed_bulk_and_fine_grained_tag_updates(tmp_path: Path) -> None:
+    """Update should reject --tags together with --add-tag/--remove-tag."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(typer.BadParameter, match="--tags cannot be combined"):
+        tasks_update.run_tasks_update(make_update_args([str(source)], tags="a", add_tag=["b"]))
+
+
+def test_run_tasks_update_rejects_mixed_bulk_and_fine_grained_properties(tmp_path: Path) -> None:
+    """Update should reject --properties with --add-property/--remove-property."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(typer.BadParameter, match="--properties cannot be combined"):
+        tasks_update.run_tasks_update(
+            make_update_args([str(source)], properties='{"A":"1"}', add_property=["B=2"]),
+        )
