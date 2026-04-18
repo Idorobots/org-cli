@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import org_parser
 import typer
@@ -48,6 +49,7 @@ class UpdateArgs:
     remove_tag: list[str] | None
     add_property: list[str] | None
     remove_property: list[str] | None
+    file: str | None
 
 
 def _normalize_selector(value: str | None, option_name: str) -> str | None:
@@ -98,6 +100,26 @@ def _save_document(document: Document) -> None:
     except PermissionError as err:
         filename = document.filename or "<unknown>"
         raise typer.BadParameter(f"Permission denied for '{filename}'") from err
+
+
+def _resolve_destination_document(file_value: str | None, source_document: Document) -> Document:
+    """Resolve destination document for --file or return source document."""
+    if file_value is None:
+        return source_document
+
+    path = Path(file_value)
+    if not path.exists():
+        raise typer.BadParameter(f"File '{file_value}' not found")
+    if not path.is_file():
+        raise typer.BadParameter(f"Path '{file_value}' is not a file")
+
+    source_filename = source_document.filename
+    if source_filename is not None:
+        source_path = Path(source_filename)
+        if source_path.resolve() == path.resolve():
+            return source_document
+
+    return _load_document(str(path))
 
 
 def _title_matches(document: Document, title: str | None) -> list[Heading]:
@@ -224,7 +246,7 @@ def _parse_clock_entry(value: str, option_name: str) -> Clock:
         raise typer.BadParameter(f"Value {value!r} is not a valid Org clock entry") from err
 
 
-def _parse_repeat_entry(value: str, option_name: str, document: Document) -> Repeat:
+def _parse_repeat_entry(value: str, option_name: str, heading: Heading) -> Repeat:
     """Parse one repeat line into a Repeat object."""
     normalized = _normalize_selector(value, option_name)
     if normalized is None:
@@ -236,7 +258,7 @@ def _parse_repeat_entry(value: str, option_name: str, document: Document) -> Rep
         raise typer.BadParameter(f"Value {value!r} is not a valid Org repeat entry") from err
 
     # FIXME: Switch to ListItem.document once org_parser exposes it reliably.
-    repeat = Repeat.from_list_item(list_item, document)
+    repeat = Repeat.from_list_item(list_item, heading.document)
     if repeat is None:
         raise typer.BadParameter(f"Value {value!r} is not a valid Org repeat entry")
     return Repeat(after=repeat.after, before=repeat.before, timestamp=repeat.timestamp)
@@ -291,15 +313,22 @@ def _validate_parent_target(heading: Heading, parent_heading: Heading | None) ->
         raise typer.BadParameter("--parent cannot point to a descendant of the updated task")
 
 
-def _move_heading(heading: Heading, parent_heading: Heading | None) -> None:
+def _move_heading(
+    heading: Heading,
+    parent_heading: Heading | None,
+    target_document: Document,
+) -> None:
     """Move heading under a new parent or to top-level."""
     current_parent = heading.parent
     current_parent.children.remove(heading)
 
     if parent_heading is None:
-        heading.document.children.append(heading)
+        target_document.children.append(heading)
     else:
         parent_heading.children.append(heading)
+    heading.document = target_document
+    for descendant in _iter_descendants(heading):
+        descendant.document = target_document
 
 
 def _validate_level(level: int, parent_level: int) -> None:
@@ -338,13 +367,14 @@ def _resolve_target_parent(document: Document, parent_value: str) -> Heading | N
 
 def _apply_parent_and_level_updates(args: UpdateArgs, heading: Heading) -> None:
     """Apply parent and level updates while enforcing hierarchy rules."""
+    document = heading.document
     parent_value = args.parent
     target_parent: Heading | None = None
 
     if parent_value is not None:
-        target_parent = _resolve_target_parent(heading.document, parent_value)
+        target_parent = _resolve_target_parent(document, parent_value)
         _validate_parent_target(heading, target_parent)
-        _move_heading(heading, target_parent)
+        _move_heading(heading, target_parent, document)
 
     if parent_value is None and args.level is None:
         return
@@ -466,12 +496,12 @@ def _apply_repeat_updates(args: UpdateArgs, heading: Heading) -> None:
     """Apply fine-grained repeat add/remove updates."""
     if args.add_repeat is not None:
         for raw_repeat in args.add_repeat:
-            repeat = _parse_repeat_entry(raw_repeat, "--add-repeat", heading.document)
+            repeat = _parse_repeat_entry(raw_repeat, "--add-repeat", heading)
             heading.repeats.append(repeat)
 
     if args.remove_repeat is not None:
         for raw_repeat in args.remove_repeat:
-            target_repeat = _parse_repeat_entry(raw_repeat, "--remove-repeat", heading.document)
+            target_repeat = _parse_repeat_entry(raw_repeat, "--remove-repeat", heading)
             target_key = _repeat_key(target_repeat)
             matching_entry = next(
                 (repeat for repeat in heading.repeats if _repeat_key(repeat) == target_key),
@@ -532,10 +562,22 @@ def run_tasks_update(args: UpdateArgs) -> None:
         raise typer.BadParameter("Task selector is ambiguous, multiple tasks match")
 
     heading = matches[0]
+    source_document = heading.document
+    destination_document = _resolve_destination_document(args.file, source_document)
+
+    if destination_document is not source_document:
+        _move_heading(heading, None, destination_document)
+
     _apply_parent_and_level_updates(args, heading)
     _apply_field_updates(args, heading)
-    heading.document.sync_heading_id_index()
-    _save_document(heading.document)
+
+    documents_to_save = [destination_document]
+    if source_document is not destination_document:
+        documents_to_save.append(source_document)
+
+    for document in documents_to_save:
+        document.sync_heading_id_index()
+        _save_document(document)
 
 
 def register(app: typer.Typer) -> None:
@@ -704,6 +746,12 @@ def register(app: typer.Typer) -> None:
             metavar="P",
             help="Property key to remove (repeatable)",
         ),
+        file: str | None = typer.Option(
+            None,
+            "--file",
+            metavar="FILE",
+            help="Move task to another file",
+        ),
     ) -> None:
         """Update one task heading and persist the modified org document."""
         args = UpdateArgs(
@@ -734,6 +782,7 @@ def register(app: typer.Typer) -> None:
             remove_tag=remove_tag,
             add_property=add_property,
             remove_property=remove_property,
+            file=file,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks update")

@@ -30,6 +30,7 @@ Provide exactly one selector: `--query-title` or `--query-id`.
 - `--category TEXT` - New `CATEGORY` property value (empty string clears).
 - `--body TEXT` - New task body text.
 - `--parent ID_OR_TITLE` - Move task under a new parent heading; empty string moves task to top level.
+- `--file FILE` - Move task to another existing Org file.
 - `--tags TAG1,TAG2` - Set comma-separated tags (empty string clears all tags).
 - `--properties JSON` - Set properties from a JSON object (empty string clears all properties).
 - `--add-clock-entry TEXT` - Add one clock entry line (repeatable).
@@ -49,6 +50,8 @@ Provide exactly one selector: `--query-title` or `--query-id`.
 - No matches or multiple matches return an error.
 - Parent lookup checks heading `ID` first, then heading title.
 - Parent lookup errors on missing parent or ambiguous title matches.
+- When `--file` is used with `--parent`, parent lookup is resolved in the destination file.
+- When `--file` moves a task across files, both source and destination files are saved.
 - Parent cannot be the updated task itself or one of its descendants.
 - `--level` must be greater than parent level for child headings.
 - Top-level headings can use any positive level.
@@ -93,4 +96,10 @@ poetry run org tasks update --query-id 23 --add-tag urgent --remove-tag waiting 
 
 ```bash
 poetry run org tasks update --query-id 23 --add-clock-entry "CLOCK: [2026-04-14 Tue 09:00]--[2026-04-14 Tue 10:00] =>  1:00" --add-repeat "- State \"DONE\" from \"TODO\" [2026-04-14 Tue 10:00]"
+```
+
+7) Move a task to another file
+
+```bash
+poetry run org tasks update --query-id 23 --file path/to/destination.org path/to/source.org
 ```

@@ -387,6 +387,35 @@ def test_cli_runner_tasks_update_supports_fine_grained_repeatable_switches(tmp_p
     assert ":OLD: value" not in updated
 
 
+def test_cli_runner_tasks_update_moves_task_to_file(tmp_path: Path) -> None:
+    """CliRunner should move selected task to destination file with --file."""
+    runner = CliRunner()
+    source_path = tmp_path / "source.org"
+    destination_path = tmp_path / "destination.org"
+    source_path.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    destination_path.write_text("* TODO Existing\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "update",
+            "--query-id",
+            "task-1",
+            "--file",
+            str(destination_path),
+            str(source_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "* TODO Keep" not in source_path.read_text(encoding="utf-8")
+    assert "* TODO Keep" in destination_path.read_text(encoding="utf-8")
+
+
 def test_cli_runner_allows_missing_files_when_some_exist() -> None:
     """Missing file paths should warn while command still succeeds."""
     runner = CliRunner()

@@ -4358,7 +4358,10 @@ In file src/org/commands/tasks/update.py around line 245, near the ~def _parse_p
 #+end_example
 
 Instead, this should be done with =Repeat.from_list_item(ListItem.from_source())=.
-*** TODO File move CLI switch
+*** REWORKED File move CLI switch
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 19:54]
+:END:
 Add the following CLI switch to =tasks update=:
 - =--file= - moves the heading to another file saving both the origin and destination files.
 

@@ -46,6 +46,7 @@ def make_update_args(files: list[str], **overrides: object) -> tasks_update.Upda
         remove_tag=None,
         add_property=None,
         remove_property=None,
+        file=None,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -232,6 +233,80 @@ def test_run_tasks_update_rejects_parent_descendant_loop(tmp_path: Path) -> None
     args = make_update_args([str(source)], query_id=None, query_title="A", parent="C")
 
     with pytest.raises(typer.BadParameter, match="descendant"):
+        tasks_update.run_tasks_update(args)
+
+
+def test_run_tasks_update_moves_heading_to_another_file(tmp_path: Path) -> None:
+    """Update should move task heading from source file to --file destination."""
+    source = tmp_path / "source.org"
+    destination = tmp_path / "destination.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    destination.write_text("* TODO Existing\n", encoding="utf-8")
+    args = make_update_args([str(source), str(destination)], file=str(destination))
+
+    tasks_update.run_tasks_update(args)
+
+    source_root = org_parser.loads(source.read_text(encoding="utf-8"))
+    destination_root = org_parser.loads(destination.read_text(encoding="utf-8"))
+
+    assert all(node.title_text.strip() != "Keep" for node in list(source_root))
+    assert any(node.title_text.strip() == "Keep" for node in list(destination_root))
+
+
+def test_run_tasks_update_moves_heading_to_destination_parent(tmp_path: Path) -> None:
+    """Update should resolve --parent in destination file when --file is provided."""
+    source = tmp_path / "source.org"
+    destination = tmp_path / "destination.org"
+    source.write_text(
+        "* TODO Child\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    destination.write_text(
+        "* TODO Parent\n:PROPERTIES:\n:ID: parent-1\n:END:\n",
+        encoding="utf-8",
+    )
+    args = make_update_args(
+        [str(source), str(destination)],
+        file=str(destination),
+        parent="parent-1",
+    )
+
+    tasks_update.run_tasks_update(args)
+
+    destination_root = org_parser.loads(destination.read_text(encoding="utf-8"))
+    destination_nodes = list(destination_root)
+    child = next(node for node in destination_nodes if node.title_text.strip() == "Child")
+    assert isinstance(child.parent, Heading)
+    assert child.parent.title_text.strip() == "Parent"
+    assert child.level == 2
+
+
+def test_run_tasks_update_rejects_file_target_when_missing(tmp_path: Path) -> None:
+    """Update should reject --file values that do not exist."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    args = make_update_args([str(source)], file=str(tmp_path / "missing.org"))
+
+    with pytest.raises(typer.BadParameter, match="not found"):
+        tasks_update.run_tasks_update(args)
+
+
+def test_run_tasks_update_rejects_file_target_when_not_file(tmp_path: Path) -> None:
+    """Update should reject --file values that are directories."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n",
+        encoding="utf-8",
+    )
+    args = make_update_args([str(source)], file=str(tmp_path))
+
+    with pytest.raises(typer.BadParameter, match="not a file"):
         tasks_update.run_tasks_update(args)
 
 
