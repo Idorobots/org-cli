@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Protocol
 
 from typer.testing import CliRunner
 
@@ -12,6 +13,26 @@ from org.cli import app
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+class _CliResult(Protocol):
+    """Typing protocol for CliRunner invocation results."""
+
+    @property
+    def stdout(self) -> str:
+        """Captured stdout text."""
+        ...
+
+    @property
+    def stderr(self) -> str:
+        """Captured stderr text."""
+        ...
+
+
+def clean_combined_output(result: _CliResult) -> str:
+    """Return stdout+stderr with ANSI escape sequences removed."""
+    return ANSI_ESCAPE_RE.sub("", result.stdout + result.stderr)
 
 
 def test_cli_runner_summary() -> None:
@@ -120,7 +141,7 @@ def test_cli_runner_tasks_list_custom_filter_required_arg_error() -> None:
 
         assert result.exit_code != 0
         # FIXME This is only required on CI for some reason.
-        combined_output = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout + result.stderr)
+        combined_output = clean_combined_output(result)
         assert "--filter-level-above requires exactly one argument" in combined_output
     finally:
         config.CONFIG_CUSTOM_FILTERS.clear()
@@ -274,7 +295,7 @@ def test_cli_runner_tasks_remove_requires_identifier(tmp_path: Path) -> None:
     )
 
     assert result.exit_code != 0
-    combined_output = result.stdout + result.stderr
+    combined_output = clean_combined_output(result)
     assert "exactly one task selector" in combined_output
 
 
@@ -302,7 +323,7 @@ def test_cli_runner_tasks_remove_rejects_title_and_id_together(tmp_path: Path) -
     )
 
     assert result.exit_code != 0
-    combined_output = result.stdout + result.stderr
+    combined_output = clean_combined_output(result)
     assert "exactly one task selector" in combined_output
 
 
@@ -407,7 +428,7 @@ def test_cli_runner_tasks_update_requires_identifier(tmp_path: Path) -> None:
     )
 
     assert result.exit_code != 0
-    combined_output = result.stdout + result.stderr
+    combined_output = clean_combined_output(result)
     assert "exactly one task selector" in combined_output
 
 
@@ -435,7 +456,7 @@ def test_cli_runner_tasks_update_rejects_invalid_comment(tmp_path: Path) -> None
     )
 
     assert result.exit_code != 0
-    combined_output = result.stdout + result.stderr
+    combined_output = clean_combined_output(result)
     assert "--comment must be either" in combined_output
 
 
@@ -526,7 +547,7 @@ def test_cli_runner_tasks_remove_shows_confirmation_prompt_with_count(tmp_path: 
     )
 
     assert result.exit_code == 0
-    combined_output = result.stdout + result.stderr
+    combined_output = clean_combined_output(result)
     assert "Delete 2 tasks?" in combined_output
     updated = fixture_path.read_text(encoding="utf-8")
     assert updated.count("* TODO Same") == 2
@@ -554,7 +575,7 @@ def test_cli_runner_tasks_update_shows_confirmation_prompt_with_count(tmp_path: 
     )
 
     assert result.exit_code == 0
-    combined_output = result.stdout + result.stderr
+    combined_output = clean_combined_output(result)
     assert "Update 2 tasks?" in combined_output
     updated = fixture_path.read_text(encoding="utf-8")
     assert updated.count("* TODO Same") == 2
@@ -591,5 +612,5 @@ def test_cli_runner_rejects_width_below_minimum() -> None:
     result = runner.invoke(app, ["query", "1", "--width", "49", fixture_path])
 
     assert result.exit_code != 0
-    combined_output = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout + result.stderr)
+    combined_output = clean_combined_output(result)
     assert "Invalid value for '--width'" in combined_output
