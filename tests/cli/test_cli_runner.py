@@ -169,7 +169,7 @@ def test_cli_runner_tasks_create_writes_heading(tmp_path: Path) -> None:
             "TODO",
             "--title",
             "Update docs",
-            "--tag",
+            "--tags",
             "Docs",
             str(fixture_path),
         ],

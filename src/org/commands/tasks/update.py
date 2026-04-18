@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import org_parser
 import typer
 from org_parser.document import Document, Heading
 from org_parser.element import ListItem, Repeat
@@ -16,6 +14,17 @@ from org_parser.time import Clock, Timestamp
 
 from org import config as config_module
 from org.cli_common import resolve_input_paths
+from org.commands.tasks.common import (
+    id_matches,
+    load_document,
+    normalize_selector,
+    parse_properties_json,
+    parse_tags_csv,
+    resolve_single_heading,
+    save_document,
+    title_matches,
+    validate_exactly_one_selector,
+)
 
 
 @dataclass
@@ -52,54 +61,12 @@ class UpdateArgs:
     file: str | None
 
 
-def _normalize_selector(value: str | None, option_name: str) -> str | None:
-    """Normalize optional selector value and reject blank strings."""
-    if value is None:
-        return None
-    normalized = value.strip()
-    if not normalized:
-        raise typer.BadParameter(f"{option_name} cannot be empty")
-    return normalized
-
-
 def _normalize_optional_value(value: str) -> str | None:
     """Return stripped value or None for blank input."""
     normalized = value.strip()
     if not normalized:
         return None
     return normalized
-
-
-def _validate_identifiers(args: UpdateArgs) -> tuple[str | None, str | None]:
-    """Validate task selectors and return normalized values."""
-    normalized_title = _normalize_selector(args.query_title, "--query-title")
-    normalized_id = _normalize_selector(args.query_id, "--query-id")
-    if normalized_title is None and normalized_id is None:
-        raise typer.BadParameter("Provide exactly one task identifier: --query-title or --query-id")
-    if normalized_title is not None and normalized_id is not None:
-        raise typer.BadParameter("Provide exactly one task identifier: --query-title or --query-id")
-    return normalized_title, normalized_id
-
-
-def _load_document(path: str) -> Document:
-    """Load org document from file for mutation."""
-    try:
-        return org_parser.load(path)
-    except FileNotFoundError as err:
-        raise typer.BadParameter(f"File '{path}' not found") from err
-    except PermissionError as err:
-        raise typer.BadParameter(f"Permission denied for '{path}'") from err
-    except ValueError as err:
-        raise typer.BadParameter(f"Unable to parse '{path}': {err}") from err
-
-
-def _save_document(document: Document) -> None:
-    """Persist updated org document back to disk."""
-    try:
-        org_parser.dump(document)
-    except PermissionError as err:
-        filename = document.filename or "<unknown>"
-        raise typer.BadParameter(f"Permission denied for '{filename}'") from err
 
 
 def _resolve_destination_document(file_value: str | None, source_document: Document) -> Document:
@@ -119,24 +86,7 @@ def _resolve_destination_document(file_value: str | None, source_document: Docum
         if source_path.resolve() == path.resolve():
             return source_document
 
-    return _load_document(str(path))
-
-
-def _title_matches(document: Document, title: str | None) -> list[Heading]:
-    """Return headings matching title selector in one document."""
-    if title is None:
-        return []
-    return [node for node in list(document) if node.title_text.strip() == title]
-
-
-def _id_matches(document: Document, query_id: str | None) -> list[Heading]:
-    """Return heading matching ID selector in one document."""
-    if query_id is None:
-        return []
-    heading = document.heading_by_id(query_id)
-    if heading is None:
-        return []
-    return [heading]
+    return load_document(str(path))
 
 
 def _parse_comment_flag(value: str) -> bool:
@@ -172,41 +122,6 @@ def _parse_timestamp(value: str) -> Timestamp | None:
         raise typer.BadParameter(f"Value {value!r} is not a valid Org timestamp") from err
 
 
-def _parse_tags(value: str) -> list[str]:
-    """Parse --tags value into a list of tag strings."""
-    normalized = value.strip()
-    if not normalized:
-        return []
-    tags = [tag.strip() for tag in normalized.split(",")]
-    if not tags or any(not tag for tag in tags):
-        raise typer.BadParameter("--tags must be a comma-separated list of non-empty tags")
-    return tags
-
-
-def _parse_properties(value: str) -> dict[str, str]:
-    """Parse --properties JSON value into a string dictionary."""
-    normalized = value.strip()
-    if not normalized:
-        return {}
-
-    try:
-        loaded = json.loads(normalized)
-    except json.JSONDecodeError as err:
-        raise typer.BadParameter("--properties must be a valid JSON object") from err
-
-    if not isinstance(loaded, dict):
-        raise typer.BadParameter("--properties must be a JSON object")
-
-    parsed: dict[str, str] = {}
-    for key, property_value in loaded.items():
-        if not isinstance(key, str) or not key.strip():
-            raise typer.BadParameter("--properties keys must be non-empty strings")
-        if not isinstance(property_value, str):
-            raise typer.BadParameter("--properties values must be strings")
-        parsed[key] = property_value
-    return parsed
-
-
 def _parse_property_option(value: str, option_name: str) -> tuple[str, str]:
     """Parse one property value in KEY=VALUE format."""
     if "=" not in value:
@@ -237,7 +152,7 @@ def _parse_tag_option(value: str, option_name: str) -> str:
 
 def _parse_clock_entry(value: str, option_name: str) -> Clock:
     """Parse one clock entry line into a Clock object."""
-    normalized = _normalize_selector(value, option_name)
+    normalized = normalize_selector(value, option_name)
     if normalized is None:
         raise typer.BadParameter(f"{option_name} cannot be empty")
     try:
@@ -248,7 +163,7 @@ def _parse_clock_entry(value: str, option_name: str) -> Clock:
 
 def _parse_repeat_entry(value: str, option_name: str, heading: Heading) -> Repeat:
     """Parse one repeat line into a Repeat object."""
-    normalized = _normalize_selector(value, option_name)
+    normalized = normalize_selector(value, option_name)
     if normalized is None:
         raise typer.BadParameter(f"{option_name} cannot be empty")
 
@@ -280,17 +195,17 @@ def _repeat_key(repeat: Repeat) -> tuple[str, str, str]:
 
 def _resolve_parent_heading(document: Document, parent_value: str) -> Heading:
     """Resolve one parent heading by id first, then title."""
-    id_matches = _id_matches(document, parent_value)
-    if id_matches:
-        return id_matches[0]
+    id_matches_list = id_matches(document, parent_value)
+    if id_matches_list:
+        return id_matches_list[0]
 
-    title_matches = _title_matches(document, parent_value)
-    if len(title_matches) > 1:
+    title_matches_list = title_matches(document, parent_value)
+    if len(title_matches_list) > 1:
         raise typer.BadParameter(
             f"--parent is ambiguous, multiple headings with title '{parent_value}'",
         )
-    if len(title_matches) == 1:
-        return title_matches[0]
+    if len(title_matches_list) == 1:
+        return title_matches_list[0]
     raise typer.BadParameter(f"--parent '{parent_value}' was not found")
 
 
@@ -423,9 +338,9 @@ def _apply_planning_updates(args: UpdateArgs, heading: Heading) -> None:
 def _apply_org_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
     """Apply tags/properties/category/id metadata updates."""
     if args.tags is not None:
-        heading.heading_tags = _parse_tags(args.tags)
+        heading.heading_tags = parse_tags_csv(args.tags)
     if args.properties is not None:
-        heading.properties = _parse_properties(args.properties)
+        heading.properties = parse_properties_json(args.properties)
     if args.category is not None:
         heading.heading_category = _normalize_optional_value(args.category)
     if args.id_value is not None:
@@ -544,24 +459,16 @@ def _apply_field_updates(args: UpdateArgs, heading: Heading) -> None:
 
 def run_tasks_update(args: UpdateArgs) -> None:
     """Run the tasks update command."""
-    query_title, query_id = _validate_identifiers(args)
+    query_title, query_id = validate_exactly_one_selector(
+        args.query_title,
+        "--query-title",
+        args.query_id,
+        "--query-id",
+    )
     _validate_update_option_conflicts(args)
     filenames = resolve_input_paths(args.files)
 
-    matches: list[Heading] = []
-    for filename in filenames:
-        document = _load_document(filename)
-        selector_matches = _id_matches(document, query_id)
-        if query_id is None:
-            selector_matches = _title_matches(document, query_title)
-        matches.extend(selector_matches)
-
-    if not matches:
-        raise typer.BadParameter("No task matches the provided selector")
-    if len(matches) > 1:
-        raise typer.BadParameter("Task selector is ambiguous, multiple tasks match")
-
-    heading = matches[0]
+    heading = resolve_single_heading(filenames, query_title, query_id)
     source_document = heading.document
     destination_document = _resolve_destination_document(args.file, source_document)
 
@@ -577,7 +484,7 @@ def run_tasks_update(args: UpdateArgs) -> None:
 
     for document in documents_to_save:
         document.sync_heading_id_index()
-        _save_document(document)
+        save_document(document)
 
 
 def register(app: typer.Typer) -> None:

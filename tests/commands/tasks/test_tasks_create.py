@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING
 
 import org_parser
@@ -23,7 +24,7 @@ def make_create_args(files: list[str], **overrides: object) -> tasks_create.Crea
         level=None,
         todo="TODO",
         priority=None,
-        is_comment=False,
+        comment=None,
         title="New task",
         counter=None,
         tags=None,
@@ -53,7 +54,7 @@ def test_run_tasks_create_appends_top_level_heading_to_first_resolved_file(tmp_p
     args = make_create_args(
         [str(first), str(second)],
         title="Update docs",
-        tags=["Docs"],
+        tags="Docs",
         body="Body text",
     )
 
@@ -166,7 +167,7 @@ def test_run_tasks_create_requires_at_least_one_heading_component(tmp_path: Path
         [str(source)],
         heading=None,
         todo=None,
-        is_comment=False,
+        comment=None,
         title=None,
     )
 
@@ -188,7 +189,7 @@ def test_run_tasks_create_allows_heading_without_title_when_metadata_is_set(tmp_
     """Create should support metadata-only heading lines without requiring --title."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args([str(source)], title=None, todo="TODO", priority="A", is_comment=True)
+    args = make_create_args([str(source)], title=None, todo="TODO", priority="A", comment="true")
 
     tasks_create.run_tasks_create(args)
 
@@ -198,3 +199,44 @@ def test_run_tasks_create_allows_heading_without_title_when_metadata_is_set(tmp_
     assert node.priority == "A"
     assert node.is_comment
     assert node.title_text == ""
+
+
+def test_run_tasks_create_rejects_invalid_comment_value(tmp_path: Path) -> None:
+    """Create should reject comment values other than true/false."""
+    source = tmp_path / "tasks.org"
+    source.write_text("* TODO Parent\n", encoding="utf-8")
+    args = make_create_args([str(source)], todo=None, title=None, comment="yes")
+
+    with pytest.raises(typer.BadParameter, match="--comment must be either"):
+        tasks_create.run_tasks_create(args)
+
+
+def test_run_tasks_create_applies_json_properties_and_generates_default_id(tmp_path: Path) -> None:
+    """Create should parse --properties JSON and generate ID when missing."""
+    source = tmp_path / "tasks.org"
+    source.write_text("* TODO Parent\n", encoding="utf-8")
+    args = make_create_args(
+        [str(source)],
+        title="Child",
+        properties='{"A":"1"}',
+        id_value=None,
+    )
+
+    tasks_create.run_tasks_create(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    node = list(root)[-1]
+    assert node.properties["A"] == "1"
+    generated_id = node.properties["ID"]
+    assert generated_id
+    uuid.UUID(str(generated_id))
+
+
+def test_run_tasks_create_rejects_invalid_properties_json(tmp_path: Path) -> None:
+    """Create should reject --properties values that are not JSON objects."""
+    source = tmp_path / "tasks.org"
+    source.write_text("* TODO Parent\n", encoding="utf-8")
+    args = make_create_args([str(source)], properties='["x"]')
+
+    with pytest.raises(typer.BadParameter, match="--properties must be a JSON object"):
+        tasks_create.run_tasks_create(args)

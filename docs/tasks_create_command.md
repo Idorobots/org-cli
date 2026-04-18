@@ -13,15 +13,15 @@ poetry run org tasks create [OPTIONS] [FILE ...]
 - `--level N` - Heading level. Defaults to `1`, or `parent_level + 1` when `--parent` is set.
 - `--todo KEY` - Todo state for the new heading.
 - `--priority P` - Heading priority marker.
-- `--is-comment` - Mark heading as `COMMENT`.
+- `--comment BOOL` - Set `COMMENT` flag (`true` or `false` only).
 - `--title TEXT` - Heading title text.
 - `--counter COUNTER` - Completion counter content.
-- `--tag TAG` - Attach tag (repeatable).
-- `--heading HEADING` - Full heading line. Mutually exclusive with `--level`, `--todo`, `--priority`, `--is-comment`, `--title`, `--counter`, and `--tag`.
+- `--tags TAG1,TAG2` - Attach comma-separated tags.
+- `--heading HEADING` - Full heading line. Mutually exclusive with `--level`, `--todo`, `--priority`, `--comment`, `--title`, `--counter`, and `--tags`.
 - `--deadline TIMESTAMP` - Add deadline timestamp.
 - `--scheduled TIMESTAMP` - Add scheduled timestamp.
 - `--closed TIMESTAMP` - Add closed timestamp.
-- `--property KEY=VALUE` - Add heading property (repeatable).
+- `--properties JSON` - Set heading properties from a JSON object.
 - `--category TEXT` - Set `CATEGORY` property.
 - `--id TEXT` - Set `ID` property.
 - `--body TEXT` - Task body text.
@@ -38,6 +38,7 @@ poetry run org tasks create [OPTIONS] [FILE ...]
 
 - Generated heading content is validated with `Heading.from_source` before file updates.
 - Invalid heading source (for example malformed timestamps) returns a CLI error and does not modify files.
+- If `--id` is not provided and `ID` is not set in `--properties`, a UUID is generated automatically.
 
 ## Examples
 
@@ -47,7 +48,7 @@ poetry run org tasks create [OPTIONS] [FILE ...]
 poetry run org tasks create \
   --todo TODO \
   --title "Update the docs" \
-  --tag Docs \
+  --tags Docs \
   --body "Update the documentation..."
 ```
 

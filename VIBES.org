@@ -4365,6 +4365,65 @@ Instead, this should be done with =Repeat.from_list_item(ListItem.from_source())
 Add the following CLI switch to =tasks update=:
 - =--file= - moves the heading to another file saving both the origin and destination files.
 
+*** REWORKED Command refactor
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 20:28]
+:END:
+There seems to be a lot of duplication between tasks delete and tasks update commands. Please refactor the common bits and move them to a common module that both commands can re-use.
+
+Additionally, refactor the new task commands as follows:
+- In =tasks create=, rename the =--is-comment= switch to just =--comment= and make it accept a boolean value.
+- In =tasks create=, update the =--tag= and =--property= switches to =--tags= and =--properties=, tags should accept a list of tags, while properties should accept a JSON object that it sets as the properties of the newly created task,
+- All tasks created with =tasks create= should have a default ID assigned to them, if =--id= is not passed, generate a UUID.
+
+**** DONE src/org/commands/tasks/create.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 20:28]
+:END:
+
+In file src/org/commands/tasks/create.py around line 109, near the ~def _validate_heading_option_exclusivity(args: CreateArgs) -> None:~
+
+#+begin_example
++def _parse_tags(value: str) -> list[str]:
++    """Parse --tags value into a list of tag strings."""
++    normalized = value.strip()
++    if not normalized:
++        return []
++    tags = [tag.strip() for tag in normalized.split(",")]
++    if not tags or any(not tag for tag in tags):
++        raise typer.BadParameter("--tags must be a comma-separated list of non-empty tags")
++    return tags
++
++
++def _parse_properties(value: str) -> dict[str, str]:
++    """Parse --properties JSON value into a string dictionary."""
++    normalized = value.strip()
++    if not normalized:
++        return {}
++
++    try:
++        loaded = json.loads(normalized)
++    except json.JSONDecodeError as err:
++        raise typer.BadParameter("--properties must be a valid JSON object") from err
++
++    if not isinstance(loaded, dict):
++        raise typer.BadParameter("--properties must be a JSON object")
++
++    parsed: dict[str, str] = {}
++    for key, property_value in loaded.items():
++        if not isinstance(key, str) or not key.strip():
++            raise typer.BadParameter("--properties keys must be non-empty strings")
++        if not isinstance(property_value, str):
++            raise typer.BadParameter("--properties values must be strings")
++        parsed[key] = property_value
++    return parsed
+
+#+end_example
+
+This is duplicated with the functions used in =tasks update=, please move these to the common module and re-use.
 *** TODO Task query selector
 In =tasks delete=, rename the =--title= and =--id= to =--query-title= and =--query-id==.
 
@@ -4378,17 +4437,12 @@ Here's an example:
 org tasks delete --query '.title_text == "Test"'
 #+end_example
 
-*** TODO Command refactor
-There seems to be a lot of duplication between tasks delete and tasks update commands. Please refactor the common bits and move them to a common module that both commands can re-use.
-
-Refactor the new task commands as follows:
-- [ ] In =tasks create=, rename the =--is-comment= switch to just =--comment= and make it accept a boolean value.
-- [ ] In =tasks create=, update the =--tag= and =--property= switches to =--tags= and =--properties=, tags should accept a list of tags, while properties should accept a JSON object that it sets as the properties of the newly created task,
-- [ ] All tasks created with =tasks create= should have a default ID assigned to them, if =--id= is not passed, generate a UUID.
-- [ ] Rename =tasks create= to =tasks add= and =tasks delete= to =tasks remove=.
-
+*** Apply edits to multiple tasks
 *** TODO Simplified creation
 The =tasks create= command should have a way to accept a string via stdin.
+
+*** Command rename
+- Rename =tasks create= to =tasks add= and =tasks delete= to =tasks remove=.
 
 ** Agenda command
 Like Org Agenta, but CLI.

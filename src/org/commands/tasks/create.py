@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 import org_parser
 import typer
@@ -12,6 +13,7 @@ from org_parser.document import Document, Heading
 
 from org import config as config_module
 from org.cli_common import resolve_input_paths
+from org.commands.tasks.common import normalize_selector, parse_properties_json, parse_tags_csv
 
 
 _TASK_TEMPLATE = "{heading}\n{planning}{properties}{body}"
@@ -26,15 +28,15 @@ class CreateArgs:
     level: int | None
     todo: str | None
     priority: str | None
-    is_comment: bool
+    comment: str | None
     title: str | None
     counter: str | None
-    tags: list[str] | None
+    tags: str | None
     heading: str | None
     deadline: str | None
     scheduled: str | None
     closed: str | None
-    properties: list[str] | None
+    properties: str | None
     category: str | None
     id_value: str | None
     body: str | None
@@ -49,13 +51,13 @@ def _validate_heading_option_exclusivity(args: CreateArgs) -> None:
 
     conflicts: list[str] = []
     if args.tags is not None:
-        conflicts.append("--tag")
+        conflicts.append("--tags")
     if args.counter is not None:
         conflicts.append("--counter")
     if args.title is not None:
         conflicts.append("--title")
-    if args.is_comment:
-        conflicts.append("--is-comment")
+    if args.comment is not None:
+        conflicts.append("--comment")
     if args.priority is not None:
         conflicts.append("--priority")
     if args.todo is not None:
@@ -70,27 +72,25 @@ def _validate_heading_option_exclusivity(args: CreateArgs) -> None:
 
 def _validate_required_heading_components(args: CreateArgs) -> None:
     """Require at least one heading source component to be specified."""
+    comment_enabled = _parse_comment_flag(args.comment) if args.comment is not None else False
     has_structured_heading_component = (
-        args.todo is not None or args.is_comment or args.title is not None
+        args.todo is not None or comment_enabled or args.title is not None
     )
     if args.heading is not None or has_structured_heading_component:
         return
     raise typer.BadParameter(
-        "Task heading is empty. Provide --heading or at least one of: "
-        "--todo, --is-comment, --title",
+        "Task heading is empty. Provide --heading or at least one of: --todo, --comment, --title",
     )
 
 
-def _parse_property_option(value: str) -> tuple[str, str]:
-    """Parse one --property value in KEY=VALUE format."""
-    if "=" not in value:
-        raise typer.BadParameter(f"--property must be in KEY=VALUE format, got '{value}'")
-
-    key, property_value = value.split("=", 1)
-    normalized_key = key.strip()
-    if not normalized_key:
-        raise typer.BadParameter("--property key cannot be empty")
-    return normalized_key, property_value
+def _parse_comment_flag(value: str) -> bool:
+    """Parse --comment value as strict true/false."""
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise typer.BadParameter("--comment must be either 'true' or 'false'")
 
 
 def _resolve_target_file(file_option: str | None, files: list[str] | None) -> str:
@@ -173,7 +173,7 @@ def _build_heading_line_from_fields(args: CreateArgs, level: int) -> str:
         metadata_tokens.append(args.todo)
     if args.priority is not None:
         metadata_tokens.append(f"[#{args.priority}]")
-    if args.is_comment:
+    if args.comment is not None and _parse_comment_flag(args.comment):
         metadata_tokens.append("COMMENT")
 
     title_parts = [part for part in (args.title, args.counter) if part is not None]
@@ -185,8 +185,9 @@ def _build_heading_line_from_fields(args: CreateArgs, level: int) -> str:
     if title_text:
         heading_line = f"{heading_line} {title_text}"
 
-    if args.tags:
-        heading_line = f"{heading_line} :{':'.join(args.tags)}:"
+    parsed_tags = [] if args.tags is None else parse_tags_csv(args.tags)
+    if parsed_tags:
+        heading_line = f"{heading_line} :{':'.join(parsed_tags)}:"
     elif metadata_tokens and not title_text:
         heading_line = f"{heading_line} "
 
@@ -221,16 +222,17 @@ def _planning_line(args: CreateArgs) -> str:
 
 
 def _build_properties(args: CreateArgs) -> dict[str, str]:
-    """Build final property map from --property, --category, and --id."""
-    properties: dict[str, str] = {}
-    for value in args.properties or []:
-        key, property_value = _parse_property_option(value)
-        properties[key] = property_value
+    """Build final property map from --properties, --category, and --id."""
+    properties = {} if args.properties is None else parse_properties_json(args.properties)
 
     if args.category is not None:
         properties["CATEGORY"] = args.category
-    if args.id_value is not None:
-        properties["ID"] = args.id_value
+
+    normalized_id = normalize_selector(args.id_value, "--id")
+    if normalized_id is not None:
+        properties["ID"] = normalized_id
+    elif "ID" not in properties:
+        properties["ID"] = str(uuid4())
 
     return properties
 
@@ -348,10 +350,11 @@ def register(app: typer.Typer) -> None:
             metavar="P",
             help="Priority marker for the new task",
         ),
-        is_comment: bool = typer.Option(
-            False,
-            "--is-comment",
-            help="Mark the heading as COMMENT",
+        comment: str | None = typer.Option(
+            None,
+            "--comment",
+            metavar="BOOL",
+            help="Set COMMENT flag using true or false",
         ),
         title: str | None = typer.Option(
             None,
@@ -365,11 +368,11 @@ def register(app: typer.Typer) -> None:
             metavar="COUNTER",
             help="Completion counter content for the new task",
         ),
-        tags: list[str] | None = typer.Option(  # noqa: B008
+        tags: str | None = typer.Option(
             None,
-            "--tag",
-            metavar="TAG",
-            help="Tag to attach to the task (repeatable)",
+            "--tags",
+            metavar="TAG1,TAG2",
+            help="Comma-separated tags to set",
         ),
         heading: str | None = typer.Option(
             None,
@@ -377,7 +380,7 @@ def register(app: typer.Typer) -> None:
             metavar="HEADING",
             help=(
                 "Entire heading line for the task. Cannot be combined with --level, --todo, "
-                "--priority, --is-comment, --title, --counter, or --tag"
+                "--priority, --comment, --title, --counter, or --tags"
             ),
         ),
         deadline: str | None = typer.Option(
@@ -398,11 +401,11 @@ def register(app: typer.Typer) -> None:
             metavar="TIMESTAMP",
             help="Closed timestamp for the new task",
         ),
-        properties: list[str] | None = typer.Option(  # noqa: B008
+        properties: str | None = typer.Option(
             None,
-            "--property",
-            metavar="KEY=VALUE",
-            help="Property to attach to the task (repeatable)",
+            "--properties",
+            metavar="JSON",
+            help="Properties JSON object to set (empty string clears)",
         ),
         category: str | None = typer.Option(
             None,
@@ -442,7 +445,7 @@ def register(app: typer.Typer) -> None:
             level=level,
             todo=todo,
             priority=priority,
-            is_comment=is_comment,
+            comment=comment,
             title=title,
             counter=counter,
             tags=tags,
