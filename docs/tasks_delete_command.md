@@ -11,15 +11,17 @@ poetry run org tasks delete [OPTIONS] [FILE ...]
 ## Command-specific switches
 
 - `--config FILE` - Config file name to load from current directory (default: `.org-cli.json`).
-- `--title TEXT` - Heading title text of the task to remove.
-- `--id TEXT` - ID of the task to remove.
+- `--query-title TEXT` - Heading title text of the task to remove.
+- `--query-id TEXT` - ID of the task to remove.
+- `--query QUERY` - Generic query-language predicate used to select one task.
 
 ## Selector rules
 
-- Provide exactly one selector: `--title` or `--id`.
+- Provide exactly one selector: `--query-title`, `--query-id`, or `--query`.
 - Passing neither selector returns an error.
-- Passing both selectors returns an error.
-- Blank selector values (for example `--title "   "`) return an error.
+- Passing multiple selector switches returns an error.
+- Blank selector values (for example `--query-title "   "`) return an error.
+- `--query` is wrapped as `.[] | select(<QUERY>)` before execution.
 
 ## Matching behavior
 
@@ -39,17 +41,23 @@ poetry run org tasks delete [OPTIONS] [FILE ...]
 1) Delete by title
 
 ```bash
-poetry run org tasks delete --title "Update the docs" ROADMAP.org
+poetry run org tasks delete --query-title "Update the docs" ROADMAP.org
 ```
 
 2) Delete by ID
 
 ```bash
-poetry run org tasks delete --id task-123 ROADMAP.org
+poetry run org tasks delete --query-id task-123 ROADMAP.org
 ```
 
 3) Search multiple files and delete one uniquely matched task
 
 ```bash
-poetry run org tasks delete --title "Refactor parser" notes.org backlog.org
+poetry run org tasks delete --query-title "Refactor parser" notes.org backlog.org
+```
+
+4) Delete by generic query selector
+
+```bash
+poetry run org tasks delete --query '.title_text == "Test"' ROADMAP.org
 ```

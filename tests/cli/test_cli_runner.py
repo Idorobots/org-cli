@@ -214,7 +214,7 @@ def test_cli_runner_tasks_delete_removes_heading(tmp_path: Path) -> None:
         [
             "tasks",
             "delete",
-            "--title",
+            "--query-title",
             "Remove me",
             str(fixture_path),
         ],
@@ -229,7 +229,7 @@ def test_cli_runner_tasks_delete_removes_heading(tmp_path: Path) -> None:
 
 
 def test_cli_runner_tasks_delete_requires_identifier(tmp_path: Path) -> None:
-    """CliRunner should reject tasks delete without title and id selectors."""
+    """CliRunner should reject tasks delete without selector options."""
     runner = CliRunner()
     fixture_path = tmp_path / "tasks.org"
     fixture_path.write_text("* TODO Keep\n", encoding="utf-8")
@@ -245,11 +245,11 @@ def test_cli_runner_tasks_delete_requires_identifier(tmp_path: Path) -> None:
 
     assert result.exit_code != 0
     combined_output = result.stdout + result.stderr
-    assert "exactly one task identifier" in combined_output
+    assert "exactly one task selector" in combined_output
 
 
 def test_cli_runner_tasks_delete_rejects_title_and_id_together(tmp_path: Path) -> None:
-    """CliRunner should reject tasks delete when both selectors are provided."""
+    """CliRunner should reject tasks delete when multiple selectors are provided."""
     runner = CliRunner()
     fixture_path = tmp_path / "tasks.org"
     fixture_path.write_text(
@@ -262,9 +262,9 @@ def test_cli_runner_tasks_delete_rejects_title_and_id_together(tmp_path: Path) -
         [
             "tasks",
             "delete",
-            "--title",
+            "--query-title",
             "Keep",
-            "--id",
+            "--query-id",
             "task-1",
             str(fixture_path),
         ],
@@ -272,7 +272,34 @@ def test_cli_runner_tasks_delete_rejects_title_and_id_together(tmp_path: Path) -
 
     assert result.exit_code != 0
     combined_output = result.stdout + result.stderr
-    assert "exactly one task identifier" in combined_output
+    assert "exactly one task selector" in combined_output
+
+
+def test_cli_runner_tasks_delete_supports_query_selector(tmp_path: Path) -> None:
+    """CliRunner should delete using generic --query selector."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text(
+        "* TODO Keep\n* TODO Remove me\n* TODO Tail\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "delete",
+            "--query",
+            'str(.title_text) == "Remove me"',
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    updated = fixture_path.read_text(encoding="utf-8")
+    assert "Remove me" not in updated
+    assert "Keep" in updated
+    assert "Tail" in updated
 
 
 def test_cli_runner_tasks_update_updates_heading(tmp_path: Path) -> None:
@@ -291,6 +318,30 @@ def test_cli_runner_tasks_update_updates_heading(tmp_path: Path) -> None:
             "update",
             "--query-id",
             "task-1",
+            "--title",
+            "Updated",
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    updated = fixture_path.read_text(encoding="utf-8")
+    assert "* TODO Updated" in updated
+
+
+def test_cli_runner_tasks_update_supports_query_selector(tmp_path: Path) -> None:
+    """CliRunner should update a task selected by generic --query."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text("* TODO Keep\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "update",
+            "--query",
+            'str(.title_text) == "Keep"',
             "--title",
             "Updated",
             str(fixture_path),
@@ -321,7 +372,7 @@ def test_cli_runner_tasks_update_requires_identifier(tmp_path: Path) -> None:
 
     assert result.exit_code != 0
     combined_output = result.stdout + result.stderr
-    assert "exactly one task identifier" in combined_output
+    assert "exactly one task selector" in combined_output
 
 
 def test_cli_runner_tasks_update_rejects_invalid_comment(tmp_path: Path) -> None:

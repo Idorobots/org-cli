@@ -4424,7 +4424,10 @@ In file src/org/commands/tasks/create.py around line 109, near the ~def _validat
 #+end_example
 
 This is duplicated with the functions used in =tasks update=, please move these to the common module and re-use.
-*** TODO Task query selector
+*** REWORKED Task query selector
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 21:16]
+:END:
 In =tasks delete=, rename the =--title= and =--id= to =--query-title= and =--query-id==.
 
 Add =--query= parameter for finding tasks to be removed/updated by a generic query language query. The switch should be available in =tasks delete= and =tasks update= and it should be mutually exclusive with =--query-title= and =--query-id= (only one of the three must be specified).
@@ -4437,7 +4440,100 @@ Here's an example:
 org tasks delete --query '.title_text == "Test"'
 #+end_example
 
-*** Apply edits to multiple tasks
+Please add debug logs showing the selected tags and what operations are applied on which files. These should be only visible when =--verbose= flag is set.
+
+**** DONE src/org/commands/tasks/common.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 21:14]
+:END:
+
+In file src/org/commands/tasks/common.py around line 78, near the ~def normalize_selector(value: str | None, option_name: str) -> str | None:~
+
+#+begin_example
++        return f".[] | select(str(.title_text) == {json.dumps(normalized_title)})"
+#+end_example
+
+There's no reason to use =json.dumps()= as a normalization for the text. Just wrap it in double quotes and leave the escaping to the user.
+**** DONE src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 21:15]
+:END:
+
+In file src/org/commands/tasks/update.py around line 487, near the ~def _validate_update_option_conflicts(args: UpdateArgs) -> None:~
+
+#+begin_example
+def _collect_update_operations(args: UpdateArgs) -> list[str]:
++    """Collect active update switches for debug logging."""
++    operations: list[str] = []
++    for option_name, value in [
++        ("level", args.level),
++        ("todo", args.todo),
++        ("priority", args.priority),
++        ("comment", args.comment),
++        ("title", args.title),
++        ("id", args.id_value),
++        ("counter", args.counter),
++        ("deadline", args.deadline),
++        ("scheduled", args.scheduled),
++        ("closed", args.closed),
++        ("category", args.category),
++        ("body", args.body),
++        ("parent", args.parent),
++        ("file", args.file),
++        ("tags", args.tags),
++        ("properties", args.properties),
++        ("add-clock-entry", args.add_clock_entry),
++        ("remove-clock-entry", args.remove_clock_entry),
++        ("add-repeat", args.add_repeat),
++        ("remove-repeat", args.remove_repeat),
++        ("add-tag", args.add_tag),
++        ("remove-tag", args.remove_tag),
++        ("add-property", args.add_property),
++        ("remove-property", args.remove_property),
++    ]:
++        if value is not None:
++            operations.append(option_name)
++    return operations
+
+#+end_example
+
+No need to log all of these specifically, just let the log say "Updating task" with a specified title, id, etc.
+**** DONE src/org/logging_config.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 21:25]
+:END:
+
+In file src/org/logging_config.py around line 18, near the ~def configure_logging(verbose: bool) -> None:~
+
+#+begin_example
+-        verbose: Whether to enable INFO logging to stdout
++        verbose: Whether to enable DEBUG logging to stdout
+
+#+end_example
+
+Please don't change that. All of these logs should be INFO-level.
+*** TODO Apply edits to multiple tasks
+Let's relax the rules for task selectors in delete & update commands to apply the operations to potentially multiple tasks that have been selected by a selector.
+
+Both commands should first determine the number of affected tasks and ask for confirmation before applying the destructive action. You can use Python's Rich's =rich.prompt.Confirm= for that.
+
+Once the user confirms:
+- For =tasks delete=, all selected tasks should be deleted. The output of the command should be "Deleted {number} tasks."
+- For =tasks update=, all selected tasks should be updated the same way (dictated by the other parameters). The output of the command should say "Updated {number} tasks.".
+
+In both cases, a debug log of the operations should be printed.
+
+Add an additional =--yes= CLI switch for these two commands that will automatically confirm the action without prompting the user.
+
 *** TODO Simplified creation
 The =tasks create= command should have a way to accept a string via stdin.
 

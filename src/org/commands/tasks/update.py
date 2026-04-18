@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,11 +21,14 @@ from org.commands.tasks.common import (
     normalize_selector,
     parse_properties_json,
     parse_tags_csv,
-    resolve_single_heading,
+    resolve_single_heading_by_query,
+    resolve_task_selector_query,
     save_document,
     title_matches,
-    validate_exactly_one_selector,
 )
+
+
+logger = logging.getLogger("org")
 
 
 @dataclass
@@ -35,6 +39,7 @@ class UpdateArgs:
     config: str
     query_title: str | None
     query_id: str | None
+    query: str | None
     level: int | None
     todo: str | None
     priority: str | None
@@ -459,20 +464,27 @@ def _apply_field_updates(args: UpdateArgs, heading: Heading) -> None:
 
 def run_tasks_update(args: UpdateArgs) -> None:
     """Run the tasks update command."""
-    query_title, query_id = validate_exactly_one_selector(
-        args.query_title,
-        "--query-title",
-        args.query_id,
-        "--query-id",
-    )
+    selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
     _validate_update_option_conflicts(args)
     filenames = resolve_input_paths(args.files)
 
-    heading = resolve_single_heading(filenames, query_title, query_id)
+    heading = resolve_single_heading_by_query(filenames, selector_query)
+    logger.info(
+        "Updating task: file=%s title=%s id=%s tags=%s",
+        heading.document.filename,
+        heading.title_text,
+        heading.id,
+        list(heading.heading_tags),
+    )
     source_document = heading.document
     destination_document = _resolve_destination_document(args.file, source_document)
 
     if destination_document is not source_document:
+        logger.info(
+            "Moving task between files: source=%s destination=%s",
+            source_document.filename,
+            destination_document.filename,
+        )
         _move_heading(heading, None, destination_document)
 
     _apply_parent_and_level_updates(args, heading)
@@ -483,6 +495,7 @@ def run_tasks_update(args: UpdateArgs) -> None:
         documents_to_save.append(source_document)
 
     for document in documents_to_save:
+        logger.info("Saving updated file: %s", document.filename)
         document.sync_heading_id_index()
         save_document(document)
 
@@ -514,6 +527,12 @@ def register(app: typer.Typer) -> None:
             "--query-id",
             metavar="TEXT",
             help="ID of the task to update",
+        ),
+        query: str | None = typer.Option(
+            None,
+            "--query",
+            metavar="QUERY",
+            help="Generic query language selector expression",
         ),
         level: int | None = typer.Option(
             None,
@@ -666,6 +685,7 @@ def register(app: typer.Typer) -> None:
             config=config,
             query_title=query_title,
             query_id=query_id,
+            query=query,
             level=level,
             todo=todo,
             priority=priority,

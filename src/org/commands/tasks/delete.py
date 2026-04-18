@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -11,14 +12,17 @@ import typer
 from org import config as config_module
 from org.cli_common import resolve_input_paths
 from org.commands.tasks.common import (
-    resolve_single_heading,
+    resolve_single_heading_by_query,
+    resolve_task_selector_query,
     save_document,
-    validate_exactly_one_selector,
 )
 
 
 if TYPE_CHECKING:
     from org_parser.document import Heading
+
+
+logger = logging.getLogger("org")
 
 
 @dataclass
@@ -27,8 +31,9 @@ class DeleteArgs:
 
     files: list[str] | None
     config: str
-    title: str | None
-    id_value: str | None
+    query_title: str | None
+    query_id: str | None
+    query: str | None
 
 
 def _remove_heading(heading: Heading) -> None:
@@ -41,11 +46,19 @@ def _remove_heading(heading: Heading) -> None:
 
 def run_tasks_delete(args: DeleteArgs) -> None:
     """Run the tasks delete command."""
-    title, id_value = validate_exactly_one_selector(args.title, "--title", args.id_value, "--id")
     filenames = resolve_input_paths(args.files)
+    selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
 
-    heading = resolve_single_heading(filenames, title, id_value)
+    heading = resolve_single_heading_by_query(filenames, selector_query)
+    logger.info(
+        "Deleting task from file=%s title=%s id=%s tags=%s",
+        heading.document.filename,
+        heading.title_text,
+        heading.id,
+        list(heading.heading_tags),
+    )
     _remove_heading(heading)
+    logger.info("Saving file after delete: %s", heading.document.filename)
     save_document(heading.document)
 
 
@@ -65,25 +78,32 @@ def register(app: typer.Typer) -> None:
             metavar="FILE",
             help="Config file name to load from current directory",
         ),
-        title: str | None = typer.Option(
+        query_title: str | None = typer.Option(
             None,
-            "--title",
+            "--query-title",
             metavar="TEXT",
             help="Heading title text of the task to remove",
         ),
-        id_value: str | None = typer.Option(
+        query_id: str | None = typer.Option(
             None,
-            "--id",
+            "--query-id",
             metavar="TEXT",
             help="ID of the task to remove",
+        ),
+        query: str | None = typer.Option(
+            None,
+            "--query",
+            metavar="QUERY",
+            help="Generic query language selector expression",
         ),
     ) -> None:
         """Delete one task heading and its subtree from a selected org document."""
         args = DeleteArgs(
             files=files,
             config=config,
-            title=title,
-            id_value=id_value,
+            query_title=query_title,
+            query_id=query_id,
+            query=query,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks delete")

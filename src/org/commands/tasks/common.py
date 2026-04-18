@@ -3,14 +3,27 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 
 import org_parser
 import typer
+from org_parser.document import Heading
+
+from org.query_language import (
+    EvalContext,
+    QueryParseError,
+    QueryRuntimeError,
+    Stream,
+    compile_query_text,
+)
 
 
 if TYPE_CHECKING:
-    from org_parser.document import Document, Heading
+    from org_parser.document import Document
+
+
+logger = logging.getLogger("org")
 
 
 def normalize_selector(value: str | None, option_name: str) -> str | None:
@@ -23,24 +36,31 @@ def normalize_selector(value: str | None, option_name: str) -> str | None:
     return normalized
 
 
-def validate_exactly_one_selector(
-    first_value: str | None,
-    first_option: str,
-    second_value: str | None,
-    second_option: str,
-) -> tuple[str | None, str | None]:
-    """Validate selector pair where exactly one option must be provided."""
-    normalized_first = normalize_selector(first_value, first_option)
-    normalized_second = normalize_selector(second_value, second_option)
-    if normalized_first is None and normalized_second is None:
+def resolve_task_selector_query(
+    query_title: str | None,
+    query_id: str | None,
+    query: str | None,
+) -> str:
+    """Resolve task selector into one query-language expression."""
+    normalized_title = normalize_selector(query_title, "--query-title")
+    normalized_id = normalize_selector(query_id, "--query-id")
+    normalized_query = normalize_selector(query, "--query")
+
+    selectors = [
+        normalized_title is not None,
+        normalized_id is not None,
+        normalized_query is not None,
+    ]
+    if sum(selectors) != 1:
         raise typer.BadParameter(
-            f"Provide exactly one task identifier: {first_option} or {second_option}",
+            "Provide exactly one task selector: --query-title, --query-id, or --query",
         )
-    if normalized_first is not None and normalized_second is not None:
-        raise typer.BadParameter(
-            f"Provide exactly one task identifier: {first_option} or {second_option}",
-        )
-    return normalized_first, normalized_second
+
+    if normalized_query is not None:
+        return f".[] | select({normalized_query})"
+    if normalized_title is not None:
+        return f'.[] | select(str(.title_text) == "{normalized_title}")'
+    return f".[] | select(str(.id) == {json.dumps(normalized_id)})"
 
 
 def load_document(path: str) -> Document:
@@ -116,20 +136,34 @@ def parse_properties_json(value: str) -> dict[str, str]:
     return parsed
 
 
-def resolve_single_heading(
+def resolve_single_heading_by_query(
     filenames: list[str],
-    title: str | None,
-    id_value: str | None,
+    selector_query: str,
 ) -> Heading:
-    """Resolve one heading across files by title or ID."""
-    matches: list[Heading] = []
+    """Resolve one heading across files from selector query."""
+    try:
+        compiled_query = compile_query_text(selector_query)
+    except QueryParseError as err:
+        raise typer.BadParameter(f"Invalid task selector query: {err}") from err
+
+    logger.info("Task selector query: %s", selector_query)
+    matches_by_identity: dict[int, Heading] = {}
     for filename in filenames:
         document = load_document(filename)
-        selector_matches = id_matches(document, id_value)
-        if id_value is None:
-            selector_matches = title_matches(document, title)
-        matches.extend(selector_matches)
+        logger.info("Running task selector query against file: %s", filename)
+        try:
+            results = compiled_query(Stream([document]), EvalContext({}))
+        except QueryRuntimeError as err:
+            raise typer.BadParameter(f"Task selector query failed: {err}") from err
 
+        for value in results:
+            if not isinstance(value, Heading):
+                raise typer.BadParameter(
+                    "Task selector query must return task headings",
+                )
+            matches_by_identity[id(value)] = value
+
+    matches = list(matches_by_identity.values())
     if not matches:
         raise typer.BadParameter("No task matches the provided selector")
     if len(matches) > 1:

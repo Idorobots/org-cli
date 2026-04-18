@@ -20,8 +20,9 @@ def make_delete_args(files: list[str], **overrides: object) -> tasks_delete.Dele
     args = tasks_delete.DeleteArgs(
         files=files,
         config=".org-cli.json",
-        title=None,
-        id_value=None,
+        query_title=None,
+        query_id=None,
+        query=None,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -35,7 +36,7 @@ def test_run_tasks_delete_removes_matching_title_subtree(tmp_path: Path) -> None
         "* TODO Keep\n* TODO Remove me\n** TODO Child\n*** TODO Grandchild\n* TODO Tail\n",
         encoding="utf-8",
     )
-    args = make_delete_args([str(source)], title="Remove me")
+    args = make_delete_args([str(source)], query_title="Remove me")
 
     tasks_delete.run_tasks_delete(args)
 
@@ -59,7 +60,7 @@ def test_run_tasks_delete_removes_matching_id_subtree(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    args = make_delete_args([str(source)], id_value="task-123")
+    args = make_delete_args([str(source)], query_id="task-123")
 
     tasks_delete.run_tasks_delete(args)
 
@@ -74,7 +75,7 @@ def test_run_tasks_delete_requires_at_least_one_identifier(tmp_path: Path) -> No
     source.write_text("* TODO Keep\n", encoding="utf-8")
     args = make_delete_args([str(source)])
 
-    with pytest.raises(typer.BadParameter, match="exactly one task identifier"):
+    with pytest.raises(typer.BadParameter, match="exactly one task selector"):
         tasks_delete.run_tasks_delete(args)
 
 
@@ -82,9 +83,9 @@ def test_run_tasks_delete_rejects_title_and_id_together(tmp_path: Path) -> None:
     """Delete should reject using both title and id selectors together."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Keep\n", encoding="utf-8")
-    args = make_delete_args([str(source)], title="Keep", id_value="task-123")
+    args = make_delete_args([str(source)], query_title="Keep", query_id="task-123")
 
-    with pytest.raises(typer.BadParameter, match="exactly one task identifier"):
+    with pytest.raises(typer.BadParameter, match="exactly one task selector"):
         tasks_delete.run_tasks_delete(args)
 
 
@@ -92,7 +93,7 @@ def test_run_tasks_delete_errors_when_multiple_tasks_match(tmp_path: Path) -> No
     """Delete should fail when title selector matches more than one task."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Same\n* TODO Same\n", encoding="utf-8")
-    args = make_delete_args([str(source)], title="Same")
+    args = make_delete_args([str(source)], query_title="Same")
 
     with pytest.raises(typer.BadParameter, match="multiple tasks match"):
         tasks_delete.run_tasks_delete(args)
@@ -102,7 +103,37 @@ def test_run_tasks_delete_errors_when_no_tasks_match(tmp_path: Path) -> None:
     """Delete should fail when no tasks satisfy selectors."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Keep\n", encoding="utf-8")
-    args = make_delete_args([str(source)], title="Missing")
+    args = make_delete_args([str(source)], query_title="Missing")
 
     with pytest.raises(typer.BadParameter, match="No task matches"):
+        tasks_delete.run_tasks_delete(args)
+
+
+def test_run_tasks_delete_removes_matching_query_subtree(tmp_path: Path) -> None:
+    """Delete should remove one task selected by --query expression."""
+    source = tmp_path / "tasks.org"
+    source.write_text(
+        "* TODO Keep\n* TODO Remove me\n** TODO Child\n* TODO Tail\n",
+        encoding="utf-8",
+    )
+    args = make_delete_args([str(source)], query='str(.title_text) == "Remove me"')
+
+    tasks_delete.run_tasks_delete(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    titles = [node.title_text.strip() for node in list(root)]
+    assert titles == ["Keep", "Tail"]
+
+
+def test_run_tasks_delete_rejects_multiple_selector_switches(tmp_path: Path) -> None:
+    """Delete should require exactly one selector among title/id/query."""
+    source = tmp_path / "tasks.org"
+    source.write_text("* TODO Keep\n", encoding="utf-8")
+    args = make_delete_args(
+        [str(source)],
+        query_title="Keep",
+        query='str(.title_text) == "Keep"',
+    )
+
+    with pytest.raises(typer.BadParameter, match="exactly one task selector"):
         tasks_delete.run_tasks_delete(args)

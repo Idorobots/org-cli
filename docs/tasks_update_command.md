@@ -12,8 +12,9 @@ poetry run org tasks update [OPTIONS] [FILE ...]
 
 - `--query-title TEXT` - Match task by heading title text.
 - `--query-id TEXT` - Match task by heading `ID` property.
+- `--query QUERY` - Match task using a generic query-language predicate.
 
-Provide exactly one selector: `--query-title` or `--query-id`.
+Provide exactly one selector: `--query-title`, `--query-id`, or `--query`.
 
 ## Update switches
 
@@ -48,6 +49,7 @@ Provide exactly one selector: `--query-title` or `--query-id`.
 - Matching checks all resolved files.
 - Selector must match exactly one task across all files.
 - No matches or multiple matches return an error.
+- `--query` is wrapped as `.[] | select(<QUERY>)` before execution.
 - Parent lookup checks heading `ID` first, then heading title.
 - Parent lookup errors on missing parent or ambiguous title matches.
 - When `--file` is used with `--parent`, parent lookup is resolved in the destination file.
@@ -68,37 +70,43 @@ Provide exactly one selector: `--query-title` or `--query-id`.
 poetry run org tasks update --query-id 23 --title "Foo"
 ```
 
-2) Update TODO state and set closed timestamp
+2) Update by generic query selector
+
+```bash
+poetry run org tasks update --query 'str(.title_text) == "Foo"' --title "Bar"
+```
+
+3) Update TODO state and set closed timestamp
 
 ```bash
 poetry run org tasks update --query-title "Foo" --todo DONE --closed "<2026-04-13>"
 ```
 
-3) Move task under a new parent and set explicit valid level
+4) Move task under a new parent and set explicit valid level
 
 ```bash
 poetry run org tasks update --query-id 23 --parent project-1 --level 3
 ```
 
-4) Clear tags and properties
+5) Clear tags and properties
 
 ```bash
 poetry run org tasks update --query-id 23 --tags "" --properties ""
 ```
 
-5) Add and remove specific tags and properties
+6) Add and remove specific tags and properties
 
 ```bash
 poetry run org tasks update --query-id 23 --add-tag urgent --remove-tag waiting --add-property ETA=2026-04-20 --remove-property LAST_REPEAT
 ```
 
-6) Add and remove specific logbook entries
+7) Add and remove specific logbook entries
 
 ```bash
 poetry run org tasks update --query-id 23 --add-clock-entry "CLOCK: [2026-04-14 Tue 09:00]--[2026-04-14 Tue 10:00] =>  1:00" --add-repeat "- State \"DONE\" from \"TODO\" [2026-04-14 Tue 10:00]"
 ```
 
-7) Move a task to another file
+8) Move a task to another file
 
 ```bash
 poetry run org tasks update --query-id 23 --file path/to/destination.org path/to/source.org

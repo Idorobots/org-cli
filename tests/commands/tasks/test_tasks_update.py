@@ -23,6 +23,7 @@ def make_update_args(files: list[str], **overrides: object) -> tasks_update.Upda
         config=".org-cli.json",
         query_title=None,
         query_id="task-1",
+        query=None,
         level=None,
         todo=None,
         priority=None,
@@ -91,14 +92,46 @@ def test_run_tasks_update_requires_exactly_one_identifier(tmp_path: Path) -> Non
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Keep\n", encoding="utf-8")
 
-    with pytest.raises(typer.BadParameter, match="exactly one task identifier"):
+    with pytest.raises(typer.BadParameter, match="exactly one task selector"):
         tasks_update.run_tasks_update(
             make_update_args([str(source)], query_id=None, query_title=None),
         )
 
-    with pytest.raises(typer.BadParameter, match="exactly one task identifier"):
+    with pytest.raises(typer.BadParameter, match="exactly one task selector"):
         tasks_update.run_tasks_update(
             make_update_args([str(source)], query_id="task-1", query_title="Keep"),
+        )
+
+
+def test_run_tasks_update_supports_generic_query_selector(tmp_path: Path) -> None:
+    """Update should support selecting task through --query predicate."""
+    source = tmp_path / "tasks.org"
+    source.write_text("* TODO Foo\n", encoding="utf-8")
+    args = make_update_args(
+        [str(source)],
+        query_id=None,
+        query='str(.title_text) == "Foo"',
+        title="Updated",
+    )
+
+    tasks_update.run_tasks_update(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    node = next(iter(root))
+    assert node.title_text.strip() == "Updated"
+
+
+def test_run_tasks_update_rejects_query_with_other_selectors(tmp_path: Path) -> None:
+    """Update should reject --query combined with query-id/title selectors."""
+    source = tmp_path / "tasks.org"
+    source.write_text("* TODO Foo\n", encoding="utf-8")
+
+    with pytest.raises(typer.BadParameter, match="exactly one task selector"):
+        tasks_update.run_tasks_update(
+            make_update_args(
+                [str(source)],
+                query='str(.title_text) == "Foo"',
+            ),
         )
 
 
