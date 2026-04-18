@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import uuid
 from typing import TYPE_CHECKING
 
@@ -159,8 +160,11 @@ def test_run_tasks_create_rejects_heading_with_mutually_exclusive_switches(tmp_p
         tasks_create.run_tasks_create(args)
 
 
-def test_run_tasks_create_requires_at_least_one_heading_component(tmp_path: Path) -> None:
-    """Create should require --heading or one structured heading component."""
+def test_run_tasks_create_reads_task_source_from_stdin_when_heading_components_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Create should read and parse task source from stdin when heading source is omitted."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
     args = make_create_args(
@@ -170,6 +174,101 @@ def test_run_tasks_create_requires_at_least_one_heading_component(tmp_path: Path
         comment=None,
         title=None,
     )
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("* TODO From stdin\n"))
+
+    tasks_create.run_tasks_create(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    created = list(root)[-1]
+    assert created.todo == "TODO"
+    assert created.title_text.strip() == "From stdin"
+
+
+def test_run_tasks_create_applies_edits_to_stdin_task_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Create should apply non-heading-source switches as edits on stdin task input."""
+    source = tmp_path / "tasks.org"
+    source.write_text("* TODO Parent\n", encoding="utf-8")
+    args = make_create_args(
+        [str(source)],
+        heading=None,
+        todo=None,
+        comment=None,
+        title=None,
+        level=2,
+        priority="A",
+        tags="new,docs",
+        scheduled="<2026-04-20>",
+        deadline="<2026-04-21>",
+        closed="<2026-04-22>",
+        properties='{"A":"1"}',
+        category="Work",
+        id_value="task-99",
+        body="Updated body",
+    )
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("* TODO Base :old:\n** TODO Child\n"))
+
+    tasks_create.run_tasks_create(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    nodes = list(root)
+    created = next(node for node in nodes if node.title_text.strip() == "Base")
+    child = next(node for node in nodes if node.title_text.strip() == "Child")
+    assert created.level == 2
+    assert child.level == 3
+    assert created.priority == "A"
+    assert created.tags == ["new", "docs"]
+    assert str(created.scheduled) == "<2026-04-20>"
+    assert str(created.deadline) == "<2026-04-21>"
+    assert str(created.closed) == "<2026-04-22>"
+    assert created.id == "task-99"
+    assert created.category == "Work"
+    assert created.properties["A"] == "1"
+    assert "Updated body" in source.read_text(encoding="utf-8")
+
+
+def test_run_tasks_create_stdin_uses_same_parent_level_validation_as_level(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Create should enforce parent-level constraints for stdin-provided heading levels."""
+    source = tmp_path / "tasks.org"
+    source.write_text("* TODO Parent\n", encoding="utf-8")
+    args = make_create_args(
+        [str(source)],
+        heading=None,
+        todo=None,
+        comment=None,
+        title=None,
+        parent="Parent",
+    )
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("* TODO Child\n"))
+
+    with pytest.raises(typer.BadParameter, match="--level must be greater than parent level"):
+        tasks_create.run_tasks_create(args)
+
+
+def test_run_tasks_create_errors_when_stdin_task_source_is_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Create should report an error when heading source is omitted and stdin is empty."""
+    source = tmp_path / "tasks.org"
+    source.write_text("* TODO Parent\n", encoding="utf-8")
+    args = make_create_args(
+        [str(source)],
+        heading=None,
+        todo=None,
+        comment=None,
+        title=None,
+    )
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("  \n\t\n"))
 
     with pytest.raises(typer.BadParameter, match="Task heading is empty"):
         tasks_create.run_tasks_create(args)

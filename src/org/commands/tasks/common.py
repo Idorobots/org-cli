@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 import org_parser
 import typer
 from org_parser.document import Heading
+from org_parser.text import CompletionCounter
+from org_parser.time import Timestamp
 
 from org.query_language import (
     EvalContext,
@@ -24,6 +26,71 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("org")
+
+
+def parse_comment_flag(value: str) -> bool:
+    """Parse --comment value as strict true/false."""
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise typer.BadParameter("--comment must be either 'true' or 'false'")
+
+
+def normalize_optional_value(value: str) -> str | None:
+    """Return stripped value or None for blank input."""
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return normalized
+
+
+def parse_counter(value: str) -> CompletionCounter | None:
+    """Parse --counter value into completion counter or None."""
+    normalized = normalize_optional_value(value)
+    if normalized is None:
+        return None
+    if normalized.startswith("[") and normalized.endswith("]"):
+        normalized = normalized[1:-1].strip()
+    if not normalized:
+        return None
+    return CompletionCounter(normalized)
+
+
+def parse_timestamp(value: str, option_name: str | None = None) -> Timestamp | None:
+    """Parse timestamp option value into Timestamp or None."""
+    normalized = normalize_optional_value(value)
+    if normalized is None:
+        return None
+    try:
+        return Timestamp.from_source(normalized)
+    except (TypeError, ValueError) as err:
+        if option_name is None:
+            raise typer.BadParameter(f"Value {value!r} is not a valid Org timestamp") from err
+        raise typer.BadParameter(
+            f"{option_name} value {value!r} is not a valid Org timestamp",
+        ) from err
+
+
+def iter_descendants(heading: Heading) -> list[Heading]:
+    """Return heading descendants as a flat list."""
+    descendants: list[Heading] = []
+    for child in heading.children:
+        descendants.append(child)
+        descendants.extend(iter_descendants(child))
+    return descendants
+
+
+def apply_subtree_level(heading: Heading, new_level: int) -> None:
+    """Apply heading level and shift descendants by the same delta."""
+    level_delta = new_level - heading.level
+    if level_delta == 0:
+        return
+
+    heading.level = new_level
+    for descendant in iter_descendants(heading):
+        descendant.level += level_delta
 
 
 def normalize_selector(value: str | None, option_name: str) -> str | None:
@@ -99,6 +166,27 @@ def id_matches(document: Document, id_value: str | None) -> list[Heading]:
     if heading is None:
         return []
     return [heading]
+
+
+def resolve_parent_heading(document: Document, parent_value: str) -> Heading:
+    """Resolve one parent heading by id first, then title."""
+    selector = normalize_selector(parent_value, "--parent")
+    if selector is None:
+        raise typer.BadParameter("--parent cannot be empty")
+
+    id_matches_list = id_matches(document, selector)
+    if id_matches_list:
+        return id_matches_list[0]
+
+    title_matches_list = title_matches(document, selector)
+    if len(title_matches_list) > 1:
+        raise typer.BadParameter(
+            f"--parent is ambiguous, multiple headings with title '{selector}'",
+        )
+    if len(title_matches_list) == 1:
+        return title_matches_list[0]
+
+    raise typer.BadParameter(f"--parent '{selector}' was not found")
 
 
 def parse_tags_csv(value: str) -> list[str]:

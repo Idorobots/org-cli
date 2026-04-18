@@ -10,8 +10,7 @@ from pathlib import Path
 import typer
 from org_parser.document import Document, Heading
 from org_parser.element import ListItem, Repeat
-from org_parser.text import CompletionCounter
-from org_parser.time import Clock, Timestamp
+from org_parser.time import Clock
 from rich.console import Console
 from rich.prompt import Confirm
 
@@ -19,15 +18,20 @@ from org import config as config_module
 from org.cli_common import resolve_input_paths
 from org.color import should_use_color
 from org.commands.tasks.common import (
-    id_matches,
+    apply_subtree_level,
+    iter_descendants,
     load_document,
+    normalize_optional_value,
     normalize_selector,
+    parse_comment_flag,
+    parse_counter,
     parse_properties_json,
     parse_tags_csv,
+    parse_timestamp,
     resolve_headings_by_query,
+    resolve_parent_heading,
     resolve_task_selector_query,
     save_document,
-    title_matches,
 )
 
 
@@ -71,14 +75,6 @@ class UpdateArgs:
     color_flag: bool | None
 
 
-def _normalize_optional_value(value: str) -> str | None:
-    """Return stripped value or None for blank input."""
-    normalized = value.strip()
-    if not normalized:
-        return None
-    return normalized
-
-
 def _resolve_destination_document(
     file_value: str | None,
     source_document: Document,
@@ -108,39 +104,6 @@ def _resolve_destination_document(
     loaded_document = load_document(str(path))
     destination_cache[cache_key] = loaded_document
     return loaded_document
-
-
-def _parse_comment_flag(value: str) -> bool:
-    """Parse --comment value as strict true/false."""
-    normalized = value.strip().lower()
-    if normalized == "true":
-        return True
-    if normalized == "false":
-        return False
-    raise typer.BadParameter("--comment must be either 'true' or 'false'")
-
-
-def _parse_counter(value: str) -> CompletionCounter | None:
-    """Parse --counter value into completion counter or None."""
-    normalized = _normalize_optional_value(value)
-    if normalized is None:
-        return None
-    if normalized.startswith("[") and normalized.endswith("]"):
-        normalized = normalized[1:-1].strip()
-    if not normalized:
-        return None
-    return CompletionCounter(normalized)
-
-
-def _parse_timestamp(value: str) -> Timestamp | None:
-    """Parse one timestamp option into Timestamp or None."""
-    normalized = _normalize_optional_value(value)
-    if normalized is None:
-        return None
-    try:
-        return Timestamp.from_source(normalized)
-    except (TypeError, ValueError) as err:
-        raise typer.BadParameter(f"Value {value!r} is not a valid Org timestamp") from err
 
 
 def _parse_property_option(value: str, option_name: str) -> tuple[str, str]:
@@ -214,38 +177,13 @@ def _repeat_key(repeat: Repeat) -> tuple[str, str, str]:
     return (before, after, str(repeat.timestamp))
 
 
-def _resolve_parent_heading(document: Document, parent_value: str) -> Heading:
-    """Resolve one parent heading by id first, then title."""
-    id_matches_list = id_matches(document, parent_value)
-    if id_matches_list:
-        return id_matches_list[0]
-
-    title_matches_list = title_matches(document, parent_value)
-    if len(title_matches_list) > 1:
-        raise typer.BadParameter(
-            f"--parent is ambiguous, multiple headings with title '{parent_value}'",
-        )
-    if len(title_matches_list) == 1:
-        return title_matches_list[0]
-    raise typer.BadParameter(f"--parent '{parent_value}' was not found")
-
-
-def _iter_descendants(heading: Heading) -> list[Heading]:
-    """Return heading descendants as a flat list."""
-    descendants: list[Heading] = []
-    for child in heading.children:
-        descendants.append(child)
-        descendants.extend(_iter_descendants(child))
-    return descendants
-
-
 def _validate_parent_target(heading: Heading, parent_heading: Heading | None) -> None:
     """Validate parent target does not create loops."""
     if parent_heading is None:
         return
     if parent_heading is heading:
         raise typer.BadParameter("--parent cannot point to the task being updated")
-    if parent_heading in _iter_descendants(heading):
+    if parent_heading in iter_descendants(heading):
         raise typer.BadParameter("--parent cannot point to a descendant of the updated task")
 
 
@@ -263,7 +201,7 @@ def _move_heading(
     else:
         parent_heading.children.append(heading)
     heading.document = target_document
-    for descendant in _iter_descendants(heading):
+    for descendant in iter_descendants(heading):
         descendant.document = target_document
 
 
@@ -282,23 +220,12 @@ def _heading_parent_level(heading: Heading) -> int:
     return 0
 
 
-def _apply_subtree_level(heading: Heading, new_level: int) -> None:
-    """Apply heading level and shift descendants by the same delta."""
-    level_delta = new_level - heading.level
-    if level_delta == 0:
-        return
-
-    heading.level = new_level
-    for descendant in _iter_descendants(heading):
-        descendant.level += level_delta
-
-
 def _resolve_target_parent(document: Document, parent_value: str) -> Heading | None:
     """Resolve --parent option to heading or top-level target."""
     normalized = parent_value.strip()
     if not normalized:
         return None
-    return _resolve_parent_heading(document, normalized)
+    return resolve_parent_heading(document, normalized)
 
 
 def _apply_parent_and_level_updates(args: UpdateArgs, heading: Heading) -> None:
@@ -329,31 +256,31 @@ def _apply_parent_and_level_updates(args: UpdateArgs, heading: Heading) -> None:
         _validate_level(args.level, parent_level)
         target_level = args.level
 
-    _apply_subtree_level(heading, target_level)
+    apply_subtree_level(heading, target_level)
 
 
 def _apply_heading_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
     """Apply heading-line metadata updates."""
     if args.todo is not None:
-        heading.todo = _normalize_optional_value(args.todo)
+        heading.todo = normalize_optional_value(args.todo)
     if args.priority is not None:
-        heading.priority = _normalize_optional_value(args.priority)
+        heading.priority = normalize_optional_value(args.priority)
     if args.comment is not None:
-        heading.is_comment = _parse_comment_flag(args.comment)
+        heading.is_comment = parse_comment_flag(args.comment)
     if args.title is not None:
-        heading.title = _normalize_optional_value(args.title)
+        heading.title = normalize_optional_value(args.title)
     if args.counter is not None:
-        heading.counter = _parse_counter(args.counter)
+        heading.counter = parse_counter(args.counter)
 
 
 def _apply_planning_updates(args: UpdateArgs, heading: Heading) -> None:
     """Apply planning timestamp updates."""
     if args.scheduled is not None:
-        heading.scheduled = _parse_timestamp(args.scheduled)
+        heading.scheduled = parse_timestamp(args.scheduled)
     if args.deadline is not None:
-        heading.deadline = _parse_timestamp(args.deadline)
+        heading.deadline = parse_timestamp(args.deadline)
     if args.closed is not None:
-        heading.closed = _parse_timestamp(args.closed)
+        heading.closed = parse_timestamp(args.closed)
 
 
 def _apply_org_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
@@ -363,9 +290,9 @@ def _apply_org_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
     if args.properties is not None:
         heading.properties = parse_properties_json(args.properties)
     if args.category is not None:
-        heading.heading_category = _normalize_optional_value(args.category)
+        heading.heading_category = normalize_optional_value(args.category)
     if args.id_value is not None:
-        heading.id = _normalize_optional_value(args.id_value)
+        heading.id = normalize_optional_value(args.id_value)
 
 
 def _apply_tag_updates(args: UpdateArgs, heading: Heading) -> None:

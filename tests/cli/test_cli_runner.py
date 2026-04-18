@@ -180,8 +180,10 @@ def test_cli_runner_tasks_create_writes_heading(tmp_path: Path) -> None:
     assert "* TODO Update docs :Docs:" in updated
 
 
-def test_cli_runner_tasks_create_requires_heading_component(tmp_path: Path) -> None:
-    """CliRunner should reject tasks create without heading components."""
+def test_cli_runner_tasks_create_reads_from_stdin_when_heading_components_missing(
+    tmp_path: Path,
+) -> None:
+    """CliRunner should read task source from stdin when heading source is omitted."""
     runner = CliRunner()
     fixture_path = tmp_path / "tasks.org"
     fixture_path.write_text("* TODO Existing\n", encoding="utf-8")
@@ -193,11 +195,37 @@ def test_cli_runner_tasks_create_requires_heading_component(tmp_path: Path) -> N
             "create",
             str(fixture_path),
         ],
+        input="* TODO From stdin\n",
     )
 
-    assert result.exit_code != 0
-    combined_output = result.stdout + result.stderr
-    assert "Task heading is empty" in combined_output
+    assert result.exit_code == 0
+    updated = fixture_path.read_text(encoding="utf-8")
+    assert "* TODO From stdin" in updated
+
+
+def test_cli_runner_tasks_create_applies_edits_to_stdin_task(tmp_path: Path) -> None:
+    """CliRunner should apply edit switches on stdin-provided task source."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text("* TODO Existing\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "create",
+            "--priority",
+            "A",
+            "--tags",
+            "new,docs",
+            str(fixture_path),
+        ],
+        input="* TODO From stdin :old:\n",
+    )
+
+    assert result.exit_code == 0
+    updated = fixture_path.read_text(encoding="utf-8")
+    assert "* TODO [#A] From stdin :new:docs:" in updated
 
 
 def test_cli_runner_tasks_delete_removes_heading(tmp_path: Path) -> None:

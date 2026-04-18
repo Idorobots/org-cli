@@ -4537,11 +4537,95 @@ In both cases, a debug log of the operations should be printed.
 
 Add an additional =--yes= CLI switch for these two commands that will automatically confirm the action without prompting the user.
 
-*** TODO Simplified creation
-The =tasks create= command should have a way to accept a string via stdin.
+*** DONE Simplified creation
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 23:18]
+:END:
+The =tasks create= command should have a way to accept a string via stdin. If none of the mandatory heading elements are provided, instead of generating an error, the command should read the task from the standard input. If any other parameters are provided, these should be applied as edits on the read task.
 
-*** Command rename
-- Rename =tasks create= to =tasks add= and =tasks delete= to =tasks remove=.
+**** DONE src/org/commands/tasks/create.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 23:18]
+:END:
+
+In file src/org/commands/tasks/create.py around line 75, near the ~def _validate_heading_option_exclusivity(args: CreateArgs) -> None:~
+
+#+begin_example
+def _validate_required_heading_components(args: CreateArgs) -> None:
+-    """Require at least one heading source component to be specified."""
++def _has_structured_heading_component(args: CreateArgs) -> bool:
++    """Return true when structured heading options provide heading source."""
+     comment_enabled = _parse_comment_flag(args.comment) if args.comment is not None else False
+-    has_structured_heading_component = (
+-        args.todo is not None or comment_enabled or args.title is not None
+-    )
+-    if args.heading is not None or has_structured_heading_component:
++    return args.todo is not None or comment_enabled or args.title is not None
++
++
++def _should_read_task_from_stdin(args: CreateArgs) -> bool:
++    """Return true when heading source should be read from stdin."""
++    return args.heading is None and not _has_structured_heading_component(args)
++
++
++def _normalize_optional_value(value: str) -> str | None:
++    """Return stripped value or None for blank input."""
++    normalized = value.strip()
++    if not normalized:
++        return None
++    return normalized
++
++
++def _parse_counter(value: str) -> CompletionCounter | None:
++    """Parse --counter value into completion counter or None."""
++    normalized = _normalize_optional_value(value)
++    if normalized is None:
++        return None
++    if normalized.startswith("[") and normalized.endswith("]"):
++        normalized = normalized[1:-1].strip()
++    if not normalized:
++        return None
++    return CompletionCounter(normalized)
++
++
++def _parse_timestamp(value: str, option_name: str) -> Timestamp | None:
++    """Parse one timestamp option into Timestamp or None."""
++    normalized = _normalize_optional_value(value)
++    if normalized is None:
++        return None
++    try:
++        return Timestamp.from_source(normalized)
++    except (TypeError, ValueError) as err:
++        raise typer.BadParameter(
++            f"{option_name} value {value!r} is not a valid Org timestamp",
++        ) from err
++
++
++def _iter_descendants(heading: Heading) -> list[Heading]:
++    """Return heading descendants as a flat list."""
++    descendants: list[Heading] = []
++    for child in heading.children:
++        descendants.append(child)
++        descendants.extend(_iter_descendants(child))
++    return descendants
++
++
++def _apply_subtree_level(heading: Heading, new_level: int) -> None:
++    """Apply heading level and shift descendants by the same delta."""
++    level_delta = new_level - heading.level
++    if level_delta == 0:
+         return
++
+#+end_example
+
+These seem to be duplicated in the update & create commands. Please move the duplicates to the common module and reuse.
+Please make sure to check both commands for duplicated code paths and extract these to the common module.
+
+*** TODO Command rename
+Rename =tasks create= to =tasks add= and =tasks delete= to =tasks remove=.
 
 ** Agenda command
 Like Org Agenta, but CLI.

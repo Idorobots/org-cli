@@ -37,6 +37,8 @@ poetry run org tasks create [OPTIONS] [FILE ...]
 ## Validation
 
 - Generated heading content is validated with `Heading.from_source` before file updates.
+- If none of `--heading`, `--todo`, `--comment=true`, or `--title` are provided, task source is read from stdin and parsed with `Heading.from_source`.
+- In stdin mode, non-source switches (for example `--priority`, `--tags`, `--scheduled`, `--properties`, `--id`) are applied as edits to the parsed heading before insertion.
 - Invalid heading source (for example malformed timestamps) returns a CLI error and does not modify files.
 - If `--id` is not provided and `ID` is not set in `--properties`, a UUID is generated automatically.
 
@@ -66,4 +68,13 @@ poetry run org tasks create \
 poetry run org tasks create \
   --title "Do some stuff" \
   --parent "Update the docs"
+```
+
+4) Create from stdin and apply edits
+
+```bash
+printf '* TODO Draft task\n** TODO Subtask\n' | poetry run org tasks create \
+  --priority A \
+  --tags Docs,Review \
+  --file path/to/file.org
 ```

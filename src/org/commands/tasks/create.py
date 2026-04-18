@@ -7,13 +7,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-import org_parser
 import typer
 from org_parser.document import Document, Heading
 
 from org import config as config_module
 from org.cli_common import resolve_input_paths
-from org.commands.tasks.common import normalize_selector, parse_properties_json, parse_tags_csv
+from org.commands.tasks.common import (
+    apply_subtree_level,
+    load_document,
+    normalize_optional_value,
+    normalize_selector,
+    parse_comment_flag,
+    parse_counter,
+    parse_properties_json,
+    parse_tags_csv,
+    parse_timestamp,
+    resolve_parent_heading,
+    save_document,
+)
 
 
 _TASK_TEMPLATE = "{heading}\n{planning}{properties}{body}"
@@ -70,27 +81,26 @@ def _validate_heading_option_exclusivity(args: CreateArgs) -> None:
         raise typer.BadParameter(f"--heading cannot be combined with: {conflicts_text}")
 
 
-def _validate_required_heading_components(args: CreateArgs) -> None:
-    """Require at least one heading source component to be specified."""
-    comment_enabled = _parse_comment_flag(args.comment) if args.comment is not None else False
-    has_structured_heading_component = (
-        args.todo is not None or comment_enabled or args.title is not None
-    )
-    if args.heading is not None or has_structured_heading_component:
-        return
+def _has_structured_heading_component(args: CreateArgs) -> bool:
+    """Return true when structured heading options provide heading source."""
+    comment_enabled = parse_comment_flag(args.comment) if args.comment is not None else False
+    return args.todo is not None or comment_enabled or args.title is not None
+
+
+def _should_read_task_from_stdin(args: CreateArgs) -> bool:
+    """Return true when heading source should be read from stdin."""
+    return args.heading is None and not _has_structured_heading_component(args)
+
+
+def _read_task_source_from_stdin() -> str:
+    """Read complete task source from stdin."""
+    task_source = sys.stdin.read()
+    if task_source.strip():
+        return task_source
     raise typer.BadParameter(
-        "Task heading is empty. Provide --heading or at least one of: --todo, --comment, --title",
+        "Task heading is empty. Provide --heading, at least one of --todo/--comment/--title, "
+        "or pass task source via stdin",
     )
-
-
-def _parse_comment_flag(value: str) -> bool:
-    """Parse --comment value as strict true/false."""
-    normalized = value.strip().lower()
-    if normalized == "true":
-        return True
-    if normalized == "false":
-        return False
-    raise typer.BadParameter("--comment must be either 'true' or 'false'")
 
 
 def _resolve_target_file(file_option: str | None, files: list[str] | None) -> str:
@@ -105,48 +115,6 @@ def _resolve_target_file(file_option: str | None, files: list[str] | None) -> st
 
     resolved_files = resolve_input_paths(files)
     return resolved_files[0]
-
-
-def _resolve_parent_heading(document: Document, parent_value: str) -> Heading:
-    """Resolve one parent heading by id first, then title."""
-    selector = parent_value.strip()
-    if not selector:
-        raise typer.BadParameter("--parent cannot be empty")
-
-    id_match = document.heading_by_id(selector)
-    if id_match is not None:
-        return id_match
-
-    nodes = list(document)
-    title_matches = [node for node in nodes if node.title_text.strip() == selector]
-    if len(title_matches) > 1:
-        raise typer.BadParameter(
-            f"--parent is ambiguous, multiple headings with title '{selector}'",
-        )
-    if len(title_matches) == 1:
-        return title_matches[0]
-
-    raise typer.BadParameter(f"--parent '{selector}' was not found")
-
-
-def _load_document(path: str) -> Document:
-    """Load org document from file for mutation."""
-    try:
-        return org_parser.load(path)
-    except FileNotFoundError as err:
-        raise typer.BadParameter(f"File '{path}' not found") from err
-    except PermissionError as err:
-        raise typer.BadParameter(f"Permission denied for '{path}'") from err
-    except ValueError as err:
-        raise typer.BadParameter(f"Unable to parse '{path}': {err}") from err
-
-
-def _save_document(document: Document, path: str) -> None:
-    """Persist updated org document back to disk."""
-    try:
-        org_parser.dump(document, path)
-    except PermissionError as err:
-        raise typer.BadParameter(f"Permission denied for '{path}'") from err
 
 
 def _resolve_level(level: int | None, parent_level: int | None) -> int:
@@ -173,7 +141,7 @@ def _build_heading_line_from_fields(args: CreateArgs, level: int) -> str:
         metadata_tokens.append(args.todo)
     if args.priority is not None:
         metadata_tokens.append(f"[#{args.priority}]")
-    if args.comment is not None and _parse_comment_flag(args.comment):
+    if args.comment is not None and parse_comment_flag(args.comment):
         metadata_tokens.append("COMMENT")
 
     title_parts = [part for part in (args.title, args.counter) if part is not None]
@@ -280,6 +248,70 @@ def _validate_task_source(task_source: str) -> Heading:
         raise typer.BadParameter(f"Invalid task template: {err}") from err
 
 
+def _apply_stdin_level_edit(args: CreateArgs, parent_level: int | None, heading: Heading) -> None:
+    """Apply effective level edits to stdin-provided heading."""
+    if args.level is not None:
+        target_level = _resolve_level(args.level, parent_level)
+    else:
+        target_level = _resolve_level(heading.level, parent_level)
+    apply_subtree_level(heading, target_level)
+
+
+def _apply_stdin_heading_metadata_edits(args: CreateArgs, heading: Heading) -> None:
+    """Apply heading metadata edits on stdin heading."""
+    if args.priority is not None:
+        heading.priority = normalize_optional_value(args.priority)
+    if args.comment is not None:
+        heading.is_comment = parse_comment_flag(args.comment)
+    if args.counter is not None:
+        heading.counter = parse_counter(args.counter)
+    if args.tags is not None:
+        heading.heading_tags = parse_tags_csv(args.tags)
+
+
+def _apply_stdin_planning_edits(args: CreateArgs, heading: Heading) -> None:
+    """Apply planning timestamp edits on stdin heading."""
+    if args.scheduled is not None:
+        heading.scheduled = parse_timestamp(args.scheduled, "--scheduled")
+    if args.deadline is not None:
+        heading.deadline = parse_timestamp(args.deadline, "--deadline")
+    if args.closed is not None:
+        heading.closed = parse_timestamp(args.closed, "--closed")
+
+
+def _apply_stdin_property_edits(args: CreateArgs, heading: Heading) -> None:
+    """Apply property, category, and ID edits on stdin heading."""
+    if args.properties is not None:
+        heading.properties = parse_properties_json(args.properties)
+    if args.category is not None:
+        heading.heading_category = normalize_optional_value(args.category)
+
+    normalized_id = normalize_selector(args.id_value, "--id")
+    if normalized_id is not None:
+        heading.id = normalized_id
+    elif heading.id is None:
+        heading.id = str(uuid4())
+
+
+def _apply_stdin_task_edits(args: CreateArgs, parent_level: int | None, heading: Heading) -> None:
+    """Apply non-source create switches as edits on stdin heading."""
+    _apply_stdin_level_edit(args, parent_level, heading)
+    _apply_stdin_heading_metadata_edits(args, heading)
+    _apply_stdin_planning_edits(args, heading)
+    _apply_stdin_property_edits(args, heading)
+
+    if args.body is not None:
+        heading.body = args.body
+
+
+def _build_heading_from_stdin(args: CreateArgs, parent_level: int | None) -> Heading:
+    """Read task heading source from stdin and apply edit switches."""
+    task_source = _read_task_source_from_stdin()
+    heading = _validate_task_source(task_source)
+    _apply_stdin_task_edits(args, parent_level, heading)
+    return heading
+
+
 def _validate_parent_level(parent_level: int | None, heading: Heading) -> None:
     """Ensure explicit --heading level is valid when attached to a parent."""
     if parent_level is None:
@@ -299,21 +331,24 @@ def _attach_heading(document: Document, parent_heading: Heading | None, heading:
 def run_tasks_create(args: CreateArgs) -> None:
     """Run the tasks create command."""
     _validate_heading_option_exclusivity(args)
-    _validate_required_heading_components(args)
+    read_from_stdin = _should_read_task_from_stdin(args)
 
     filename = _resolve_target_file(args.file, args.files)
-    document = _load_document(filename)
+    document = load_document(filename)
     parent_heading: Heading | None = None
     if args.parent is not None:
-        parent_heading = _resolve_parent_heading(document, args.parent)
+        parent_heading = resolve_parent_heading(document, args.parent)
 
     parent_level = parent_heading.level if parent_heading is not None else None
-    task_source = _build_task_source(args, parent_level)
-    heading = _validate_task_source(task_source)
-    _validate_parent_level(parent_level, heading)
+    if read_from_stdin:
+        heading = _build_heading_from_stdin(args, parent_level)
+    else:
+        task_source = _build_task_source(args, parent_level)
+        heading = _validate_task_source(task_source)
+        _validate_parent_level(parent_level, heading)
 
     _attach_heading(document, parent_heading, heading)
-    _save_document(document, filename)
+    save_document(document)
 
 
 def register(app: typer.Typer) -> None:
