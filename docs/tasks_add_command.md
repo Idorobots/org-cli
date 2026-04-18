@@ -1,11 +1,11 @@
-# `org tasks create`
+# `org tasks add`
 
 Create and insert a new task heading into an Org document.
 
 ## Usage
 
 ```bash
-poetry run org tasks create [OPTIONS] [FILE ...]
+poetry run org tasks add [OPTIONS] [FILE ...]
 ```
 
 ## Command-specific switches
@@ -47,7 +47,7 @@ poetry run org tasks create [OPTIONS] [FILE ...]
 1) Create a top-level task in the default file
 
 ```bash
-poetry run org tasks create \
+poetry run org tasks add \
   --todo TODO \
   --title "Update the docs" \
   --tags Docs \
@@ -57,7 +57,7 @@ poetry run org tasks create \
 2) Create a top-level task in a specific file from inputs
 
 ```bash
-poetry run org tasks create \
+poetry run org tasks add \
   --title "Do some stuff" \
   --file path/to/file.org
 ```
@@ -65,7 +65,7 @@ poetry run org tasks create \
 3) Create a child task under a parent heading
 
 ```bash
-poetry run org tasks create \
+poetry run org tasks add \
   --title "Do some stuff" \
   --parent "Update the docs"
 ```
@@ -73,7 +73,7 @@ poetry run org tasks create \
 4) Create from stdin and apply edits
 
 ```bash
-printf '* TODO Draft task\n** TODO Subtask\n' | poetry run org tasks create \
+printf '* TODO Draft task\n** TODO Subtask\n' | poetry run org tasks add \
   --priority A \
   --tags Docs,Review \
   --file path/to/file.org

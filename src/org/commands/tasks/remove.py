@@ -1,4 +1,4 @@
-"""Tasks delete command."""
+"""Tasks remove command."""
 
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ logger = logging.getLogger("org")
 
 
 @dataclass
-class DeleteArgs:
-    """Arguments for the tasks delete command."""
+class RemoveArgs:
+    """Arguments for the tasks remove command."""
 
     files: list[str] | None
     config: str
@@ -62,8 +62,8 @@ def _selected_delete_roots(headings: list[Heading]) -> list[Heading]:
     return roots
 
 
-def run_tasks_delete(args: DeleteArgs) -> None:
-    """Run the tasks delete command."""
+def run_tasks_remove(args: RemoveArgs) -> None:
+    """Run the tasks remove command."""
     filenames = resolve_input_paths(args.files)
     selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
 
@@ -109,10 +109,10 @@ def run_tasks_delete(args: DeleteArgs) -> None:
 
 
 def register(app: typer.Typer) -> None:
-    """Register the tasks delete command."""
+    """Register the tasks remove command."""
 
-    @app.command("delete")
-    def tasks_delete(  # noqa: PLR0913
+    @app.command("remove")
+    def tasks_remove(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -154,7 +154,7 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Delete one task heading and its subtree from a selected org document."""
-        args = DeleteArgs(
+        args = RemoveArgs(
             files=files,
             config=config,
             query_title=query_title,
@@ -164,6 +164,6 @@ def register(app: typer.Typer) -> None:
             color_flag=color_flag,
         )
         config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks delete")
-        config_module.log_command_arguments(args, "tasks delete")
-        run_tasks_delete(args)
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks remove")
+        config_module.log_command_arguments(args, "tasks remove")
+        run_tasks_remove(args)

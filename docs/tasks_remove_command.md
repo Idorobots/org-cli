@@ -1,11 +1,11 @@
-# `org tasks delete`
+# `org tasks remove`
 
 Delete one task heading (including its full subtree) from an Org document.
 
 ## Usage
 
 ```bash
-poetry run org tasks delete [OPTIONS] [FILE ...]
+poetry run org tasks remove [OPTIONS] [FILE ...]
 ```
 
 ## Command-specific switches
@@ -48,29 +48,29 @@ poetry run org tasks delete [OPTIONS] [FILE ...]
 1) Delete by title
 
 ```bash
-poetry run org tasks delete --query-title "Update the docs" ROADMAP.org
+poetry run org tasks remove --query-title "Update the docs" ROADMAP.org
 ```
 
 2) Delete by ID
 
 ```bash
-poetry run org tasks delete --query-id task-123 ROADMAP.org
+poetry run org tasks remove --query-id task-123 ROADMAP.org
 ```
 
 3) Search multiple files and delete one uniquely matched task
 
 ```bash
-poetry run org tasks delete --query-title "Refactor parser" notes.org backlog.org
+poetry run org tasks remove --query-title "Refactor parser" notes.org backlog.org
 ```
 
 4) Delete by generic query selector
 
 ```bash
-poetry run org tasks delete --query '.title_text == "Test"' ROADMAP.org
+poetry run org tasks remove --query '.title_text == "Test"' ROADMAP.org
 ```
 
 5) Delete all matching tasks without prompt
 
 ```bash
-poetry run org tasks delete --query-title "Stale" --yes backlog.org
+poetry run org tasks remove --query-title "Stale" --yes backlog.org
 ```

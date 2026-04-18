@@ -154,7 +154,7 @@ def test_cli_runner_tasks_board_renders_columns() -> None:
     assert "WAITING" in result.stdout
 
 
-def test_cli_runner_tasks_create_writes_heading(tmp_path: Path) -> None:
+def test_cli_runner_tasks_add_writes_heading(tmp_path: Path) -> None:
     """CliRunner should create a new task heading in the selected file."""
     runner = CliRunner()
     fixture_path = tmp_path / "tasks.org"
@@ -164,7 +164,7 @@ def test_cli_runner_tasks_create_writes_heading(tmp_path: Path) -> None:
         app,
         [
             "tasks",
-            "create",
+            "add",
             "--todo",
             "TODO",
             "--title",
@@ -180,7 +180,7 @@ def test_cli_runner_tasks_create_writes_heading(tmp_path: Path) -> None:
     assert "* TODO Update docs :Docs:" in updated
 
 
-def test_cli_runner_tasks_create_reads_from_stdin_when_heading_components_missing(
+def test_cli_runner_tasks_add_reads_from_stdin_when_heading_components_missing(
     tmp_path: Path,
 ) -> None:
     """CliRunner should read task source from stdin when heading source is omitted."""
@@ -192,7 +192,7 @@ def test_cli_runner_tasks_create_reads_from_stdin_when_heading_components_missin
         app,
         [
             "tasks",
-            "create",
+            "add",
             str(fixture_path),
         ],
         input="* TODO From stdin\n",
@@ -203,7 +203,7 @@ def test_cli_runner_tasks_create_reads_from_stdin_when_heading_components_missin
     assert "* TODO From stdin" in updated
 
 
-def test_cli_runner_tasks_create_applies_edits_to_stdin_task(tmp_path: Path) -> None:
+def test_cli_runner_tasks_add_applies_edits_to_stdin_task(tmp_path: Path) -> None:
     """CliRunner should apply edit switches on stdin-provided task source."""
     runner = CliRunner()
     fixture_path = tmp_path / "tasks.org"
@@ -213,7 +213,7 @@ def test_cli_runner_tasks_create_applies_edits_to_stdin_task(tmp_path: Path) -> 
         app,
         [
             "tasks",
-            "create",
+            "add",
             "--priority",
             "A",
             "--tags",
@@ -228,7 +228,7 @@ def test_cli_runner_tasks_create_applies_edits_to_stdin_task(tmp_path: Path) -> 
     assert "* TODO [#A] From stdin :new:docs:" in updated
 
 
-def test_cli_runner_tasks_delete_removes_heading(tmp_path: Path) -> None:
+def test_cli_runner_tasks_remove_removes_heading(tmp_path: Path) -> None:
     """CliRunner should delete a task heading and its subtree."""
     runner = CliRunner()
     fixture_path = tmp_path / "tasks.org"
@@ -241,7 +241,7 @@ def test_cli_runner_tasks_delete_removes_heading(tmp_path: Path) -> None:
         app,
         [
             "tasks",
-            "delete",
+            "remove",
             "--query-title",
             "Remove me",
             "--yes",
@@ -258,8 +258,8 @@ def test_cli_runner_tasks_delete_removes_heading(tmp_path: Path) -> None:
     assert "Tail" in updated
 
 
-def test_cli_runner_tasks_delete_requires_identifier(tmp_path: Path) -> None:
-    """CliRunner should reject tasks delete without selector options."""
+def test_cli_runner_tasks_remove_requires_identifier(tmp_path: Path) -> None:
+    """CliRunner should reject tasks remove without selector options."""
     runner = CliRunner()
     fixture_path = tmp_path / "tasks.org"
     fixture_path.write_text("* TODO Keep\n", encoding="utf-8")
@@ -268,7 +268,7 @@ def test_cli_runner_tasks_delete_requires_identifier(tmp_path: Path) -> None:
         app,
         [
             "tasks",
-            "delete",
+            "remove",
             str(fixture_path),
         ],
     )
@@ -278,8 +278,8 @@ def test_cli_runner_tasks_delete_requires_identifier(tmp_path: Path) -> None:
     assert "exactly one task selector" in combined_output
 
 
-def test_cli_runner_tasks_delete_rejects_title_and_id_together(tmp_path: Path) -> None:
-    """CliRunner should reject tasks delete when multiple selectors are provided."""
+def test_cli_runner_tasks_remove_rejects_title_and_id_together(tmp_path: Path) -> None:
+    """CliRunner should reject tasks remove when multiple selectors are provided."""
     runner = CliRunner()
     fixture_path = tmp_path / "tasks.org"
     fixture_path.write_text(
@@ -291,7 +291,7 @@ def test_cli_runner_tasks_delete_rejects_title_and_id_together(tmp_path: Path) -
         app,
         [
             "tasks",
-            "delete",
+            "remove",
             "--query-title",
             "Keep",
             "--query-id",
@@ -306,7 +306,7 @@ def test_cli_runner_tasks_delete_rejects_title_and_id_together(tmp_path: Path) -
     assert "exactly one task selector" in combined_output
 
 
-def test_cli_runner_tasks_delete_supports_query_selector(tmp_path: Path) -> None:
+def test_cli_runner_tasks_remove_supports_query_selector(tmp_path: Path) -> None:
     """CliRunner should delete using generic --query selector."""
     runner = CliRunner()
     fixture_path = tmp_path / "tasks.org"
@@ -319,7 +319,7 @@ def test_cli_runner_tasks_delete_supports_query_selector(tmp_path: Path) -> None
         app,
         [
             "tasks",
-            "delete",
+            "remove",
             "--query",
             'str(.title_text) == "Remove me"',
             "--yes",
@@ -506,7 +506,7 @@ def test_cli_runner_tasks_update_moves_task_to_file(tmp_path: Path) -> None:
     assert "* TODO Keep" in destination_path.read_text(encoding="utf-8")
 
 
-def test_cli_runner_tasks_delete_shows_confirmation_prompt_with_count(tmp_path: Path) -> None:
+def test_cli_runner_tasks_remove_shows_confirmation_prompt_with_count(tmp_path: Path) -> None:
     """CliRunner should ask y/n confirmation with affected task count."""
     runner = CliRunner()
     fixture_path = tmp_path / "tasks.org"
@@ -516,7 +516,7 @@ def test_cli_runner_tasks_delete_shows_confirmation_prompt_with_count(tmp_path: 
         app,
         [
             "tasks",
-            "delete",
+            "remove",
             "--query-title",
             "Same",
             "--no-color",

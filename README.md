@@ -173,12 +173,12 @@ poetry run org tasks board \
   examples/ARCHIVE_small
 ```
 
-### `org tasks create`
+### `org tasks add`
 
 Create a new heading in an Org file.
 
 ```bash
-poetry run org tasks create \
+poetry run org tasks add \
   --todo TODO \
   --title "Update docs" \
   --tag Docs \
@@ -198,12 +198,12 @@ poetry run org tasks update \
   ROADMAP.org
 ```
 
-### `org tasks delete`
+### `org tasks remove`
 
 Delete one task heading (including its subtree) by title or ID.
 
 ```bash
-poetry run org tasks delete \
+poetry run org tasks remove \
   --title "Update docs" \
   ROADMAP.org
 ```

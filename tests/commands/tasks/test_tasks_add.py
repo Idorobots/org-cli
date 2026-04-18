@@ -1,4 +1,4 @@
-"""Tests for tasks create command."""
+"""Tests for tasks add command."""
 
 from __future__ import annotations
 
@@ -10,16 +10,16 @@ import org_parser
 import pytest
 import typer
 
-from org.commands.tasks import create as tasks_create
+from org.commands.tasks import add as tasks_add
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-def make_create_args(files: list[str], **overrides: object) -> tasks_create.CreateArgs:
-    """Build CreateArgs with defaults and overrides."""
-    args = tasks_create.CreateArgs(
+def make_add_args(files: list[str], **overrides: object) -> tasks_add.AddArgs:
+    """Build AddArgs with defaults and overrides."""
+    args = tasks_add.AddArgs(
         files=files,
         config=".org-cli.json",
         level=None,
@@ -45,21 +45,21 @@ def make_create_args(files: list[str], **overrides: object) -> tasks_create.Crea
     return args
 
 
-def test_run_tasks_create_appends_top_level_heading_to_first_resolved_file(tmp_path: Path) -> None:
+def test_run_tasks_add_appends_top_level_heading_to_first_resolved_file(tmp_path: Path) -> None:
     """Create should append top-level heading in first resolved input file."""
     first = tmp_path / "first.org"
     second = tmp_path / "second.org"
     first.write_text("* TODO Existing\n", encoding="utf-8")
     second.write_text("* TODO Existing in second\n", encoding="utf-8")
 
-    args = make_create_args(
+    args = make_add_args(
         [str(first), str(second)],
         title="Update docs",
         tags="Docs",
         body="Body text",
     )
 
-    tasks_create.run_tasks_create(args)
+    tasks_add.run_tasks_add(args)
 
     first_root = org_parser.loads(first.read_text(encoding="utf-8"))
     first_nodes = list(first_root)
@@ -72,26 +72,26 @@ def test_run_tasks_create_appends_top_level_heading_to_first_resolved_file(tmp_p
     assert len(list(second_root)) == 1
 
 
-def test_run_tasks_create_uses_file_override_when_provided(tmp_path: Path) -> None:
+def test_run_tasks_add_uses_file_override_when_provided(tmp_path: Path) -> None:
     """Create should update --file target instead of default resolved file."""
     first = tmp_path / "first.org"
     second = tmp_path / "second.org"
     first.write_text("* TODO Existing\n", encoding="utf-8")
     second.write_text("* TODO Existing in second\n", encoding="utf-8")
 
-    args = make_create_args(
+    args = make_add_args(
         [str(first), str(second)],
         title="Target second",
         file=str(second),
     )
 
-    tasks_create.run_tasks_create(args)
+    tasks_add.run_tasks_add(args)
 
     assert "Target second" not in first.read_text(encoding="utf-8")
     assert "* TODO Target second" in second.read_text(encoding="utf-8")
 
 
-def test_run_tasks_create_inserts_child_of_parent_title_with_default_level(tmp_path: Path) -> None:
+def test_run_tasks_add_inserts_child_of_parent_title_with_default_level(tmp_path: Path) -> None:
     """Create should insert child under parent title with parent+1 level by default."""
     source = tmp_path / "tasks.org"
     source.write_text(
@@ -99,9 +99,9 @@ def test_run_tasks_create_inserts_child_of_parent_title_with_default_level(tmp_p
         encoding="utf-8",
     )
 
-    args = make_create_args([str(source)], title="Added child", parent="Parent")
+    args = make_add_args([str(source)], title="Added child", parent="Parent")
 
-    tasks_create.run_tasks_create(args)
+    tasks_add.run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     nodes = list(root)
@@ -112,7 +112,7 @@ def test_run_tasks_create_inserts_child_of_parent_title_with_default_level(tmp_p
     assert added_child.level == 2
 
 
-def test_run_tasks_create_inserts_child_of_parent_id(tmp_path: Path) -> None:
+def test_run_tasks_add_inserts_child_of_parent_id(tmp_path: Path) -> None:
     """Create should resolve --parent by heading ID before matching titles."""
     source = tmp_path / "tasks.org"
     source.write_text(
@@ -120,9 +120,9 @@ def test_run_tasks_create_inserts_child_of_parent_id(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    args = make_create_args([str(source)], title="Added child", parent="parent-1")
+    args = make_add_args([str(source)], title="Added child", parent="parent-1")
 
-    tasks_create.run_tasks_create(args)
+    tasks_add.run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     nodes = list(root)
@@ -130,44 +130,44 @@ def test_run_tasks_create_inserts_child_of_parent_id(tmp_path: Path) -> None:
     assert titles == ["Parent", "Added child", "Sibling"]
 
 
-def test_run_tasks_create_errors_when_parent_not_found(tmp_path: Path) -> None:
+def test_run_tasks_add_errors_when_parent_not_found(tmp_path: Path) -> None:
     """Create should report an error when parent selector has no matches."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args([str(source)], title="Child", parent="missing")
+    args = make_add_args([str(source)], title="Child", parent="missing")
 
     with pytest.raises(typer.BadParameter, match="was not found"):
-        tasks_create.run_tasks_create(args)
+        tasks_add.run_tasks_add(args)
 
 
-def test_run_tasks_create_errors_when_parent_is_ambiguous(tmp_path: Path) -> None:
+def test_run_tasks_add_errors_when_parent_is_ambiguous(tmp_path: Path) -> None:
     """Create should report an error when parent selector matches multiple headings."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Same\n* TODO Same\n", encoding="utf-8")
-    args = make_create_args([str(source)], title="Child", parent="Same")
+    args = make_add_args([str(source)], title="Child", parent="Same")
 
     with pytest.raises(typer.BadParameter, match="ambiguous"):
-        tasks_create.run_tasks_create(args)
+        tasks_add.run_tasks_add(args)
 
 
-def test_run_tasks_create_rejects_heading_with_mutually_exclusive_switches(tmp_path: Path) -> None:
+def test_run_tasks_add_rejects_heading_with_mutually_exclusive_switches(tmp_path: Path) -> None:
     """Create should reject --heading combined with structured heading switches."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args([str(source)], heading="* TODO One", title="Two")
+    args = make_add_args([str(source)], heading="* TODO One", title="Two")
 
     with pytest.raises(typer.BadParameter, match="--heading cannot be combined"):
-        tasks_create.run_tasks_create(args)
+        tasks_add.run_tasks_add(args)
 
 
-def test_run_tasks_create_reads_task_source_from_stdin_when_heading_components_missing(
+def test_run_tasks_add_reads_task_source_from_stdin_when_heading_components_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Create should read and parse task source from stdin when heading source is omitted."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args(
+    args = make_add_args(
         [str(source)],
         heading=None,
         todo=None,
@@ -177,7 +177,7 @@ def test_run_tasks_create_reads_task_source_from_stdin_when_heading_components_m
 
     monkeypatch.setattr("sys.stdin", io.StringIO("* TODO From stdin\n"))
 
-    tasks_create.run_tasks_create(args)
+    tasks_add.run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     created = list(root)[-1]
@@ -185,14 +185,14 @@ def test_run_tasks_create_reads_task_source_from_stdin_when_heading_components_m
     assert created.title_text.strip() == "From stdin"
 
 
-def test_run_tasks_create_applies_edits_to_stdin_task_source(
+def test_run_tasks_add_applies_edits_to_stdin_task_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Create should apply non-heading-source switches as edits on stdin task input."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args(
+    args = make_add_args(
         [str(source)],
         heading=None,
         todo=None,
@@ -212,7 +212,7 @@ def test_run_tasks_create_applies_edits_to_stdin_task_source(
 
     monkeypatch.setattr("sys.stdin", io.StringIO("* TODO Base :old:\n** TODO Child\n"))
 
-    tasks_create.run_tasks_create(args)
+    tasks_add.run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     nodes = list(root)
@@ -231,14 +231,14 @@ def test_run_tasks_create_applies_edits_to_stdin_task_source(
     assert "Updated body" in source.read_text(encoding="utf-8")
 
 
-def test_run_tasks_create_stdin_uses_same_parent_level_validation_as_level(
+def test_run_tasks_add_stdin_uses_same_parent_level_validation_as_level(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Create should enforce parent-level constraints for stdin-provided heading levels."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args(
+    args = make_add_args(
         [str(source)],
         heading=None,
         todo=None,
@@ -250,17 +250,17 @@ def test_run_tasks_create_stdin_uses_same_parent_level_validation_as_level(
     monkeypatch.setattr("sys.stdin", io.StringIO("* TODO Child\n"))
 
     with pytest.raises(typer.BadParameter, match="--level must be greater than parent level"):
-        tasks_create.run_tasks_create(args)
+        tasks_add.run_tasks_add(args)
 
 
-def test_run_tasks_create_errors_when_stdin_task_source_is_empty(
+def test_run_tasks_add_errors_when_stdin_task_source_is_empty(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Create should report an error when heading source is omitted and stdin is empty."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args(
+    args = make_add_args(
         [str(source)],
         heading=None,
         todo=None,
@@ -271,26 +271,26 @@ def test_run_tasks_create_errors_when_stdin_task_source_is_empty(
     monkeypatch.setattr("sys.stdin", io.StringIO("  \n\t\n"))
 
     with pytest.raises(typer.BadParameter, match="Task heading is empty"):
-        tasks_create.run_tasks_create(args)
+        tasks_add.run_tasks_add(args)
 
 
-def test_run_tasks_create_surfaces_invalid_template_parse_errors(tmp_path: Path) -> None:
+def test_run_tasks_add_surfaces_invalid_template_parse_errors(tmp_path: Path) -> None:
     """Create should validate generated source with Heading.from_source."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args([str(source)], title="Two", scheduled="not-a-timestamp")
+    args = make_add_args([str(source)], title="Two", scheduled="not-a-timestamp")
 
     with pytest.raises(typer.BadParameter, match="Invalid task template"):
-        tasks_create.run_tasks_create(args)
+        tasks_add.run_tasks_add(args)
 
 
-def test_run_tasks_create_allows_heading_without_title_when_metadata_is_set(tmp_path: Path) -> None:
+def test_run_tasks_add_allows_heading_without_title_when_metadata_is_set(tmp_path: Path) -> None:
     """Create should support metadata-only heading lines without requiring --title."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args([str(source)], title=None, todo="TODO", priority="A", comment="true")
+    args = make_add_args([str(source)], title=None, todo="TODO", priority="A", comment="true")
 
-    tasks_create.run_tasks_create(args)
+    tasks_add.run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = list(root)[-1]
@@ -300,28 +300,28 @@ def test_run_tasks_create_allows_heading_without_title_when_metadata_is_set(tmp_
     assert node.title_text == ""
 
 
-def test_run_tasks_create_rejects_invalid_comment_value(tmp_path: Path) -> None:
+def test_run_tasks_add_rejects_invalid_comment_value(tmp_path: Path) -> None:
     """Create should reject comment values other than true/false."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args([str(source)], todo=None, title=None, comment="yes")
+    args = make_add_args([str(source)], todo=None, title=None, comment="yes")
 
     with pytest.raises(typer.BadParameter, match="--comment must be either"):
-        tasks_create.run_tasks_create(args)
+        tasks_add.run_tasks_add(args)
 
 
-def test_run_tasks_create_applies_json_properties_and_generates_default_id(tmp_path: Path) -> None:
+def test_run_tasks_add_applies_json_properties_and_generates_default_id(tmp_path: Path) -> None:
     """Create should parse --properties JSON and generate ID when missing."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args(
+    args = make_add_args(
         [str(source)],
         title="Child",
         properties='{"A":"1"}',
         id_value=None,
     )
 
-    tasks_create.run_tasks_create(args)
+    tasks_add.run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = list(root)[-1]
@@ -331,11 +331,11 @@ def test_run_tasks_create_applies_json_properties_and_generates_default_id(tmp_p
     uuid.UUID(str(generated_id))
 
 
-def test_run_tasks_create_rejects_invalid_properties_json(tmp_path: Path) -> None:
+def test_run_tasks_add_rejects_invalid_properties_json(tmp_path: Path) -> None:
     """Create should reject --properties values that are not JSON objects."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
-    args = make_create_args([str(source)], properties='["x"]')
+    args = make_add_args([str(source)], properties='["x"]')
 
     with pytest.raises(typer.BadParameter, match="--properties must be a JSON object"):
-        tasks_create.run_tasks_create(args)
+        tasks_add.run_tasks_add(args)

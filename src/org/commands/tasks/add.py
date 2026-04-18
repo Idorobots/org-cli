@@ -1,4 +1,4 @@
-"""Tasks create command."""
+"""Tasks add command."""
 
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ _TASK_TEMPLATE = "{heading}\n{planning}{properties}{body}"
 
 
 @dataclass
-class CreateArgs:
-    """Arguments for the tasks create command."""
+class AddArgs:
+    """Arguments for the tasks add command."""
 
     files: list[str] | None
     config: str
@@ -55,7 +55,7 @@ class CreateArgs:
     file: str | None
 
 
-def _validate_heading_option_exclusivity(args: CreateArgs) -> None:
+def _validate_heading_option_exclusivity(args: AddArgs) -> None:
     """Reject combinations where --heading is mixed with incompatible switches."""
     if args.heading is None:
         return
@@ -81,13 +81,13 @@ def _validate_heading_option_exclusivity(args: CreateArgs) -> None:
         raise typer.BadParameter(f"--heading cannot be combined with: {conflicts_text}")
 
 
-def _has_structured_heading_component(args: CreateArgs) -> bool:
+def _has_structured_heading_component(args: AddArgs) -> bool:
     """Return true when structured heading options provide heading source."""
     comment_enabled = parse_comment_flag(args.comment) if args.comment is not None else False
     return args.todo is not None or comment_enabled or args.title is not None
 
 
-def _should_read_task_from_stdin(args: CreateArgs) -> bool:
+def _should_read_task_from_stdin(args: AddArgs) -> bool:
     """Return true when heading source should be read from stdin."""
     return args.heading is None and not _has_structured_heading_component(args)
 
@@ -133,7 +133,7 @@ def _resolve_level(level: int | None, parent_level: int | None) -> int:
     return 1
 
 
-def _build_heading_line_from_fields(args: CreateArgs, level: int) -> str:
+def _build_heading_line_from_fields(args: AddArgs, level: int) -> str:
     """Build a heading line from structured heading switches."""
     marker = "*" * level
     metadata_tokens: list[str] = []
@@ -162,7 +162,7 @@ def _build_heading_line_from_fields(args: CreateArgs, level: int) -> str:
     return heading_line
 
 
-def _resolve_heading_line(args: CreateArgs, level: int) -> str:
+def _resolve_heading_line(args: AddArgs, level: int) -> str:
     """Resolve heading line either from --heading or structured switches."""
     if args.heading is None:
         return _build_heading_line_from_fields(args, level)
@@ -175,7 +175,7 @@ def _resolve_heading_line(args: CreateArgs, level: int) -> str:
     return heading_value
 
 
-def _planning_line(args: CreateArgs) -> str:
+def _planning_line(args: AddArgs) -> str:
     """Build one org planning line from timestamp switches."""
     planning_tokens: list[str] = []
     if args.scheduled is not None:
@@ -189,7 +189,7 @@ def _planning_line(args: CreateArgs) -> str:
     return f"{' '.join(planning_tokens)}\n"
 
 
-def _build_properties(args: CreateArgs) -> dict[str, str]:
+def _build_properties(args: AddArgs) -> dict[str, str]:
     """Build final property map from --properties, --category, and --id."""
     properties = {} if args.properties is None else parse_properties_json(args.properties)
 
@@ -205,7 +205,7 @@ def _build_properties(args: CreateArgs) -> dict[str, str]:
     return properties
 
 
-def _properties_block(args: CreateArgs) -> str:
+def _properties_block(args: AddArgs) -> str:
     """Build an org properties drawer block."""
     properties = _build_properties(args)
     if not properties:
@@ -225,7 +225,7 @@ def _body_block(body: str | None) -> str:
     return f"{body}\n"
 
 
-def _build_task_source(args: CreateArgs, parent_level: int | None) -> str:
+def _build_task_source(args: AddArgs, parent_level: int | None) -> str:
     """Build task source from CLI options and hardcoded template."""
     level = _resolve_level(args.level, parent_level)
     heading_line = _resolve_heading_line(args, level)
@@ -248,7 +248,7 @@ def _validate_task_source(task_source: str) -> Heading:
         raise typer.BadParameter(f"Invalid task template: {err}") from err
 
 
-def _apply_stdin_level_edit(args: CreateArgs, parent_level: int | None, heading: Heading) -> None:
+def _apply_stdin_level_edit(args: AddArgs, parent_level: int | None, heading: Heading) -> None:
     """Apply effective level edits to stdin-provided heading."""
     if args.level is not None:
         target_level = _resolve_level(args.level, parent_level)
@@ -257,7 +257,7 @@ def _apply_stdin_level_edit(args: CreateArgs, parent_level: int | None, heading:
     apply_subtree_level(heading, target_level)
 
 
-def _apply_stdin_heading_metadata_edits(args: CreateArgs, heading: Heading) -> None:
+def _apply_stdin_heading_metadata_edits(args: AddArgs, heading: Heading) -> None:
     """Apply heading metadata edits on stdin heading."""
     if args.priority is not None:
         heading.priority = normalize_optional_value(args.priority)
@@ -269,7 +269,7 @@ def _apply_stdin_heading_metadata_edits(args: CreateArgs, heading: Heading) -> N
         heading.heading_tags = parse_tags_csv(args.tags)
 
 
-def _apply_stdin_planning_edits(args: CreateArgs, heading: Heading) -> None:
+def _apply_stdin_planning_edits(args: AddArgs, heading: Heading) -> None:
     """Apply planning timestamp edits on stdin heading."""
     if args.scheduled is not None:
         heading.scheduled = parse_timestamp(args.scheduled, "--scheduled")
@@ -279,7 +279,7 @@ def _apply_stdin_planning_edits(args: CreateArgs, heading: Heading) -> None:
         heading.closed = parse_timestamp(args.closed, "--closed")
 
 
-def _apply_stdin_property_edits(args: CreateArgs, heading: Heading) -> None:
+def _apply_stdin_property_edits(args: AddArgs, heading: Heading) -> None:
     """Apply property, category, and ID edits on stdin heading."""
     if args.properties is not None:
         heading.properties = parse_properties_json(args.properties)
@@ -293,8 +293,8 @@ def _apply_stdin_property_edits(args: CreateArgs, heading: Heading) -> None:
         heading.id = str(uuid4())
 
 
-def _apply_stdin_task_edits(args: CreateArgs, parent_level: int | None, heading: Heading) -> None:
-    """Apply non-source create switches as edits on stdin heading."""
+def _apply_stdin_task_edits(args: AddArgs, parent_level: int | None, heading: Heading) -> None:
+    """Apply non-source add switches as edits on stdin heading."""
     _apply_stdin_level_edit(args, parent_level, heading)
     _apply_stdin_heading_metadata_edits(args, heading)
     _apply_stdin_planning_edits(args, heading)
@@ -304,7 +304,7 @@ def _apply_stdin_task_edits(args: CreateArgs, parent_level: int | None, heading:
         heading.body = args.body
 
 
-def _build_heading_from_stdin(args: CreateArgs, parent_level: int | None) -> Heading:
+def _build_heading_from_stdin(args: AddArgs, parent_level: int | None) -> Heading:
     """Read task heading source from stdin and apply edit switches."""
     task_source = _read_task_source_from_stdin()
     heading = _validate_task_source(task_source)
@@ -328,8 +328,8 @@ def _attach_heading(document: Document, parent_heading: Heading | None, heading:
     parent_heading.children.append(heading)
 
 
-def run_tasks_create(args: CreateArgs) -> None:
-    """Run the tasks create command."""
+def run_tasks_add(args: AddArgs) -> None:
+    """Run the tasks add command."""
     _validate_heading_option_exclusivity(args)
     read_from_stdin = _should_read_task_from_stdin(args)
 
@@ -352,10 +352,10 @@ def run_tasks_create(args: CreateArgs) -> None:
 
 
 def register(app: typer.Typer) -> None:
-    """Register the tasks create command."""
+    """Register the tasks add command."""
 
-    @app.command("create")
-    def tasks_create(  # noqa: PLR0913
+    @app.command("add")
+    def tasks_add(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -474,7 +474,7 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Create a new task heading and append it to a selected org document."""
-        args = CreateArgs(
+        args = AddArgs(
             files=files,
             config=config,
             level=level,
@@ -496,6 +496,6 @@ def register(app: typer.Typer) -> None:
             file=file,
         )
         config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks create")
-        config_module.log_command_arguments(args, "tasks create")
-        run_tasks_create(args)
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks add")
+        config_module.log_command_arguments(args, "tasks add")
+        run_tasks_add(args)
