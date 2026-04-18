@@ -13,6 +13,8 @@ poetry run org tasks update [OPTIONS] [FILE ...]
 - `--query-title TEXT` - Match task by heading title text.
 - `--query-id TEXT` - Match task by heading `ID` property.
 - `--query QUERY` - Match task using a generic query-language predicate.
+- `--yes` - Automatically confirm update without prompting.
+- `--color/--no-color` - Force color behavior for interactive prompt.
 
 Provide exactly one selector: `--query-title`, `--query-id`, or `--query`.
 
@@ -47,9 +49,11 @@ Provide exactly one selector: `--query-title`, `--query-id`, or `--query`.
 
 - Input files are resolved from `[FILE ...]`.
 - Matching checks all resolved files.
-- Selector must match exactly one task across all files.
-- No matches or multiple matches return an error.
+- Selector can match one or more tasks across all files.
+- No matches return an error.
 - `--query` is wrapped as `.[] | select(<QUERY>)` before execution.
+- Before applying updates, command asks a `y/n` confirmation with affected task count.
+- `--yes` skips the confirmation prompt.
 - Parent lookup checks heading `ID` first, then heading title.
 - Parent lookup errors on missing parent or ambiguous title matches.
 - When `--file` is used with `--parent`, parent lookup is resolved in the destination file.
@@ -61,6 +65,7 @@ Provide exactly one selector: `--query-title`, `--query-id`, or `--query`.
 - `--tags` cannot be combined with `--add-tag` or `--remove-tag`.
 - `--properties` cannot be combined with `--add-property` or `--remove-property`.
 - Any `--remove-*` switch errors when the target entry is not present on the task.
+- After success, the command prints `Updated {number} tasks.`.
 
 ## Examples
 
@@ -110,4 +115,10 @@ poetry run org tasks update --query-id 23 --add-clock-entry "CLOCK: [2026-04-14 
 
 ```bash
 poetry run org tasks update --query-id 23 --file path/to/destination.org path/to/source.org
+```
+
+9) Update all matching tasks without prompt
+
+```bash
+poetry run org tasks update --query-title "Chore" --todo DONE --yes backlog.org
 ```

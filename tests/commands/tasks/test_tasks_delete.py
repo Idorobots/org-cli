@@ -23,6 +23,8 @@ def make_delete_args(files: list[str], **overrides: object) -> tasks_delete.Dele
         query_title=None,
         query_id=None,
         query=None,
+        yes=True,
+        color_flag=None,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -89,14 +91,17 @@ def test_run_tasks_delete_rejects_title_and_id_together(tmp_path: Path) -> None:
         tasks_delete.run_tasks_delete(args)
 
 
-def test_run_tasks_delete_errors_when_multiple_tasks_match(tmp_path: Path) -> None:
-    """Delete should fail when title selector matches more than one task."""
+def test_run_tasks_delete_deletes_all_matching_tasks(tmp_path: Path) -> None:
+    """Delete should remove all tasks matched by selector."""
     source = tmp_path / "tasks.org"
-    source.write_text("* TODO Same\n* TODO Same\n", encoding="utf-8")
+    source.write_text("* TODO Same\n* TODO Same\n* TODO Tail\n", encoding="utf-8")
     args = make_delete_args([str(source)], query_title="Same")
 
-    with pytest.raises(typer.BadParameter, match="multiple tasks match"):
-        tasks_delete.run_tasks_delete(args)
+    tasks_delete.run_tasks_delete(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    titles = [node.title_text.strip() for node in list(root)]
+    assert titles == ["Tail"]
 
 
 def test_run_tasks_delete_errors_when_no_tasks_match(tmp_path: Path) -> None:
@@ -137,3 +142,23 @@ def test_run_tasks_delete_rejects_multiple_selector_switches(tmp_path: Path) -> 
 
     with pytest.raises(typer.BadParameter, match="exactly one task selector"):
         tasks_delete.run_tasks_delete(args)
+
+
+def test_run_tasks_delete_cancels_when_confirmation_declined(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Delete should leave files unchanged when confirmation is declined."""
+    source = tmp_path / "tasks.org"
+    source.write_text("* TODO Keep\n* TODO Remove me\n", encoding="utf-8")
+    args = make_delete_args([str(source)], query_title="Remove me", yes=False)
+
+    def _decline_confirmation(*_: object, **__: object) -> bool:
+        return False
+
+    monkeypatch.setattr("rich.prompt.Confirm.ask", _decline_confirmation)
+
+    tasks_delete.run_tasks_delete(args)
+
+    updated = source.read_text(encoding="utf-8")
+    assert "Remove me" in updated

@@ -12,16 +12,19 @@ from org_parser.document import Document, Heading
 from org_parser.element import ListItem, Repeat
 from org_parser.text import CompletionCounter
 from org_parser.time import Clock, Timestamp
+from rich.console import Console
+from rich.prompt import Confirm
 
 from org import config as config_module
 from org.cli_common import resolve_input_paths
+from org.color import should_use_color
 from org.commands.tasks.common import (
     id_matches,
     load_document,
     normalize_selector,
     parse_properties_json,
     parse_tags_csv,
-    resolve_single_heading_by_query,
+    resolve_headings_by_query,
     resolve_task_selector_query,
     save_document,
     title_matches,
@@ -64,6 +67,8 @@ class UpdateArgs:
     add_property: list[str] | None
     remove_property: list[str] | None
     file: str | None
+    yes: bool
+    color_flag: bool | None
 
 
 def _normalize_optional_value(value: str) -> str | None:
@@ -74,7 +79,11 @@ def _normalize_optional_value(value: str) -> str | None:
     return normalized
 
 
-def _resolve_destination_document(file_value: str | None, source_document: Document) -> Document:
+def _resolve_destination_document(
+    file_value: str | None,
+    source_document: Document,
+    destination_cache: dict[str, Document],
+) -> Document:
     """Resolve destination document for --file or return source document."""
     if file_value is None:
         return source_document
@@ -91,7 +100,14 @@ def _resolve_destination_document(file_value: str | None, source_document: Docum
         if source_path.resolve() == path.resolve():
             return source_document
 
-    return load_document(str(path))
+    cache_key = str(path.resolve())
+    cached = destination_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    loaded_document = load_document(str(path))
+    destination_cache[cache_key] = loaded_document
+    return loaded_document
 
 
 def _parse_comment_flag(value: str) -> bool:
@@ -468,36 +484,63 @@ def run_tasks_update(args: UpdateArgs) -> None:
     _validate_update_option_conflicts(args)
     filenames = resolve_input_paths(args.files)
 
-    heading = resolve_single_heading_by_query(filenames, selector_query)
-    logger.info(
-        "Updating task: file=%s title=%s id=%s tags=%s",
-        heading.document.filename,
-        heading.title_text,
-        heading.id,
-        list(heading.heading_tags),
-    )
-    source_document = heading.document
-    destination_document = _resolve_destination_document(args.file, source_document)
+    headings = resolve_headings_by_query(filenames, selector_query)
+    selected_count = len(headings)
+    logger.info("Selected %s tasks for update", selected_count)
 
-    if destination_document is not source_document:
-        logger.info(
-            "Moving task between files: source=%s destination=%s",
-            source_document.filename,
-            destination_document.filename,
+    if not args.yes:
+        color_enabled = should_use_color(args.color_flag)
+        console = Console(no_color=not color_enabled, force_terminal=color_enabled)
+        confirmed = Confirm.ask(
+            f"Update {selected_count} tasks?",
+            console=console,
+            default=False,
+            show_default=True,
+            show_choices=True,
         )
-        _move_heading(heading, None, destination_document)
+        if not confirmed:
+            logger.info("Update operation cancelled by user")
+            typer.echo("Cancelled")
+            return
 
-    _apply_parent_and_level_updates(args, heading)
-    _apply_field_updates(args, heading)
+    destination_cache: dict[str, Document] = {}
+    documents_to_save: dict[int, Document] = {}
+    for heading in headings:
+        logger.info(
+            "Updating task: file=%s title=%s id=%s tags=%s",
+            heading.document.filename,
+            heading.title_text,
+            heading.id,
+            list(heading.heading_tags),
+        )
+        source_document = heading.document
+        destination_document = _resolve_destination_document(
+            args.file,
+            source_document,
+            destination_cache,
+        )
 
-    documents_to_save = [destination_document]
-    if source_document is not destination_document:
-        documents_to_save.append(source_document)
+        if destination_document is not source_document:
+            logger.info(
+                "Moving task between files: source=%s destination=%s",
+                source_document.filename,
+                destination_document.filename,
+            )
+            _move_heading(heading, None, destination_document)
 
-    for document in documents_to_save:
+        _apply_parent_and_level_updates(args, heading)
+        _apply_field_updates(args, heading)
+
+        documents_to_save[id(destination_document)] = destination_document
+        if source_document is not destination_document:
+            documents_to_save[id(source_document)] = source_document
+
+    for document in documents_to_save.values():
         logger.info("Saving updated file: %s", document.filename)
         document.sync_heading_id_index()
         save_document(document)
+
+    typer.echo(f"Updated {selected_count} tasks.")
 
 
 def register(app: typer.Typer) -> None:
@@ -678,6 +721,16 @@ def register(app: typer.Typer) -> None:
             metavar="FILE",
             help="Move task to another file",
         ),
+        yes: bool = typer.Option(
+            False,
+            "--yes",
+            help="Automatically confirm without prompting",
+        ),
+        color_flag: bool | None = typer.Option(
+            None,
+            "--color/--no-color",
+            help="Force colored output",
+        ),
     ) -> None:
         """Update one task heading and persist the modified org document."""
         args = UpdateArgs(
@@ -710,6 +763,8 @@ def register(app: typer.Typer) -> None:
             add_property=add_property,
             remove_property=remove_property,
             file=file,
+            yes=yes,
+            color_flag=color_flag,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks update")

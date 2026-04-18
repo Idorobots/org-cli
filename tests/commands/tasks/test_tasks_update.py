@@ -48,6 +48,8 @@ def make_update_args(files: list[str], **overrides: object) -> tasks_update.Upda
         add_property=None,
         remove_property=None,
         file=None,
+        yes=True,
+        color_flag=None,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -135,14 +137,43 @@ def test_run_tasks_update_rejects_query_with_other_selectors(tmp_path: Path) -> 
         )
 
 
-def test_run_tasks_update_errors_when_multiple_tasks_match(tmp_path: Path) -> None:
-    """Update should fail when selector matches multiple tasks."""
+def test_run_tasks_update_cancels_when_confirmation_declined(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Update should leave files unchanged when confirmation is declined."""
     source = tmp_path / "tasks.org"
-    source.write_text("* TODO Same\n* TODO Same\n", encoding="utf-8")
+    source.write_text("* TODO Foo\n", encoding="utf-8")
+    args = make_update_args(
+        [str(source)],
+        query_id=None,
+        query='str(.title_text) == "Foo"',
+        title="Updated",
+        yes=False,
+    )
+
+    def _decline_confirmation(*_: object, **__: object) -> bool:
+        return False
+
+    monkeypatch.setattr("rich.prompt.Confirm.ask", _decline_confirmation)
+
+    tasks_update.run_tasks_update(args)
+
+    updated = source.read_text(encoding="utf-8")
+    assert "* TODO Foo" in updated
+
+
+def test_run_tasks_update_applies_to_all_matching_tasks(tmp_path: Path) -> None:
+    """Update should apply to all tasks matched by selector."""
+    source = tmp_path / "tasks.org"
+    source.write_text("* TODO Same\n* TODO Same\n* TODO Tail\n", encoding="utf-8")
     args = make_update_args([str(source)], query_id=None, query_title="Same", title="Updated")
 
-    with pytest.raises(typer.BadParameter, match="multiple tasks match"):
-        tasks_update.run_tasks_update(args)
+    tasks_update.run_tasks_update(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    titles = [node.title_text.strip() for node in list(root)]
+    assert titles == ["Updated", "Updated", "Tail"]
 
 
 def test_run_tasks_update_clears_supported_fields_with_empty_string(tmp_path: Path) -> None:

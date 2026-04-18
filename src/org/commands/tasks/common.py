@@ -136,11 +136,11 @@ def parse_properties_json(value: str) -> dict[str, str]:
     return parsed
 
 
-def resolve_single_heading_by_query(
+def resolve_headings_by_query(
     filenames: list[str],
     selector_query: str,
-) -> Heading:
-    """Resolve one heading across files from selector query."""
+) -> list[Heading]:
+    """Resolve matching headings across files from selector query."""
     try:
         compiled_query = compile_query_text(selector_query)
     except QueryParseError as err:
@@ -166,6 +166,4 @@ def resolve_single_heading_by_query(
     matches = list(matches_by_identity.values())
     if not matches:
         raise typer.BadParameter("No task matches the provided selector")
-    if len(matches) > 1:
-        raise typer.BadParameter("Task selector is ambiguous, multiple tasks match")
-    return matches[0]
+    return matches

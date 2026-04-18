@@ -14,6 +14,8 @@ poetry run org tasks delete [OPTIONS] [FILE ...]
 - `--query-title TEXT` - Heading title text of the task to remove.
 - `--query-id TEXT` - ID of the task to remove.
 - `--query QUERY` - Generic query-language predicate used to select one task.
+- `--yes` - Automatically confirm deletion without prompting.
+- `--color/--no-color` - Force color behavior for interactive prompt.
 
 ## Selector rules
 
@@ -27,14 +29,19 @@ poetry run org tasks delete [OPTIONS] [FILE ...]
 
 - Input files are resolved from `[FILE ...]`.
 - Matching checks all resolved files.
-- The selector must match exactly one task across all files.
+- The selector can match one or more tasks across all files.
 - If no tasks match, command exits with an error.
-- If multiple tasks match, command exits with an error.
+
+## Confirmation behavior
+
+- The command shows a `y/n` confirmation prompt with affected task count.
+- `--yes` skips the prompt and applies deletion immediately.
 
 ## Delete behavior
 
-- The matched heading is removed from its parent.
-- All child headings under the matched heading are removed as part of the same delete.
+- Every selected heading is deleted.
+- All child headings under each matched heading are removed as part of the same delete.
+- After success, the command prints `Deleted {number} tasks.`.
 
 ## Examples
 
@@ -60,4 +67,10 @@ poetry run org tasks delete --query-title "Refactor parser" notes.org backlog.or
 
 ```bash
 poetry run org tasks delete --query '.title_text == "Test"' ROADMAP.org
+```
+
+5) Delete all matching tasks without prompt
+
+```bash
+poetry run org tasks delete --query-title "Stale" --yes backlog.org
 ```

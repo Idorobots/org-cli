@@ -4521,7 +4521,10 @@ In file src/org/logging_config.py around line 18, near the ~def configure_loggin
 #+end_example
 
 Please don't change that. All of these logs should be INFO-level.
-*** TODO Apply edits to multiple tasks
+*** REWORKED Apply edits to multiple tasks
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 22:10]
+:END:
 Let's relax the rules for task selectors in delete & update commands to apply the operations to potentially multiple tasks that have been selected by a selector.
 
 Both commands should first determine the number of affected tasks and ask for confirmation before applying the destructive action. You can use Python's Rich's =rich.prompt.Confirm= for that.

@@ -5,21 +5,20 @@ from __future__ import annotations
 import logging
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import typer
+from org_parser.document import Document, Heading
+from rich.console import Console
+from rich.prompt import Confirm
 
 from org import config as config_module
 from org.cli_common import resolve_input_paths
+from org.color import should_use_color
 from org.commands.tasks.common import (
-    resolve_single_heading_by_query,
+    resolve_headings_by_query,
     resolve_task_selector_query,
     save_document,
 )
-
-
-if TYPE_CHECKING:
-    from org_parser.document import Heading
 
 
 logger = logging.getLogger("org")
@@ -34,6 +33,8 @@ class DeleteArgs:
     query_title: str | None
     query_id: str | None
     query: str | None
+    yes: bool
+    color_flag: bool | None
 
 
 def _remove_heading(heading: Heading) -> None:
@@ -44,29 +45,74 @@ def _remove_heading(heading: Heading) -> None:
     parent.children.remove(heading)
 
 
+def _selected_delete_roots(headings: list[Heading]) -> list[Heading]:
+    """Return selected headings that are not descendants of another selected heading."""
+    selected_by_id = {id(heading) for heading in headings}
+    roots: list[Heading] = []
+    for heading in headings:
+        parent = heading.parent
+        skip = False
+        while isinstance(parent, Heading):
+            if id(parent) in selected_by_id:
+                skip = True
+                break
+            parent = parent.parent
+        if not skip:
+            roots.append(heading)
+    return roots
+
+
 def run_tasks_delete(args: DeleteArgs) -> None:
     """Run the tasks delete command."""
     filenames = resolve_input_paths(args.files)
     selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
 
-    heading = resolve_single_heading_by_query(filenames, selector_query)
-    logger.info(
-        "Deleting task from file=%s title=%s id=%s tags=%s",
-        heading.document.filename,
-        heading.title_text,
-        heading.id,
-        list(heading.heading_tags),
-    )
-    _remove_heading(heading)
-    logger.info("Saving file after delete: %s", heading.document.filename)
-    save_document(heading.document)
+    selected_headings = resolve_headings_by_query(filenames, selector_query)
+    selected_count = len(selected_headings)
+    logger.info("Selected %s tasks for delete", selected_count)
+
+    if not args.yes:
+        color_enabled = should_use_color(args.color_flag)
+        console = Console(no_color=not color_enabled, force_terminal=color_enabled)
+        confirmed = Confirm.ask(
+            f"Delete {selected_count} tasks?",
+            console=console,
+            default=False,
+            show_default=True,
+            show_choices=True,
+        )
+        if not confirmed:
+            logger.info("Delete operation cancelled by user")
+            typer.echo("Cancelled")
+            return
+
+    delete_roots = _selected_delete_roots(selected_headings)
+    affected_documents: dict[int, Document] = {}
+    for heading in delete_roots:
+        logger.info(
+            "Deleting task from file=%s title=%s id=%s tags=%s",
+            heading.document.filename,
+            heading.title_text,
+            heading.id,
+            list(heading.heading_tags),
+        )
+        _remove_heading(heading)
+        document = heading.document
+        affected_documents[id(document)] = document
+
+    for document in affected_documents.values():
+        logger.info("Saving file after delete: %s", document.filename)
+        document.sync_heading_id_index()
+        save_document(document)
+
+    typer.echo(f"Deleted {selected_count} tasks.")
 
 
 def register(app: typer.Typer) -> None:
     """Register the tasks delete command."""
 
     @app.command("delete")
-    def tasks_delete(
+    def tasks_delete(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -96,6 +142,16 @@ def register(app: typer.Typer) -> None:
             metavar="QUERY",
             help="Generic query language selector expression",
         ),
+        yes: bool = typer.Option(
+            False,
+            "--yes",
+            help="Automatically confirm without prompting",
+        ),
+        color_flag: bool | None = typer.Option(
+            None,
+            "--color/--no-color",
+            help="Force colored output",
+        ),
     ) -> None:
         """Delete one task heading and its subtree from a selected org document."""
         args = DeleteArgs(
@@ -104,6 +160,8 @@ def register(app: typer.Typer) -> None:
             query_title=query_title,
             query_id=query_id,
             query=query,
+            yes=yes,
+            color_flag=color_flag,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks delete")

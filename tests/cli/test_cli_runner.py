@@ -216,11 +216,13 @@ def test_cli_runner_tasks_delete_removes_heading(tmp_path: Path) -> None:
             "delete",
             "--query-title",
             "Remove me",
+            "--yes",
             str(fixture_path),
         ],
     )
 
     assert result.exit_code == 0
+    assert "Deleted 1 tasks." in result.stdout
     updated = fixture_path.read_text(encoding="utf-8")
     assert "Remove me" not in updated
     assert "Child" not in updated
@@ -266,6 +268,7 @@ def test_cli_runner_tasks_delete_rejects_title_and_id_together(tmp_path: Path) -
             "Keep",
             "--query-id",
             "task-1",
+            "--yes",
             str(fixture_path),
         ],
     )
@@ -291,11 +294,13 @@ def test_cli_runner_tasks_delete_supports_query_selector(tmp_path: Path) -> None
             "delete",
             "--query",
             'str(.title_text) == "Remove me"',
+            "--yes",
             str(fixture_path),
         ],
     )
 
     assert result.exit_code == 0
+    assert "Deleted 1 tasks." in result.stdout
     updated = fixture_path.read_text(encoding="utf-8")
     assert "Remove me" not in updated
     assert "Keep" in updated
@@ -320,11 +325,13 @@ def test_cli_runner_tasks_update_updates_heading(tmp_path: Path) -> None:
             "task-1",
             "--title",
             "Updated",
+            "--yes",
             str(fixture_path),
         ],
     )
 
     assert result.exit_code == 0
+    assert "Updated 1 tasks." in result.stdout
     updated = fixture_path.read_text(encoding="utf-8")
     assert "* TODO Updated" in updated
 
@@ -344,6 +351,7 @@ def test_cli_runner_tasks_update_supports_query_selector(tmp_path: Path) -> None
             'str(.title_text) == "Keep"',
             "--title",
             "Updated",
+            "--yes",
             str(fixture_path),
         ],
     )
@@ -393,6 +401,7 @@ def test_cli_runner_tasks_update_rejects_invalid_comment(tmp_path: Path) -> None
             "task-1",
             "--comment",
             "maybe",
+            "--yes",
             str(fixture_path),
         ],
     )
@@ -426,6 +435,7 @@ def test_cli_runner_tasks_update_supports_fine_grained_repeatable_switches(tmp_p
             "A=1",
             "--remove-property",
             "OLD",
+            "--yes",
             str(fixture_path),
         ],
     )
@@ -458,6 +468,7 @@ def test_cli_runner_tasks_update_moves_task_to_file(tmp_path: Path) -> None:
             "task-1",
             "--file",
             str(destination_path),
+            "--yes",
             str(source_path),
         ],
     )
@@ -465,6 +476,60 @@ def test_cli_runner_tasks_update_moves_task_to_file(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "* TODO Keep" not in source_path.read_text(encoding="utf-8")
     assert "* TODO Keep" in destination_path.read_text(encoding="utf-8")
+
+
+def test_cli_runner_tasks_delete_shows_confirmation_prompt_with_count(tmp_path: Path) -> None:
+    """CliRunner should ask y/n confirmation with affected task count."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text("* TODO Same\n* TODO Same\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "delete",
+            "--query-title",
+            "Same",
+            "--no-color",
+            str(fixture_path),
+        ],
+        input="n\n",
+    )
+
+    assert result.exit_code == 0
+    combined_output = result.stdout + result.stderr
+    assert "Delete 2 tasks?" in combined_output
+    updated = fixture_path.read_text(encoding="utf-8")
+    assert updated.count("* TODO Same") == 2
+
+
+def test_cli_runner_tasks_update_shows_confirmation_prompt_with_count(tmp_path: Path) -> None:
+    """CliRunner should ask y/n confirmation with affected task count."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text("* TODO Same\n* TODO Same\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "update",
+            "--query-title",
+            "Same",
+            "--title",
+            "Updated",
+            "--no-color",
+            str(fixture_path),
+        ],
+        input="n\n",
+    )
+
+    assert result.exit_code == 0
+    combined_output = result.stdout + result.stderr
+    assert "Update 2 tasks?" in combined_output
+    updated = fixture_path.read_text(encoding="utf-8")
+    assert updated.count("* TODO Same") == 2
 
 
 def test_cli_runner_allows_missing_files_when_some_exist() -> None:
