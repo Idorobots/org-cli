@@ -1,257 +1,116 @@
 """Tests for chart spanning with date filter arguments."""
 
-import os
-import subprocess
-import sys
+from __future__ import annotations
+
+import logging
+import re
+from pathlib import Path
+from typing import Protocol
+
+import pytest
+from typer.testing import CliRunner
+
+from org.cli import app
 
 
-PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
-FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
-def test_chart_spanning_no_filters() -> None:
-    """Test chart displays without date filters uses timeline's own dates."""
-    fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
+class _CliResult(Protocol):
+    """Typing protocol for CliRunner invocation results."""
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "--verbose",
-            "stats",
-            "all",
-            "--no-color",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
+    @property
+    def stdout(self) -> str:
+        """Captured stdout text."""
+        ...
 
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-    assert "Total tasks:" in result.stdout
+    @property
+    def stderr(self) -> str:
+        """Captured stderr text."""
+        ...
+
+    @property
+    def exit_code(self) -> int:
+        """Process exit code."""
+        ...
 
 
-def test_chart_spanning_with_filter_date_from_only() -> None:
-    """Test chart spans from filter-date-from to actual latest date."""
-    fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "--verbose",
-            "stats",
-            "all",
-            "--filter-date-from",
-            "2024-01-01",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-    lines = result.stdout.split("\n")
-    date_lines = [line for line in lines if "2024-" in line]
-    assert len(date_lines) > 0
+def _clean_combined_output(result: _CliResult) -> str:
+    """Return stdout+stderr with ANSI escape sequences removed."""
+    return ANSI_ESCAPE_RE.sub("", result.stdout + result.stderr)
 
 
-def test_chart_spanning_with_filter_date_until_only() -> None:
-    """Test chart spans from actual earliest to filter-date-until."""
-    fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "--verbose",
-            "stats",
-            "all",
-            "--filter-date-until",
-            "2025-12-31",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-    lines = result.stdout.split("\n")
-    date_lines = [line for line in lines if "2025-" in line]
-    assert len(date_lines) > 0
+def _run_stats_all(extra_args: list[str]) -> str:
+    """Run org stats all in-process and return cleaned combined output."""
+    fixture_path = str((FIXTURES_DIR / "comprehensive_filter_test.org").resolve())
+    runner = CliRunner()
+    logger = logging.getLogger("org")
+    previous_handlers = list(logger.handlers)
+    previous_level = logger.level
+    previous_propagate = logger.propagate
+    try:
+        result = runner.invoke(
+            app,
+            ["--verbose", "stats", "all", "--no-color", *extra_args, fixture_path],
+        )
+    finally:
+        logger.handlers.clear()
+        logger.handlers.extend(previous_handlers)
+        logger.setLevel(previous_level)
+        logger.propagate = previous_propagate
+    assert result.exit_code == 0
+    return _clean_combined_output(result)
 
 
-def test_chart_spanning_with_both_date_filters() -> None:
-    """Test chart spans from filter-date-from to filter-date-until."""
-    fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
+@pytest.mark.parametrize(
+    ("extra_args", "required_tokens", "any_of_tokens"),
+    [
+        ([], ["Processing", "Total tasks:"], []),
+        (["--filter-date-from", "2024-01-01"], ["Processing"], ["2024-"]),
+        (["--filter-date-until", "2025-12-31"], ["Processing"], ["2025-"]),
+        (
+            ["--filter-date-from", "2024-01-01", "--filter-date-until", "2025-12-31"],
+            ["Processing"],
+            ["2024-", "2025-"],
+        ),
+        (
+            ["--filter-date-from", "2025-01-01", "--filter-date-until", "2025-01-31"],
+            ["Processing"],
+            [],
+        ),
+        (
+            ["--filter-date-from", "2099-01-01", "--filter-date-until", "2099-12-31"],
+            ["No results"],
+            [],
+        ),
+        (
+            ["--use", "heading", "--filter-date-from", "2024-01-01"],
+            ["Processing", "HEADING WORDS"],
+            [],
+        ),
+        (["--use", "body", "--filter-date-from", "2024-01-01"], ["Processing", "BODY WORDS"], []),
+        (
+            [
+                "--filter-date-from",
+                "2024-01-01T00:00:00",
+                "--filter-date-until",
+                "2025-12-31T23:59:59",
+            ],
+            ["Processing"],
+            [],
+        ),
+    ],
+)
+def test_chart_spanning_cases(
+    extra_args: list[str],
+    required_tokens: list[str],
+    any_of_tokens: list[str],
+) -> None:
+    """Chart spanning should work for date filters and rendering variants."""
+    combined_output = _run_stats_all(extra_args)
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "--verbose",
-            "stats",
-            "all",
-            "--filter-date-from",
-            "2024-01-01",
-            "--filter-date-until",
-            "2025-12-31",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-    lines = result.stdout.split("\n")
-    has_2024 = any("2024-" in line for line in lines)
-    has_2025 = any("2025-" in line for line in lines)
-    assert has_2024 or has_2025
-
-
-def test_chart_spanning_with_narrow_date_range() -> None:
-    """Test chart with narrow date range still works."""
-    fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "--verbose",
-            "stats",
-            "all",
-            "--filter-date-from",
-            "2025-01-01",
-            "--filter-date-until",
-            "2025-01-31",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-
-
-def test_chart_spanning_filters_out_all_data() -> None:
-    """Test chart when date filters exclude all data shows 'No results'."""
-    fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "stats",
-            "all",
-            "--filter-date-from",
-            "2099-01-01",
-            "--filter-date-until",
-            "2099-12-31",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "No results" in result.stdout
-
-
-def test_chart_spanning_with_show_heading() -> None:
-    """Test chart spanning works with --use heading."""
-    fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "--verbose",
-            "stats",
-            "all",
-            "--use",
-            "heading",
-            "--filter-date-from",
-            "2024-01-01",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-    assert "HEADING WORDS" in result.stdout
-
-
-def test_chart_spanning_with_show_body() -> None:
-    """Test chart spanning works with --use body."""
-    fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "--verbose",
-            "stats",
-            "all",
-            "--use",
-            "body",
-            "--filter-date-from",
-            "2024-01-01",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
-    assert "BODY WORDS" in result.stdout
-
-
-def test_chart_spanning_with_time_component() -> None:
-    """Test chart spanning with timestamp including time."""
-    fixture_path = os.path.join(FIXTURES_DIR, "comprehensive_filter_test.org")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "org",
-            "--verbose",
-            "stats",
-            "all",
-            "--filter-date-from",
-            "2024-01-01T00:00:00",
-            "--filter-date-until",
-            "2025-12-31T23:59:59",
-            fixture_path,
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Processing" in result.stdout
+    for token in required_tokens:
+        assert token in combined_output
+    if any_of_tokens:
+        assert any(token in combined_output for token in any_of_tokens)

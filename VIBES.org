@@ -4795,7 +4795,25 @@ Like linting and formatting.
   - Evaluate switching =[tool.ruff.lint].select= to =["ALL"]=.
   - Keep an explicit =ignore= list only for justified exceptions, with a short rationale per rule.
   - Ensure commonly useful rule families are enabled (at minimum: =S=, =PT=, =TRY=, =PERF=, =D=, =TID=, =A=, =C90=, =G=).
+** DONE Speed up slow CLI tests by reducing subprocess usage
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 02:04]
+:END:
+- *Context:* current profiling shows most runtime is concentrated in =tests/test_chart_date_spanning.py= and =tests/cli/test_cli_smoke.py=. These tests repeatedly call =subprocess.run(...)=, so each case pays full Python startup + import cost.
+- *Scope:* optimize test runtime without reducing confidence in CLI behavior or changing command semantics.
+- *Approach:*
+  - [ ] Profile and record baseline with =poetry run pytest --durations=40 --durations-min=0.02=
+  - [ ] Keep only 1-2 true end-to-end subprocess smoke tests in =tests/cli/test_cli_smoke.py=
+  - [ ] Convert remaining subprocess-heavy cases to in-process tests (=CliRunner= and/or direct command entrypoints)
+  - [ ] Consolidate repetitive date-span scenarios in =tests/test_chart_date_spanning.py= using parametrized tests
+  - [ ] Share reusable assertion helpers (e.g., ANSI-clean output checks) to avoid repeated per-test setup
+  - [ ] Re-run profiling and compare against baseline
+- *Acceptance criteria:*
+  - [ ] Combined runtime of =tests/test_chart_date_spanning.py= + =tests/cli/test_cli_smoke.py= is significantly lower
+  - [ ] Full suite still passes via =poetry run task check=
+  - [ ] Coverage and key CLI smoke guarantees remain intact (entrypoint, multi-file input, and summary output)
 ** Better heading & body parsing
+Use stripped =RichText= for body/heading tags.
 ** MCP server / RAG command
 #+begin_example
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
