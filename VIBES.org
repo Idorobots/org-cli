@@ -4828,9 +4828,12 @@ Make sure that for repeats the agenda lists the =repeat.after= state, not the cu
 
 Don't display the =DEADLINE= indicator for deadline tasks.
 
-**** TODO src/org/commands/agenda.py
+**** DONE src/org/commands/agenda.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 23:55]
 :END:
 
 In file src/org/commands/agenda.py around line 1178, near the ~def _collect_day_entries(~

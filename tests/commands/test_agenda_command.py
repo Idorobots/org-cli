@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import org_parser
 import pytest
 import typer
+from org_parser.time import Timestamp
 
 from org.commands import agenda as agenda_command
 
@@ -580,6 +581,28 @@ def test_advance_timestamp_by_repeater_moves_schedule_once() -> None:
     assert scheduled is not None
     assert agenda_command._advance_timestamp_by_repeater(scheduled) is True
     assert str(scheduled).startswith("<2025-01-22")
+
+
+def test_advance_timestamp_by_repeater_double_plus_advances_until_future(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """'++' repeater should advance repeatedly until timestamp is in the future."""
+    timestamp = Timestamp.from_source("<2025-01-10 Fri ++1d>")
+    monkeypatch.setattr(agenda_command, "_local_now", lambda: datetime(2025, 1, 15, 12, 0))
+
+    assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
+    assert str(timestamp).startswith("<2025-01-16")
+
+
+def test_advance_timestamp_by_repeater_dot_plus_uses_current_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """'.+' repeater should anchor at current day and then shift once by unit."""
+    timestamp = Timestamp.from_source("<2025-01-10 Fri 09:30 .+2d>")
+    monkeypatch.setattr(agenda_command, "_local_now", lambda: datetime(2025, 1, 15, 18, 45))
+
+    assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
+    assert str(timestamp).startswith("<2025-01-17 Fri 09:30")
 
 
 def test_interactive_selection_can_land_on_hour_row_and_block_task_actions() -> None:

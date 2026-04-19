@@ -897,6 +897,40 @@ def _shift_timestamp_by_days(timestamp: Timestamp, day_delta: int) -> None:
     _set_timestamp_fields(timestamp, shifted_start, shifted_end)
 
 
+def _shift_datetimes_by_unit(
+    start: datetime,
+    end: datetime | None,
+    *,
+    value: int,
+    unit: str,
+) -> tuple[datetime, datetime | None]:
+    """Shift start/end datetimes by one repeater unit."""
+    if unit == "d":
+        delta = timedelta(days=value)
+        return start + delta, None if end is None else end + delta
+    if unit == "w":
+        delta = timedelta(weeks=value)
+        return start + delta, None if end is None else end + delta
+    if unit == "h":
+        delta = timedelta(hours=value)
+        return start + delta, None if end is None else end + delta
+    if unit == "m":
+        return _add_months(start, value), None if end is None else _add_months(end, value)
+    if unit == "y":
+        months = value * 12
+        return _add_months(start, months), None if end is None else _add_months(end, months)
+    raise ValueError(f"Unsupported repeater unit: {unit}")
+
+
+def _now_aligned_for_datetime(start: datetime, now: datetime) -> datetime:
+    """Normalize current datetime to match timezone-awareness of start."""
+    if start.tzinfo is None:
+        return now.replace(tzinfo=None)
+    if now.tzinfo is None:
+        return now.replace(tzinfo=start.tzinfo)
+    return now.astimezone(start.tzinfo)
+
+
 def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
     """Advance timestamp once by its repeater marker, when present."""
     if (
@@ -906,27 +940,46 @@ def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
     ):
         return False
 
+    mark = timestamp.repeater_mark
     value = timestamp.repeater_value
     unit = timestamp.repeater_unit
+    if value <= 0:
+        return False
+
     start = timestamp.start
     end = timestamp.end
 
-    if unit == "d":
-        shifted_start = start + timedelta(days=value)
-        shifted_end = None if end is None else end + timedelta(days=value)
-    elif unit == "w":
-        shifted_start = start + timedelta(weeks=value)
-        shifted_end = None if end is None else end + timedelta(weeks=value)
-    elif unit == "h":
-        shifted_start = start + timedelta(hours=value)
-        shifted_end = None if end is None else end + timedelta(hours=value)
-    elif unit == "m":
-        shifted_start = _add_months(start, value)
-        shifted_end = None if end is None else _add_months(end, value)
-    elif unit == "y":
-        shifted_start = _add_months(start, value * 12)
-        shifted_end = None if end is None else _add_months(end, value * 12)
-    else:
+    try:
+        if mark == "+":
+            shifted_start, shifted_end = _shift_datetimes_by_unit(
+                start,
+                end,
+                value=value,
+                unit=unit,
+            )
+        elif mark == "++":
+            now = _now_aligned_for_datetime(start, _local_now())
+            shifted_start, shifted_end = start, end
+            while shifted_start <= now:
+                shifted_start, shifted_end = _shift_datetimes_by_unit(
+                    shifted_start,
+                    shifted_end,
+                    value=value,
+                    unit=unit,
+                )
+        elif mark == ".+":
+            now = _now_aligned_for_datetime(start, _local_now())
+            base_start = start.replace(year=now.year, month=now.month, day=now.day)
+            base_end = None if end is None else base_start + (end - start)
+            shifted_start, shifted_end = _shift_datetimes_by_unit(
+                base_start,
+                base_end,
+                value=value,
+                unit=unit,
+            )
+        else:
+            return False
+    except ValueError:
         return False
 
     _set_timestamp_fields(timestamp, shifted_start, shifted_end)
