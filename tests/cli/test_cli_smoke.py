@@ -6,6 +6,10 @@ import os
 import subprocess
 import sys
 
+from typer.testing import CliRunner
+
+from org.cli import app
+
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -53,16 +57,12 @@ def test_cli_summary_multiple_files_smoke() -> None:
 
 
 def test_cli_stats_summary_smoke() -> None:
-    """Ensure stats summary runs via CLI without tag sections."""
+    """Ensure stats summary runs in-process without tag sections."""
+    runner = CliRunner()
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
-    result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "summary", "--no-color", fixture_path],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-    )
+    result = runner.invoke(app, ["stats", "summary", "--no-color", fixture_path])
 
-    assert result.returncode == 0
+    assert result.exit_code == 0
     assert "Task states:" in result.stdout
     assert "TAGS" not in result.stdout

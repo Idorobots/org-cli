@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import sys
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
-import pytest
 import typer
 
 from org import cli, config
+
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -17,7 +21,11 @@ def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
 
     class DummyCommand:
         def main(
-            self, args: list[str], prog_name: str, standalone_mode: bool, default_map: object
+            self,
+            args: list[str],
+            prog_name: str,
+            standalone_mode: bool,
+            default_map: object,
         ) -> None:
             recorded["args"] = args
             recorded["prog_name"] = prog_name

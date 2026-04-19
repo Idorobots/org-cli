@@ -55,7 +55,7 @@ def test_validate_global_arguments_invalid_regex() -> None:
     )
 
     with pytest.raises(typer.BadParameter, match="Invalid regex pattern"):
-        validate_global_arguments(cast(GlobalArgs, args))
+        validate_global_arguments(cast("GlobalArgs", args))
 
 
 @pytest.mark.parametrize(
@@ -93,7 +93,7 @@ def test_validate_stats_arguments_errors(override: str, message: str) -> None:
     elif override == "min_group_size":
         args.min_group_size = -1
     with pytest.raises(typer.BadParameter, match=message):
-        validate_stats_arguments(cast(StatsArgs, args))
+        validate_stats_arguments(cast("StatsArgs", args))
 
 
 def test_validate_global_arguments_rejects_too_small_width() -> None:
@@ -108,4 +108,4 @@ def test_validate_global_arguments_rejects_too_small_width() -> None:
     )
 
     with pytest.raises(typer.BadParameter, match="--width must be at least 50"):
-        validate_global_arguments(cast(GlobalArgs, args))
+        validate_global_arguments(cast("GlobalArgs", args))

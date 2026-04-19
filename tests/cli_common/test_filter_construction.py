@@ -417,7 +417,8 @@ def test_build_query_text_custom_filter_requires_exactly_one_argument(
     argv = ["org", "tasks", "list", "--filter-level-above"]
 
     with pytest.raises(
-        typer.BadParameter, match="--filter-level-above requires exactly one argument"
+        typer.BadParameter,
+        match="--filter-level-above requires exactly one argument",
     ):
         build_query_text(args, argv, include_ordering=False, include_slice=False)
 

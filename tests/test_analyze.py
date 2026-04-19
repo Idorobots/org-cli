@@ -1,9 +1,13 @@
 """Tests for the analyze() function - integration tests only."""
 
-from org_parser.document import Heading
+from typing import TYPE_CHECKING
 
 from org.analyze import analyze
 from tests.conftest import node_from_org
+
+
+if TYPE_CHECKING:
+    from org_parser.document import Heading
 
 
 def test_analyze_empty_nodes() -> None:

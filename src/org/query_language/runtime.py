@@ -176,7 +176,7 @@ def _evaluate_dict_assignment(
         key_base_pairs = _broadcast(key_values, base_values)
         value_key_base_pairs = _broadcast(value_values, _stream(key_base_pairs))
         for value, key_base_pair in value_key_base_pairs:
-            key, base = cast(tuple[object, object], key_base_pair)
+            key, base = cast("tuple[object, object]", key_base_pair)
             output.append(_apply_assignment(expr.operator, base, key, value))
     return output
 
@@ -269,7 +269,7 @@ def _ensure_object_assignment_type_match(
             return
         raise QueryRuntimeError(
             f"Assigned value type mismatch for {field_name}: "
-            f"expected {_format_type_annotation(setter_annotation)}, got {type(value).__name__}"
+            f"expected {_format_type_annotation(setter_annotation)}, got {type(value).__name__}",
         )
 
     _ensure_assignment_type_match(current_value, value, field_name)
@@ -342,7 +342,7 @@ def _ensure_assignment_type_match(current_value: object, value: object, field_na
         return
     raise QueryRuntimeError(
         f"Assigned value type mismatch for {field_name}: "
-        f"expected {expected_type.__name__}, got {type(value).__name__}"
+        f"expected {expected_type.__name__}, got {type(value).__name__}",
     )
 
 
@@ -445,7 +445,9 @@ def _resolve_field(value: object, field: str) -> object:
 
 
 def _evaluate_bracket_field_access(
-    expr: BracketFieldAccess, stream: Stream, context: EvalContext
+    expr: BracketFieldAccess,
+    stream: Stream,
+    context: EvalContext,
 ) -> Stream:
     """Evaluate bracket key access for each item in stream."""
     results = _stream()
@@ -543,11 +545,11 @@ def _evaluate_slice(expr: Slice, stream: Stream, context: EvalContext) -> Stream
         start_values: Stream
         end_values: Stream
         if expr.start_expr is None:
-            start_values = _stream([cast(object, None)])
+            start_values = _stream([cast("object", None)])
         else:
             start_values = evaluate_expr(expr.start_expr, _stream([item]), context)
         if expr.end_expr is None:
-            end_values = _stream([cast(object, None)])
+            end_values = _stream([cast("object", None)])
         else:
             end_values = evaluate_expr(expr.end_expr, _stream([item]), context)
         base_start_pairs = _broadcast(start_values, base_values)
@@ -598,7 +600,8 @@ def _apply_binary_operator(operator: str, left: object, right: object) -> object
         right_text = _as_string_value(right)
         if left_text is None or right_text is None:
             raise QueryRuntimeError("matches operator requires two strings")
-        # FIXME Potentially recompiles the same regex multiple times when broadcasting a scalar to stream.
+        # FIXME Potentially recompiles the same regex multiple times
+        # when broadcasting a scalar to stream.
         return bool(re.compile(right_text).search(left_text))
     if operator in {"and", "or"}:
         return _apply_boolean(operator, left, right)
@@ -662,7 +665,7 @@ def _apply_extended_non_numeric_operator(operator: str, left: object, right: obj
     return _OPERATOR_NOT_HANDLED
 
 
-def _apply_simple_numeric_operator(operator: str, left: int | float, right: int | float) -> object:
+def _apply_simple_numeric_operator(operator: str, left: float, right: float) -> object:
     """Apply non-dividing numeric operators."""
     operations: dict[str, object] = {
         "**": left**right,
@@ -706,7 +709,7 @@ def _subtract_from_collection(collection: object, value: object) -> object:
     raise QueryRuntimeError("Collection subtraction requires list, tuple, or set")
 
 
-def _guard_non_zero(value: int | float, message: str) -> None:
+def _guard_non_zero(value: float, message: str) -> None:
     """Raise runtime error when value is zero."""
     if value == 0:
         raise QueryRuntimeError(message)
@@ -724,7 +727,7 @@ def _apply_in_operator(left: object, right: object) -> bool:
     if not isinstance(right, (list, tuple, set, dict)):
         raise QueryRuntimeError("in operator requires a collection on the right")
     right_collection = cast(
-        list[object] | tuple[object, ...] | set[object] | dict[object, object],
+        "list[object] | tuple[object, ...] | set[object] | dict[object, object]",
         right,
     )
     return left in right_collection
@@ -765,22 +768,22 @@ def _apply_compare(operator: str, left: object, right: object) -> bool:
     is_string = left_text is not None and right_text is not None
     if not is_org_date and not is_numeric and not is_string:
         raise QueryRuntimeError(
-            "Comparison operators require numeric, string, or Timestamp operands"
+            "Comparison operators require numeric, string, or Timestamp operands",
         )
     if is_org_date:
-        left_date = cast(Timestamp, left_timestamp).start
-        right_date = cast(Timestamp, right_timestamp).start
+        left_date = cast("Timestamp", left_timestamp).start
+        right_date = cast("Timestamp", right_timestamp).start
         return _apply_compare_datetime(operator, left_date, right_date)
     if is_numeric:
-        left_value_num = cast(float | int, left)
-        right_value_num = cast(float | int, right)
+        left_value_num = cast("float | int", left)
+        right_value_num = cast("float | int", right)
         return _apply_compare_numeric(operator, left_value_num, right_value_num)
-    left_value_str = cast(str, left_text)
-    right_value_str = cast(str, right_text)
+    left_value_str = cast("str", left_text)
+    right_value_str = cast("str", right_text)
     return _apply_compare_string(operator, left_value_str, right_value_str)
 
 
-def _apply_compare_numeric(operator: str, left: float | int, right: float | int) -> bool:
+def _apply_compare_numeric(operator: str, left: float, right: float) -> bool:
     """Apply numeric comparisons."""
     if operator == ">":
         return left > right
@@ -1176,10 +1179,10 @@ def _func_repeat(stream: Stream, argument: Expr, context: EvalContext) -> Stream
 
         output.append(
             Repeat(
-                after=cast(str, after),
-                before=cast(str, before),
+                after=cast("str", after),
+                before=cast("str", before),
                 timestamp=_timestamp_from_datetimes(start_timestamp.start, active=active_value),
-            )
+            ),
         )
     return output
 
@@ -1190,7 +1193,7 @@ def _func_analyze(stream: Stream) -> Stream:
     for value in stream:
         if not isinstance(value, Heading):
             raise QueryRuntimeError(
-                f"analyze requires a stream of Heading values, got {_type_name(value)}"
+                f"analyze requires a stream of Heading values, got {_type_name(value)}",
             )
         nodes.append(value)
     return _stream(
@@ -1200,15 +1203,15 @@ def _func_analyze(stream: Stream) -> Stream:
                 mapping={},
                 category="tags",
                 max_relations=5,
-            )
-        ]
+            ),
+        ],
     )
 
 
 def _func_reverse(stream: Stream) -> Stream:
     """Reverse stream or first collection element."""
     if len(stream) == 1 and isinstance(stream[0], (list, tuple)):
-        collection = cast(list[object] | tuple[object, ...], stream[0])
+        collection = cast("list[object] | tuple[object, ...]", stream[0])
         return _stream([list(reversed(collection))])
     reversed_stream = _stream(stream)
     reversed_stream.reverse()
@@ -1302,7 +1305,7 @@ def _collection_extreme(value: object, mode: str) -> object:
     best_key: ComparableKey | None = None
     best_item: object | None = None
     for index, ((_, item_key), item_value) in enumerate(
-        zip(comparable_values, filtered_collection, strict=True)
+        zip(comparable_values, filtered_collection, strict=True),
     ):
         if index == 0:
             best_key = item_key
@@ -1352,8 +1355,8 @@ def _is_better_item(
 ) -> bool:
     """Return whether candidate should replace current min/max item."""
     if category == "number":
-        candidate_number = cast(int | float, candidate)
-        current_number = cast(int | float, current)
+        candidate_number = cast("int | float", candidate)
+        current_number = cast("int | float", current)
         return (
             candidate_number > current_number
             if mode == "max"
@@ -1361,8 +1364,8 @@ def _is_better_item(
         )
 
     if category == "string":
-        candidate_string = cast(str, candidate)
-        current_string = cast(str, current)
+        candidate_string = cast("str", candidate)
+        current_string = cast("str", current)
         return (
             candidate_string > current_string
             if mode == "max"
@@ -1370,8 +1373,8 @@ def _is_better_item(
         )
 
     if category == "date":
-        candidate_date = cast(datetime, candidate)
-        current_date = cast(datetime, current)
+        candidate_date = cast("datetime", candidate)
+        current_date = cast("datetime", current)
         return candidate_date > current_date if mode == "max" else candidate_date < current_date
 
     raise QueryRuntimeError(f"max/min unsupported comparable category: {category}")
@@ -1462,7 +1465,7 @@ def _extract_numeric_collection(value: object) -> list[int | float]:
     collection = _extract_collection(value)
     if not all(isinstance(item, (int, float)) for item in collection):
         raise QueryRuntimeError("sum requires a numeric collection")
-    return cast(list[int | float], collection)
+    return cast("list[int | float]", collection)
 
 
 def _broadcast(left: Stream, right: Stream) -> list[tuple[object, object]]:

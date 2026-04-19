@@ -20,7 +20,7 @@ CLOSED: [2025-01-01 Wed 10:00]
 
 * DONE Second task
 CLOSED: [2025-01-02 Thu 11:00]
-"""
+""",
     )
 
     output = format_top_tasks_section(
@@ -46,7 +46,7 @@ def test_format_groups_section_max_groups_zero_returns_empty() -> None:
             total_tasks=2,
             avg_tasks_per_day=0.0,
             max_single_day_count=0,
-        )
+        ),
     ]
 
     output = format_groups_section(

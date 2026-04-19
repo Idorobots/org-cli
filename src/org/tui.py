@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import textwrap
-from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime
+from typing import TYPE_CHECKING
 
-from org_parser.document import Heading
 from org_parser.text import (
     AngleLink,
     Bold,
@@ -33,7 +31,6 @@ from rich.console import Console
 from rich.style import Style
 from rich.text import Text
 
-from org.analyze import Group, Tag, TimeRange
 from org.cli_common import get_top_tasks
 from org.color import (
     bright_blue,
@@ -53,6 +50,15 @@ from org.histogram import (
     visual_len,
 )
 from org.plot import TimelineRenderConfig, render_timeline_chart
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from datetime import date, datetime
+
+    from org_parser.document import Heading
+
+    from org.analyze import Group, Tag, TimeRange
 
 
 def select_earliest_date(
@@ -106,6 +112,7 @@ def select_latest_date(
 
 
 def lines_to_text(lines: list[str]) -> str:
+    """Join rendered lines into one newline-terminated text block."""
     if not lines:
         return ""
     return "\n".join(lines) + "\n"
@@ -146,12 +153,14 @@ def processing_status(console: Console, color_enabled: bool) -> Iterator[None]:
 
 
 def apply_indent(lines: list[str], indent: str) -> list[str]:
+    """Prefix non-empty lines with the requested indentation."""
     if not indent:
         return lines
     return [f"{indent}{line}" if line else "" for line in lines]
 
 
 def section_header_lines(title: str, color_enabled: bool) -> list[str]:
+    """Build standard section header lines."""
     return ["", bright_white(title, color_enabled)]
 
 
@@ -367,10 +376,10 @@ def heading_title_to_text(node: Heading) -> Text:
 
 def _build_task_line_parts(node: Heading, config: TaskLineConfig) -> _TaskLineParts:
     """Extract and format task line components."""
-    filename = node.document.filename if node.document.filename else "<string>"
+    filename = node.document.filename or "<string>"
     filename_cell = _truncate_filename(filename, 15)
     colored_filename = dim_white(filename_cell, config.color_enabled)
-    todo_state = node.todo if node.todo else ""
+    todo_state = node.todo or ""
     heading_text = heading_title_to_text(node)
     heading = _render_text_for_output(heading_text, config.color_enabled)
     level = node.level if node.level is not None else 0
@@ -407,7 +416,9 @@ def _build_task_line_parts(node: Heading, config: TaskLineConfig) -> _TaskLinePa
 def _format_line_with_parts(parts: _TaskLineParts) -> str:
     """Build formatted line from components."""
     if parts.colored_state:
-        body = f"{parts.level_prefix} {parts.colored_state}{parts.priority_text} {parts.heading}".strip()
+        body = (
+            f"{parts.level_prefix} {parts.colored_state}{parts.priority_text} {parts.heading}"
+        ).strip()
         return f"{parts.colored_filename}{body}"
     if parts.priority_text:
         body = f"{parts.level_prefix}{parts.priority_text} {parts.heading}".strip()
@@ -424,7 +435,10 @@ def _resolve_task_line_width(config: TaskLineConfig, line: str) -> int:
 
 
 def _add_tags_to_line(
-    line: str, node: Heading, parts: _TaskLineParts, config: TaskLineConfig
+    line: str,
+    node: Heading,
+    parts: _TaskLineParts,
+    config: TaskLineConfig,
 ) -> str:
     """Add tags to line with alignment and heading truncation."""
     sorted_tags = sorted(node.tags)
@@ -445,7 +459,8 @@ def _add_tags_to_line(
                 target_heading_visual_len,
             )
             truncated_heading = _render_text_for_output(
-                truncated_heading_text, config.color_enabled
+                truncated_heading_text,
+                config.color_enabled,
             )
             truncated_parts = _TaskLineParts(
                 parts.colored_filename,
@@ -487,6 +502,7 @@ def format_timeline_lines(
     latest_date: date,
     config: TimelineFormatConfig,
 ) -> list[str]:
+    """Render timeline chart lines and apply configured indentation."""
     plot_width = resolve_timeline_plot_width(config)
     date_line, chart_line, underline = render_timeline_chart(
         timeline,
@@ -501,6 +517,7 @@ def format_timeline_lines(
 
 
 def format_tag_block(name: str, tag: Tag, config: TagBlockConfig) -> list[str]:
+    """Render one tag block with timeline, stats, and relation lines."""
     lines: list[str] = []
     color_enabled = config.timeline.color_enabled
     time_range = tag.time_range
@@ -514,7 +531,7 @@ def format_tag_block(name: str, tag: Tag, config: TagBlockConfig) -> list[str]:
                     earliest_date,
                     latest_date,
                     config.timeline,
-                )
+                ),
             )
 
     display_name = escape_text(name, color_enabled)
@@ -544,7 +561,7 @@ def format_tag_block(name: str, tag: Tag, config: TagBlockConfig) -> list[str]:
                 [
                     f"{relation_indent}{escape_text(related_name, color_enabled)} ({count})"
                     for related_name, count in sorted_relations
-                ]
+                ],
             )
     return lines
 
@@ -554,10 +571,13 @@ def format_group_block(
     group: Group,
     config: GroupBlockConfig,
 ) -> list[str]:
+    """Render one group block with timeline and aggregate statistics."""
     lines: list[str] = []
     color_enabled = config.timeline.color_enabled
     earliest_date = select_earliest_date(
-        config.date_from, config.global_timerange, group.time_range
+        config.date_from,
+        config.global_timerange,
+        group.time_range,
     )
     latest_date = select_latest_date(config.date_until, config.global_timerange, group.time_range)
     if earliest_date and latest_date:
@@ -567,7 +587,7 @@ def format_group_block(
                 earliest_date,
                 latest_date,
                 config.timeline,
-            )
+            ),
         )
 
     max_name_width = max(1, config.timeline.plot_width - visual_len(config.name_indent))
@@ -578,8 +598,12 @@ def format_group_block(
         break_long_words=False,
         break_on_hyphens=False,
     )
-    for wrapped_line in wrapped_tags or [""]:
-        lines.append(f"{config.name_indent}{escape_text(wrapped_line, color_enabled)}")
+    lines.extend(
+        [
+            f"{config.name_indent}{escape_text(wrapped_line, color_enabled)}"
+            for wrapped_line in wrapped_tags or [""]
+        ],
+    )
     total_tasks_value = magenta(str(group.total_tasks), color_enabled)
     avg_value = magenta(f"{group.avg_tasks_per_day:.2f}", color_enabled)
     max_value = magenta(str(group.max_single_day_count), color_enabled)
@@ -636,7 +660,7 @@ def format_groups_section(
                     name_indent="  ",
                     stats_indent="    ",
                 ),
-            )
+            ),
         )
 
     return lines_to_text(apply_indent(lines, indent))
@@ -651,20 +675,19 @@ def format_top_tasks_section(
     if not top_tasks:
         return ""
 
-    lines = []
-    for node in top_tasks:
-        lines.append(
-            format_task_line(
-                node,
-                TaskLineConfig(
-                    color_enabled=config.color_enabled,
-                    done_states=config.done_states,
-                    todo_states=config.todo_states,
-                    line_width=config.line_width,
-                ),
-                indent="  ",
-            )
+    lines = [
+        format_task_line(
+            node,
+            TaskLineConfig(
+                color_enabled=config.color_enabled,
+                done_states=config.done_states,
+                todo_states=config.todo_states,
+                line_width=config.line_width,
+            ),
+            indent="  ",
         )
+        for node in top_tasks
+    ]
 
     return lines_to_text(apply_indent(lines, config.indent))
 
@@ -674,6 +697,7 @@ def format_histogram_section(
     histogram: Histogram,
     config: HistogramSectionConfig,
 ) -> list[str]:
+    """Render one histogram section as indented output lines."""
     lines = section_header_lines(title, config.render_config.color_enabled)
     histogram_plot_width = max(3, config.plot_width - 2)
     histogram_lines = render_histogram(

@@ -13,7 +13,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.dependencies]
-org-parser = "^0.26.1"
+org-parser = "^0.26.2"
 typer = "^0.24.1"
 rich = "^14.3.3"
 parsy = "^2.2"
@@ -54,30 +54,24 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-# Enable comprehensive rule sets
-select = [
-    "E",      # pycodestyle errors
-    "W",      # pycodestyle warnings
-    "F",      # pyflakes
-    "I",      # isort
-    "N",      # pep8-naming
-    "UP",     # pyupgrade
-    "B",      # flake8-bugbear
-    "C4",     # flake8-comprehensions
-    "SIM",    # flake8-simplify
-    "RET",    # flake8-return
-    "ARG",    # flake8-unused-arguments
-    "PTH",    # flake8-use-pathlib
-    "PL",     # pylint
-    "RUF",    # ruff-specific rules
-    "ANN",    # flake8-annotations
-]
-
-# Never enforce these rules
+select = ["ALL"]
 ignore = [
-    "E501",    # line too long (handled by formatter)
+    "D203",    # incompatible with D211; keep disabled to avoid conflicts
+    "D205",    # allow compact one-line docstring summaries
+    "D213",    # incompatible with D212; keep disabled to avoid conflicts
+    "D413",    # allow no blank line after final docstring section
+    "DTZ001",  # existing naive datetime construction retained for now
+    "EM101",   # existing exception messages may use raw string literals
+    "EM102",   # existing exception messages may use f-strings
+    "FBT001",  # boolean positional args in signatures are accepted in current APIs
+    "FBT003",  # boolean positional values in calls are accepted in current APIs
+    "FIX001",  # allow FIXME notes in code while work is in progress
     "PLR2004", # magic value comparisons (ok for simple constants)
-    "PTH123",  # open() is fine for CLI arg processing
+    "TD001",   # TODO metadata format is not enforced
+    "TD002",   # TODO metadata format is not enforced
+    "TD003",   # TODO metadata format is not enforced
+    "TD004",   # TODO metadata format is not enforced
+    "TRY003",  # postpone exception-message refactor (explicitly deferred)
 ]
 
 [tool.ruff.lint.isort]
@@ -88,11 +82,24 @@ lines-after-imports = 2
 [tool.ruff.lint.per-file-ignores]
 # Tests can be more lenient
 "tests/**/*.py" = [
+    "D403",    # preserve existing lower-case docstring wording in tests
+    "INP001",  # namespace-package requirement is not enforced in this repo layout
+    "PT006",   # current pytest parametrize style is accepted in tests
+    "PT018",   # allow composite asserts in tests for readability
     "PTH118",  # os.path.join is fine in tests
     "PTH120",  # os.path.dirname is fine in tests
+    "PTH123",  # open() is fine for CLI arg processing
     "PLC0415", # imports don't need to be at top level in tests
     "PLW1510", # subprocess.run check argument not critical in tests
     "RUF059",  # unused unpacked variables are ok in tests
+    "S101",    # plain assert is idiomatic in pytest tests
+    "S603",    # subprocess calls in tests are controlled by test fixtures
+    "SLF001",  # private member access is tolerated in tests/support code
+]
+
+"src/org/output_format.py" = [
+    "S603",    # pandoc subprocess invocation is an intentional feature
+    "S112",    # best-effort serialization intentionally skips unreadable attributes
 ]
 
 [tool.ruff.format]
@@ -100,6 +107,8 @@ lines-after-imports = 2
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
+# Respect magic trailing commas so formatter inserts/splits accordingly.
+skip-magic-trailing-comma = false
 
 [tool.mypy]
 # Strict mode configuration

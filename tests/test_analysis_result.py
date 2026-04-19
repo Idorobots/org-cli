@@ -243,7 +243,7 @@ def test_analysis_result_mutable_fields() -> None:
             total_tasks=0,
             avg_tasks_per_day=0.0,
             max_single_day_count=0,
-        )
+        ),
     )
 
     assert result.total_tasks == 10

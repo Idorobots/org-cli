@@ -52,7 +52,7 @@ def test_render_histogram_normal_distribution() -> None:
             "Saturday": 3452,
             "Sunday": 4165,
             "unknown": 54,
-        }
+        },
     )
     category_order = [
         "Monday",

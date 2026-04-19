@@ -160,7 +160,8 @@ def render_histogram(
             available_blocks = legacy_total_blocks
         else:
             available_blocks = max(
-                0, render_config_input.plot_width - visual_len(prefix) - len(value_text)
+                0,
+                render_config_input.plot_width - visual_len(prefix) - len(value_text),
             )
         bar_length = int((value / total_sum) * available_blocks) if total_sum > 0 else 0
         bars = "█" * bar_length

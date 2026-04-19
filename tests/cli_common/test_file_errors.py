@@ -1,10 +1,14 @@
 """Tests for CLI file loading error handling."""
 
 import os
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 import typer
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")

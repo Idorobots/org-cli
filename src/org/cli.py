@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """CLI interface for org - Org-mode archive file analysis."""
 
 from __future__ import annotations
@@ -75,7 +74,7 @@ app.add_typer(stats_app, name="stats")
 
 
 def main() -> None:
-    """Main CLI entry point."""
+    """Run the CLI entry point."""
     loaded_config = config.load_cli_config(sys.argv)
     defaults = loaded_config.defaults
     if defaults is not None:

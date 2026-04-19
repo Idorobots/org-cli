@@ -1,9 +1,14 @@
 """Shared test fixtures and utilities for org tests."""
 
+from typing import TYPE_CHECKING
+
 import org_parser
-from org_parser.document import Heading
 
 from org.analyze import Frequency
+
+
+if TYPE_CHECKING:
+    from org_parser.document import Heading
 
 
 def freq_dict_from_ints(d: dict[str, int]) -> dict[str, Frequency]:
@@ -31,7 +36,9 @@ def freq_dict_to_ints(d: dict[str, Frequency]) -> dict[str, int]:
 
 
 def node_from_org(
-    org_text: str, todo_states: list[str] | None = None, done_states: list[str] | None = None
+    org_text: str,
+    todo_states: list[str] | None = None,
+    done_states: list[str] | None = None,
 ) -> list[Heading]:
     """Parse org-mode text and return list of nodes (excluding root).
 

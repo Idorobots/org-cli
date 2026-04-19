@@ -4015,21 +4015,624 @@ Additionally:
 Make sure that the text is aligned to the visual length, not the markup-length.
 
 The same rich text rendering logic should be applied to the task board command. Each panel should render the rich-text in Rich.
-** Tasks CRUD
-*** Tasks C**D
-- Adding new nodes
-- Removing nodes
-- Moving nodes between headings
+** DONE Tasks CRUD                                                                        :CLI:CRUD:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 02:18]
+:END:
+*** DONE Tasks create
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-13 Mon 00:18]
+:END:
+Add a new command =tasks create= that allows creating new tasks. The command should accept the following CLI switches:
 
-*** Tasks **U*
-- Changing TODO state
-  + Update repeats
-  + Update completion dates
-- Setting tags
-- Setting properties
-- Modifying the heading
-- Modifying the body
+- =--level= - optional, specifies the level of the task, should be 1 by default unless attached to a parent heading,
+- =--todo= - optional, specifies the TODO state of the newly created task,
+- =--priority= - optional, specifies the priority of the newly created task,
+- =--is-comment= - optional, specifies if the task should be a COMMENT task,
+- =--title= - optional, specifies the heading title text of the task,
+- =--counter= - optional, specifies the completion counter content,
+- =--tag= optional, specifies the tag to attach to the task (it can be specified multiple times for multiple tags),
+- =--heading= - optional, mutually exclusive with (=--tag=, =--counter=, =--title=, =--is-comment=, =--priority=, =--todo= and =--level=), specifies the entire heading line for the task,
+- =--deadline= - optional, specifies the deadline timestamp of the task,
+- =--scheduled= - optional, specifies the scheduled timestamp of the task,
+- =--closed= - optional, specifies the closed timestamp of the task,
+- =--property= - optional, specifies a property key=value pair to attach to the task (can be specified multiple times for multiple properties),
+- =--category= - optional, specifies the task category,
+- =--id= - optional, specifies the ID to use for the task,
+- =--body= - optional, specifies the task body (should just be attached as a string),
+- =--parent= - optional, specifies the ID or title of the heading this newly created heading should be a child of, by default new headings should be attached as top-level headings in a document. If the parent does not exist the command should report an error,
+- =--file= - optional, specifies the specific Org document the heading should be attached to. By default, it should be the first file passed to the command via the usual means.
 
+The command should rely on the =Heading.from_source= function as a means of validating the well-formedness of the task.
+The result of running the command should be that the selected file is updated with a new Org Mode task created to the specification passed via the CLI switches.
+
+Here are some usage examples:
+#+begin_example
+# Create a top-level task in the default file.
+org tasks create --todo TODO --title "Update the docs" --tag Docs --body "Update the documentation..."
+
+# Create a top-level task in path/to/file.org file
+org tasks create --title "Do some stuff" path/to/file.org
+
+# Create a top-level task in path/to/another/file.org file
+org tasks create --title "Do some stuff" --file path/to/another/file.org path/to/file.org path/to/another/file.org
+
+# Create a task as a child of another task in the default file.
+org tasks create --title "Do some stuff" --parent "Update the docs"
+#+end_example
+
+**** DONE src/org/commands/tasks/create.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-12 Sun 23:00]
+:END:
+
+In file src/org/commands/tasks/create.py around line 335, near the ~Head~
+
+#+begin_example
++def _insert_task_at_line(content: str, task_source: str, line_number: int) -> str:
++    """Insert task source before the specified 0-based line index."""
++    lines = content.splitlines(keepends=True)
++    prefix = "".join(lines[:line_number])
++    suffix = "".join(lines[line_number:])
++
++    if prefix and not prefix.endswith("\n"):
++        prefix = f"{prefix}\n"
++
++    task_block = task_source.rstrip("\n") + "\n"
++    return f"{prefix}{task_block}{suffix}"
+#+end_example
+
+I don't like this approach, instead load the document with =org_parser=, insert the task under the parent by adding it to the =children= of the specified node and then =org_parser.dump= the document back into a file.
+**** DONE src/org/commands/tasks/create.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-12 Sun 23:10]
+:END:
+
+In file src/org/commands/tasks/create.py around line 130, near the ~Head~
+
+#+begin_example
++
++    id_matches = [node for node in nodes if node.id == selector]
++    if len(id_matches) > 1:
++        raise typer.BadParameter(f"--parent is ambiguous, multiple headings with id '{selector}'")
++    if len(id_matches) == 1:
++        return id_matches[0]
+#+end_example
+
+This can be done with =document.heading_by_id()= function.
+There is no need to check for duplicate IDs when a match is found using the =heading_by_id=.
+**** DONE At least one heading line component should be required
+:PROPERTIES:
+:capture_time: [2026-04-12 Sun 23:11]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Query language improvements][Query language improvements]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-13 Mon 00:12]
+:END:
+It is possible to attempt to create a task like this:
+#+begin_example
+org tasks create path/to/file.org
+#+end_example
+
+This doesn't work, because the templated task does not have a heading line component.
+
+It should be mandatory to specified either =--heding= or any of this set: =--todo=, =--is-comment=, =--title=
+*** REWORKED Task delete
+:LOGBOOK:
+- State "REWORKED"       from "TODO"       [2026-04-13 Mon 20:38]
+:END:
+Add a new command =tasks delete= that allows removing tasks from a document. The command should accept the following CLI switches:
+
+- =--title= - optional, specifies the heading title text of the task to be removed.
+- =--id= - optional, specifies the ID of the task to be removed,
+
+Exactly one identifier must be specified, either ID or the title. If none are specified, then the command should report an error. If multiple tasks match it should also result in an error.
+
+The result of running the command should be an update to the file that removes the specified task along with all of its subtrees.
+
+**** DONE Task detele command documentation
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-16 Thu 13:02]
+:END:
+Add a documentation page for the =tasks delete= command that will describe its usage and all accepted CLI switches.
+
+*** REWORKED Tasks update
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 14:42] \\
+  Needed some work.
+:END:
+Add a new command =tasks update= that allows updating tasks contents. The command should accept the following CLI switches:
+
+- =--query-title= - optional, specifies the task to be updated by its heading title text,
+- =--query-id= - optional, specifies the task to be updated by its ID,
+
+Exactly one identifier must be specified, either ID or the title. If none are specified, then the command should report an error. If multiple tasks match it should also result in an error.
+
+- =--level= - optional, specifies the new level of the task, must be at least 1 more than the parent or 1 for top-level headings,
+- =--todo= - optional, specifies the new TODO state of the task; passing an empty string should remove the field entirely,
+- =--priority= - optional, specifies the new priority of the task; passing an empty string should remove the field entirely,
+- =--comment= - optional, specifies the boolean COMMENT flag of the task; values other than =true= or =false= should be rejected,
+- =--title= - optional, specifies the new heading title text of the task; passing an empty string should remove the field entirely,
+- =--id= - optional, specifies the new ID of the task; passing an empty string should remove the field entirely,
+- =--counter= - optional, specifies the completion counter content; passing an empty string should remove the field entirely,
+- =--deadline= - optional, specifies the new deadline timestamp of the task; passing an empty string should remove the field entirely,
+- =--scheduled= - optional, specifies the new scheduled timestamp of the task; passing an empty string should remove the field entirely,
+- =--closed= - optional, specifies the new closed timestamp of the task; passing an empty string should remove the field entirely,
+- =--category= - optional, specifies the new task category; passing an empty string should remove the field entirely,
+- =--body= - optional, specifies the new task body (should just be attached as a string),
+- =--parent= - optional, specifies the ID or title of the heading this updated heading should become a child of; when specified with an empty string, the heading should be moved to the top level; the command should error out if the parent doesn't exist or if the parent is the same as the updated task or one of its descenants (to prevent loops); the level of the task should be adjusted to be 1-more than the parent,
+
+- =--tags= optional, specifies the list of tags to set on a task; passing an empty string should remove the field entirely,
+- =--properties= - optional, specifies property dictionary (JSON object format) to attach to the task; passing an empty string should remove the field entirely,
+
+The command should rely on =org_parser= mutation to make the changes and then dump the entire modified document to file.
+The result of running the command should be an updated file that reflects the changes applied to the selected task.
+
+Here are some examples:
+#+begin_example
+# Update title of a task
+org tasks update --query-id 23 --title "Foo"
+
+# Update TODO state of a task and set a closed date
+org tasks update --query-title "Foo" --todo DONE --closed "<2026-04-13>"
+#+end_example
+
+**** DONE src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:14]
+:END:
+
+In file src/org/commands/tasks/update.py around line 43, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++
++@dataclass(frozen=True)
++class _MatchedTask:
++    """One matched task with document context."""
++
++    filename: str
++    document: Document
++    heading: Heading
+#+end_example
+
+A heading already has a =.document= property that itself has a =.filename= property. Do we really need a separate class for that?
+**** DONE src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:16]
+:END:
+
+In file src/org/commands/tasks/update.py around line 125, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++def _resolve_matches(document: Document, title: str | None, query_id: str | None) -> list[Heading]:
++    """Resolve unique matches for title and ID selectors in one document."""
++    unique_matches: dict[int, Heading] = {}
++    for heading in [*_title_matches(document, title), *_id_matches(document, query_id)]:
++        unique_matches[id(heading)] = heading
++    return list(unique_matches.values())
+#+end_example
+
+Since we accept either id or title matches, there's never going to be duplicates. We don't really need this function.
+**** DONE src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:40]
+:END:
+
+In file src/org/commands/tasks/update.py around line 202, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++    id_match = document.heading_by_id(parent_value)
++    if id_match is not None:
++        return id_match
++
++    title_matches = [node for node in list(document) if node.title_text.strip() == parent_value]
+
+#+end_example
+
+Should reuse the =_*_matches= functions.
+**** DONE src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:40]
+:END:
+
+In file src/org/commands/tasks/update.py around line 235, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++    current_parent = heading.parent
++    if current_parent is None:
++        raise typer.BadParameter("Unable to move heading without a parent node")
+
+#+end_example
+
+Why is that? It should be possible to move any heading under a parent node.
+**** DONE src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:40]
+:END:
+
+In file src/org/commands/tasks/update.py around line 249, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++    if parent_level == 0 and level != 1:
++        raise typer.BadParameter("--level must be 1 for top-level headings")
+
+#+end_example
+
+This is not factual. A document can have a heading of level 2 in the top level.
+**** DONE src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:40]
+:END:
+
+In file src/org/commands/tasks/update.py around line 287, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++        assert parent_value is not None
+
+#+end_example
+
+Don't use =assert= in non-test code. Why did linter let that in?
+**** DONE src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 14:39]
+:END:
+
+In file src/org/commands/tasks/update.py around line 333, near the ~new file   src/org/commands/tasks/update.py~
+
+#+begin_example
++    if args.scheduled is not None:
++        heading.scheduled = _parse_timestamp(args.scheduled, "--scheduled")
++    if args.deadline is not None:
++        heading.deadline = _parse_timestamp(args.deadline, "--deadline")
++    if args.closed is not None:
++        heading.closed = _parse_timestamp(args.closed, "--closed")
+
+#+end_example
+
+I don't like that we're passing the option name just for the error message.
+
+*** DONE Fine-grained edits
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 19:09]
+:END:
+Add the following additional CLI switches for the =tasks update= command:
+
+- =--add-clock-entry= - adds an individual clock entry to the specified task, should accept a string representation of the clock entry,
+- =--remove-clock-entry= - removes a specified clock entry from the specified task,
+- =--add-repeat= - adds an individual repeat to the specified task, should accept a string representation of the repeat,
+- =--remove-repeat= - removes a specified repeat from the specified task,
+- =--add-tag= - adds an individual tag to the specified task,
+- =--remove-tag= - removes an individial tag from the specified task,
+- ~--add-property P=V~ - adds a property to the specified task,
+- =--remove-property P= - removes a specified property from the specified task,
+
+**** DONE src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 19:09]
+:END:
+
+In file src/org/commands/tasks/update.py around line 245, near the ~def _parse_properties(value: str) -> dict[str, str]:~
+
+#+begin_example
+
++    source = f"* Task\n:LOGBOOK:\n{normalized}\n:END:\n"
++    try:
++        document = org_parser.loads(source)
++    except (TypeError, ValueError) as err:
++        raise typer.BadParameter(f"Value {value!r} is not a valid Org repeat entry") from err
++
++    heading = next(iter(document), None)
++    if heading is None or len(heading.repeats) != 1:
++        raise typer.BadParameter(f"Value {value!r} is not a valid Org repeat entry")
++
++    repeat = heading.repeats[0]
++    return Repeat(after=repeat.after, before=repeat.before, timestamp=repeat.timestamp)
+
+#+end_example
+
+Instead, this should be done with =Repeat.from_list_item(ListItem.from_source())=.
+*** REWORKED File move CLI switch
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 19:54]
+:END:
+Add the following CLI switch to =tasks update=:
+- =--file= - moves the heading to another file saving both the origin and destination files.
+
+*** REWORKED Command refactor
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 20:28]
+:END:
+There seems to be a lot of duplication between tasks delete and tasks update commands. Please refactor the common bits and move them to a common module that both commands can re-use.
+
+Additionally, refactor the new task commands as follows:
+- In =tasks create=, rename the =--is-comment= switch to just =--comment= and make it accept a boolean value.
+- In =tasks create=, update the =--tag= and =--property= switches to =--tags= and =--properties=, tags should accept a list of tags, while properties should accept a JSON object that it sets as the properties of the newly created task,
+- All tasks created with =tasks create= should have a default ID assigned to them, if =--id= is not passed, generate a UUID.
+
+**** DONE src/org/commands/tasks/create.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 20:28]
+:END:
+
+In file src/org/commands/tasks/create.py around line 109, near the ~def _validate_heading_option_exclusivity(args: CreateArgs) -> None:~
+
+#+begin_example
++def _parse_tags(value: str) -> list[str]:
++    """Parse --tags value into a list of tag strings."""
++    normalized = value.strip()
++    if not normalized:
++        return []
++    tags = [tag.strip() for tag in normalized.split(",")]
++    if not tags or any(not tag for tag in tags):
++        raise typer.BadParameter("--tags must be a comma-separated list of non-empty tags")
++    return tags
++
++
++def _parse_properties(value: str) -> dict[str, str]:
++    """Parse --properties JSON value into a string dictionary."""
++    normalized = value.strip()
++    if not normalized:
++        return {}
++
++    try:
++        loaded = json.loads(normalized)
++    except json.JSONDecodeError as err:
++        raise typer.BadParameter("--properties must be a valid JSON object") from err
++
++    if not isinstance(loaded, dict):
++        raise typer.BadParameter("--properties must be a JSON object")
++
++    parsed: dict[str, str] = {}
++    for key, property_value in loaded.items():
++        if not isinstance(key, str) or not key.strip():
++            raise typer.BadParameter("--properties keys must be non-empty strings")
++        if not isinstance(property_value, str):
++            raise typer.BadParameter("--properties values must be strings")
++        parsed[key] = property_value
++    return parsed
+
+#+end_example
+
+This is duplicated with the functions used in =tasks update=, please move these to the common module and re-use.
+*** REWORKED Task query selector
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 21:16]
+:END:
+In =tasks delete=, rename the =--title= and =--id= to =--query-title= and =--query-id==.
+
+Add =--query= parameter for finding tasks to be removed/updated by a generic query language query. The switch should be available in =tasks delete= and =tasks update= and it should be mutually exclusive with =--query-title= and =--query-id= (only one of the three must be specified).
+
+Both =tasks delete= and =tasks update= should prepare a query language query for selecting the matching task and run that query against the document files for extraction. The queries' results should be checked for correct type and uniqueness.
+
+Here's an example:
+#+begin_example
+# Remove a specific task with a given title text.
+org tasks delete --query '.title_text == "Test"'
+#+end_example
+
+Please add debug logs showing the selected tags and what operations are applied on which files. These should be only visible when =--verbose= flag is set.
+
+**** DONE src/org/commands/tasks/common.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 21:14]
+:END:
+
+In file src/org/commands/tasks/common.py around line 78, near the ~def normalize_selector(value: str | None, option_name: str) -> str | None:~
+
+#+begin_example
++        return f".[] | select(str(.title_text) == {json.dumps(normalized_title)})"
+#+end_example
+
+There's no reason to use =json.dumps()= as a normalization for the text. Just wrap it in double quotes and leave the escaping to the user.
+**** DONE src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 21:15]
+:END:
+
+In file src/org/commands/tasks/update.py around line 487, near the ~def _validate_update_option_conflicts(args: UpdateArgs) -> None:~
+
+#+begin_example
+def _collect_update_operations(args: UpdateArgs) -> list[str]:
++    """Collect active update switches for debug logging."""
++    operations: list[str] = []
++    for option_name, value in [
++        ("level", args.level),
++        ("todo", args.todo),
++        ("priority", args.priority),
++        ("comment", args.comment),
++        ("title", args.title),
++        ("id", args.id_value),
++        ("counter", args.counter),
++        ("deadline", args.deadline),
++        ("scheduled", args.scheduled),
++        ("closed", args.closed),
++        ("category", args.category),
++        ("body", args.body),
++        ("parent", args.parent),
++        ("file", args.file),
++        ("tags", args.tags),
++        ("properties", args.properties),
++        ("add-clock-entry", args.add_clock_entry),
++        ("remove-clock-entry", args.remove_clock_entry),
++        ("add-repeat", args.add_repeat),
++        ("remove-repeat", args.remove_repeat),
++        ("add-tag", args.add_tag),
++        ("remove-tag", args.remove_tag),
++        ("add-property", args.add_property),
++        ("remove-property", args.remove_property),
++    ]:
++        if value is not None:
++            operations.append(option_name)
++    return operations
+
+#+end_example
+
+No need to log all of these specifically, just let the log say "Updating task" with a specified title, id, etc.
+**** DONE src/org/logging_config.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 21:25]
+:END:
+
+In file src/org/logging_config.py around line 18, near the ~def configure_logging(verbose: bool) -> None:~
+
+#+begin_example
+-        verbose: Whether to enable INFO logging to stdout
++        verbose: Whether to enable DEBUG logging to stdout
+
+#+end_example
+
+Please don't change that. All of these logs should be INFO-level.
+*** REWORKED Apply edits to multiple tasks
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 22:10]
+:END:
+Let's relax the rules for task selectors in delete & update commands to apply the operations to potentially multiple tasks that have been selected by a selector.
+
+Both commands should first determine the number of affected tasks and ask for confirmation before applying the destructive action. You can use Python's Rich's =rich.prompt.Confirm= for that.
+
+Once the user confirms:
+- For =tasks delete=, all selected tasks should be deleted. The output of the command should be "Deleted {number} tasks."
+- For =tasks update=, all selected tasks should be updated the same way (dictated by the other parameters). The output of the command should say "Updated {number} tasks.".
+
+In both cases, a debug log of the operations should be printed.
+
+Add an additional =--yes= CLI switch for these two commands that will automatically confirm the action without prompting the user.
+
+*** DONE Simplified creation
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 23:18]
+:END:
+The =tasks create= command should have a way to accept a string via stdin. If none of the mandatory heading elements are provided, instead of generating an error, the command should read the task from the standard input. If any other parameters are provided, these should be applied as edits on the read task.
+
+**** DONE src/org/commands/tasks/create.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-18 Sat 23:18]
+:END:
+
+In file src/org/commands/tasks/create.py around line 75, near the ~def _validate_heading_option_exclusivity(args: CreateArgs) -> None:~
+
+#+begin_example
+def _validate_required_heading_components(args: CreateArgs) -> None:
+-    """Require at least one heading source component to be specified."""
++def _has_structured_heading_component(args: CreateArgs) -> bool:
++    """Return true when structured heading options provide heading source."""
+     comment_enabled = _parse_comment_flag(args.comment) if args.comment is not None else False
+-    has_structured_heading_component = (
+-        args.todo is not None or comment_enabled or args.title is not None
+-    )
+-    if args.heading is not None or has_structured_heading_component:
++    return args.todo is not None or comment_enabled or args.title is not None
++
++
++def _should_read_task_from_stdin(args: CreateArgs) -> bool:
++    """Return true when heading source should be read from stdin."""
++    return args.heading is None and not _has_structured_heading_component(args)
++
++
++def _normalize_optional_value(value: str) -> str | None:
++    """Return stripped value or None for blank input."""
++    normalized = value.strip()
++    if not normalized:
++        return None
++    return normalized
++
++
++def _parse_counter(value: str) -> CompletionCounter | None:
++    """Parse --counter value into completion counter or None."""
++    normalized = _normalize_optional_value(value)
++    if normalized is None:
++        return None
++    if normalized.startswith("[") and normalized.endswith("]"):
++        normalized = normalized[1:-1].strip()
++    if not normalized:
++        return None
++    return CompletionCounter(normalized)
++
++
++def _parse_timestamp(value: str, option_name: str) -> Timestamp | None:
++    """Parse one timestamp option into Timestamp or None."""
++    normalized = _normalize_optional_value(value)
++    if normalized is None:
++        return None
++    try:
++        return Timestamp.from_source(normalized)
++    except (TypeError, ValueError) as err:
++        raise typer.BadParameter(
++            f"{option_name} value {value!r} is not a valid Org timestamp",
++        ) from err
++
++
++def _iter_descendants(heading: Heading) -> list[Heading]:
++    """Return heading descendants as a flat list."""
++    descendants: list[Heading] = []
++    for child in heading.children:
++        descendants.append(child)
++        descendants.extend(_iter_descendants(child))
++    return descendants
++
++
++def _apply_subtree_level(heading: Heading, new_level: int) -> None:
++    """Apply heading level and shift descendants by the same delta."""
++    level_delta = new_level - heading.level
++    if level_delta == 0:
+         return
++
+#+end_example
+
+These seem to be duplicated in the update & create commands. Please move the duplicates to the common module and reuse.
+Please make sure to check both commands for duplicated code paths and extract these to the common module.
+
+*** DONE Command rename
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 01:49]
+:END:
+Rename =tasks create= to =tasks add= and =tasks delete= to =tasks remove=.
+Make sure to update the documentation, readme, etc.
 ** Agenda command
 Like Org Agenta, but CLI.
 
@@ -4187,7 +4790,33 @@ Like linting and formatting.
 ** Documentation
 - Document the CLI
 - Document the config format
+** REWORKED Tighten Ruff lint policy in =pyproject.toml= (prefer =select = ["ALL"]=)
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 16:00] \\
+  Needed extra manual work.
+:END:
+  - Evaluate switching =[tool.ruff.lint].select= to =["ALL"]=.
+  - Keep an explicit =ignore= list only for justified exceptions, with a short rationale per rule.
+  - Ensure commonly useful rule families are enabled (at minimum: =S=, =PT=, =TRY=, =PERF=, =D=, =TID=, =A=, =C90=, =G=).
+** DONE Speed up slow CLI tests by reducing subprocess usage
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 02:04]
+:END:
+- *Context:* current profiling shows most runtime is concentrated in =tests/test_chart_date_spanning.py= and =tests/cli/test_cli_smoke.py=. These tests repeatedly call =subprocess.run(...)=, so each case pays full Python startup + import cost.
+- *Scope:* optimize test runtime without reducing confidence in CLI behavior or changing command semantics.
+- *Approach:*
+  - [ ] Profile and record baseline with =poetry run pytest --durations=40 --durations-min=0.02=
+  - [ ] Keep only 1-2 true end-to-end subprocess smoke tests in =tests/cli/test_cli_smoke.py=
+  - [ ] Convert remaining subprocess-heavy cases to in-process tests (=CliRunner= and/or direct command entrypoints)
+  - [ ] Consolidate repetitive date-span scenarios in =tests/test_chart_date_spanning.py= using parametrized tests
+  - [ ] Share reusable assertion helpers (e.g., ANSI-clean output checks) to avoid repeated per-test setup
+  - [ ] Re-run profiling and compare against baseline
+- *Acceptance criteria:*
+  - [ ] Combined runtime of =tests/test_chart_date_spanning.py= + =tests/cli/test_cli_smoke.py= is significantly lower
+  - [ ] Full suite still passes via =poetry run task check=
+  - [ ] Coverage and key CLI smoke guarantees remain intact (entrypoint, multi-file input, and summary output)
 ** Better heading & body parsing
+Use stripped =RichText= for body/heading tags.
 ** MCP server / RAG command
 #+begin_example
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings

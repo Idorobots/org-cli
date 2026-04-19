@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from typing import TYPE_CHECKING
 
 import typer
-from org_parser.document import Heading
-from rich.console import Console
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.text import Text
@@ -45,6 +42,14 @@ from org.tui import (
     setup_output,
 )
 from org.validation import validate_stats_arguments
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from datetime import datetime
+
+    from org_parser.document import Heading
+    from rich.console import Console
 
 
 @dataclass
@@ -198,7 +203,7 @@ def format_tags_section(
                     name_indent="  ",
                     stats_indent="    ",
                 ),
-            )
+            ),
         )
 
     return lines_to_text(apply_indent(lines, indent))
@@ -320,7 +325,9 @@ def _resolve_stats_all_task_limit(
 
 
 def _build_panel(
-    section: _StatsAllPanelSection, color_enabled: bool, height: int | None = None
+    section: _StatsAllPanelSection,
+    color_enabled: bool,
+    height: int | None = None,
 ) -> Panel:
     """Create a Panel for a section using shared config."""
     panel_height = _section_height(section) if height is None else height
@@ -390,7 +397,7 @@ def _build_stats_all_panel_sections(
             _StatsAllPanelSection(
                 title=CATEGORY_NAMES[args.use].upper(),
                 body=_normalize_panel_body(tags_body),
-            )
+            ),
         )
 
     if args.max_groups != 0:
@@ -408,7 +415,7 @@ def _build_stats_all_panel_sections(
             ),
         )
         sections.append(
-            _StatsAllPanelSection(title="GROUPS", body=_normalize_panel_body(groups_body))
+            _StatsAllPanelSection(title="GROUPS", body=_normalize_panel_body(groups_body)),
         )
 
     return sections
@@ -500,7 +507,7 @@ def _format_tags_body(
                     name_indent="",
                     stats_indent="  ",
                 ),
-            )
+            ),
         )
 
     return lines_to_text(lines)
@@ -551,7 +558,11 @@ def render_stats_all_layout(
     """Build a two-column stats all layout using Rich Layout and Panels."""
     if console.width < _TWO_COLUMN_MIN_WIDTH:
         return _render_single_column_stats_all_layout(
-            result, nodes, args, display_config, console.width
+            result,
+            nodes,
+            args,
+            display_config,
+            console.width,
         )
 
     panel_content_width = _resolve_two_column_panel_content_width(console.width)
@@ -651,7 +662,7 @@ def _format_groups_body(
                     name_indent="",
                     stats_indent="  ",
                 ),
-            )
+            ),
         )
 
     return lines_to_text(lines)
@@ -701,7 +712,9 @@ def register(app: typer.Typer) -> None:
     @app.command("all", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
     def stats_all(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
-            None, metavar="FILE", help="Org-mode archive files or directories to analyze"
+            None,
+            metavar="FILE",
+            help="Org-mode archive files or directories to analyze",
         ),
         config: str = typer.Option(
             ".org-cli.json",
@@ -799,7 +812,10 @@ def register(app: typer.Typer) -> None:
             None,
             "--filter-body",
             metavar="REGEX",
-            help="Filter tasks where body matches regex (case-sensitive, multiline, can specify multiple)",
+            help=(
+                "Filter tasks where body matches regex (case-sensitive, multiline, "
+                "can specify multiple)"
+            ),
         ),
         filter_completed: bool = typer.Option(
             False,

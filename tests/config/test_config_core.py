@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 import typer
 
 from org import config
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_load_config_missing_file_returns_empty(tmp_path: Path) -> None:
@@ -144,7 +148,7 @@ def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.Monk
                 "filter": {"custom-filter": ".[]"},
                 "order-by": {"custom-order": "."},
                 "with": {"custom-with": "."},
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -161,7 +165,8 @@ def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 def test_load_cli_config_sections_are_optional(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Only defaults section should be enough for valid config."""
     config_path = tmp_path / ".org-cli.json"
@@ -177,7 +182,8 @@ def test_load_cli_config_sections_are_optional(
 
 
 def test_load_cli_config_rejects_invalid_custom_section_values(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Custom sections must be object[string -> string]."""
     config_path = tmp_path / ".org-cli.json"
@@ -186,7 +192,7 @@ def test_load_cli_config_rejects_invalid_custom_section_values(
             {
                 "defaults": {"--limit": 7},
                 "filter": {"custom-filter": 1},
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -296,7 +302,7 @@ def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
         {
             "order_by_level": True,
             "order_by_timestamp_desc": False,
-        }
+        },
     )
 
     tasks_list_defaults = default_map["tasks"]["list"]
@@ -319,7 +325,7 @@ def test_build_default_map_strips_tasks_board_unsupported_defaults() -> None:
             "out_theme": "vim",
             "pandoc_args": "--wrap=none",
             "order_by_level": True,
-        }
+        },
     )
 
     tasks_board_defaults = default_map["tasks"]["board"]

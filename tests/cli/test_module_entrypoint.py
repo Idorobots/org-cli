@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import runpy
-
-import pytest
+from typing import TYPE_CHECKING
 
 from org import cli
+
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_module_entrypoint_invokes_main(monkeypatch: pytest.MonkeyPatch) -> None:

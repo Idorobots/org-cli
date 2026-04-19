@@ -169,7 +169,8 @@ def make_summary_args(files: list[str], **overrides: object) -> stats_summary_co
 
 
 def test_run_stats_all_outputs_sections(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Summary command should output totals and sections."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -185,7 +186,8 @@ def test_run_stats_all_outputs_sections(
 
 
 def test_run_stats_summary_excludes_tag_sections(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Summary command should omit TAGS/GROUPS output."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -201,7 +203,8 @@ def test_run_stats_summary_excludes_tag_sections(
 
 
 def test_run_stats_summary_no_results(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Summary command should report when filters return no results."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -251,7 +254,8 @@ def test_run_stats_groups_negative_max_results_raises_bad_parameter() -> None:
 
 
 def test_run_stats_tags_respects_tag_filter(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tags command should filter to selected tags when --tag is used."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -266,7 +270,8 @@ def test_run_stats_tags_respects_tag_filter(
 
 
 def test_run_stats_tags_tag_heading(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tags command should normalize --tag for heading usage."""
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
@@ -280,7 +285,8 @@ def test_run_stats_tags_tag_heading(
 
 
 def test_run_stats_groups_explicit_group(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Groups command should display explicit group selection."""
     fixture_path = os.path.join(FIXTURES_DIR, "tag_groups_test.org")
@@ -294,7 +300,8 @@ def test_run_stats_groups_explicit_group(
 
 
 def test_run_stats_all_no_results(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Summary command should print No results when filtered away."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -308,7 +315,8 @@ def test_run_stats_all_no_results(
 
 
 def test_run_stats_all_category_preprocessor(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Summary command should handle tag-based category preprocessing."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -325,7 +333,8 @@ def test_run_stats_all_category_preprocessor(
 
 
 def test_run_stats_all_omits_groups_when_disabled(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Summary command should omit groups when max_groups is zero."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -339,7 +348,9 @@ def test_run_stats_all_omits_groups_when_disabled(
 
 
 def test_run_stats_all_tasks_panel_grows_with_task_list(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: os.PathLike[str]
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
 ) -> None:
     """Summary TASKS panel should include all requested task rows in wide layout."""
     fixture_path = os.path.join(tmp_path, "many_tasks.org")
@@ -359,7 +370,9 @@ def test_run_stats_all_tasks_panel_grows_with_task_list(
 
 
 def test_run_stats_all_two_column_default_limit_uses_summary_size(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: os.PathLike[str]
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
 ) -> None:
     """Two-column stats all should default task limit to summary body line count."""
     fixture_path = os.path.join(tmp_path, "many_tasks_default_two_column.org")
@@ -386,7 +399,9 @@ def test_run_stats_all_two_column_default_limit_uses_summary_size(
 
 
 def test_run_stats_all_single_column_default_limit_stays_ten(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: os.PathLike[str]
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
 ) -> None:
     """Single-column stats all should keep the legacy 10 task default."""
     fixture_path = os.path.join(tmp_path, "many_tasks_default_single_column.org")
@@ -436,7 +451,7 @@ def test_format_tags_body_matches_stats_tags_indentation() -> None:
             max_single_day_count=0,
             relations={"beta": 2},
             time_range=TimeRange(),
-        )
+        ),
     }
     args = make_stats_all_args([], max_tags=1, max_relations=1)
 
@@ -468,7 +483,7 @@ def test_format_groups_body_matches_stats_groups_indentation() -> None:
             total_tasks=2,
             avg_tasks_per_day=0.0,
             max_single_day_count=0,
-        )
+        ),
     ]
 
     body = stats_all_command._format_groups_body(
@@ -498,7 +513,7 @@ def test_format_groups_body_wraps_long_group_tag_headers() -> None:
             total_tasks=6,
             avg_tasks_per_day=0.0,
             max_single_day_count=0,
-        )
+        ),
     ]
 
     body = stats_all_command._format_groups_body(
@@ -522,7 +537,8 @@ def test_format_groups_body_wraps_long_group_tag_headers() -> None:
 
 
 def test_run_stats_all_narrow_layout_orders_sections_vertically(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Narrow viewport should render SUMMARY, TASKS, TAGS, GROUPS in order."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
@@ -598,7 +614,7 @@ def test_format_group_list_excludes_tags() -> None:
             total_tasks=2,
             avg_tasks_per_day=0.0,
             max_single_day_count=0,
-        )
+        ),
     ]
 
     output = stats_groups.format_group_list(
@@ -665,7 +681,7 @@ def test_format_tasks_summary_orders_task_states_by_group_alphabetically() -> No
                 "ATODO": 1,
                 "bbb": 1,
                 "AAA": 1,
-            }
+            },
         ),
         task_categories=Histogram(values={"null": 6}),
         task_priorities=Histogram(values={"null": 6}),
@@ -691,7 +707,8 @@ def test_format_tasks_summary_orders_task_states_by_group_alphabetically() -> No
     )
 
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(
-        "\n\nTask priorities:", maxsplit=1
+        "\n\nTask priorities:",
+        maxsplit=1,
     )[0]
     state_names = [line.split("┊", maxsplit=1)[0].strip() for line in state_section.splitlines()]
 
@@ -728,7 +745,8 @@ def test_format_tasks_summary_omits_none_state_when_absent() -> None:
     )
 
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(
-        "\n\nTask priorities:", maxsplit=1
+        "\n\nTask priorities:",
+        maxsplit=1,
     )[0]
     assert "null" not in state_section
 
@@ -763,6 +781,7 @@ def test_format_tasks_summary_keeps_none_state_when_present() -> None:
     )
 
     state_section = output.split("Task states:\n", maxsplit=1)[1].split(
-        "\n\nTask priorities:", maxsplit=1
+        "\n\nTask priorities:",
+        maxsplit=1,
     )[0]
     assert "null" in state_section

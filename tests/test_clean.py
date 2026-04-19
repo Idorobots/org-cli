@@ -83,7 +83,7 @@ def test_clean_preserves_frequencies() -> None:
 def test_clean_with_default_constant() -> None:
     """Test clean with the DEFAULT_EXCLUDE constant."""
     body_words = tag_dict_from_ints(
-        {"end": 20, "logbook": 15, "implementation": 10, "algorithm": 5}
+        {"end": 20, "logbook": 15, "implementation": 10, "algorithm": 5},
     )
     result = clean(DEFAULT_EXCLUDE, body_words)
     # "end" and "logbook" are in DEFAULT_EXCLUDE

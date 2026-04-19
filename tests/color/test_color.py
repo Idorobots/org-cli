@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import sys
-
-import pytest
+from typing import TYPE_CHECKING
 
 from org import color
+
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_should_use_color_respects_flag(monkeypatch: pytest.MonkeyPatch) -> None:

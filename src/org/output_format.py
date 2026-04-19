@@ -10,19 +10,22 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import StrEnum
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from org_parser import Document
 from org_parser.document import Heading
 from org_parser.element import Element, Properties, Repeat
 from org_parser.text import RichText
 from org_parser.time import Clock, Timestamp
-from rich.console import Console
 from rich.syntax import Syntax
 
 from org.analyze import AnalysisResult, Group, Tag, TimeRange
 from org.histogram import Histogram
 from org.tui import print_output
+
+
+if TYPE_CHECKING:
+    from rich.console import Console
 
 
 logger = logging.getLogger("org")
@@ -183,7 +186,7 @@ def _prepare_output(
                             word_wrap=True,
                         ),
                     ),
-                )
+                ),
             )
     return PreparedOutput(operations=(OutputOperation(kind="plain_write", text=text),))
 
@@ -231,9 +234,7 @@ def _org_to_pandoc_format(org_text: str, output_format: str, pandoc_args: list[s
 
     stderr_text = result.stderr.decode("utf-8", errors="replace").strip()
     if result.returncode != 0:
-        message = (
-            stderr_text if stderr_text else f"pandoc failed with exit code {result.returncode}"
-        )
+        message = stderr_text or f"pandoc failed with exit code {result.returncode}"
         raise OutputFormatError(message)
 
     if stderr_text:
@@ -321,7 +322,7 @@ def _exported_org_fields(value: object) -> tuple[str, ...]:
         return _CLOCK_EXPORTED_FIELDS
     if isinstance(value, Repeat):
         return _REPEAT_EXPORTED_FIELDS
-    return _element_exported_fields(cast(Element, value))
+    return _element_exported_fields(cast("Element", value))
 
 
 def _element_exported_fields(value: Element) -> tuple[str, ...]:
@@ -332,7 +333,7 @@ def _element_exported_fields(value: Element) -> tuple[str, ...]:
             continue
         try:
             field_value = getattr(value, field_name)
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
         if callable(field_value):
             continue
@@ -369,7 +370,7 @@ def _iterable_to_json_list(value: object, seen: set[int]) -> list[object]:
     return [str(value)]
 
 
-def _to_json_compatible(value: object, seen: set[int] | None = None) -> object:
+def _to_json_compatible(value: object, seen: set[int] | None = None) -> object:  # noqa: C901
     """Convert arbitrary values to JSON-serializable structures."""
     if _is_primitive_json_type(value):
         return value

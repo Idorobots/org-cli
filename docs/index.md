@@ -11,6 +11,9 @@
 - `org stats groups` - Stats for explicit or discovered tag groups. See [stats_groups_command.md](stats_groups_command.md).
 - `org tasks list` - Short or detailed task listing with ordering. See [tasks_list_command.md](tasks_list_command.md).
 - `org tasks board` - Workflow-style board view of active tasks. See [tasks_board_command.md](tasks_board_command.md).
+- `org tasks add` - Create new task headings in Org files. See [tasks_add_command.md](tasks_add_command.md).
+- `org tasks remove` - Delete one task heading and its subtree from Org files. See [tasks_remove_command.md](tasks_remove_command.md).
+- `org tasks update` - Update one matched task heading in Org files. See [tasks_update_command.md](tasks_update_command.md).
 
 For query syntax details, use [query_language.md](query_language.md).
 

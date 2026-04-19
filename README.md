@@ -173,6 +173,41 @@ poetry run org tasks board \
   examples/ARCHIVE_small
 ```
 
+### `org tasks add`
+
+Create a new heading in an Org file.
+
+```bash
+poetry run org tasks add \
+  --todo TODO \
+  --title "Update docs" \
+  --tag Docs \
+  --body "Refresh command documentation" \
+  ROADMAP.org
+```
+
+### `org tasks update`
+
+Update one task heading selected by query ID or title.
+
+```bash
+poetry run org tasks update \
+  --query-id task-1 \
+  --todo DONE \
+  --closed "<2026-04-13>" \
+  ROADMAP.org
+```
+
+### `org tasks remove`
+
+Delete one task heading (including its subtree) by title or ID.
+
+```bash
+poetry run org tasks remove \
+  --title "Update docs" \
+  ROADMAP.org
+```
+
 ## Notes
 
 - Command docs and defaults: [docs/index.md](docs/index.md)
