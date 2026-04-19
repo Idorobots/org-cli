@@ -2,18 +2,30 @@
 
 from __future__ import annotations
 
+import calendar
+import logging
+import os
+import select
 import sys
+import termios
+import tty
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import typer
+from org_parser.element import Repeat
+from org_parser.time import Clock, Timestamp
 from rich import box
+from rich.console import Group
+from rich.live import Live
+from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
 from org import config as config_module
-from org.cli_common import load_and_process_data
+from org.cli_common import load_and_process_data, resolve_input_paths
+from org.commands.tasks.common import iter_descendants, load_document, save_document
 from org.tui import (
     build_console,
     heading_title_to_text,
@@ -27,10 +39,12 @@ from org.validation import parse_date_argument
 
 
 if TYPE_CHECKING:
-    from org_parser.document import Heading
-    from org_parser.element import Repeat
-    from org_parser.time import Timestamp
+    from org_parser.document import Document, Heading
     from rich.console import Console
+
+
+logger = logging.getLogger("org")
+_HIGHLIGHT_ROW_STYLE = "on grey23"
 
 
 @dataclass
@@ -82,6 +96,7 @@ class _TimedEntry:
     node: Heading
     when: datetime
     kind: str
+    state_override: str | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +114,7 @@ class _DayEntries:
     timed: list[_TimedEntry]
     overdue_scheduled: list[_RelativeEntry]
     overdue_deadline: list[_RelativeEntry]
+    deadline_untimed: list[Heading]
     scheduled_untimed: list[Heading]
     upcoming_deadline: list[_RelativeEntry]
 
@@ -120,6 +136,7 @@ class _TaskRow:
     time_text: str
     style: str = ""
     prefix: str | None = None
+    state_override: str | None = None
 
 
 @dataclass(frozen=True)
@@ -150,6 +167,69 @@ class _AgendaRenderInput:
     nodes: list[Heading]
     now: datetime
     render: _RenderContext
+
+
+@dataclass(frozen=True)
+class _AgendaRow:
+    """One renderable agenda row, optionally bound to a task."""
+
+    kind: str
+    day: date
+    time_text: str = ""
+    section_label: str = ""
+    node: Heading | None = None
+    source: str = ""
+    style: str = ""
+    prefix: str | None = None
+    state_override: str | None = None
+
+
+@dataclass
+class _DayRowModel:
+    """Rows and selectable row indexes for one day."""
+
+    day: date
+    rows: list[_AgendaRow]
+    selectable_row_indexes: list[int]
+
+
+@dataclass
+class _AgendaSession:
+    """Interactive agenda session state."""
+
+    args: AgendaArgs
+    nodes: list[Heading]
+    render: _RenderContext
+    start_date: date
+    days: int
+    now: datetime
+    day_models: list[_DayRowModel]
+    row_locations: list[tuple[int, int]]
+    selected_row_index: int
+    scroll_offset: int
+    status_message: str
+
+
+@dataclass(frozen=True)
+class _ViewportRow:
+    """One interactive viewport row with optional bound agenda row."""
+
+    kind: str
+    day: date
+    agenda_row: _AgendaRow | None
+    location: tuple[int, int] | None
+
+
+@dataclass(frozen=True)
+class _RelativeRowsSpec:
+    """Specification for building one relative section row group."""
+
+    label: str
+    entries: list[_RelativeEntry]
+    source: str
+    style: str
+    in_future: bool
+    prefix: str | None = None
 
 
 def _has_specific_time(timestamp: Timestamp) -> bool:
@@ -204,28 +284,33 @@ def _tags_text(node: Heading, color_enabled: bool) -> Text:
 def _heading_text(
     node: Heading,
     *,
-    color_enabled: bool,
-    done_states: list[str],
-    todo_states: list[str],
+    render: _RenderContext,
     prefix: str | None = None,
+    state_override: str | None = None,
 ) -> Text:
     """Build heading cell text with state, priority, and rich title."""
     heading = Text()
     if prefix:
-        heading.append(prefix, style="dim" if color_enabled else "")
+        heading.append(prefix, style="dim" if render.color_enabled else "")
 
-    state = node.todo or ""
+    state = state_override if state_override is not None else (node.todo or "")
     if state:
         heading.append_text(
             task_state_prefix_to_text(
                 state,
-                done_states=done_states,
-                todo_states=todo_states,
-                color_enabled=color_enabled,
+                done_states=render.done_states,
+                todo_states=render.todo_states,
+                color_enabled=render.color_enabled,
             ),
         )
 
-    heading.append_text(task_priority_to_text(node.priority, color_enabled, trailing_space=True))
+    heading.append_text(
+        task_priority_to_text(
+            node.priority,
+            render.color_enabled,
+            trailing_space=True,
+        ),
+    )
 
     heading.append_text(heading_title_to_text(node))
     return heading
@@ -258,7 +343,14 @@ def _collect_repeat_timed_entries(
         if repeat_day != day:
             continue
         if _has_specific_time(repeat.timestamp):
-            timed.append(_TimedEntry(node=node, when=repeat.timestamp.start, kind="repeat"))
+            timed.append(
+                _TimedEntry(
+                    node=node,
+                    when=repeat.timestamp.start,
+                    kind="repeat",
+                    state_override=repeat.after,
+                ),
+            )
     return timed
 
 
@@ -271,6 +363,27 @@ def _collect_scheduled_entries(node: Heading, day: date) -> tuple[list[_TimedEnt
 
     if _has_specific_time(node.scheduled):
         timed.append(_TimedEntry(node=node, when=node.scheduled.start, kind="scheduled"))
+    else:
+        untimed.append(node)
+    return timed, untimed
+
+
+def _collect_deadline_entries(
+    node: Heading,
+    day: date,
+    *,
+    completed: bool,
+) -> tuple[list[_TimedEntry], list[Heading]]:
+    """Collect deadline entries on one day for incomplete tasks."""
+    timed: list[_TimedEntry] = []
+    untimed: list[Heading] = []
+    if completed or not _is_active_planning_timestamp(node.deadline) or node.deadline is None:
+        return timed, untimed
+    if node.deadline.start.date() != day:
+        return timed, untimed
+
+    if _has_specific_time(node.deadline):
+        timed.append(_TimedEntry(node=node, when=node.deadline.start, kind="deadline"))
     else:
         untimed.append(node)
     return timed, untimed
@@ -343,8 +456,10 @@ def _collect_day_entries(
     timed: list[_TimedEntry] = []
     overdue_scheduled: list[_RelativeEntry] = []
     overdue_deadline: list[_RelativeEntry] = []
+    deadline_untimed: list[Heading] = []
     scheduled_untimed: list[Heading] = []
     upcoming_deadline: list[_RelativeEntry] = []
+    deadline_untimed_identity: set[tuple[str, int | None, str]] = set()
 
     upcoming_limit = day + timedelta(days=30)
 
@@ -357,6 +472,22 @@ def _collect_day_entries(
         timed.extend(scheduled_timed)
         if not completed:
             scheduled_untimed.extend(scheduled_day_untimed)
+
+        deadline_timed, deadline_day_untimed = _collect_deadline_entries(
+            node,
+            day,
+            completed=completed,
+        )
+        timed.extend(deadline_timed)
+        for deadline_node in deadline_day_untimed:
+            deadline_untimed.append(deadline_node)
+            deadline_untimed_identity.add(
+                (
+                    deadline_node.document.filename or "",
+                    deadline_node.line,
+                    deadline_node.title_text,
+                ),
+            )
 
         repeat_timed = _collect_repeat_timed_entries(
             node,
@@ -399,13 +530,456 @@ def _collect_day_entries(
     overdue_scheduled.sort(key=lambda entry: (-entry.delta_days, str(entry.node.title_text)))
     overdue_deadline.sort(key=lambda entry: (-entry.delta_days, str(entry.node.title_text)))
     upcoming_deadline.sort(key=lambda entry: (entry.delta_days, str(entry.node.title_text)))
+    scheduled_untimed = [
+        node
+        for node in scheduled_untimed
+        if (node.document.filename or "", node.line, node.title_text)
+        not in deadline_untimed_identity
+    ]
     return _DayEntries(
         timed=timed,
         overdue_scheduled=overdue_scheduled,
         overdue_deadline=overdue_deadline,
+        deadline_untimed=deadline_untimed,
         scheduled_untimed=scheduled_untimed,
         upcoming_deadline=upcoming_deadline,
     )
+
+
+def _merge_row_style(base_style: str, *, highlighted: bool) -> str:
+    """Merge base row style with highlight style."""
+    if not highlighted:
+        return base_style
+    if base_style:
+        return f"{base_style} {_HIGHLIGHT_ROW_STYLE}"
+    return _HIGHLIGHT_ROW_STYLE
+
+
+def _row_for_timed_entry(entry: _TimedEntry, day: date) -> _AgendaRow:
+    """Build one row model for a timed entry."""
+    source_map = {
+        "repeat": "repeat",
+        "scheduled": "scheduled",
+        "deadline": "deadline_today",
+    }
+    source = source_map.get(entry.kind, "scheduled")
+    return _AgendaRow(
+        kind="task",
+        day=day,
+        time_text=entry.when.strftime("%H:%M"),
+        node=entry.node,
+        source=source,
+        state_override=entry.state_override,
+    )
+
+
+def _build_hour_rows(day_render: _DayRenderInput) -> list[_AgendaRow]:
+    """Build timetable hour, now-marker, and timed task rows for one day."""
+    rows: list[_AgendaRow] = []
+    timed_by_hour: dict[int, list[_TimedEntry]] = {hour: [] for hour in range(24)}
+    for entry in day_render.entries.timed:
+        timed_by_hour[entry.when.hour].append(entry)
+
+    for hour in range(24):
+        rows.append(
+            _AgendaRow(
+                kind="hour_marker",
+                day=day_render.day,
+                time_text=f"{hour:02d}:00",
+            ),
+        )
+
+        hour_entries = timed_by_hour[hour]
+        is_now_hour = day_render.day == day_render.now.date() and day_render.now.hour == hour
+        now_inserted = False
+        for timed_entry in hour_entries:
+            if is_now_hour and not now_inserted and timed_entry.when.minute > day_render.now.minute:
+                rows.append(
+                    _AgendaRow(
+                        kind="now_marker",
+                        day=day_render.day,
+                        time_text=day_render.now.strftime("%H:%M"),
+                    ),
+                )
+                now_inserted = True
+            rows.append(_row_for_timed_entry(timed_entry, day_render.day))
+
+        if is_now_hour and not now_inserted:
+            rows.append(
+                _AgendaRow(
+                    kind="now_marker",
+                    day=day_render.day,
+                    time_text=day_render.now.strftime("%H:%M"),
+                ),
+            )
+    return rows
+
+
+def _relative_section_rows(
+    day: date,
+    spec: _RelativeRowsSpec,
+) -> list[_AgendaRow]:
+    """Build rows for one overdue/upcoming relative section."""
+    if not spec.entries:
+        return []
+
+    rows = [_AgendaRow(kind="section", day=day, section_label=spec.label, style=spec.style)]
+    rows.extend(
+        _AgendaRow(
+            kind="task",
+            day=day,
+            time_text=_format_relative_days(entry.delta_days, in_future=spec.in_future),
+            node=entry.node,
+            source=spec.source,
+            style=spec.style,
+            prefix=spec.prefix,
+        )
+        for entry in spec.entries
+    )
+    return rows
+
+
+def _scheduled_untimed_rows(day: date, entries: list[Heading]) -> list[_AgendaRow]:
+    """Build rows for scheduled-without-time section."""
+    if not entries:
+        return []
+
+    rows = [_AgendaRow(kind="section", day=day, section_label="Scheduled without specific time")]
+    rows.extend(
+        _AgendaRow(
+            kind="task",
+            day=day,
+            node=node,
+            source="scheduled_untimed",
+        )
+        for node in entries
+    )
+    return rows
+
+
+def _deadline_untimed_rows(day: date, entries: list[Heading]) -> list[_AgendaRow]:
+    """Build rows for deadline-without-time section."""
+    if not entries:
+        return []
+
+    rows = [_AgendaRow(kind="section", day=day, section_label="Deadlines without specific time")]
+    rows.extend(
+        _AgendaRow(
+            kind="task",
+            day=day,
+            node=node,
+            source="deadline_today",
+        )
+        for node in entries
+    )
+    return rows
+
+
+def _build_day_rows(day_render: _DayRenderInput, render: _RenderContext) -> _DayRowModel:
+    """Build all render rows and selectable indexes for one day."""
+    rows: list[_AgendaRow] = []
+    rows.extend(_build_hour_rows(day_render))
+    rows.extend(
+        _relative_section_rows(
+            day_render.day,
+            _RelativeRowsSpec(
+                label="Overdue deadlines",
+                entries=day_render.entries.overdue_deadline,
+                source="overdue_deadline",
+                style="bold red" if render.color_enabled else "",
+                in_future=False,
+            ),
+        ),
+    )
+    rows.extend(
+        _relative_section_rows(
+            day_render.day,
+            _RelativeRowsSpec(
+                label="Overdue scheduled",
+                entries=day_render.entries.overdue_scheduled,
+                source="overdue_scheduled",
+                style="orange3" if render.color_enabled else "",
+                in_future=False,
+            ),
+        ),
+    )
+    rows.extend(_deadline_untimed_rows(day_render.day, day_render.entries.deadline_untimed))
+    rows.extend(_scheduled_untimed_rows(day_render.day, day_render.entries.scheduled_untimed))
+    rows.extend(
+        _relative_section_rows(
+            day_render.day,
+            _RelativeRowsSpec(
+                label="Upcoming deadlines (30d)",
+                entries=day_render.entries.upcoming_deadline,
+                source="upcoming_deadline",
+                style="yellow" if render.color_enabled else "",
+                in_future=True,
+            ),
+        ),
+    )
+
+    selectable = [
+        idx for idx, row in enumerate(rows) if row.kind == "task" and row.node is not None
+    ]
+    return _DayRowModel(day=day_render.day, rows=rows, selectable_row_indexes=selectable)
+
+
+def _heading_identity(node: Heading) -> tuple[str, str, str, int | None]:
+    """Build stable heading identity tuple for selection restoration."""
+    filename = node.document.filename or ""
+    heading_id = node.id or ""
+    title = node.title_text
+    return (filename, heading_id, title, node.line)
+
+
+def _refresh_session(
+    session: _AgendaSession,
+    preserve_identity: tuple[str, str, str, int | None] | None,
+) -> None:
+    """Recompute day row models and restore selection when possible."""
+    session.now = _local_now()
+    day_models: list[_DayRowModel] = []
+    row_locations: list[tuple[int, int]] = []
+
+    for day_offset in range(session.days):
+        day = session.start_date + timedelta(days=day_offset)
+        entries = _collect_day_entries(
+            session.nodes,
+            day,
+            session.render.done_states,
+            session.args,
+            include_relative_sections=(day == session.now.date()),
+        )
+        day_model = _build_day_rows(
+            _DayRenderInput(day=day, now=session.now, entries=entries),
+            session.render,
+        )
+        day_models.append(day_model)
+        row_locations.extend(
+            (len(day_models) - 1, row_index) for row_index in range(len(day_model.rows))
+        )
+
+    session.day_models = day_models
+    session.row_locations = row_locations
+
+    if not row_locations:
+        session.selected_row_index = 0
+        return
+
+    if preserve_identity is not None:
+        for idx, (day_index, row_index) in enumerate(row_locations):
+            row = day_models[day_index].rows[row_index]
+            if row.node is not None and _heading_identity(row.node) == preserve_identity:
+                session.selected_row_index = idx
+                return
+
+    if session.selected_row_index >= len(row_locations):
+        session.selected_row_index = len(row_locations) - 1
+    session.selected_row_index = max(session.selected_row_index, 0)
+
+
+def _selected_row_location(session: _AgendaSession) -> tuple[int, int] | None:
+    """Return selected day/row indexes or None when no rows exist."""
+    if not session.row_locations:
+        return None
+    return session.row_locations[session.selected_row_index]
+
+
+def _selected_task_row(session: _AgendaSession) -> _AgendaRow | None:
+    """Return currently selected task row when selected row is a task."""
+    location = _selected_row_location(session)
+    if location is None:
+        return None
+    day_index, row_index = location
+    row = session.day_models[day_index].rows[row_index]
+    if row.kind != "task" or row.node is None:
+        return None
+    return row
+
+
+def _move_selection(session: _AgendaSession, step: int) -> None:
+    """Move highlighted row selection forward/backward with wraparound."""
+    if not session.row_locations:
+        return
+    session.selected_row_index = (session.selected_row_index + step) % len(session.row_locations)
+
+
+def _decode_escape_sequence(sequence: bytes) -> str:
+    """Decode terminal escape sequence into one key token."""
+    mapping = {
+        b"\x1b[A": "UP",
+        b"\x1b[B": "DOWN",
+        b"\x1b[1;2C": "S-RIGHT",
+        b"\x1b[1;2D": "S-LEFT",
+        b"\x1b[;2C": "S-RIGHT",
+        b"\x1b[;2D": "S-LEFT",
+        b"\x1b[C": "RIGHT",
+        b"\x1b[D": "LEFT",
+    }
+    return mapping.get(sequence, "ESC")
+
+
+def _read_keypress() -> str:
+    """Read one keypress and normalize to a command token."""
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        first = os.read(fd, 1)
+        if first == b"\x03":
+            return "q"
+        if first == b"\x1b":
+            payload = bytearray(first)
+            while True:
+                ready, _, _ = select.select([fd], [], [], 0.01)
+                if not ready:
+                    break
+                payload.extend(os.read(fd, 1))
+            return _decode_escape_sequence(bytes(payload))
+        try:
+            return first.decode("utf-8").lower()
+        except UnicodeDecodeError:
+            return ""
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def _append_repeat_transition(
+    heading: Heading,
+    before: str | None,
+    after: str,
+    now: datetime,
+) -> None:
+    """Append one repeat transition entry at current time."""
+    transition_time = now.replace(second=0, microsecond=0)
+    repeat = Repeat(
+        before=before,
+        after=after,
+        timestamp=Timestamp.from_datetime(transition_time, is_active=False),
+    )
+    heading.repeats.append(repeat)
+
+
+def _set_timestamp_fields(timestamp: Timestamp, start: datetime, end: datetime | None) -> None:
+    """Set timestamp date/time fields while preserving active/repeater metadata."""
+    timestamp.start_year = start.year
+    timestamp.start_month = start.month
+    timestamp.start_day = start.day
+    timestamp.start_dayname = start.strftime("%a")
+    if timestamp.start_hour is not None:
+        timestamp.start_hour = start.hour
+        timestamp.start_minute = start.minute
+
+    if end is None or timestamp.end is None:
+        return
+
+    timestamp.end_year = end.year
+    timestamp.end_month = end.month
+    timestamp.end_day = end.day
+    timestamp.end_dayname = end.strftime("%a")
+    if timestamp.end_hour is not None:
+        timestamp.end_hour = end.hour
+        timestamp.end_minute = end.minute
+
+
+def _add_months(value: datetime, months: int) -> datetime:
+    """Add months to a datetime while clamping day to month length."""
+    year = value.year + (value.month - 1 + months) // 12
+    month = (value.month - 1 + months) % 12 + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day)
+
+
+def _shift_timestamp_by_days(timestamp: Timestamp, day_delta: int) -> None:
+    """Shift one timestamp by a day delta."""
+    shifted_start = timestamp.start + timedelta(days=day_delta)
+    shifted_end = None if timestamp.end is None else timestamp.end + timedelta(days=day_delta)
+    _set_timestamp_fields(timestamp, shifted_start, shifted_end)
+
+
+def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
+    """Advance timestamp once by its repeater marker, when present."""
+    if (
+        timestamp.repeater_mark is None
+        or timestamp.repeater_value is None
+        or timestamp.repeater_unit is None
+    ):
+        return False
+
+    value = timestamp.repeater_value
+    unit = timestamp.repeater_unit
+    start = timestamp.start
+    end = timestamp.end
+
+    if unit == "d":
+        shifted_start = start + timedelta(days=value)
+        shifted_end = None if end is None else end + timedelta(days=value)
+    elif unit == "w":
+        shifted_start = start + timedelta(weeks=value)
+        shifted_end = None if end is None else end + timedelta(weeks=value)
+    elif unit == "h":
+        shifted_start = start + timedelta(hours=value)
+        shifted_end = None if end is None else end + timedelta(hours=value)
+    elif unit == "m":
+        shifted_start = _add_months(start, value)
+        shifted_end = None if end is None else _add_months(end, value)
+    elif unit == "y":
+        shifted_start = _add_months(start, value * 12)
+        shifted_end = None if end is None else _add_months(end, value * 12)
+    else:
+        return False
+
+    _set_timestamp_fields(timestamp, shifted_start, shifted_end)
+    return True
+
+
+def _save_document_changes(document: Document) -> None:
+    """Persist one mutated document to disk."""
+    logger.info("Saving agenda edit file: %s", document.filename)
+    document.sync_heading_id_index()
+    save_document(document)
+
+
+def _parse_clock_duration(value: str) -> timedelta:
+    """Parse user-entered clock duration text."""
+    normalized = value.strip().lower()
+    if not normalized:
+        raise ValueError("Duration cannot be empty")
+
+    if ":" in normalized:
+        parts = normalized.split(":", 1)
+        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+            raise ValueError("Duration must be H:MM")
+        hours = int(parts[0])
+        minutes = int(parts[1])
+        if minutes >= 60:
+            raise ValueError("Minutes must be below 60")
+        delta = timedelta(hours=hours, minutes=minutes)
+    elif normalized.endswith("m") and normalized[:-1].isdigit():
+        delta = timedelta(minutes=int(normalized[:-1]))
+    elif normalized.endswith("h") and normalized[:-1].isdigit():
+        delta = timedelta(hours=int(normalized[:-1]))
+    elif normalized.isdigit():
+        delta = timedelta(minutes=int(normalized))
+    else:
+        raise ValueError("Duration must be H:MM, Xm, Xh, or minutes")
+
+    if delta <= timedelta(0):
+        raise ValueError("Duration must be positive")
+    return delta
+
+
+def _duration_to_org_text(duration: timedelta) -> str:
+    """Format duration as Org clock text H:MM."""
+    total_minutes = int(duration.total_seconds() // 60)
+    hours, minutes = divmod(total_minutes, 60)
+    return f"{hours}:{minutes:02d}"
+
+
+def _reload_session_nodes(session: _AgendaSession) -> None:
+    """Reload nodes through standard processing pipeline after mutations."""
+    nodes, _, _ = load_and_process_data(session.args)
+    session.nodes = nodes
 
 
 def _add_section_row(table: Table, label: str, *, color_enabled: bool, style: str = "") -> int:
@@ -422,10 +996,9 @@ def _add_task_row(table: Table, row: _TaskRow, render: _RenderContext) -> int:
         Text(row.time_text),
         _heading_text(
             row.node,
-            color_enabled=render.color_enabled,
-            done_states=render.done_states,
-            todo_states=render.todo_states,
+            render=render,
             prefix=row.prefix,
+            state_override=row.state_override,
         ),
         _tags_text(row.node, render.color_enabled),
         style=row.style,
@@ -465,6 +1038,7 @@ def _render_hour_rows(table: Table, day_render: _DayRenderInput, render: _Render
                 _TaskRow(
                     node=timed_entry.node,
                     time_text=timed_entry.when.strftime("%H:%M"),
+                    state_override=timed_entry.state_override,
                 ),
                 render,
             )
@@ -534,6 +1108,29 @@ def _render_scheduled_untimed_section(
     return row_count
 
 
+def _render_deadline_untimed_section(
+    table: Table,
+    entries: list[Heading],
+    render: _RenderContext,
+) -> int:
+    """Render the deadline-without-time section."""
+    if not entries:
+        return 0
+
+    row_count = _add_section_row(
+        table,
+        "Deadlines without specific time",
+        color_enabled=render.color_enabled,
+    )
+    for node in entries:
+        row_count += _add_task_row(
+            table,
+            _TaskRow(node=node, time_text=""),
+            render,
+        )
+    return row_count
+
+
 def _render_day_rows(table: Table, day_render: _DayRenderInput, render: _RenderContext) -> int:
     """Render one day's rows and return the number of added table rows."""
     row_count = 0
@@ -546,7 +1143,6 @@ def _render_day_rows(table: Table, day_render: _DayRenderInput, render: _RenderC
             entries=day_render.entries.overdue_deadline,
             style="bold red" if render.color_enabled else "",
             direction="past",
-            prefix="DEADLINE ",
         ),
         render=render,
     )
@@ -560,6 +1156,11 @@ def _render_day_rows(table: Table, day_render: _DayRenderInput, render: _RenderC
         ),
         render=render,
     )
+    row_count += _render_deadline_untimed_section(
+        table,
+        day_render.entries.deadline_untimed,
+        render,
+    )
     row_count += _render_scheduled_untimed_section(
         table,
         day_render.entries.scheduled_untimed,
@@ -572,7 +1173,6 @@ def _render_day_rows(table: Table, day_render: _DayRenderInput, render: _RenderC
             entries=day_render.entries.upcoming_deadline,
             style="yellow" if render.color_enabled else "",
             direction="future",
-            prefix="DEADLINE ",
         ),
         render=render,
     )
@@ -595,6 +1195,524 @@ def _build_agenda_table(day: date, *, color_enabled: bool) -> Table:
     table.add_column("TASK", ratio=1)
     table.add_column("TAGS", min_width=8, justify="right", no_wrap=True)
     return table
+
+
+def _render_row_model(
+    table: Table,
+    row: _AgendaRow,
+    render: _RenderContext,
+    *,
+    highlighted: bool,
+) -> int:
+    """Render one row model into agenda table."""
+    row_style = _merge_row_style(row.style, highlighted=highlighted)
+
+    if row.kind == "task" and row.node is not None:
+        return _add_task_row(
+            table,
+            _TaskRow(
+                node=row.node,
+                time_text=row.time_text,
+                style=row_style,
+                prefix=row.prefix,
+                state_override=row.state_override,
+            ),
+            render,
+        )
+
+    if row.kind == "section":
+        heading = Text(row.section_label, style="bold" if render.color_enabled else "")
+        table.add_row(Text(""), Text(""), heading, Text(""), style=row_style)
+        return 1
+
+    if row.kind == "hour_marker":
+        table.add_row(
+            Text(""),
+            Text(row.time_text),
+            Text("---------------", style="dim"),
+            Text(""),
+            style=row_style,
+        )
+        return 1
+
+    if row.kind == "now_marker":
+        table.add_row(
+            Text(""),
+            Text(row.time_text),
+            Text("------ NOW ------", style="bold yellow" if render.color_enabled else ""),
+            Text(""),
+            style=row_style,
+        )
+        return 1
+
+    return 0
+
+
+def _build_interactive_rows(session: _AgendaSession) -> list[_ViewportRow]:
+    """Build flattened interactive rows for scrollable viewport rendering."""
+    rows: list[_ViewportRow] = []
+    for day_index, day_model in enumerate(session.day_models):
+        rows.append(
+            _ViewportRow(kind="day_header", day=day_model.day, agenda_row=None, location=None),
+        )
+        rows.append(
+            _ViewportRow(kind="day_rule", day=day_model.day, agenda_row=None, location=None),
+        )
+        for row_index, agenda_row in enumerate(day_model.rows):
+            location = (day_index, row_index)
+            rows.append(
+                _ViewportRow(
+                    kind="agenda",
+                    day=day_model.day,
+                    agenda_row=agenda_row,
+                    location=location,
+                ),
+            )
+        if day_index != len(session.day_models) - 1:
+            rows.append(
+                _ViewportRow(kind="spacer", day=day_model.day, agenda_row=None, location=None),
+            )
+    return rows
+
+
+def _selected_viewport_row_index(
+    rows: list[_ViewportRow],
+    selected: tuple[int, int] | None,
+) -> int | None:
+    """Return viewport row index for selected task location."""
+    if selected is None:
+        return None
+    for idx, row in enumerate(rows):
+        if row.location == selected:
+            return idx
+    return None
+
+
+def _build_interactive_viewport_table() -> Table:
+    """Build a table used for one interactive viewport frame."""
+    table = Table(
+        expand=True,
+        box=None,
+        show_header=False,
+        show_lines=False,
+        pad_edge=False,
+    )
+    table.add_column(min_width=8, no_wrap=True, overflow="ellipsis")
+    table.add_column(width=10, no_wrap=True, overflow="ellipsis")
+    table.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
+    table.add_column(min_width=8, justify="right", no_wrap=True, overflow="ellipsis")
+    return table
+
+
+def _render_viewport_row(
+    table: Table,
+    row: _ViewportRow,
+    session: _AgendaSession,
+    selected_location: tuple[int, int] | None,
+) -> None:
+    """Render one viewport row preserving Rich styles and alignment."""
+    if row.kind == "day_header":
+        bold_style = "bold" if session.render.color_enabled else ""
+        table.add_row(
+            Text(""),
+            Text(""),
+            Text(row.day.strftime("%A %Y-%m-%d"), style=bold_style),
+            Text(""),
+        )
+        return
+
+    if row.kind == "day_rule":
+        table.add_row(Text(""), Text(""), Text(""), Text(""))
+        return
+
+    if row.kind == "spacer":
+        table.add_row(Text(""), Text(""), Text(""), Text(""))
+        return
+
+    if row.agenda_row is None:
+        return
+
+    highlighted = selected_location == row.location
+    _render_row_model(table, row.agenda_row, session.render, highlighted=highlighted)
+
+
+def _interactive_renderable(console: Console, session: _AgendaSession) -> Group:
+    """Build scrollable interactive renderable with fixed footer controls."""
+    rows = _build_interactive_rows(session)
+    viewport_height = max(5, console.size.height - 4)
+    selected_row = _selected_viewport_row_index(rows, _selected_row_location(session))
+
+    max_offset = max(0, len(rows) - viewport_height)
+    session.scroll_offset = min(max(session.scroll_offset, 0), max_offset)
+
+    if selected_row is not None:
+        if selected_row < session.scroll_offset:
+            session.scroll_offset = selected_row
+        elif selected_row >= session.scroll_offset + viewport_height:
+            session.scroll_offset = selected_row - viewport_height + 1
+        session.scroll_offset = min(max(session.scroll_offset, 0), max_offset)
+
+    window = rows[session.scroll_offset : session.scroll_offset + viewport_height]
+    table = _build_interactive_viewport_table()
+    selected_location = _selected_row_location(session)
+    for row in window:
+        _render_viewport_row(table, row, session, selected_location)
+
+    for _ in range(viewport_height - len(window)):
+        table.add_row(Text(""), Text(""), Text(""), Text(""))
+
+    controls = (
+        "n/p or Up/Down select  f/b or Left/Right span  t state  "
+        "Shift+Left/Right move date  r refile  c clock  q or Esc quit"
+    )
+    start_line = session.scroll_offset + 1
+    end_line = min(session.scroll_offset + viewport_height, len(rows))
+    total_lines = max(len(rows), 1)
+    scroll_text = f"lines {start_line}-{end_line}/{total_lines}"
+    status = session.status_message or ""
+    footer_style = "dim" if session.render.color_enabled else ""
+    return Group(
+        table,
+        Rule(style=footer_style),
+        Text(controls, style=footer_style),
+        Text(f"{scroll_text}  {status}".strip(), style=footer_style),
+    )
+
+
+def _shift_planning_for_row(row: _AgendaRow, *, day_delta: int) -> tuple[Timestamp | None, str]:
+    """Resolve planning timestamp to shift based on selected row source."""
+    node = row.node
+    if node is None:
+        return None, "Action available only on task rows"
+
+    deadline_sources = {"overdue_deadline", "upcoming_deadline", "deadline_today"}
+    scheduled_sources = {"scheduled", "repeat", "overdue_scheduled", "scheduled_untimed"}
+
+    timestamp: Timestamp | None = None
+    field_name = ""
+    if row.source in deadline_sources:
+        timestamp = node.deadline
+        field_name = "deadline"
+    elif row.source in scheduled_sources:
+        timestamp = node.scheduled
+        field_name = "scheduled"
+
+    if timestamp is None:
+        return None, "Selected task has no mutable planning timestamp"
+
+    before = str(timestamp)
+    _shift_timestamp_by_days(timestamp, day_delta)
+    after = str(timestamp)
+    logger.info(
+        "Agenda shift date: file=%s title=%s id=%s field=%s before=%s after=%s",
+        node.document.filename,
+        node.title_text,
+        node.id,
+        field_name,
+        before,
+        after,
+    )
+    return timestamp, f"Shifted {field_name} by {day_delta:+d} day"
+
+
+def _choose_state(console: Console, heading: Heading) -> str | None:
+    """Prompt for a new TODO state from document states."""
+    states = list(dict.fromkeys(heading.document.all_states))
+    if not states:
+        return None
+
+    console.print("Choose new TODO state:")
+    for idx, state in enumerate(states, start=1):
+        console.print(f"{idx}) {state}")
+
+    selection = console.input("State number or value (blank cancels): ").strip()
+    if not selection:
+        return None
+
+    if selection.isdigit():
+        index = int(selection) - 1
+        if 0 <= index < len(states):
+            return states[index]
+        return None
+
+    if selection in states:
+        return selection
+    return None
+
+
+def _apply_state_change(console: Console, session: _AgendaSession) -> None:
+    """Apply interactive TODO-state transition on selected task."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    heading = row.node
+    new_state = _choose_state(console, heading)
+    if new_state is None:
+        session.status_message = "State change cancelled"
+        return
+
+    old_state = heading.todo
+    if old_state == new_state:
+        session.status_message = "State unchanged"
+        return
+
+    heading.todo = new_state
+    _append_repeat_transition(heading, old_state, new_state, session.now)
+
+    if heading.scheduled is not None and _advance_timestamp_by_repeater(heading.scheduled):
+        logger.info(
+            "Agenda repeater advance: file=%s title=%s id=%s field=scheduled value=%s",
+            heading.document.filename,
+            heading.title_text,
+            heading.id,
+            heading.scheduled,
+        )
+    if heading.deadline is not None and _advance_timestamp_by_repeater(heading.deadline):
+        logger.info(
+            "Agenda repeater advance: file=%s title=%s id=%s field=deadline value=%s",
+            heading.document.filename,
+            heading.title_text,
+            heading.id,
+            heading.deadline,
+        )
+
+    logger.info(
+        "Agenda set state: file=%s title=%s id=%s from=%s to=%s",
+        heading.document.filename,
+        heading.title_text,
+        heading.id,
+        old_state,
+        new_state,
+    )
+    _save_document_changes(heading.document)
+    preserve_identity = _heading_identity(heading)
+    _reload_session_nodes(session)
+    _refresh_session(session, preserve_identity)
+    session.status_message = f"State updated: {old_state or '-'} -> {new_state}"
+
+
+def _apply_shift_date(session: _AgendaSession, *, day_delta: int) -> None:
+    """Shift selected task planning date by one day."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    timestamp, status = _shift_planning_for_row(row, day_delta=day_delta)
+    if timestamp is None:
+        session.status_message = status
+        return
+
+    heading = row.node
+    _save_document_changes(heading.document)
+    preserve_identity = _heading_identity(heading)
+    _reload_session_nodes(session)
+    _refresh_session(session, preserve_identity)
+    session.status_message = status
+
+
+def _move_heading_to_document(heading: Heading, destination: Document) -> None:
+    """Move heading subtree to destination document root."""
+    parent = heading.parent
+    if parent is None:
+        raise ValueError("Cannot refile heading without parent")
+    parent.children.remove(heading)
+    destination.children.append(heading)
+    heading.document = destination
+    for descendant in iter_descendants(heading):
+        descendant.document = destination
+
+
+def _apply_refile(console: Console, session: _AgendaSession) -> None:
+    """Prompt and refile selected task into another file."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    current_files = resolve_input_paths(session.args.files)
+    console.print("Refile destination:")
+    for index, filename in enumerate(current_files, start=1):
+        console.print(f"{index}) {filename}")
+    destination_input = console.input("Destination file (# or path, blank cancels): ").strip()
+    if not destination_input:
+        session.status_message = "Refile cancelled"
+        return
+
+    if destination_input.isdigit():
+        index = int(destination_input) - 1
+        if not (0 <= index < len(current_files)):
+            session.status_message = "Invalid destination shortcut"
+            return
+        destination_path = current_files[index]
+    else:
+        destination_path = destination_input
+
+    try:
+        destination_document = load_document(destination_path)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    heading = row.node
+    source_document = heading.document
+    source_path = source_document.filename or ""
+    destination_doc_path = destination_document.filename or destination_path
+    if source_path and destination_doc_path and source_path == destination_doc_path:
+        session.status_message = "Task already in destination file"
+        return
+
+    _move_heading_to_document(heading, destination_document)
+    logger.info(
+        "Agenda refile: title=%s id=%s source=%s destination=%s",
+        heading.title_text,
+        heading.id,
+        source_document.filename,
+        destination_document.filename,
+    )
+    _save_document_changes(destination_document)
+    if source_document is not destination_document:
+        _save_document_changes(source_document)
+
+    _reload_session_nodes(session)
+    _refresh_session(session, None)
+    session.status_message = f"Refiled task to {destination_doc_path}"
+
+
+def _apply_clock_entry(console: Console, session: _AgendaSession) -> None:
+    """Prompt and append one clock entry ending now to selected task."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    duration_input = console.input(
+        "Clock duration (H:MM, Xm, Xh, minutes; blank cancels): ",
+    ).strip()
+    if not duration_input:
+        session.status_message = "Clock action cancelled"
+        return
+
+    try:
+        duration = _parse_clock_duration(duration_input)
+    except ValueError as err:
+        session.status_message = str(err)
+        return
+
+    end_time = session.now.replace(second=0, microsecond=0)
+    start_time = end_time - duration
+    timestamp = Timestamp.from_source(
+        f"[{start_time:%Y-%m-%d %a %H:%M}]--[{end_time:%Y-%m-%d %a %H:%M}]",
+    )
+    duration_text = _duration_to_org_text(duration)
+    clock_entry = Clock(timestamp=timestamp, duration=duration_text)
+
+    heading = row.node
+    heading.clock_entries.append(clock_entry)
+    logger.info(
+        "Agenda add clock: file=%s title=%s id=%s start=%s end=%s duration=%s",
+        heading.document.filename,
+        heading.title_text,
+        heading.id,
+        start_time,
+        end_time,
+        duration_text,
+    )
+
+    _save_document_changes(heading.document)
+    preserve_identity = _heading_identity(heading)
+    _reload_session_nodes(session)
+    _refresh_session(session, preserve_identity)
+    session.status_message = f"Added clock entry ({duration_text})"
+
+
+def _create_agenda_session(
+    args: AgendaArgs,
+    nodes: list[Heading],
+    done_states: list[str],
+    todo_states: list[str],
+    color_enabled: bool,
+) -> _AgendaSession:
+    """Create interactive session state for agenda."""
+    session = _AgendaSession(
+        args=args,
+        nodes=nodes,
+        render=_RenderContext(
+            color_enabled=color_enabled,
+            done_states=done_states,
+            todo_states=todo_states,
+        ),
+        start_date=_resolve_agenda_start_date(args.date),
+        days=args.days,
+        now=_local_now(),
+        day_models=[],
+        row_locations=[],
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+    _refresh_session(session, None)
+    return session
+
+
+def _handle_interactive_key(console: Console, session: _AgendaSession, key: str) -> bool:
+    """Handle one interactive keypress and return whether to continue."""
+    if key in {"q", "ESC"}:
+        return False
+
+    handled = True
+    if key in {"n", "DOWN"}:
+        _move_selection(session, 1)
+    elif key in {"p", "UP"}:
+        _move_selection(session, -1)
+    elif key in {"f", "RIGHT"}:
+        session.start_date = session.start_date + timedelta(days=session.days)
+        _refresh_session(session, None)
+    elif key in {"b", "LEFT"}:
+        session.start_date = session.start_date - timedelta(days=session.days)
+        _refresh_session(session, None)
+    else:
+        handlers = {
+            "t": lambda: _apply_state_change(console, session),
+            "S-LEFT": lambda: _apply_shift_date(session, day_delta=-1),
+            "S-RIGHT": lambda: _apply_shift_date(session, day_delta=1),
+            "r": lambda: _apply_refile(console, session),
+            "c": lambda: _apply_clock_entry(console, session),
+        }
+        handler = handlers.get(key)
+        if handler is not None:
+            handler()
+        else:
+            handled = False
+
+    if not handled and key:
+        session.status_message = f"Unsupported key: {key}"
+    return True
+
+
+def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
+    """Run interactive agenda event loop."""
+    prompt_keys = {"t", "r", "c"}
+    with Live(
+        _interactive_renderable(console, session),
+        console=console,
+        screen=True,
+        refresh_per_second=12,
+        auto_refresh=False,
+    ) as live:
+        while True:
+            key = _read_keypress()
+            if key in prompt_keys:
+                live.stop()
+                should_continue = _handle_interactive_key(console, session, key)
+                live.start()
+            else:
+                should_continue = _handle_interactive_key(console, session, key)
+            if not should_continue:
+                break
+            live.update(_interactive_renderable(console, session), refresh=True)
 
 
 def _render_agenda(console: Console, render_input: _AgendaRenderInput) -> None:
@@ -653,6 +1771,19 @@ def run_agenda(args: AgendaArgs) -> None:
 
     if not nodes:
         console.print("No results", markup=False)
+        return
+
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        _run_agenda_interactive(
+            console,
+            _create_agenda_session(
+                args,
+                nodes,
+                done_states,
+                todo_states,
+                color_enabled,
+            ),
+        )
         return
 
     _render_agenda(

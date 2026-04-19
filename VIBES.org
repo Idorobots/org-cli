@@ -4798,8 +4798,69 @@ The agenda command should be interactive. It should support:
 Use org_parser mutation for the date updates and make sure to save the modified files. There's no need to ask for confirmation, as all of these commands are user-guided.
 When an edit is made, it should be logged, for easier debugging.
 
+Create a detailed plan for the above task and save it in plans/ directory. Specifically focus on the user interaction part - this is the first command that is interactive by design.
+
+**** DONE UX bugs                                                                           :BUG:UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 23:49]
+:END:
+I'd like the content to be scrollable within the top part of the window so that it's possible to see the entire content by scrolling with n and p.
+
+Add arrow up and arrow down handling too? These should scroll the list of tasks like n and p.
+
+Please add left/right as a way to go forward and backward. Also, add ESC as a way to exit the agenda.
+
+Looks like the unicode characters in the title are messing up the alignment of the tags. It also seems that rich text is no longer rendered and colors of the different parts of the heading are not respected.
+
+The highlight is now very wonky, not highlighting all rows.
+
+I think we're missing a section for tasks that have a deadline set with a date folling today, these should be displayed after overdue scheduled tasks and before scheduled today without an hour unless the deadline has an hour itself.
+
+Let's remove the chevron from the highlighted item, it's enough to just use the background color.
+
+The table header is now separated with a degenerate line, please use a proper line to separate the table header from the contents. Similarly, the keybindings at the bottom of the screen are separated by dashed line, I'd like that to be a proper line too.
+Can we remove the line separating header from the contents? Leave ablank line following the header.
+Lets make header only name the date in the following format: =DayName ISO-date=, for example =Sunday 2026-04-19=. It should be left aligned. No need or the column names.
+
+It should be possible to scroll onto the "empty" hours slots. Actions reserved for tasks should not be available on those lines (indicate with a message on the bottom of the screen). The "empty" hours should also be highlighted.
+
+Make sure that for repeats the agenda lists the =repeat.after= state, not the current task TODO state.
+
+Don't display the =DEADLINE= indicator for deadline tasks.
+
+**** TODO src/org/commands/agenda.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/agenda.py around line 1178, near the ~def _collect_day_entries(~
+
+#+begin_example
++def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
++    """Advance timestamp once by its repeater marker, when present."""
++    if (
++        timestamp.repeater_mark is None
++        or timestamp.repeater_value is None
++        or timestamp.repeater_unit is None
++    ):
++        return False
++
++    value = timestamp.repeater_value
++    unit = timestamp.repeater_unit
++    start = timestamp.start
++    end = timestamp.end
+
+#+end_example
+
+This should take the =timestamp.repeater_mark= attribute into account too, depending on the repeater:
+- =+= - start is the timestamp start, shifts by exactly one unit,
+- =++= - start is the timestamp start, shifts repeatedly by one unit until the date is in the future,
+- =.+= - start is the current day
+** Command interactivity improvements
 *** Agenda notifications
 - =--watch= and =--notify= to send reminders about tasks that are due.
+*** Task board AGILE
+- A way to move tasks between columns
 
 ** Workflow command
 

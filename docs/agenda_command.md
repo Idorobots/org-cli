@@ -16,6 +16,7 @@ poetry run org agenda [OPTIONS] [FILE ...]
 - The table uses a header/content separator line without vertical grid lines.
 - A 24-hour timetable is rendered for each selected day.
 - Timed scheduled tasks and completed repeat entries are aligned to hour rows.
+- Deadlines on the rendered day with a specific hour are also aligned to hour rows.
 - A `NOW` marker is rendered for the current hour when the rendered day is today.
 - Within the current hour, `NOW` is placed after tasks at the same minute and before later tasks.
 - Inactive planning timestamps (`SCHEDULED`/`DEADLINE` with `[...]`) are omitted.
@@ -23,14 +24,43 @@ poetry run org agenda [OPTIONS] [FILE ...]
 - After timed rows, sections are rendered in this order:
   1. Overdue deadlines
   2. Overdue scheduled tasks
-  3. Scheduled tasks without specific time
-  4. Upcoming deadlines (within 30 days)
+  3. Deadlines without specific time (for the rendered day)
+  4. Scheduled tasks without specific time
+  5. Upcoming deadlines (within 30 days)
 - Scheduled tasks without specific time use an empty time cell (no `all day` label).
 - Overdue sections are sorted oldest-first.
 - Upcoming deadlines are sorted soonest-first and rendered in yellow.
 - Overdue/upcoming sections are shown only for the day that matches the actual current date:
   - if `--date` is not today (single-day view), these sections are omitted;
   - if a multi-day span includes today, they appear on that day only.
+
+## Interactive mode
+
+When both stdin and stdout are TTYs, `org agenda` runs in interactive mode.
+When not running in a TTY (for example in tests, piping, or redirected output), it falls back
+to non-interactive rendering.
+
+Interactive keys:
+
+- Agenda content is rendered in a scrollable top viewport with a fixed footer for controls/status.
+- Scrolling follows selection, so repeated `n`/`p` or arrow navigation moves through full content.
+- Selection can land on non-task rows (for example empty hour slots) for easier scrolling.
+- Task-only actions (`t`, `Shift+Left/Right`, `r`, `c`) show a status message when used on non-task rows.
+- `n` / `p` or `Up` / `Down` - Select next/previous row.
+- `f` / `b` or `Right` / `Left` - Move agenda span forward/backward by `--days`.
+- `t` - Set TODO state from `heading.document.all_states`.
+  - Also appends a repeat/log transition from previous state to new state.
+  - If `SCHEDULED` or `DEADLINE` has a repeater marker, it advances one repeater step.
+- `Shift+Right` / `Shift+Left` - Shift selected task planning date by plus/minus one day.
+  - Deadline-like rows shift `DEADLINE`.
+  - Scheduled-like rows shift `SCHEDULED`.
+- `r` - Refile selected task to another file.
+  - Prompts with numeric shortcuts for current `FILE` inputs.
+- `c` - Add clock entry ending at current time.
+  - Prompts for duration (`H:MM`, `Xm`, `Xh`, or minute count).
+- `q` or `Esc` - Quit interactive mode.
+
+Every interactive edit is saved immediately and logged through the standard `org` logger.
 
 ## Command-specific switches
 

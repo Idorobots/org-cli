@@ -6,6 +6,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 
+import org_parser
 import pytest
 import typer
 
@@ -66,8 +67,13 @@ def test_run_agenda_renders_expected_sections(
     """Agenda should render timetable and all section groups for the selected day."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
+    args.max_results = sys.maxsize
 
-    monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "agenda", "--date", "2025-01-15", fixture_path],
+    )
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
     plain_output = output.replace("…", "")
@@ -235,11 +241,41 @@ def test_run_agenda_hides_repeat_prefix(
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
 
-    monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "agenda", "--date", "2025-01-15", fixture_path],
+    )
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
 
     assert "REPEAT " not in output
+
+
+def test_run_agenda_repeat_row_uses_repeat_after_state(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Repeat rows should display repeat.after state, not current heading state."""
+    fixture_path = os.path.join(tmp_path, "agenda_repeat_state.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write(
+            "* TODO Reopened repeat task\n"
+            "SCHEDULED: <2025-01-01 Wed 11:00 +1d>\n"
+            ":LOGBOOK:\n"
+            '- State "DONE"       from "TODO"       [2025-01-15 Wed 11:15]\n'
+            '- State "TODO"       from "DONE"       [2025-01-16 Thu 11:15]\n'
+            ":END:\n",
+        )
+
+    args = _make_args([fixture_path], date="2025-01-15")
+    monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15"])
+    agenda_command.run_agenda(args)
+    output = capsys.readouterr().out
+
+    assert "DONE Reopened repeat task" in output
+    assert "TODO Reopened repeat task" not in output
 
 
 def test_run_agenda_excludes_completed_untimed_scheduled(
@@ -258,12 +294,69 @@ def test_run_agenda_excludes_completed_untimed_scheduled(
         )
 
     args = _make_args([fixture_path], date="2025-01-15")
-    monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "agenda", "--date", "2025-01-15", fixture_path],
+    )
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
 
     assert "Active untimed" in output
     assert "Completed untimed" not in output
+
+
+def test_run_agenda_shows_deadline_untimed_section_before_scheduled_untimed(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Untimed deadlines for the selected day should appear before untimed scheduled tasks."""
+    fixture_path = os.path.join(tmp_path, "agenda_deadline_today_untimed.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write(
+            "* TODO Due today\n"
+            "DEADLINE: <2025-01-15 Wed>\n\n"
+            "* TODO Scheduled today\n"
+            "SCHEDULED: <2025-01-15 Wed>\n",
+        )
+
+    args = _make_args([fixture_path], date="2025-01-15")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "agenda", "--date", "2025-01-15", fixture_path],
+    )
+    agenda_command.run_agenda(args)
+    output = capsys.readouterr().out
+
+    assert "Deadlines without specific time" in output
+    assert output.index("Deadlines without specific time") < output.index(
+        "Scheduled without specific time",
+    )
+    assert output.index("Due today") < output.index("Scheduled today")
+
+
+def test_run_agenda_deadline_with_time_is_aligned_to_timetable(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Deadline with specific time on selected day should be in hourly timetable rows."""
+    fixture_path = os.path.join(tmp_path, "agenda_deadline_today_timed.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write(
+            "* TODO Timed due\nDEADLINE: <2025-01-15 Wed 09:30>\n",
+        )
+
+    args = _make_args([fixture_path], date="2025-01-15")
+    monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15"])
+    agenda_command.run_agenda(args)
+    output = capsys.readouterr().out
+
+    assert "09:30" in output
+    assert "Timed due" in output
+    assert "Deadlines without specific time" not in output
 
 
 def test_run_agenda_untimed_scheduled_omits_all_day_label(
@@ -450,3 +543,66 @@ def test_run_agenda_invalid_date_raises_bad_parameter(monkeypatch: pytest.Monkey
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025/01/15"])
     with pytest.raises(typer.BadParameter, match="--date must be in one of these formats"):
         agenda_command.run_agenda(args)
+
+
+def test_decode_escape_sequence_supports_arrows() -> None:
+    """Escape-sequence decoder should map plain and shifted arrow keys."""
+    assert agenda_command._decode_escape_sequence(b"\x1b") == "ESC"
+    assert agenda_command._decode_escape_sequence(b"\x1b[A") == "UP"
+    assert agenda_command._decode_escape_sequence(b"\x1b[B") == "DOWN"
+    assert agenda_command._decode_escape_sequence(b"\x1b[C") == "RIGHT"
+    assert agenda_command._decode_escape_sequence(b"\x1b[D") == "LEFT"
+    assert agenda_command._decode_escape_sequence(b"\x1b[1;2C") == "S-RIGHT"
+    assert agenda_command._decode_escape_sequence(b"\x1b[1;2D") == "S-LEFT"
+
+
+def test_parse_clock_duration_accepts_multiple_formats() -> None:
+    """Clock duration parser should handle H:MM, minutes, and suffixed values."""
+    assert (
+        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("1:30")) == "1:30"
+    )
+    assert (
+        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("90")) == "1:30"
+    )
+    assert (
+        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("2h")) == "2:00"
+    )
+    assert (
+        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("45m")) == "0:45"
+    )
+
+
+def test_advance_timestamp_by_repeater_moves_schedule_once() -> None:
+    """Repeater-based advance should move schedule forward by one repeater step."""
+    root = org_parser.loads("* TODO X\nSCHEDULED: <2025-01-15 Wed +1w>\n")
+    heading = next(iter(root))
+    scheduled = heading.scheduled
+    assert scheduled is not None
+    assert agenda_command._advance_timestamp_by_repeater(scheduled) is True
+    assert str(scheduled).startswith("<2025-01-22")
+
+
+def test_interactive_selection_can_land_on_hour_row_and_block_task_actions() -> None:
+    """Selection should move onto hour rows and task-only actions should be blocked there."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+
+    hour_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "hour_marker"
+    )
+    session.selected_row_index = hour_index
+
+    assert agenda_command._selected_task_row(session) is None
+
+    agenda_command._apply_shift_date(session, day_delta=1)
+    assert session.status_message == "Action available only on task rows"
