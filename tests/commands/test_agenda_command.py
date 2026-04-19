@@ -553,6 +553,8 @@ def test_decode_escape_sequence_supports_arrows() -> None:
     assert agenda_command._decode_escape_sequence(b"\x1b[B") == "DOWN"
     assert agenda_command._decode_escape_sequence(b"\x1b[C") == "RIGHT"
     assert agenda_command._decode_escape_sequence(b"\x1b[D") == "LEFT"
+    assert agenda_command._decode_escape_sequence(b"\x1b[1;2A") == "S-UP"
+    assert agenda_command._decode_escape_sequence(b"\x1b[1;2B") == "S-DOWN"
     assert agenda_command._decode_escape_sequence(b"\x1b[1;2C") == "S-RIGHT"
     assert agenda_command._decode_escape_sequence(b"\x1b[1;2D") == "S-LEFT"
 
@@ -629,3 +631,36 @@ def test_interactive_selection_can_land_on_hour_row_and_block_task_actions() -> 
 
     agenda_command._apply_shift_date(session, day_delta=1)
     assert session.status_message == "Action available only on task rows"
+
+
+def test_shift_planning_time_for_row_shifts_timed_scheduled_by_one_hour() -> None:
+    """Shifting timed scheduled rows by hour should mutate scheduled timestamp time."""
+    root = org_parser.loads("* TODO X\nSCHEDULED: <2025-01-15 Wed 10:30>\n")
+    heading = next(iter(root))
+    row = agenda_command._AgendaRow(
+        kind="task",
+        day=datetime(2025, 1, 15).date(),
+        node=heading,
+        source="scheduled",
+    )
+
+    timestamp, status = agenda_command._shift_planning_time_for_row(row, hour_delta=1)
+    assert timestamp is not None
+    assert status == "Shifted scheduled forward by 1 hour"
+    assert str(timestamp).startswith("<2025-01-15 Wed 11:30")
+
+
+def test_shift_planning_time_for_row_rejects_non_timed_rows() -> None:
+    """Hour shifting should reject non-timed or non-planning row sources."""
+    root = org_parser.loads("* TODO X\nSCHEDULED: <2025-01-15 Wed>\n")
+    heading = next(iter(root))
+    row = agenda_command._AgendaRow(
+        kind="task",
+        day=datetime(2025, 1, 15).date(),
+        node=heading,
+        source="scheduled_untimed",
+    )
+
+    timestamp, status = agenda_command._shift_planning_time_for_row(row, hour_delta=-1)
+    assert timestamp is None
+    assert status == "Time shifting is available only for timed scheduled/deadline rows"

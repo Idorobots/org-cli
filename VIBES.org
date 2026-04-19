@@ -4785,7 +4785,10 @@ def _heading_text(
 #+end_example
 
 This looks fairly similar to what is done in =tasks list= and =tasks board=. Can these be refactored to use common helpers?
-*** TODO Agenda actions & interactivity                                                        :TUI:
+*** DONE Agenda actions & interactivity                                                        :TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-20 Mon 00:06]
+:END:
 The agenda command should be interactive. It should support:
 
 - Ability to go to the next/previous span (date +/- days at a time) using =f= for "forward" and =b= for "backward".
@@ -4859,6 +4862,12 @@ This should take the =timestamp.repeater_mark= attribute into account too, depen
 - =+= - start is the timestamp start, shifts by exactly one unit,
 - =++= - start is the timestamp start, shifts repeatedly by one unit until the date is in the future,
 - =.+= - start is the current day
+**** DONE Shifting dates
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-20 Mon 00:06]
+:END:
+In agenda view, when highlighting a time-scheduled task, when shift and up or down arrows are pressed, it should shift the task by one hour forward or backwards.
+
 ** Command interactivity improvements
 *** Agenda notifications
 - =--watch= and =--notify= to send reminders about tasks that are due.

@@ -45,7 +45,8 @@ Interactive keys:
 - Agenda content is rendered in a scrollable top viewport with a fixed footer for controls/status.
 - Scrolling follows selection, so repeated `n`/`p` or arrow navigation moves through full content.
 - Selection can land on non-task rows (for example empty hour slots) for easier scrolling.
-- Task-only actions (`t`, `Shift+Left/Right`, `r`, `c`) show a status message when used on non-task rows.
+- Task-only actions (`t`, `Shift+Left/Right`, `Shift+Up/Down`, `r`, `c`) show a status
+  message when used on non-task rows.
 - `n` / `p` or `Up` / `Down` - Select next/previous row.
 - `f` / `b` or `Right` / `Left` - Move agenda span forward/backward by `--days`.
 - `t` - Set TODO state from `heading.document.all_states`.
@@ -54,6 +55,7 @@ Interactive keys:
 - `Shift+Right` / `Shift+Left` - Shift selected task planning date by plus/minus one day.
   - Deadline-like rows shift `DEADLINE`.
   - Scheduled-like rows shift `SCHEDULED`.
+- `Shift+Down` / `Shift+Up` - Shift selected timed scheduled/deadline row by plus/minus one hour.
 - `r` - Refile selected task to another file.
   - Prompts with numeric shortcuts for current `FILE` inputs.
 - `c` - Add clock entry ending at current time.

@@ -809,8 +809,12 @@ def _decode_escape_sequence(sequence: bytes) -> str:
     mapping = {
         b"\x1b[A": "UP",
         b"\x1b[B": "DOWN",
+        b"\x1b[1;2A": "S-UP",
+        b"\x1b[1;2B": "S-DOWN",
         b"\x1b[1;2C": "S-RIGHT",
         b"\x1b[1;2D": "S-LEFT",
+        b"\x1b[;2A": "S-UP",
+        b"\x1b[;2B": "S-DOWN",
         b"\x1b[;2C": "S-RIGHT",
         b"\x1b[;2D": "S-LEFT",
         b"\x1b[C": "RIGHT",
@@ -894,6 +898,13 @@ def _shift_timestamp_by_days(timestamp: Timestamp, day_delta: int) -> None:
     """Shift one timestamp by a day delta."""
     shifted_start = timestamp.start + timedelta(days=day_delta)
     shifted_end = None if timestamp.end is None else timestamp.end + timedelta(days=day_delta)
+    _set_timestamp_fields(timestamp, shifted_start, shifted_end)
+
+
+def _shift_timestamp_by_hours(timestamp: Timestamp, hour_delta: int) -> None:
+    """Shift one timestamp by an hour delta."""
+    shifted_start = timestamp.start + timedelta(hours=hour_delta)
+    shifted_end = None if timestamp.end is None else timestamp.end + timedelta(hours=hour_delta)
     _set_timestamp_fields(timestamp, shifted_start, shifted_end)
 
 
@@ -1416,7 +1427,7 @@ def _interactive_renderable(console: Console, session: _AgendaSession) -> Group:
 
     controls = (
         "n/p or Up/Down select  f/b or Left/Right span  t state  "
-        "Shift+Left/Right move date  r refile  c clock  q or Esc quit"
+        "Shift+Left/Right move date  Shift+Up/Down move hour  r refile  c clock  q or Esc quit"
     )
     start_line = session.scroll_offset + 1
     end_line = min(session.scroll_offset + viewport_height, len(rows))
@@ -1466,6 +1477,46 @@ def _shift_planning_for_row(row: _AgendaRow, *, day_delta: int) -> tuple[Timesta
         after,
     )
     return timestamp, f"Shifted {field_name} by {day_delta:+d} day"
+
+
+def _shift_planning_time_for_row(
+    row: _AgendaRow,
+    *,
+    hour_delta: int,
+) -> tuple[Timestamp | None, str]:
+    """Shift selected timed planning timestamp by an hour delta."""
+    node = row.node
+    if node is None:
+        return None, "Action available only on task rows"
+
+    timestamp: Timestamp | None = None
+    field_name = ""
+    if row.source == "scheduled":
+        timestamp = node.scheduled
+        field_name = "scheduled"
+    elif row.source == "deadline_today":
+        timestamp = node.deadline
+        field_name = "deadline"
+
+    if timestamp is None:
+        return None, "Time shifting is available only for timed scheduled/deadline rows"
+    if not _has_specific_time(timestamp):
+        return None, "Selected planning timestamp has no specific hour"
+
+    before = str(timestamp)
+    _shift_timestamp_by_hours(timestamp, hour_delta)
+    after = str(timestamp)
+    logger.info(
+        "Agenda shift time: file=%s title=%s id=%s field=%s before=%s after=%s",
+        node.document.filename,
+        node.title_text,
+        node.id,
+        field_name,
+        before,
+        after,
+    )
+    direction = "forward" if hour_delta > 0 else "backward"
+    return timestamp, f"Shifted {field_name} {direction} by {abs(hour_delta)} hour"
 
 
 def _choose_state(console: Console, heading: Heading) -> str | None:
@@ -1554,6 +1605,26 @@ def _apply_shift_date(session: _AgendaSession, *, day_delta: int) -> None:
         return
 
     timestamp, status = _shift_planning_for_row(row, day_delta=day_delta)
+    if timestamp is None:
+        session.status_message = status
+        return
+
+    heading = row.node
+    _save_document_changes(heading.document)
+    preserve_identity = _heading_identity(heading)
+    _reload_session_nodes(session)
+    _refresh_session(session, preserve_identity)
+    session.status_message = status
+
+
+def _apply_shift_time(session: _AgendaSession, *, hour_delta: int) -> None:
+    """Shift selected timed planning timestamp by one hour."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    timestamp, status = _shift_planning_time_for_row(row, hour_delta=hour_delta)
     if timestamp is None:
         session.status_message = status
         return
@@ -1731,6 +1802,8 @@ def _handle_interactive_key(console: Console, session: _AgendaSession, key: str)
             "t": lambda: _apply_state_change(console, session),
             "S-LEFT": lambda: _apply_shift_date(session, day_delta=-1),
             "S-RIGHT": lambda: _apply_shift_date(session, day_delta=1),
+            "S-UP": lambda: _apply_shift_time(session, hour_delta=-1),
+            "S-DOWN": lambda: _apply_shift_time(session, hour_delta=1),
             "r": lambda: _apply_refile(console, session),
             "c": lambda: _apply_clock_entry(console, session),
         }
