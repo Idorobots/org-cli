@@ -89,6 +89,25 @@ def test_run_tasks_update_updates_todo_and_closed_by_title(tmp_path: Path) -> No
     assert str(node.closed) == "<2026-04-13>"
 
 
+def test_run_tasks_update_selects_query_title_with_escaped_characters(tmp_path: Path) -> None:
+    """Update should support --query-title values containing quotes and backslashes."""
+    source = tmp_path / "tasks.org"
+    title = 'Foo "quoted" path\\name'
+    source.write_text(f"* TODO {title}\n* TODO Other\n", encoding="utf-8")
+    args = make_update_args(
+        [str(source)],
+        query_id=None,
+        query_title=title,
+        title="Updated",
+    )
+
+    tasks_update.run_tasks_update(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    titles = [node.title_text.strip() for node in list(root)]
+    assert titles == ["Updated", "Other"]
+
+
 def test_run_tasks_update_requires_exactly_one_identifier(tmp_path: Path) -> None:
     """Update should require exactly one selector option."""
     source = tmp_path / "tasks.org"

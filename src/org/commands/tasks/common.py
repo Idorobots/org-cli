@@ -126,7 +126,7 @@ def resolve_task_selector_query(
     if normalized_query is not None:
         return f".[] | select({normalized_query})"
     if normalized_title is not None:
-        return f'.[] | select(str(.title_text) == "{normalized_title}")'
+        return f".[] | select(str(.title_text) == {json.dumps(normalized_title)})"
     return f".[] | select(str(.id) == {json.dumps(normalized_id)})"
 
 

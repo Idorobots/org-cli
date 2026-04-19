@@ -4015,7 +4015,10 @@ Additionally:
 Make sure that the text is aligned to the visual length, not the markup-length.
 
 The same rich text rendering logic should be applied to the task board command. Each panel should render the rich-text in Rich.
-** TODO Tasks CRUD                                                                        :CLI:CRUD:
+** DONE Tasks CRUD                                                                        :CLI:CRUD:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 02:18]
+:END:
 *** DONE Tasks create
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-04-13 Mon 00:18]

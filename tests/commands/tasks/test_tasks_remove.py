@@ -104,6 +104,20 @@ def test_run_tasks_remove_deletes_all_matching_tasks(tmp_path: Path) -> None:
     assert titles == ["Tail"]
 
 
+def test_run_tasks_remove_selects_query_title_with_escaped_characters(tmp_path: Path) -> None:
+    """Remove should support --query-title values containing quotes and backslashes."""
+    source = tmp_path / "tasks.org"
+    title = 'Remove "quoted" path\\name'
+    source.write_text(f"* TODO Keep\n* TODO {title}\n* TODO Tail\n", encoding="utf-8")
+    args = make_remove_args([str(source)], query_title=title)
+
+    tasks_remove.run_tasks_remove(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    titles = [node.title_text.strip() for node in list(root)]
+    assert titles == ["Keep", "Tail"]
+
+
 def test_run_tasks_remove_errors_when_no_tasks_match(tmp_path: Path) -> None:
     """Remove should fail when no tasks satisfy selectors."""
     source = tmp_path / "tasks.org"
