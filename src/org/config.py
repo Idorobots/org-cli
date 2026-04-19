@@ -8,12 +8,14 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol, TypeGuard, cast
+from typing import Protocol, TypedDict, TypeGuard, cast
 
 import typer
 
 
 COMMAND_OPTION_NAMES = {
+    "date",
+    "days",
     "color_flag",
     "config",
     "details",
@@ -37,6 +39,9 @@ COMMAND_OPTION_NAMES = {
     "max_results",
     "max_tags",
     "min_group_size",
+    "no_completed",
+    "no_overdue",
+    "no_upcoming",
     "offset",
     "out",
     "out_theme",
@@ -66,6 +71,8 @@ CONFIG_CUSTOM_WITH: dict[str, str] = {}
 
 
 DEST_TO_OPTION_NAME: dict[str, str] = {
+    "date": "--date",
+    "days": "--days",
     "color_flag": "--color/--no-color",
     "config": "--config",
     "details": "--details",
@@ -92,6 +99,9 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "max_results": "--limit",
     "max_tags": "--max-tags",
     "min_group_size": "--min-group-size",
+    "no_completed": "--no-completed",
+    "no_overdue": "--no-overdue",
+    "no_upcoming": "--no-upcoming",
     "offset": "--offset",
     "out": "--out",
     "out_theme": "--out-theme",
@@ -212,6 +222,30 @@ class LoadedCliConfig:
     custom_filters: dict[str, str]
     custom_order_by: dict[str, str]
     custom_with: dict[str, str]
+
+
+class StatsDefaultMap(TypedDict):
+    """Default map values for stats subcommands."""
+
+    all: dict[str, object]
+    summary: dict[str, object]
+    tags: dict[str, object]
+    groups: dict[str, object]
+
+
+class TasksDefaultMap(TypedDict):
+    """Default map values for tasks subcommands."""
+
+    list: dict[str, object]
+    board: dict[str, object]
+
+
+class CliDefaultMap(TypedDict):
+    """Top-level Typer Click default_map structure."""
+
+    stats: StatsDefaultMap
+    tasks: TasksDefaultMap
+    agenda: dict[str, object]
 
 
 class ConfigDefaultsTarget(Protocol):
@@ -349,6 +383,7 @@ def validate_str_option(key: str, value: object) -> str | None:
     invalid_use = key == "--use" and value not in {"tags", "heading", "body"}
     invalid_keys = key in ("--todo-states", "--done-states") and not is_valid_keys_string(value)
     invalid_dates = key in (
+        "--date",
         "--filter-date-from",
         "--filter-date-until",
     ) and not is_valid_date_argument(value)
@@ -577,6 +612,7 @@ def build_config_defaults(
     }
 
     global_int_options: dict[str, tuple[str, int | None]] = {
+        "--days": ("days", 1),
         "--filter-level": ("filter_level", None),
         "--filter-repeats-above": ("filter_repeats_above", None),
         "--filter-repeats-below": ("filter_repeats_below", None),
@@ -592,6 +628,9 @@ def build_config_defaults(
         "--details": "details",
         "--filter-completed": "filter_completed",
         "--filter-not-completed": "filter_not_completed",
+        "--no-completed": "no_completed",
+        "--no-overdue": "no_overdue",
+        "--no-upcoming": "no_upcoming",
         "--order-by-file-order": "order_by_file_order",
         "--order-by-file-order-reversed": "order_by_file_order_reversed",
         "--order-by-level": "order_by_level",
@@ -604,6 +643,7 @@ def build_config_defaults(
     stats_str_options: dict[str, str] = {"--use": "use"}
 
     global_str_options: dict[str, str] = {
+        "--date": "date",
         "--todo-states": "todo_states",
         "--done-states": "done_states",
         "--filter-date-from": "filter_date_from",
@@ -712,7 +752,7 @@ def load_cli_config(argv: list[str]) -> LoadedCliConfig:
     )
 
 
-def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[str, object]]]:
+def build_default_map(defaults: dict[str, object]) -> CliDefaultMap:
     """Build Click default_map for Typer commands."""
     all_defaults = {key: value for key, value in defaults.items() if key not in {"tags", "groups"}}
 
@@ -737,6 +777,12 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
     tasks_board_defaults = {
         key: value for key, value in defaults.items() if key not in tasks_board_disallowed
     }
+    agenda_disallowed = task_command_disallowed.union(
+        {"details", "out", "out_theme", "pandoc_args"},
+    )
+    agenda_defaults = {
+        key: value for key, value in defaults.items() if key not in agenda_disallowed
+    }
     tags_defaults = {
         key: value
         for key, value in defaults.items()
@@ -757,6 +803,7 @@ def build_default_map(defaults: dict[str, object]) -> dict[str, dict[str, dict[s
             "groups": groups_defaults,
         },
         "tasks": {"list": tasks_list_defaults, "board": tasks_board_defaults},
+        "agenda": agenda_defaults,
     }
 
 

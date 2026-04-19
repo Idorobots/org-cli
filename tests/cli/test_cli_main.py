@@ -47,7 +47,11 @@ def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
             custom_with={},
         ),
     )
-    monkeypatch.setattr(config, "build_default_map", lambda _defaults: {"stats": _defaults})
+    monkeypatch.setattr(
+        config,
+        "build_default_map",
+        lambda _defaults: {"stats": _defaults, "agenda": {}},
+    )
     monkeypatch.setattr(typer.main, "get_command", fake_get_command)
 
     monkeypatch.setattr(sys, "argv", ["org", "stats", "all", "--no-color", "file.org"])
@@ -56,7 +60,7 @@ def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
     assert recorded["args"] == ["stats", "all", "--no-color", "file.org"]
     assert recorded["prog_name"] == "org"
     assert recorded["standalone_mode"] is True
-    assert recorded["default_map"] == {"stats": {"max_results": 3}}
+    assert recorded["default_map"] == {"stats": {"max_results": 3}, "agenda": {}}
 
 
 def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> None:
