@@ -4868,6 +4868,16 @@ This should take the =timestamp.repeater_mark= attribute into account too, depen
 :END:
 In agenda view, when highlighting a time-scheduled task, when shift and up or down arrows are pressed, it should shift the task by one hour forward or backwards.
 
+*** DONE Mouse scroll wheel support                                                             :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-20 Mon 13:29]
+:END:
+Add support for mouse scroll-wheel scrolling in the Agenda view. It should behave just like the up/down arrows. There's no need to support SHIFT+mouse interactions.
+
+All unsupported keys should be displayed as a status message, they shouldn't cause the view to exit.
+*** TODO Key bindings format                                                                    :UX:
+Let's improve the key bindings help string format - it should be on the same line as the =Lines X/Y=, but right-aligned. Each binding should be separated more clearly with a =|= character: =binding A | binding B | binding C=.
+
 ** Command interactivity improvements
 *** Agenda notifications
 - =--watch= and =--notify= to send reminders about tasks that are due.

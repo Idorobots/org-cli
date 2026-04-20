@@ -43,11 +43,12 @@ to non-interactive rendering.
 Interactive keys:
 
 - Agenda content is rendered in a scrollable top viewport with a fixed footer for controls/status.
-- Scrolling follows selection, so repeated `n`/`p` or arrow navigation moves through full content.
+- Scrolling follows selection, so repeated `n`/`p`, arrow navigation, or mouse-wheel scrolling moves
+  through full content.
 - Selection can land on non-task rows (for example empty hour slots) for easier scrolling.
 - Task-only actions (`t`, `Shift+Left/Right`, `Shift+Up/Down`, `r`, `c`) show a status
   message when used on non-task rows.
-- `n` / `p` or `Up` / `Down` - Select next/previous row.
+- `n` / `p`, `Up` / `Down`, or mouse wheel - Select next/previous row.
 - `f` / `b` or `Right` / `Left` - Move agenda span forward/backward by `--days`.
 - `t` - Set TODO state from `heading.document.all_states`.
   - Also appends a repeat/log transition from previous state to new state.
@@ -61,6 +62,8 @@ Interactive keys:
 - `c` - Add clock entry ending at current time.
   - Prompts for duration (`H:MM`, `Xm`, `Xh`, or minute count).
 - `q` or `Esc` - Quit interactive mode.
+
+Unsupported keys do not exit interactive mode; they are shown in the status area.
 
 Every interactive edit is saved immediately and logged through the standard `org` logger.
 

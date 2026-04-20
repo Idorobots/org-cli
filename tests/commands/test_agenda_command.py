@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 import sys
 from datetime import datetime, timedelta
+from io import StringIO
 
 import org_parser
 import pytest
 import typer
 from org_parser.time import Timestamp
+from rich.console import Console
 
 from org.commands import agenda as agenda_command
 
@@ -557,6 +559,15 @@ def test_decode_escape_sequence_supports_arrows() -> None:
     assert agenda_command._decode_escape_sequence(b"\x1b[1;2B") == "S-DOWN"
     assert agenda_command._decode_escape_sequence(b"\x1b[1;2C") == "S-RIGHT"
     assert agenda_command._decode_escape_sequence(b"\x1b[1;2D") == "S-LEFT"
+    assert agenda_command._decode_escape_sequence(b"\x1b[<64;40;10M") == "WHEEL-UP"
+    assert agenda_command._decode_escape_sequence(b"\x1b[<65;40;11M") == "WHEEL-DOWN"
+
+
+def test_decode_escape_sequence_unknown_escape_is_not_exit() -> None:
+    """Unknown escape sequences should not decode to ESC quit token."""
+    key_name = agenda_command._decode_escape_sequence(b"\x1b[999~")
+    assert key_name != "ESC"
+    assert key_name.startswith("UNSUPPORTED-ESC:")
 
 
 def test_parse_clock_duration_accepts_multiple_formats() -> None:
@@ -631,6 +642,47 @@ def test_interactive_selection_can_land_on_hour_row_and_block_task_actions() -> 
 
     agenda_command._apply_shift_date(session, day_delta=1)
     assert session.status_message == "Action available only on task rows"
+
+
+def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:
+    """Mouse wheel tokens should move selection same as down/up keys."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    start = session.selected_row_index
+    assert agenda_command._handle_interactive_key(console, session, "WHEEL-DOWN") is True
+    assert session.selected_row_index == (start + 1) % len(session.row_locations)
+
+    assert agenda_command._handle_interactive_key(console, session, "WHEEL-UP") is True
+    assert session.selected_row_index == start
+
+
+def test_handle_interactive_key_unsupported_key_sets_status_and_continues() -> None:
+    """Unsupported key should set status message without exiting agenda loop."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    unsupported_key = "UNSUPPORTED-ESC:1b5b3939397e"
+    assert agenda_command._handle_interactive_key(console, session, unsupported_key) is True
+    assert session.status_message == f"Unsupported key: {unsupported_key}"
 
 
 def test_shift_planning_time_for_row_shifts_timed_scheduled_by_one_hour() -> None:

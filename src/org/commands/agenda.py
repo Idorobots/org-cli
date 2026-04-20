@@ -45,6 +45,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("org")
 _HIGHLIGHT_ROW_STYLE = "on grey23"
+_MOUSE_REPORTING_ENABLE = "\x1b[?1000h\x1b[?1006h"
+_MOUSE_REPORTING_DISABLE = "\x1b[?1000l\x1b[?1006l"
 
 
 @dataclass
@@ -804,6 +806,31 @@ def _move_selection(session: _AgendaSession, step: int) -> None:
     session.selected_row_index = (session.selected_row_index + step) % len(session.row_locations)
 
 
+def _decode_mouse_sequence(sequence: bytes) -> str | None:
+    """Decode xterm SGR mouse sequence into agenda key token."""
+    if not sequence.startswith(b"\x1b[<"):
+        return None
+    if sequence[-1:] not in {b"M", b"m"}:
+        return None
+
+    try:
+        body = sequence[3:-1].decode("ascii")
+        cb_text, _col_text, _row_text = body.split(";", 2)
+        cb = int(cb_text)
+    except UnicodeDecodeError, ValueError:
+        return "UNSUPPORTED-MOUSE"
+
+    if cb & 64 == 0:
+        result = "UNSUPPORTED-MOUSE"
+    elif cb & 4:
+        result = "UNSUPPORTED-SHIFT-WHEEL"
+    else:
+        button = cb & 0b11
+        result = {0: "WHEEL-UP", 1: "WHEEL-DOWN"}.get(button, "UNSUPPORTED-MOUSE")
+
+    return result
+
+
 def _decode_escape_sequence(sequence: bytes) -> str:
     """Decode terminal escape sequence into one key token."""
     mapping = {
@@ -820,7 +847,31 @@ def _decode_escape_sequence(sequence: bytes) -> str:
         b"\x1b[C": "RIGHT",
         b"\x1b[D": "LEFT",
     }
-    return mapping.get(sequence, "ESC")
+    mapped = mapping.get(sequence)
+    if mapped is not None:
+        return mapped
+
+    if sequence == b"\x1b":
+        return "ESC"
+
+    mouse_token = _decode_mouse_sequence(sequence)
+    if mouse_token is not None:
+        return mouse_token
+
+    return f"UNSUPPORTED-ESC:{sequence.hex()}"
+
+
+def _set_mouse_reporting(enabled: bool) -> None:
+    """Enable or disable terminal mouse reporting for interactive agenda."""
+    if not sys.stdout.isatty():
+        return
+
+    sequence = _MOUSE_REPORTING_ENABLE if enabled else _MOUSE_REPORTING_DISABLE
+    try:
+        sys.stdout.write(sequence)
+        sys.stdout.flush()
+    except OSError:
+        return
 
 
 def _read_keypress() -> str:
@@ -1426,7 +1477,7 @@ def _interactive_renderable(console: Console, session: _AgendaSession) -> Group:
         table.add_row(Text(""), Text(""), Text(""), Text(""))
 
     controls = (
-        "n/p or Up/Down select  f/b or Left/Right span  t state  "
+        "n/p, Up/Down, Wheel select  f/b or Left/Right span  t state  "
         "Shift+Left/Right move date  Shift+Up/Down move hour  r refile  c clock  q or Esc quit"
     )
     start_line = session.scroll_offset + 1
@@ -1787,9 +1838,9 @@ def _handle_interactive_key(console: Console, session: _AgendaSession, key: str)
         return False
 
     handled = True
-    if key in {"n", "DOWN"}:
+    if key in {"n", "DOWN", "WHEEL-DOWN"}:
         _move_selection(session, 1)
-    elif key in {"p", "UP"}:
+    elif key in {"p", "UP", "WHEEL-UP"}:
         _move_selection(session, -1)
     elif key in {"f", "RIGHT"}:
         session.start_date = session.start_date + timedelta(days=session.days)
@@ -1821,24 +1872,28 @@ def _handle_interactive_key(console: Console, session: _AgendaSession, key: str)
 def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
     """Run interactive agenda event loop."""
     prompt_keys = {"t", "r", "c"}
-    with Live(
-        _interactive_renderable(console, session),
-        console=console,
-        screen=True,
-        refresh_per_second=12,
-        auto_refresh=False,
-    ) as live:
-        while True:
-            key = _read_keypress()
-            if key in prompt_keys:
-                live.stop()
-                should_continue = _handle_interactive_key(console, session, key)
-                live.start()
-            else:
-                should_continue = _handle_interactive_key(console, session, key)
-            if not should_continue:
-                break
-            live.update(_interactive_renderable(console, session), refresh=True)
+    _set_mouse_reporting(True)
+    try:
+        with Live(
+            _interactive_renderable(console, session),
+            console=console,
+            screen=True,
+            refresh_per_second=12,
+            auto_refresh=False,
+        ) as live:
+            while True:
+                key = _read_keypress()
+                if key in prompt_keys:
+                    live.stop()
+                    should_continue = _handle_interactive_key(console, session, key)
+                    live.start()
+                else:
+                    should_continue = _handle_interactive_key(console, session, key)
+                if not should_continue:
+                    break
+                live.update(_interactive_renderable(console, session), refresh=True)
+    finally:
+        _set_mouse_reporting(False)
 
 
 def _render_agenda(console: Console, render_input: _AgendaRenderInput) -> None:
