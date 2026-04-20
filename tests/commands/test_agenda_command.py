@@ -685,6 +685,55 @@ def test_handle_interactive_key_unsupported_key_sets_status_and_continues() -> N
     assert session.status_message == f"Unsupported key: {unsupported_key}"
 
 
+def test_interactive_renderable_footer_is_two_lines_without_status() -> None:
+    """Interactive render should reserve exactly two footer lines when status is empty."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    session.status_message = ""
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=300, height=24)
+
+    console.print(agenda_command._interactive_renderable(console, session))
+    lines = buffer.getvalue().splitlines()
+
+    assert len(lines) == 24
+    assert lines[-2].startswith("Lines ")
+    assert "q/Esc quit" in lines[-2]
+    assert lines[-1] == ""
+
+
+def test_interactive_renderable_footer_is_two_lines_with_status_on_narrow_width() -> None:
+    """Interactive render should keep footer at two lines even on narrow terminals."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    session.status_message = "Unsupported key: x"
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=80, height=24)
+
+    console.print(agenda_command._interactive_renderable(console, session))
+    lines = buffer.getvalue().splitlines()
+
+    assert len(lines) == 24
+    assert lines[-2].startswith("Lines ")
+    assert lines[-1] == "Unsupported key: x"
+
+
 def test_shift_planning_time_for_row_shifts_timed_scheduled_by_one_hour() -> None:
     """Shifting timed scheduled rows by hour should mutate scheduled timestamp time."""
     root = org_parser.loads("* TODO X\nSCHEDULED: <2025-01-15 Wed 10:30>\n")

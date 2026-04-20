@@ -43,6 +43,8 @@ to non-interactive rendering.
 Interactive keys:
 
 - Agenda content is rendered in a scrollable top viewport with a fixed footer for controls/status.
+- Footer shows `Lines X/Y` on the left and keybindings right-aligned on the same row.
+- Keybindings are separated with `|` for easier scanning.
 - Scrolling follows selection, so repeated `n`/`p`, arrow navigation, or mouse-wheel scrolling moves
   through full content.
 - Selection can land on non-task rows (for example empty hour slots) for easier scrolling.

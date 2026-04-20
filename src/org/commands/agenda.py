@@ -1454,7 +1454,7 @@ def _render_viewport_row(
 def _interactive_renderable(console: Console, session: _AgendaSession) -> Group:
     """Build scrollable interactive renderable with fixed footer controls."""
     rows = _build_interactive_rows(session)
-    viewport_height = max(5, console.size.height - 4)
+    viewport_height = max(5, console.size.height - 3)
     selected_row = _selected_viewport_row_index(rows, _selected_row_location(session))
 
     max_offset = max(0, len(rows) - viewport_height)
@@ -1477,20 +1477,32 @@ def _interactive_renderable(console: Console, session: _AgendaSession) -> Group:
         table.add_row(Text(""), Text(""), Text(""), Text(""))
 
     controls = (
-        "n/p, Up/Down, Wheel select  f/b or Left/Right span  t state  "
-        "Shift+Left/Right move date  Shift+Up/Down move hour  r refile  c clock  q or Esc quit"
+        "n/p, Up/Down, Wheel select"
+        " | f/b, Left/Right span"
+        " | t state"
+        " | Shift+Left/Right day"
+        " | Shift+Up/Down hour"
+        " | r refile"
+        " | c clock"
+        " | q/Esc quit"
     )
-    start_line = session.scroll_offset + 1
     end_line = min(session.scroll_offset + viewport_height, len(rows))
     total_lines = max(len(rows), 1)
-    scroll_text = f"lines {start_line}-{end_line}/{total_lines}"
+    scroll_text = f"Lines {end_line}/{total_lines}"
     status = session.status_message or ""
     footer_style = "dim" if session.render.color_enabled else ""
+    footer_line = Table.grid(expand=True)
+    footer_line.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
+    footer_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
+    footer_line.add_row(
+        Text(scroll_text, style=footer_style, no_wrap=True, overflow="ellipsis"),
+        Text(controls, style=footer_style, no_wrap=True, overflow="ellipsis"),
+    )
     return Group(
         table,
         Rule(style=footer_style),
-        Text(controls, style=footer_style),
-        Text(f"{scroll_text}  {status}".strip(), style=footer_style),
+        footer_line,
+        Text(status, style=footer_style, no_wrap=True, overflow="ellipsis"),
     )
 
 

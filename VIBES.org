@@ -4875,7 +4875,10 @@ In agenda view, when highlighting a time-scheduled task, when shift and up or do
 Add support for mouse scroll-wheel scrolling in the Agenda view. It should behave just like the up/down arrows. There's no need to support SHIFT+mouse interactions.
 
 All unsupported keys should be displayed as a status message, they shouldn't cause the view to exit.
-*** TODO Key bindings format                                                                    :UX:
+*** DONE Key bindings format                                                                    :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-20 Mon 19:54]
+:END:
 Let's improve the key bindings help string format - it should be on the same line as the =Lines X/Y=, but right-aligned. Each binding should be separated more clearly with a =|= character: =binding A | binding B | binding C=.
 
 ** Command interactivity improvements
