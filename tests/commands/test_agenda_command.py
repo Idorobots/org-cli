@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from io import StringIO
+from typing import TYPE_CHECKING
 
 import org_parser
 import pytest
@@ -14,6 +16,10 @@ from org_parser.time import Timestamp
 from rich.console import Console
 
 from org.commands import agenda as agenda_command
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -685,6 +691,107 @@ def test_handle_interactive_key_unsupported_key_sets_status_and_continues() -> N
     assert session.status_message == f"Unsupported key: {unsupported_key}"
 
 
+def test_handle_interactive_key_enter_opens_detail_for_selected_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Enter should open selected task details in pager."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "task"
+    )
+    session.selected_row_index = task_index
+
+    pager_called = {"value": False}
+    mouse_reporting_events: list[bool] = []
+
+    @contextmanager
+    def _fake_pager(*args: object, **kwargs: object) -> Iterator[None]:
+        del args, kwargs
+        pager_called["value"] = True
+        yield
+
+    def _record_mouse_reporting(enabled: bool) -> None:
+        mouse_reporting_events.append(enabled)
+
+    monkeypatch.setattr(console, "pager", _fake_pager)
+    monkeypatch.setattr(
+        agenda_command,
+        "_set_mouse_reporting",
+        _record_mouse_reporting,
+    )
+
+    assert agenda_command._handle_interactive_key(console, session, "ENTER") is True
+    assert pager_called["value"]
+    assert mouse_reporting_events == [False, True]
+
+
+def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:
+    """Enter on non-task rows should keep agenda view and report status."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    hour_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "hour_marker"
+    )
+    session.selected_row_index = hour_index
+
+    assert agenda_command._handle_interactive_key(console, session, "ENTER") is True
+    assert session.status_message == "Action available only on task rows"
+
+
+def test_handle_interactive_key_escape_quits_interactive_loop() -> None:
+    """Esc should quit interactive agenda loop."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    assert agenda_command._handle_interactive_key(console, session, "ESC") is False
+
+
+def test_detail_org_block_includes_selected_heading_children() -> None:
+    """Detail task text should include heading subtree including child headings."""
+    root = org_parser.loads(
+        "* TODO Parent task\nParent body\n** TODO Child task\nChild body\n",
+    )
+    heading = next(iter(root))
+    output = agenda_command._detail_org_block(heading)
+
+    assert "* TODO Parent task" in output
+    assert "** TODO Child task" in output
+
+
 def test_interactive_renderable_footer_is_two_lines_without_status() -> None:
     """Interactive render should reserve exactly two footer lines when status is empty."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
@@ -701,7 +808,7 @@ def test_interactive_renderable_footer_is_two_lines_without_status() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=300, height=24)
 
-    console.print(agenda_command._interactive_renderable(console, session))
+    console.print(agenda_command._interactive_agenda_renderable(console, session))
     lines = buffer.getvalue().splitlines()
 
     assert len(lines) == 24
@@ -726,7 +833,7 @@ def test_interactive_renderable_footer_is_two_lines_with_status_on_narrow_width(
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=80, height=24)
 
-    console.print(agenda_command._interactive_renderable(console, session))
+    console.print(agenda_command._interactive_agenda_renderable(console, session))
     lines = buffer.getvalue().splitlines()
 
     assert len(lines) == 24

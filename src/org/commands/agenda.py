@@ -20,12 +20,14 @@ from rich import box
 from rich.console import Group
 from rich.live import Live
 from rich.rule import Rule
+from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data, resolve_input_paths
 from org.commands.tasks.common import iter_descendants, load_document, save_document
+from org.output_format import DEFAULT_OUTPUT_THEME
 from org.tui import (
     build_console,
     heading_title_to_text,
@@ -883,6 +885,8 @@ def _read_keypress() -> str:
         first = os.read(fd, 1)
         if first == b"\x03":
             return "q"
+        if first in {b"\r", b"\n"}:
+            return "ENTER"
         if first == b"\x1b":
             payload = bytearray(first)
             while True:
@@ -1451,8 +1455,8 @@ def _render_viewport_row(
     _render_row_model(table, row.agenda_row, session.render, highlighted=highlighted)
 
 
-def _interactive_renderable(console: Console, session: _AgendaSession) -> Group:
-    """Build scrollable interactive renderable with fixed footer controls."""
+def _interactive_agenda_renderable(console: Console, session: _AgendaSession) -> Group:
+    """Build scrollable interactive agenda renderable with fixed footer controls."""
     rows = _build_interactive_rows(session)
     viewport_height = max(5, console.size.height - 3)
     selected_row = _selected_viewport_row_index(rows, _selected_row_location(session))
@@ -1478,6 +1482,7 @@ def _interactive_renderable(console: Console, session: _AgendaSession) -> Group:
 
     controls = (
         "n/p, Up/Down, Wheel select"
+        " | Enter view"
         " | f/b, Left/Right span"
         " | t state"
         " | Shift+Left/Right day"
@@ -1504,6 +1509,36 @@ def _interactive_renderable(console: Console, session: _AgendaSession) -> Group:
         footer_line,
         Text(status, style=footer_style, no_wrap=True, overflow="ellipsis"),
     )
+
+
+def _detail_org_block(node: Heading) -> str:
+    """Build detailed org block text for one heading subtree."""
+    filename = node.document.filename or "unknown"
+    node_text = node.render().rstrip()
+    return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
+
+
+def _open_selected_task_detail(console: Console, session: _AgendaSession) -> None:
+    """Open selected task detail in pager for scrolling and selection."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    detail = Syntax(
+        _detail_org_block(row.node),
+        "org",
+        theme=DEFAULT_OUTPUT_THEME,
+        line_numbers=False,
+        word_wrap=True,
+    )
+    session.status_message = ""
+    _set_mouse_reporting(False)
+    try:
+        with console.pager(styles=session.render.color_enabled):
+            console.print(detail)
+    finally:
+        _set_mouse_reporting(True)
 
 
 def _shift_planning_for_row(row: _AgendaRow, *, day_delta: int) -> tuple[Timestamp | None, str]:
@@ -1844,50 +1879,67 @@ def _create_agenda_session(
     return session
 
 
-def _handle_interactive_key(console: Console, session: _AgendaSession, key: str) -> bool:
-    """Handle one interactive keypress and return whether to continue."""
-    if key in {"q", "ESC"}:
-        return False
-
-    handled = True
+def _handle_agenda_navigation_key(session: _AgendaSession, key: str) -> bool:
+    """Handle one keypress for agenda navigation actions."""
     if key in {"n", "DOWN", "WHEEL-DOWN"}:
         _move_selection(session, 1)
-    elif key in {"p", "UP", "WHEEL-UP"}:
+        return True
+    if key in {"p", "UP", "WHEEL-UP"}:
         _move_selection(session, -1)
-    elif key in {"f", "RIGHT"}:
+        return True
+    if key in {"f", "RIGHT"}:
         session.start_date = session.start_date + timedelta(days=session.days)
         _refresh_session(session, None)
-    elif key in {"b", "LEFT"}:
+        return True
+    if key in {"b", "LEFT"}:
         session.start_date = session.start_date - timedelta(days=session.days)
         _refresh_session(session, None)
-    else:
-        handlers = {
-            "t": lambda: _apply_state_change(console, session),
-            "S-LEFT": lambda: _apply_shift_date(session, day_delta=-1),
-            "S-RIGHT": lambda: _apply_shift_date(session, day_delta=1),
-            "S-UP": lambda: _apply_shift_time(session, hour_delta=-1),
-            "S-DOWN": lambda: _apply_shift_time(session, hour_delta=1),
-            "r": lambda: _apply_refile(console, session),
-            "c": lambda: _apply_clock_entry(console, session),
-        }
-        handler = handlers.get(key)
-        if handler is not None:
-            handler()
-        else:
-            handled = False
+        return True
+    return False
 
-    if not handled and key:
-        session.status_message = f"Unsupported key: {key}"
+
+def _handle_agenda_action_key(console: Console, session: _AgendaSession, key: str) -> None:
+    """Handle one keypress for agenda task actions."""
+    handlers = {
+        "ENTER": lambda: _open_selected_task_detail(console, session),
+        "t": lambda: _apply_state_change(console, session),
+        "S-LEFT": lambda: _apply_shift_date(session, day_delta=-1),
+        "S-RIGHT": lambda: _apply_shift_date(session, day_delta=1),
+        "S-UP": lambda: _apply_shift_time(session, hour_delta=-1),
+        "S-DOWN": lambda: _apply_shift_time(session, hour_delta=1),
+        "r": lambda: _apply_refile(console, session),
+        "c": lambda: _apply_clock_entry(console, session),
+    }
+    handler = handlers.get(key)
+    if handler is None:
+        if key:
+            session.status_message = f"Unsupported key: {key}"
+        return
+    handler()
+
+
+def _handle_interactive_key(console: Console, session: _AgendaSession, key: str) -> bool:
+    """Handle one interactive keypress and return whether to continue."""
+    if key == "q":
+        return False
+
+    if key == "ESC":
+        return False
+
+    if _handle_agenda_navigation_key(session, key):
+        return True
+
+    _handle_agenda_action_key(console, session, key)
     return True
 
 
 def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
     """Run interactive agenda event loop."""
-    prompt_keys = {"t", "r", "c"}
+    prompt_keys = {"t", "r", "c", "ENTER"}
     _set_mouse_reporting(True)
     try:
         with Live(
-            _interactive_renderable(console, session),
+            _interactive_agenda_renderable(console, session),
             console=console,
             screen=True,
             refresh_per_second=12,
@@ -1903,7 +1955,7 @@ def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
                     should_continue = _handle_interactive_key(console, session, key)
                 if not should_continue:
                     break
-                live.update(_interactive_renderable(console, session), refresh=True)
+                live.update(_interactive_agenda_renderable(console, session), refresh=True)
     finally:
         _set_mouse_reporting(False)
 
