@@ -801,6 +801,20 @@ def _selected_task_row(session: _AgendaSession) -> _AgendaRow | None:
     return row
 
 
+def _refresh_session_if_minute_changed(session: _AgendaSession) -> None:
+    """Refresh agenda rows when local wall-clock minute changes."""
+    current_now = _local_now().replace(second=0, microsecond=0)
+    session_now = session.now.replace(second=0, microsecond=0)
+    if current_now == session_now:
+        return
+
+    preserve_identity: tuple[str, str, str, int | None] | None = None
+    selected_row = _selected_task_row(session)
+    if selected_row is not None and selected_row.node is not None:
+        preserve_identity = _heading_identity(selected_row.node)
+    _refresh_session(session, preserve_identity)
+
+
 def _move_selection(session: _AgendaSession, step: int) -> None:
     """Move highlighted row selection forward/backward with wraparound."""
     if not session.row_locations:
@@ -1660,8 +1674,9 @@ def _apply_state_change(console: Console, session: _AgendaSession) -> None:
         session.status_message = "State unchanged"
         return
 
+    action_now = _local_now()
     heading.todo = new_state
-    _append_repeat_transition(heading, old_state, new_state, session.now)
+    _append_repeat_transition(heading, old_state, new_state, action_now)
 
     if heading.scheduled is not None and _advance_timestamp_by_repeater(heading.scheduled):
         logger.info(
@@ -1823,7 +1838,8 @@ def _apply_clock_entry(console: Console, session: _AgendaSession) -> None:
         session.status_message = str(err)
         return
 
-    end_time = session.now.replace(second=0, microsecond=0)
+    action_now = _local_now()
+    end_time = action_now.replace(second=0, microsecond=0)
     start_time = end_time - duration
     timestamp = Timestamp.from_source(
         f"[{start_time:%Y-%m-%d %a %H:%M}]--[{end_time:%Y-%m-%d %a %H:%M}]",
@@ -1925,6 +1941,8 @@ def _handle_interactive_key(console: Console, session: _AgendaSession, key: str)
 
     if key == "ESC":
         return False
+
+    _refresh_session_if_minute_changed(session)
 
     if _handle_agenda_navigation_key(session, key):
         return True

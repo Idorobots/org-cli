@@ -672,6 +672,34 @@ def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:
     assert session.selected_row_index == start
 
 
+def test_handle_interactive_key_refreshes_now_marker_when_minute_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Navigation should refresh session rows when local minute changes."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    clock = {"value": datetime(2025, 1, 15, 10, 0)}
+    monkeypatch.setattr(agenda_command, "_local_now", lambda: clock["value"])
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    before = next(row.time_text for row in session.day_models[0].rows if row.kind == "now_marker")
+    assert before == "10:00"
+
+    clock["value"] = datetime(2025, 1, 15, 10, 1)
+    assert agenda_command._handle_interactive_key(console, session, "DOWN") is True
+
+    after = next(row.time_text for row in session.day_models[0].rows if row.kind == "now_marker")
+    assert after == "10:01"
+
+
 def test_handle_interactive_key_unsupported_key_sets_status_and_continues() -> None:
     """Unsupported key should set status message without exiting agenda loop."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
@@ -689,6 +717,91 @@ def test_handle_interactive_key_unsupported_key_sets_status_and_continues() -> N
     unsupported_key = "UNSUPPORTED-ESC:1b5b3939397e"
     assert agenda_command._handle_interactive_key(console, session, unsupported_key) is True
     assert session.status_message == f"Unsupported key: {unsupported_key}"
+
+
+def test_apply_state_change_uses_current_action_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """State transition repeat entry should use action-time wall clock, not cached session time."""
+    args = _make_args(["dummy.org"], date="2025-01-15")
+    root = org_parser.loads("* TODO Action time state change\nSCHEDULED: <2025-01-15 Wed 09:00>\n")
+    heading = next(iter(root))
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    session.selected_row_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "task"
+    )
+    session.now = datetime(2025, 1, 15, 16, 30)
+    action_now = datetime(2025, 1, 15, 17, 4, 33)
+    console = Console(file=StringIO(), force_terminal=False)
+
+    monkeypatch.setattr(agenda_command, "_local_now", lambda: action_now)
+    monkeypatch.setattr(agenda_command, "_choose_state", lambda _console, _heading: "DONE")
+    monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(
+        agenda_command,
+        "_refresh_session",
+        lambda _session, _preserve_identity: None,
+    )
+
+    agenda_command._apply_state_change(console, session)
+
+    assert heading.todo == "DONE"
+    assert heading.repeats
+    repeat_ts = heading.repeats[-1].timestamp.start
+    assert repeat_ts.hour == 17
+    assert repeat_ts.minute == 4
+
+
+def test_apply_clock_entry_uses_current_action_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clock entry end time should use action-time wall clock, not cached session time."""
+    args = _make_args(["dummy.org"], date="2025-01-15")
+    root = org_parser.loads("* TODO Action time clock\nSCHEDULED: <2025-01-15 Wed 09:00>\n")
+    heading = next(iter(root))
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    session.selected_row_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "task"
+    )
+    session.now = datetime(2025, 1, 15, 16, 30)
+    action_now = datetime(2025, 1, 15, 17, 4, 33)
+    console = Console(file=StringIO(), force_terminal=False)
+
+    monkeypatch.setattr(console, "input", lambda _prompt: "30")
+    monkeypatch.setattr(agenda_command, "_local_now", lambda: action_now)
+    monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(
+        agenda_command,
+        "_refresh_session",
+        lambda _session, _preserve_identity: None,
+    )
+
+    agenda_command._apply_clock_entry(console, session)
+
+    assert heading.clock_entries
+    timestamp = heading.clock_entries[-1].timestamp
+    assert timestamp is not None
+    assert timestamp.end is not None
+    assert timestamp.end.hour == 17
+    assert timestamp.end.minute == 4
 
 
 def test_handle_interactive_key_enter_opens_detail_for_selected_task(

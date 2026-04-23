@@ -4633,7 +4633,10 @@ Please make sure to check both commands for duplicated code paths and extract th
 :END:
 Rename =tasks create= to =tasks add= and =tasks delete= to =tasks remove=.
 Make sure to update the documentation, readme, etc.
-** TODO Agenda command                                                                  :CLI:Agenda:
+** DONE Agenda command                                                                  :CLI:Agenda:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-23 Thu 11:54]
+:END:
 *** DONE Agenda for a specific day
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-04-19 Sun 17:04]
