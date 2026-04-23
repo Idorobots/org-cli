@@ -374,6 +374,41 @@ def heading_title_to_text(node: Heading) -> Text:
     return _heading_to_text(node)
 
 
+def task_state_prefix_to_text(
+    state: str,
+    *,
+    done_states: list[str],
+    todo_states: list[str],
+    color_enabled: bool,
+) -> Text:
+    """Return TODO state prefix as styled Rich Text."""
+    if not state:
+        return Text("")
+    style = get_state_color(state, done_states, todo_states, color_enabled)
+    return Text(f"{state} ", style=style or "")
+
+
+def task_priority_to_text(
+    priority: str | None,
+    color_enabled: bool,
+    *,
+    trailing_space: bool = False,
+) -> Text:
+    """Return task priority marker as styled Rich Text."""
+    if not priority:
+        return Text("")
+    suffix = " " if trailing_space else ""
+    return Text(f"[#{priority}]{suffix}", style="bold blue" if color_enabled else "")
+
+
+def task_tags_to_text(tags: list[str], color_enabled: bool) -> Text:
+    """Return task tags as styled Rich Text."""
+    if not tags:
+        return Text("")
+    tags_text = f":{':'.join(sorted(tags))}:"
+    return Text(tags_text, style="dim white" if color_enabled else "")
+
+
 def _build_task_line_parts(node: Heading, config: TaskLineConfig) -> _TaskLineParts:
     """Extract and format task line components."""
     filename = node.document.filename or "<string>"

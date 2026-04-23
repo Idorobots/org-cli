@@ -175,6 +175,30 @@ def test_cli_runner_tasks_board_renders_columns() -> None:
     assert "WAITING" in result.stdout
 
 
+def test_cli_runner_agenda_renders_day_view() -> None:
+    """CliRunner should render agenda day sections and items."""
+    runner = CliRunner()
+    fixture_path = str((FIXTURES_DIR / "agenda_sample.org").resolve())
+
+    result = runner.invoke(
+        app,
+        [
+            "agenda",
+            "--no-color",
+            "--date",
+            "2025-01-15",
+            fixture_path,
+        ],
+    )
+
+    assert result.exit_code == 0
+    plain_stdout = result.stdout.replace("…", "")
+    assert "CATEGORY" in plain_stdout
+    assert "TASK" in plain_stdout
+    assert "2025-01-15" in plain_stdout
+    assert "Timed agenda task" in plain_stdout
+
+
 def test_cli_runner_tasks_add_writes_heading(tmp_path: Path) -> None:
     """CliRunner should create a new task heading in the selected file."""
     runner = CliRunner()

@@ -18,7 +18,15 @@ from rich.text import Text
 from org import config as config_module
 from org.cli_common import load_and_process_data
 from org.color import escape_text, get_state_color
-from org.tui import build_console, heading_title_to_text, processing_status, setup_output
+from org.tui import (
+    build_console,
+    heading_title_to_text,
+    processing_status,
+    setup_output,
+    task_priority_to_text,
+    task_state_prefix_to_text,
+    task_tags_to_text,
+)
 
 
 if TYPE_CHECKING:
@@ -90,33 +98,25 @@ def _state_prefix(
 ) -> Text:
     """Build a state prefix text fragment for a task panel title line."""
     state = node.todo or ""
-    if not state:
-        return Text("")
-    style = get_state_color(state, done_states, todo_states, color_enabled)
-    if color_enabled and style:
-        return Text(f"{state} ", style=style)
-    return Text(f"{state} ")
+    return task_state_prefix_to_text(
+        state,
+        done_states=done_states,
+        todo_states=todo_states,
+        color_enabled=color_enabled,
+    )
 
 
 def _task_metadata_text(node: Heading, color_enabled: bool) -> Text:
     """Build priority and tags metadata text for one task panel."""
     meta = Text("")
-
-    if node.priority:
-        if color_enabled:
-            meta.append(f"[#{node.priority}]", style="bold blue")
-        else:
-            meta.append(f"[#{node.priority}]")
-
-    if node.tags:
-        if meta.plain:
-            meta.append(" ")
-        tags_text = f":{':'.join(sorted(node.tags))}:"
-        if color_enabled:
-            meta.append(tags_text, style="dim white")
-        else:
-            meta.append(tags_text)
-
+    meta.append_text(
+        task_priority_to_text(
+            node.priority,
+            color_enabled,
+            trailing_space=bool(node.tags),
+        ),
+    )
+    meta.append_text(task_tags_to_text(node.tags, color_enabled))
     return meta
 
 

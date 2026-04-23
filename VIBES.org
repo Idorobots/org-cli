@@ -4633,20 +4633,317 @@ Please make sure to check both commands for duplicated code paths and extract th
 :END:
 Rename =tasks create= to =tasks add= and =tasks delete= to =tasks remove=.
 Make sure to update the documentation, readme, etc.
-** Agenda command
-Like Org Agenta, but CLI.
+** DONE Agenda command                                                                  :CLI:Agenda:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-23 Thu 11:54]
+:END:
+*** DONE Agenda for a specific day
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 17:04]
+:END:
+Like Org Agenta, but CLI, accepting a =--date=, default to today when not provided.
 
-- accept a date, default to today
-- select what the agenda shows, exclusions for deadlines, overdue etc.
+#+begin_example
+org agenda [OPTIONS] [FILE...]
+#+end_example
 
-- Tasks to do on a given day including timestamp, state, heading and tags.
-- Tasks done on a given day
-- Tasks that are overdue
-- Deadlines that are overdue
-- Upcomming deadlines
+The command should display the agenda for the selected date:
 
-- ability to refile tasks to another file
+- Show a time table with a clear indication of the current time within the day.
+- Tasks to do on a given day including category, timestamp, state, priority, title and tags. These should be aligned to their scheduled hour in the time table. If they don't have an hour, then they should be placed between overdue and upcoming tasks. These should be colored with the default font color.
+- Tasks done on a given day and time (repeats) aligned to their repeat time.
+- Tasks that are overdue (scheduled date in the past, state not completed). These should be colored orange.
+- Deadlines that are overdue (deadline date in the past, state not completed). These should be colored red.
+- Upcoming deadlines (deadline date in the future, within 30 days from the selected agenda date). These should be the default font color.
 
+The display should use a table-like view, with alternating rows clearly marked for readability. The rich text titles should be rendered natively, same as within the task list view. Task states should be rendered the same way as in the other places (colored according to the done/todo classification). Priorities & tags should be colored the same way as on the task board/list.
+The agenda should take up the entire available console width.
+
+Data should be displayed in columns:
+
+#+begin_example
+[CATEGORY][TIME][HEADING with TODO and PRIORITY][TAGS, right-aligned]
+#+end_example
+
+For example (this is just an example, you have some freedom in laying out the command output in a better, readable fashion):
+#+begin_example
+refile       2:08...... DONE [#B] Refactor the tasks CRUD commands in org-cli.     :Python:VibeCoding:
+             7:00...... ---------------
+             8:00...... ------NOW------
+             9:00...... ---------------
+            10:00...... ---------------
+...
+            22:00...... ---------------
+            23:00...... ---------------
+stockpile   130d. ago: TODO Update the perishable survival stuff inventory.        :LifeHacking:Survival:
+#+end_example
+
+Overdue and upcoming tasks don't need to be aligned to a specific hour, they should follow the aligned list. Instead of a specific time, their time column should state how many days ago they were scheduled/deadlined or in how many days these are to be done.
+
+Tasks that don't have a specific time should be placed after the list of overdue tasks and before the upcoming deadlines:
+
+#+begin_example
+[Time table with hour-scheduled tasks & repeats]
+[Overdue scheduled & deadline tasks]
+[Tasks scheduled on that day, without a specific hour]
+[Upcoming deadlines]
+#+end_example
+
+The command should support all the usual filters/orderings and enrichments, just like =tasks list=. In addition to that, it should support:
+- =--date= select the date for the agenda,
+- =--days= - how many days to show in the agenda starting with =--date= (default 1),
+- =--no-completed= - omit tasks in completed states (including also repeats),
+- =--no-overdue= - omit overdue tasks from the list,
+- =--no-upcoming= - omit upcoming deadlines from the list,
+
+**** DONE Some UX review comments                                                               :UX:
+:PROPERTIES:
+:capture_time: [2026-04-19 Sun 16:32]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Agenda for a specific day][Agenda for a specific day]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 17:03]
+:END:
+
+The current date can be omitted for a single-day agenda. The "HEADING" column name should instead say "TASK". The category column should be smaller, leaving more space for the title. The "REPEAT" indication is not neccessary. Scheduled without a specific time should omit the completed tasks (these will appear anyway because of the repeats). The date indicator should be more pronounced - move it to the time column.
+
+Overdue/upcoming deadline should only be shown on the "today" view. If another date is selected, these should be omited. If the selected day span includes current day it should be shown on that day only. Overdue timestamps should be ordered by age, oldest-first. Upcoming deadlines should be ordered by age, earliest first. Agenda should omit inactive scheduled/deadline timestamps (it should still include repeats in inactive timestamp state).
+
+The table header names can be omited. Instead it should contain the current date. The table header should be replicated for each distinct day in the span. The =TIME= column should be made smaller maximizing space for the title and tags. The "all day" specifier can be omitted from scheduled tasks.
+Over-due deadlines should come first, before the overdue scheduled tasks. Upcoming deadlines should be colored yellow.
+
+The header line should have a frame, so that it's easier to distinguish the different days. Perhaps in the end, it's best to add the column names back, but use the current date for the TIME column? Only the header should have sort of a frame - something to visually separate it from that days agenda content. There's no need to add a full fram to the agenda table.
+
+There's a visual bug:
+
+#+begin_example
+             17:04        ------ NOW ------
+  Vibes      17:03        DONE Some UX review                          :Agenda:CLI:UX:
+  Vibes      17:04        DONE Agenda for a specific day
+#+end_example
+
+The NOW line should show up after the tasks that coincide in time with it.
+<shell-maker-end-of-prompt>
+
+Agenda should display in a pager, but have the data aligned to the top if not filling the entire screen.
+
+**** DONE src/org/commands/agenda.py                                                       :Cleanup:
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 17:19]
+:END:
+
+In file src/org/commands/agenda.py around line 147, near the ~new file   src/org/commands/agenda.py~
+
+#+begin_example
+
++def _has_specific_time(timestamp: Timestamp) -> bool:
++    """Return whether an org timestamp includes an explicit start time."""
++    return getattr(timestamp, "_start_hour", None) is not None
++
+#+end_example
+
+Please use the datetime properties for this. You should never use =getattr= in non-test code.
+**** DONE src/org/commands/agenda.py                                                       :Cleanup:
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 17:22]
+:END:
+
+In file src/org/commands/agenda.py around line 224, near the ~new file   src/org/commands/agenda.py~
+
+#+begin_example
+
++def _is_completed(node: Heading, done_states: list[str]) -> bool:
++    """Return whether one heading is in a completed state."""
++    state = node.todo
++    return bool(state and state in done_states)
++
+#+end_example
+
+Use =Heading.is_completed= for this.
+**** DONE src/org/commands/agenda.py                                                       :Cleanup:
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 17:26]
+:END:
+
+In file src/org/commands/agenda.py around line 207, near the ~new file   src/org/commands/agenda.py~
+
+#+begin_example
+def _heading_text(
++    node: Heading,
++    *,
++    color_enabled: bool,
++    done_states: list[str],
++    todo_states: list[str],
++    prefix: str | None = None,
++
+#+end_example
+
+This looks fairly similar to what is done in =tasks list= and =tasks board=. Can these be refactored to use common helpers?
+*** DONE Agenda actions & interactivity                                                        :TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-20 Mon 00:06]
+:END:
+The agenda command should be interactive. It should support:
+
+- Ability to go to the next/previous span (date +/- days at a time) using =f= for "forward" and =b= for "backward".
+- Ability to highlight a given task with =p= for "previous" and =n= for "next".
+- Ability to mark highlighted task as specific state =t= should allow the user to select the new state from the =heading.document.all_states=. Setting a state should add a repeat with a transition from the current to the new state. It should also adjust the scheduled/deadline date, if that date has a repeater marker set.
+- Ability to move tasks to another date with =shift + arrow= shifts the date by one day either forward (right arrow) or backward (left arrow).
+- Ability to refile tasks to another file with =r= for "refile". The command should ask for a new file to refile the task into (with quick shortcuts for the current =FILES=).
+- Ability to add clock entry with =c= for "clock". The command should ask for the duration and add a clock entry of that duration that ends at the current time.
+
+Use org_parser mutation for the date updates and make sure to save the modified files. There's no need to ask for confirmation, as all of these commands are user-guided.
+When an edit is made, it should be logged, for easier debugging.
+
+Create a detailed plan for the above task and save it in plans/ directory. Specifically focus on the user interaction part - this is the first command that is interactive by design.
+
+**** DONE UX bugs                                                                           :BUG:UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 23:49]
+:END:
+I'd like the content to be scrollable within the top part of the window so that it's possible to see the entire content by scrolling with n and p.
+
+Add arrow up and arrow down handling too? These should scroll the list of tasks like n and p.
+
+Please add left/right as a way to go forward and backward. Also, add ESC as a way to exit the agenda.
+
+Looks like the unicode characters in the title are messing up the alignment of the tags. It also seems that rich text is no longer rendered and colors of the different parts of the heading are not respected.
+
+The highlight is now very wonky, not highlighting all rows.
+
+I think we're missing a section for tasks that have a deadline set with a date folling today, these should be displayed after overdue scheduled tasks and before scheduled today without an hour unless the deadline has an hour itself.
+
+Let's remove the chevron from the highlighted item, it's enough to just use the background color.
+
+The table header is now separated with a degenerate line, please use a proper line to separate the table header from the contents. Similarly, the keybindings at the bottom of the screen are separated by dashed line, I'd like that to be a proper line too.
+Can we remove the line separating header from the contents? Leave ablank line following the header.
+Lets make header only name the date in the following format: =DayName ISO-date=, for example =Sunday 2026-04-19=. It should be left aligned. No need or the column names.
+
+It should be possible to scroll onto the "empty" hours slots. Actions reserved for tasks should not be available on those lines (indicate with a message on the bottom of the screen). The "empty" hours should also be highlighted.
+
+Make sure that for repeats the agenda lists the =repeat.after= state, not the current task TODO state.
+
+Don't display the =DEADLINE= indicator for deadline tasks.
+
+**** DONE src/org/commands/agenda.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 23:55]
+:END:
+
+In file src/org/commands/agenda.py around line 1178, near the ~def _collect_day_entries(~
+
+#+begin_example
++def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
++    """Advance timestamp once by its repeater marker, when present."""
++    if (
++        timestamp.repeater_mark is None
++        or timestamp.repeater_value is None
++        or timestamp.repeater_unit is None
++    ):
++        return False
++
++    value = timestamp.repeater_value
++    unit = timestamp.repeater_unit
++    start = timestamp.start
++    end = timestamp.end
+
+#+end_example
+
+This should take the =timestamp.repeater_mark= attribute into account too, depending on the repeater:
+- =+= - start is the timestamp start, shifts by exactly one unit,
+- =++= - start is the timestamp start, shifts repeatedly by one unit until the date is in the future,
+- =.+= - start is the current day
+**** DONE Shifting dates
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-20 Mon 00:06]
+:END:
+In agenda view, when highlighting a time-scheduled task, when shift and up or down arrows are pressed, it should shift the task by one hour forward or backwards.
+
+*** DONE Mouse scroll wheel support                                                             :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-20 Mon 13:29]
+:END:
+Add support for mouse scroll-wheel scrolling in the Agenda view. It should behave just like the up/down arrows. There's no need to support SHIFT+mouse interactions.
+
+All unsupported keys should be displayed as a status message, they shouldn't cause the view to exit.
+*** DONE Key bindings format                                                                    :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-20 Mon 19:54]
+:END:
+Let's improve the key bindings help string format - it should be on the same line as the =Lines X/Y=, but right-aligned. Each binding should be separated more clearly with a =|= character: =binding A | binding B | binding C=.
+
+*** DONE Open highlighted task                                                                 :TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-22 Wed 14:47]
+:END:
+It makes sense to display the syntax highlighted task upon "entering" it with a return key from the agenda view.
+Please make it so that when a highlighted task is "entered" by clicking the return key, the heading backing it is displayed in a separate view.
+
+For now, the view is just read-only, and can be exited with the ESC key (goes back to the Agenda view).
+
+The task should be displayed the same way as the detailed view on the task list. Please include its subtasks.
+**** DONE Pager for longer tasks                                                            :Bug:UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-22 Wed 12:48]
+:END:
+Task defails view should be scrollable so that it's possible to view the entirety of a longer task.
+
+**** DONE src/org/commands/agenda.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-22 Wed 13:41]
+:END:
+
+In file src/org/commands/agenda.py around line 1524, near the ~def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->~
+
+#+begin_example
++def _interactive_renderable(console: Console, session: _AgendaSession) -> Group:
++    """Build interactive agenda renderable."""
++    return _interactive_agenda_renderable(console, session)
+
+#+end_example
+
+Is this wrapper needed, remove it please.
+**** DONE tests/commands/test_agenda_command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-22 Wed 14:47]
+:END:
+
+In file tests/commands/test_agenda_command.py around line 668, near the ~def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:~
+
+#+begin_example
++    buffer = StringIO()
++    console = Console(file=buffer, force_terminal=False)
+
+#+end_example
+
+Why do we need this?
+** Command interactivity improvements
+*** Agenda notifications
+- =--watch= and =--notify= to send reminders about tasks that are due.
+*** Task board AGILE
+- A way to move tasks between columns
+- A way to view the highlighted task
+
+*** Task list
+- A way to view the highlighted task
 ** Workflow command
 
 Break down next task:

@@ -1,0 +1,25 @@
+#+CATEGORY: work
+
+* TODO Timed agenda task :Focus:
+SCHEDULED: <2025-01-15 Wed 09:30>
+
+* TODO Untimed agenda task :Planning:
+SCHEDULED: <2025-01-15 Wed>
+
+* DONE Repeated completion on day :Ops:
+SCHEDULED: <2025-01-01 Wed 11:00 +1d>
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2025-01-15 Wed 11:15]
+:END:
+
+* TODO Overdue scheduled task :Debt:
+SCHEDULED: <2025-01-10 Fri>
+
+* TODO Overdue deadline task :Urgent:
+DEADLINE: <2025-01-12 Sun>
+
+* TODO Upcoming deadline task :Roadmap:
+DEADLINE: <2025-01-20 Mon>
+
+* DONE Completed one-off task :DoneTag:
+SCHEDULED: <2025-01-15 Wed 14:00>

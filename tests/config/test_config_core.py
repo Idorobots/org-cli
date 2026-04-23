@@ -228,6 +228,8 @@ def test_validate_helpers() -> None:
     assert config.validate_str_option("--use", "nope") is None
     assert config.validate_str_option("--out", "gfm") == "gfm"
     assert config.validate_str_option("--out", "") is None
+    assert config.validate_str_option("--date", "2025-01-15") == "2025-01-15"
+    assert config.validate_str_option("--date", "2025/01/15") is None
     assert config.validate_str_option("--todo-states", "TODO|WAIT") is None
     assert config.validate_str_option("--filter-date-from", "2025/01/15") is None
 
@@ -336,6 +338,38 @@ def test_build_default_map_strips_tasks_board_unsupported_defaults() -> None:
     assert "out_theme" not in tasks_board_defaults
     assert "pandoc_args" not in tasks_board_defaults
     assert tasks_board_defaults["order_by_level"] is True
+
+
+def test_build_default_map_includes_agenda_defaults() -> None:
+    """Agenda default map should include agenda-specific and shared task options."""
+    default_map = config.build_default_map(
+        {
+            "date": "2025-01-15",
+            "days": 3,
+            "no_completed": True,
+            "no_overdue": True,
+            "no_upcoming": True,
+            "max_results": 5,
+            "offset": 2,
+            "order_by_level": True,
+            "out": "json",
+            "details": True,
+            "max_tags": 5,
+        },
+    )
+
+    agenda_defaults = default_map["agenda"]
+    assert agenda_defaults["date"] == "2025-01-15"
+    assert agenda_defaults["days"] == 3
+    assert agenda_defaults["no_completed"] is True
+    assert agenda_defaults["no_overdue"] is True
+    assert agenda_defaults["no_upcoming"] is True
+    assert agenda_defaults["max_results"] == 5
+    assert agenda_defaults["offset"] == 2
+    assert agenda_defaults["order_by_level"] is True
+    assert "out" not in agenda_defaults
+    assert "details" not in agenda_defaults
+    assert "max_tags" not in agenda_defaults
 
 
 def test_apply_config_defaults_applies_inline_and_append_defaults() -> None:

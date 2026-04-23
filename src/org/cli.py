@@ -7,7 +7,7 @@ import sys
 import typer
 
 from org import config, logging_config
-from org.commands import query
+from org.commands import agenda, query
 from org.commands.stats import all as stats_all
 from org.commands.stats import groups, tags
 from org.commands.stats import summary as stats_summary
@@ -69,6 +69,7 @@ groups.register(stats_app)
 stats_summary.register(stats_app)
 tasks_command.register(app)
 query.register(app)
+agenda.register(app)
 
 app.add_typer(stats_app, name="stats")
 
