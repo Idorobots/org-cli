@@ -613,6 +613,28 @@ def test_advance_timestamp_by_repeater_double_plus_advances_until_future(
     assert str(timestamp).startswith("<2025-01-16")
 
 
+def test_advance_timestamp_by_repeater_double_plus_hourly_uses_datetime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """'++' with hour unit should advance until datetime is after current time."""
+    timestamp = Timestamp.from_source("<2025-01-15 Wed 09:00 ++1h>")
+    monkeypatch.setattr(agenda_command, "_local_now", lambda: datetime(2025, 1, 15, 10, 30))
+
+    assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
+    assert str(timestamp).startswith("<2025-01-15 Wed 11:00")
+
+
+def test_advance_timestamp_by_repeater_double_plus_always_shifts_at_least_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """'++' should still shift once when timestamp is already in the future."""
+    timestamp = Timestamp.from_source("<2025-01-15 Wed 23:00 ++1d>")
+    monkeypatch.setattr(agenda_command, "_local_now", lambda: datetime(2025, 1, 15, 10, 0))
+
+    assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
+    assert str(timestamp).startswith("<2025-01-16 Thu 23:00")
+
+
 def test_advance_timestamp_by_repeater_dot_plus_uses_current_day(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -698,6 +720,38 @@ def test_handle_interactive_key_refreshes_now_marker_when_minute_changes(
 
     after = next(row.time_text for row in session.day_models[0].rows if row.kind == "now_marker")
     assert after == "10:01"
+
+
+def test_interactive_renderable_refreshes_now_marker_without_keypress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Renderable rebuild should refresh now marker as local time advances."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    clock = {"value": datetime(2025, 1, 15, 10, 0)}
+    monkeypatch.setattr(agenda_command, "_local_now", lambda: clock["value"])
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False, width=120, height=24)
+
+    _ = agenda_command._interactive_agenda_renderable(console, session)
+    first_now = next(
+        row.time_text for row in session.day_models[0].rows if row.kind == "now_marker"
+    )
+    assert first_now == "10:00"
+
+    clock["value"] = datetime(2025, 1, 15, 10, 1)
+    _ = agenda_command._interactive_agenda_renderable(console, session)
+    second_now = next(
+        row.time_text for row in session.day_models[0].rows if row.kind == "now_marker"
+    )
+    assert second_now == "10:01"
 
 
 def test_handle_interactive_key_unsupported_key_sets_status_and_continues() -> None:
@@ -802,6 +856,42 @@ def test_apply_clock_entry_uses_current_action_time(
     assert timestamp.end is not None
     assert timestamp.end.hour == 17
     assert timestamp.end.minute == 4
+
+
+def test_apply_refile_rejects_same_file_with_equivalent_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Refile should treat equivalent path spellings as same-file destinations."""
+    fixture_path = os.path.join(tmp_path, "agenda_refile_same.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write("* TODO Refile me\nSCHEDULED: <2025-01-15 Wed 09:00>\n")
+
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    session.selected_row_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "task"
+    )
+
+    destination_alias = os.path.join(tmp_path, ".", "agenda_refile_same.org")
+    console = Console(file=StringIO(), force_terminal=False)
+    monkeypatch.setattr(console, "input", lambda _prompt: destination_alias)
+
+    agenda_command._apply_refile(console, session)
+
+    assert session.status_message == "Task already in destination file"
+    with open(fixture_path, encoding="utf-8") as handle:
+        content = handle.read()
+    assert content.count("Refile me") == 1
 
 
 def test_handle_interactive_key_enter_opens_detail_for_selected_task(

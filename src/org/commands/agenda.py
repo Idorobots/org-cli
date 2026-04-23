@@ -11,6 +11,7 @@ import termios
 import tty
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
@@ -815,6 +816,17 @@ def _refresh_session_if_minute_changed(session: _AgendaSession) -> None:
     _refresh_session(session, preserve_identity)
 
 
+def _paths_refer_to_same_file(source_path: str, destination_path: str) -> bool:
+    """Return whether two path strings point to the same file."""
+    try:
+        source_resolved = Path(source_path).expanduser().resolve(strict=False)
+        destination_resolved = Path(destination_path).expanduser().resolve(strict=False)
+    except OSError:
+        source_resolved = Path(source_path).expanduser().absolute()
+        destination_resolved = Path(destination_path).expanduser().absolute()
+    return source_resolved == destination_resolved
+
+
 def _move_selection(session: _AgendaSession, step: int) -> None:
     """Move highlighted row selection forward/backward with wraparound."""
     if not session.row_locations:
@@ -890,12 +902,16 @@ def _set_mouse_reporting(enabled: bool) -> None:
         return
 
 
-def _read_keypress() -> str:
+def _read_keypress(timeout_seconds: float | None = None) -> str:
     """Read one keypress and normalize to a command token."""
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     try:
         tty.setraw(fd)
+        if timeout_seconds is not None:
+            ready, _, _ = select.select([fd], [], [], timeout_seconds)
+            if not ready:
+                return ""
         first = os.read(fd, 1)
         if first == b"\x03":
             return "q"
@@ -1039,7 +1055,12 @@ def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
             )
         elif mark == "++":
             now = _now_aligned_for_datetime(start, _local_now())
-            shifted_start, shifted_end = start, end
+            shifted_start, shifted_end = _shift_datetimes_by_unit(
+                start,
+                end,
+                value=value,
+                unit=unit,
+            )
             while shifted_start <= now:
                 shifted_start, shifted_end = _shift_datetimes_by_unit(
                     shifted_start,
@@ -1471,6 +1492,7 @@ def _render_viewport_row(
 
 def _interactive_agenda_renderable(console: Console, session: _AgendaSession) -> Group:
     """Build scrollable interactive agenda renderable with fixed footer controls."""
+    _refresh_session_if_minute_changed(session)
     rows = _build_interactive_rows(session)
     viewport_height = max(5, console.size.height - 3)
     selected_row = _selected_viewport_row_index(rows, _selected_row_location(session))
@@ -1797,7 +1819,11 @@ def _apply_refile(console: Console, session: _AgendaSession) -> None:
     source_document = heading.document
     source_path = source_document.filename or ""
     destination_doc_path = destination_document.filename or destination_path
-    if source_path and destination_doc_path and source_path == destination_doc_path:
+    if (
+        source_path
+        and destination_doc_path
+        and _paths_refer_to_same_file(source_path, destination_doc_path)
+    ):
         session.status_message = "Task already in destination file"
         return
 
@@ -1964,7 +1990,10 @@ def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
             auto_refresh=False,
         ) as live:
             while True:
-                key = _read_keypress()
+                key = _read_keypress(timeout_seconds=0.2)
+                if not key:
+                    live.update(_interactive_agenda_renderable(console, session), refresh=True)
+                    continue
                 if key in prompt_keys:
                     live.stop()
                     should_continue = _handle_interactive_key(console, session, key)
