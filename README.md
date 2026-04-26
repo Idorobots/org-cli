@@ -162,12 +162,12 @@ examples/ARCHIVE_small: * DONE Reorganize tickets on the CHAT project board.:Jir
 ...
 ```
 
-### `org tasks board`
+### `org flow board`
 
 Display matching tasks as a workflow-style board with one column per todo state plus `COMPLETED`.
 
 ```bash
-poetry run org tasks board \
+poetry run org flow board \
   --todo-states TODO,WAITING,INPROGRESS \
   --done-states DONE,CANCELLED \
   examples/ARCHIVE_small

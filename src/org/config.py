@@ -237,6 +237,11 @@ class TasksDefaultMap(TypedDict):
     """Default map values for tasks subcommands."""
 
     list: dict[str, object]
+
+
+class FlowDefaultMap(TypedDict):
+    """Default map values for flow subcommands."""
+
     board: dict[str, object]
 
 
@@ -245,6 +250,7 @@ class CliDefaultMap(TypedDict):
 
     stats: StatsDefaultMap
     tasks: TasksDefaultMap
+    flow: FlowDefaultMap
     agenda: dict[str, object]
 
 
@@ -771,11 +777,11 @@ def build_default_map(defaults: dict[str, object]) -> CliDefaultMap:
     tasks_list_defaults = {
         key: value for key, value in defaults.items() if key not in task_command_disallowed
     }
-    tasks_board_disallowed = task_command_disallowed.union(
+    flow_board_disallowed = task_command_disallowed.union(
         {"details", "out", "out_theme", "pandoc_args"},
     )
-    tasks_board_defaults = {
-        key: value for key, value in defaults.items() if key not in tasks_board_disallowed
+    flow_board_defaults = {
+        key: value for key, value in defaults.items() if key not in flow_board_disallowed
     }
     agenda_disallowed = task_command_disallowed.union(
         {"details", "out", "out_theme", "pandoc_args"},
@@ -802,7 +808,8 @@ def build_default_map(defaults: dict[str, object]) -> CliDefaultMap:
             "tags": tags_defaults,
             "groups": groups_defaults,
         },
-        "tasks": {"list": tasks_list_defaults, "board": tasks_board_defaults},
+        "tasks": {"list": tasks_list_defaults},
+        "flow": {"board": flow_board_defaults},
         "agenda": agenda_defaults,
     }
 

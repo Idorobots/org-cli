@@ -11,7 +11,7 @@
 - `org stats tags` - Focused stats for selected/top tags. See [stats_tags_command.md](stats_tags_command.md).
 - `org stats groups` - Stats for explicit or discovered tag groups. See [stats_groups_command.md](stats_groups_command.md).
 - `org tasks list` - Short or detailed task listing with ordering. See [tasks_list_command.md](tasks_list_command.md).
-- `org tasks board` - Workflow-style board view of active tasks. See [tasks_board_command.md](tasks_board_command.md).
+- `org flow board` - Interactive workflow board view of active tasks. See [flow_board_command.md](flow_board_command.md).
 - `org tasks add` - Create new task headings in Org files. See [tasks_add_command.md](tasks_add_command.md).
 - `org tasks remove` - Delete one task heading and its subtree from Org files. See [tasks_remove_command.md](tasks_remove_command.md).
 - `org tasks update` - Update one matched task heading in Org files. See [tasks_update_command.md](tasks_update_command.md).
@@ -63,14 +63,14 @@ Example:
 }
 ```
 
-Most analysis commands accept many `--filter-*` switches. Ordering controls are available on `org tasks list` and `org tasks board` via built-in `--order-by-*` switches.
+Most analysis commands accept many `--filter-*` switches. Ordering controls are available on `org tasks list` and `org flow board` via built-in `--order-by-*` switches.
 
 Built-in argument defaults:
 
 - Global: `--limit 10`, `--offset 0`, `--todo-states TODO`, `--done-states DONE`.
 - Stats: `--use tags`, `--max-tags 5` (all), `--max-relations 5`, `--max-groups 5` (all), `--min-group-size 2` (all).
 - Built-in filter additions: `--filter-priority P`.
-- Tasks list/board built-in ordering: `--order-by-priority`, `--order-by-level`, `--order-by-file-order`, `--order-by-file-order-reversed`, `--order-by-timestamp-asc`, `--order-by-timestamp-desc`.
+- Tasks list/flow board built-in ordering: `--order-by-priority`, `--order-by-level`, `--order-by-file-order`, `--order-by-file-order-reversed`, `--order-by-timestamp-asc`, `--order-by-timestamp-desc`.
 - Tasks list default ordering remains timestamp-desc (same as `--order-by-timestamp-desc`).
 
 Repository-local defaults may override built-ins. In this repository, `.org-cli.json` sets:

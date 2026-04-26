@@ -148,15 +148,15 @@ def test_cli_runner_tasks_list_custom_filter_required_arg_error() -> None:
         config.CONFIG_CUSTOM_FILTERS.update(original_filters)
 
 
-def test_cli_runner_tasks_board_renders_columns() -> None:
-    """CliRunner should render board columns for tasks board command."""
+def test_cli_runner_flow_board_renders_columns() -> None:
+    """CliRunner should render board columns for flow board command."""
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "custom_states.org").resolve())
 
     result = runner.invoke(
         app,
         [
-            "tasks",
+            "flow",
             "board",
             "--no-color",
             "--todo-states",
