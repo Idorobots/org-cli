@@ -1,4 +1,4 @@
-"""Flow board command."""
+"""Board command."""
 
 from __future__ import annotations
 
@@ -54,8 +54,8 @@ _INTERACTIVE_PANEL_HEIGHT = 4
 
 
 @dataclass
-class FlowBoardArgs:
-    """Arguments for the flow board command."""
+class BoardArgs:
+    """Arguments for the board command."""
 
     files: list[str] | None
     config: str
@@ -92,15 +92,15 @@ class FlowBoardArgs:
 
 
 @dataclass(frozen=True)
-class _FlowBoardColumn:
-    """One flow board column with title and assigned tasks."""
+class _BoardColumn:
+    """One board column with title and assigned tasks."""
 
     title: str
     nodes: list[Heading]
 
 
 @dataclass(frozen=True)
-class _FlowBoardPanelRenderConfig:
+class _BoardPanelRenderConfig:
     """Rendering context passed to task panel builders."""
 
     width: int
@@ -111,14 +111,14 @@ class _FlowBoardPanelRenderConfig:
 
 
 @dataclass
-class _FlowBoardSession:
-    """Interactive flow board session state."""
+class _BoardSession:
+    """Interactive board session state."""
 
-    args: FlowBoardArgs
+    args: BoardArgs
     nodes: list[Heading]
     todo_states: list[str]
     done_states: list[str]
-    columns: list[_FlowBoardColumn]
+    columns: list[_BoardColumn]
     color_enabled: bool
     selected_column_index: int
     selected_row_index: int
@@ -127,8 +127,8 @@ class _FlowBoardSession:
 
 
 @dataclass(frozen=True)
-class _FlowBoardStaticRenderInput:
-    """Rendering input for non-interactive flow board output."""
+class _BoardStaticRenderInput:
+    """Rendering input for non-interactive board output."""
 
     done_states: list[str]
     todo_states: list[str]
@@ -137,7 +137,7 @@ class _FlowBoardStaticRenderInput:
 
 
 @dataclass(frozen=True)
-class _FlowBoardHeadingIdentity:
+class _BoardHeadingIdentity:
     """Stable identity used to restore selected heading across reloads."""
 
     filename: str
@@ -192,7 +192,7 @@ def _task_metadata_text(node: Heading, color_enabled: bool) -> Text:
 
 def _build_task_panel(
     node: Heading,
-    render: _FlowBoardPanelRenderConfig,
+    render: _BoardPanelRenderConfig,
     *,
     highlighted: bool,
 ) -> Panel:
@@ -222,7 +222,7 @@ def _build_task_panel(
     )
 
 
-def _heading_and_meta_lines(node: Heading, render: _FlowBoardPanelRenderConfig) -> tuple[int, int]:
+def _heading_and_meta_lines(node: Heading, render: _BoardPanelRenderConfig) -> tuple[int, int]:
     """Estimate wrapped line counts for panel heading and metadata."""
     heading = Text("")
     if render.coalesce_completed and node.todo and node.todo in render.done_states:
@@ -240,7 +240,7 @@ def _heading_and_meta_lines(node: Heading, render: _FlowBoardPanelRenderConfig) 
     return heading_lines, metadata_lines
 
 
-def _interactive_panel_height(node: Heading, render: _FlowBoardPanelRenderConfig) -> int:
+def _interactive_panel_height(node: Heading, render: _BoardPanelRenderConfig) -> int:
     """Estimate interactive panel height for one node."""
     heading_lines, metadata_lines = _heading_and_meta_lines(node, render)
     return heading_lines + metadata_lines + 2
@@ -317,7 +317,7 @@ def _build_flow_board_columns(
     todo_states: list[str],
     done_states: list[str],
     coalesce_completed: bool,
-) -> list[_FlowBoardColumn]:
+) -> list[_BoardColumn]:
     """Group nodes into ordered flow board columns."""
     columns = _initial_columns(todo_states, done_states, coalesce_completed)
     for node in nodes:
@@ -327,10 +327,10 @@ def _build_flow_board_columns(
     else:
         ordered_titles = ["NOT STARTED", *todo_states, *done_states]
 
-    output_columns: list[_FlowBoardColumn] = []
+    output_columns: list[_BoardColumn] = []
     for title in ordered_titles:
         sorted_nodes = sorted(columns[title], key=lambda node: _priority_rank(node.priority))
-        output_columns.append(_FlowBoardColumn(title=title, nodes=sorted_nodes))
+        output_columns.append(_BoardColumn(title=title, nodes=sorted_nodes))
     return output_columns
 
 
@@ -363,7 +363,7 @@ def _column_content_height(nodes: list[Heading], width: int) -> int:
     return sum(_task_panel_height(node, width) for node in nodes)
 
 
-def _estimate_board_height(columns: list[_FlowBoardColumn], panel_content_width: int) -> int:
+def _estimate_board_height(columns: list[_BoardColumn], panel_content_width: int) -> int:
     """Estimate total rendered board table height in terminal lines."""
     column_heights = [
         _column_content_height(column.nodes, panel_content_width) for column in columns
@@ -373,7 +373,7 @@ def _estimate_board_height(columns: list[_FlowBoardColumn], panel_content_width:
 
 
 def _resolve_header_state(
-    column: _FlowBoardColumn,
+    column: _BoardColumn,
     done_states: list[str],
     coalesce_completed: bool,
 ) -> str:
@@ -392,7 +392,7 @@ def _restore_key_order(specified: list[str], discovered: list[str]) -> list[str]
     return [*specified, *extras]
 
 
-def _specified_states(args: FlowBoardArgs) -> tuple[list[str], list[str]]:
+def _specified_states(args: BoardArgs) -> tuple[list[str], list[str]]:
     """Return explicitly requested todo/done state lists."""
     specified_todo_states = [k.strip() for k in args.todo_states.split(",") if k.strip()]
     specified_done_states = [k.strip() for k in args.done_states.split(",") if k.strip()]
@@ -400,7 +400,7 @@ def _specified_states(args: FlowBoardArgs) -> tuple[list[str], list[str]]:
 
 
 def _resolved_states(
-    args: FlowBoardArgs,
+    args: BoardArgs,
     discovered_todo_states: list[str],
     discovered_done_states: list[str],
 ) -> tuple[list[str], list[str]]:
@@ -413,8 +413,8 @@ def _resolved_states(
 
 def _render_static_flow_board(
     console: Console,
-    columns: list[_FlowBoardColumn],
-    render_input: _FlowBoardStaticRenderInput,
+    columns: list[_BoardColumn],
+    render_input: _BoardStaticRenderInput,
 ) -> None:
     """Render non-interactive flow board output."""
     table = Table(expand=True, box=box.SQUARE, show_lines=False, show_header=False)
@@ -440,7 +440,7 @@ def _render_static_flow_board(
     table.add_row(*header_row)
 
     panel_content_width = _estimate_panel_content_width(console.width, len(columns))
-    render = _FlowBoardPanelRenderConfig(
+    render = _BoardPanelRenderConfig(
         width=panel_content_width,
         color_enabled=render_input.color_enabled,
         done_states=render_input.done_states,
@@ -465,9 +465,9 @@ def _render_static_flow_board(
     console.print(table)
 
 
-def _heading_identity(node: Heading) -> _FlowBoardHeadingIdentity:
+def _heading_identity(node: Heading) -> _BoardHeadingIdentity:
     """Build stable heading identity for selection restoration."""
-    return _FlowBoardHeadingIdentity(
+    return _BoardHeadingIdentity(
         filename=node.document.filename or "",
         heading_id=node.id,
         title=node.title_text,
@@ -478,7 +478,7 @@ def _heading_identity(node: Heading) -> _FlowBoardHeadingIdentity:
     )
 
 
-def _identity_matches(node: Heading, identity: _FlowBoardHeadingIdentity) -> bool:
+def _identity_matches(node: Heading, identity: _BoardHeadingIdentity) -> bool:
     """Return whether node matches preserved heading identity."""
     same_file = (node.document.filename or "") == identity.filename
     if not same_file:
@@ -528,8 +528,8 @@ def _choose_done_state(console: Console, done_states: list[str]) -> str | None:
 
 def _choose_target_state_for_column(
     console: Console,
-    session: _FlowBoardSession,
-    target_column: _FlowBoardColumn,
+    session: _BoardSession,
+    target_column: _BoardColumn,
 ) -> tuple[str | None, str | None]:
     """Resolve target state for a destination column."""
     if target_column.title == "NOT STARTED":
@@ -554,12 +554,12 @@ def _shift_priority(priority: str | None, *, increase: bool) -> str | None:
     return order[min(len(order) - 1, index + 1)]
 
 
-def _max_column_nodes(columns: list[_FlowBoardColumn]) -> int:
+def _max_column_nodes(columns: list[_BoardColumn]) -> int:
     """Return maximum node count among board columns."""
     return max((len(column.nodes) for column in columns), default=0)
 
 
-def _ensure_selection_bounds(session: _FlowBoardSession) -> None:
+def _ensure_selection_bounds(session: _BoardSession) -> None:
     """Clamp current selection to available columns and rows."""
     if not session.columns:
         session.selected_column_index = 0
@@ -577,7 +577,7 @@ def _ensure_selection_bounds(session: _FlowBoardSession) -> None:
     session.selected_row_index = min(max(session.selected_row_index, 0), len(selected_nodes) - 1)
 
 
-def _selected_node(session: _FlowBoardSession) -> Heading | None:
+def _selected_node(session: _BoardSession) -> Heading | None:
     """Return selected task node, if current selection targets one."""
     if not session.columns:
         return None
@@ -590,8 +590,8 @@ def _selected_node(session: _FlowBoardSession) -> Heading | None:
 
 
 def _reload_session(
-    session: _FlowBoardSession,
-    preserve_identity: _FlowBoardHeadingIdentity | None,
+    session: _BoardSession,
+    preserve_identity: _BoardHeadingIdentity | None,
 ) -> None:
     """Reload processed nodes and rebuild board columns."""
     nodes, discovered_todo_states, discovered_done_states = load_and_process_data(session.args)
@@ -624,12 +624,12 @@ def _reload_session(
 
 
 def _create_flow_board_session(
-    args: FlowBoardArgs,
+    args: BoardArgs,
     nodes: list[Heading],
     todo_states: list[str],
     done_states: list[str],
     color_enabled: bool,
-) -> _FlowBoardSession:
+) -> _BoardSession:
     """Create interactive flow board session state."""
     columns = _build_flow_board_columns(nodes, todo_states, done_states, args.coalesce_completed)
     selected_column_index = 0
@@ -638,7 +638,7 @@ def _create_flow_board_session(
             selected_column_index = index
             break
 
-    session = _FlowBoardSession(
+    session = _BoardSession(
         args=args,
         nodes=nodes,
         todo_states=todo_states,
@@ -654,7 +654,7 @@ def _create_flow_board_session(
     return session
 
 
-def _move_selection_vertical(session: _FlowBoardSession, step: int) -> None:
+def _move_selection_vertical(session: _BoardSession, step: int) -> None:
     """Move highlighted task up/down in the selected column."""
     selected_nodes = session.columns[session.selected_column_index].nodes
     if not selected_nodes:
@@ -665,7 +665,7 @@ def _move_selection_vertical(session: _FlowBoardSession, step: int) -> None:
     session.selected_row_index = min(max(next_index, 0), len(selected_nodes) - 1)
 
 
-def _move_selection_horizontal(session: _FlowBoardSession, step: int) -> None:
+def _move_selection_horizontal(session: _BoardSession, step: int) -> None:
     """Move highlighted lane left/right, skipping empty columns."""
     next_column = session.selected_column_index + step
     while 0 <= next_column < len(session.columns):
@@ -677,7 +677,7 @@ def _move_selection_horizontal(session: _FlowBoardSession, step: int) -> None:
         next_column += step
 
 
-def _apply_state_move(console: Console, session: _FlowBoardSession, *, direction: int) -> None:
+def _apply_state_move(console: Console, session: _BoardSession, *, direction: int) -> None:
     """Move selected task to neighboring column by changing TODO state."""
     heading = _selected_node(session)
     if heading is None:
@@ -736,7 +736,7 @@ def _apply_state_move(console: Console, session: _FlowBoardSession, *, direction
     session.status_message = f"State updated: {old_state or '-'} -> {new_state or '-'}"
 
 
-def _apply_priority_shift(session: _FlowBoardSession, *, increase: bool) -> None:
+def _apply_priority_shift(session: _BoardSession, *, increase: bool) -> None:
     """Increase or decrease selected task priority."""
     heading = _selected_node(session)
     if heading is None:
@@ -764,7 +764,7 @@ def _apply_priority_shift(session: _FlowBoardSession, *, increase: bool) -> None
     session.status_message = f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}"
 
 
-def _open_selected_task_detail(console: Console, session: _FlowBoardSession) -> None:
+def _open_selected_task_detail(console: Console, session: _BoardSession) -> None:
     """Open selected task detail in pager for scrolling and selection."""
     heading = _selected_node(session)
     if heading is None:
@@ -787,8 +787,8 @@ def _interactive_viewport_rows(console_height: int) -> int:
 
 
 def _interactive_row_heights(
-    session: _FlowBoardSession,
-    render: _FlowBoardPanelRenderConfig,
+    session: _BoardSession,
+    render: _BoardPanelRenderConfig,
 ) -> list[int]:
     """Estimate rendered interactive row heights across all columns."""
     total_rows = _max_column_nodes(session.columns)
@@ -827,7 +827,7 @@ def _window_end_for_height(
 
 
 def _sync_scroll_for_selection(
-    session: _FlowBoardSession,
+    session: _BoardSession,
     row_heights: list[int],
     available_lines: int,
 ) -> tuple[int, int, int]:
@@ -867,7 +867,7 @@ def _sync_scroll_for_selection(
     return session.scroll_offset, end_row, used_lines
 
 
-def _interactive_flow_board_renderable(console: Console, session: _FlowBoardSession) -> Group:
+def _interactive_flow_board_renderable(console: Console, session: _BoardSession) -> Group:
     """Build scrollable interactive flow board with fixed headers/footer."""
     panel_content_width = _estimate_panel_content_width(console.width, len(session.columns))
     available_lines = max(
@@ -900,7 +900,7 @@ def _interactive_flow_board_renderable(console: Console, session: _FlowBoardSess
     for _ in session.columns:
         body.add_column(ratio=1)
 
-    render = _FlowBoardPanelRenderConfig(
+    render = _BoardPanelRenderConfig(
         width=panel_content_width,
         color_enabled=session.color_enabled,
         done_states=session.done_states,
@@ -968,7 +968,7 @@ def _interactive_flow_board_renderable(console: Console, session: _FlowBoardSess
     )
 
 
-def _handle_flow_board_navigation_key(session: _FlowBoardSession, key: str) -> bool:
+def _handle_flow_board_navigation_key(session: _BoardSession, key: str) -> bool:
     """Handle one keypress for flow board navigation actions."""
     if key in {"DOWN", "WHEEL-DOWN"}:
         _move_selection_vertical(session, 1)
@@ -985,7 +985,7 @@ def _handle_flow_board_navigation_key(session: _FlowBoardSession, key: str) -> b
     return False
 
 
-def _handle_flow_board_action_key(console: Console, session: _FlowBoardSession, key: str) -> None:
+def _handle_flow_board_action_key(console: Console, session: _BoardSession, key: str) -> None:
     """Handle one keypress for flow board task actions."""
     handlers = {
         "ENTER": lambda: _open_selected_task_detail(console, session),
@@ -1002,7 +1002,7 @@ def _handle_flow_board_action_key(console: Console, session: _FlowBoardSession, 
     handler()
 
 
-def _handle_interactive_key(console: Console, session: _FlowBoardSession, key: str) -> bool:
+def _handle_interactive_key(console: Console, session: _BoardSession, key: str) -> bool:
     """Handle one interactive keypress and return whether to continue."""
     if key == "q":
         return False
@@ -1016,7 +1016,7 @@ def _handle_interactive_key(console: Console, session: _FlowBoardSession, key: s
     return True
 
 
-def _run_flow_board_interactive(console: Console, session: _FlowBoardSession) -> None:
+def _run_flow_board_interactive(console: Console, session: _BoardSession) -> None:
     """Run interactive flow board event loop."""
     prompt_keys = {"ENTER", "S-LEFT", "S-RIGHT"}
     set_mouse_reporting(True)
@@ -1048,7 +1048,7 @@ def _run_flow_board_interactive(console: Console, session: _FlowBoardSession) ->
         set_mouse_reporting(False)
 
 
-def run_flow_board(args: FlowBoardArgs) -> None:
+def run_flow_board(args: BoardArgs) -> None:
     """Run the flow board command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
@@ -1089,7 +1089,7 @@ def run_flow_board(args: FlowBoardArgs) -> None:
     _render_static_flow_board(
         console,
         columns,
-        _FlowBoardStaticRenderInput(
+        _BoardStaticRenderInput(
             done_states=done_states,
             todo_states=todo_states,
             color_enabled=color_enabled,
@@ -1292,7 +1292,7 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Display tasks as an interactive flow board."""
-        args = FlowBoardArgs(
+        args = BoardArgs(
             files=files,
             config=config,
             exclude=exclude,
@@ -1327,6 +1327,6 @@ def register(app: typer.Typer) -> None:
             coalesce_completed=coalesce_completed,
         )
         config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "flow board")
-        config_module.log_command_arguments(args, "flow board")
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "board")
+        config_module.log_command_arguments(args, "board")
         run_flow_board(args)

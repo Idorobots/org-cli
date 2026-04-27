@@ -5028,7 +5028,7 @@ org task update --id "Foo" --todo ACTIVE --property AGENT=OpenCode VIBES.org
 org task update --id "Foo" --todo REVIEW VIBES.org
 #+end_example
 
-*** REWORKED Interactive task board                                                             :TUI:UX:
+*** REWORKED Interactive task board                                                         :TUI:UX:
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-04-26 Sun 16:58]
 :END:
@@ -5085,6 +5085,32 @@ In file src/org/commands/agenda.py around line 345, near the ~def _collect_repea
 #+end_example
 
 You can use =repeat.is_completed= instead of =repeat.after in done_states=.
+*** DONE Refactor board command into root tree                                                 :TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-27 Mon 22:36]
+:END:
+Move board from the flow command tree to the root command tree, and expose it as =org board=.
+
+- Move command wiring so board is registered at root.
+- Remove =org flow board= registration entirely.
+- Keep existing board behavior unchanged after the move:
+  - column/lane rendering and ordering
+  - filters, ordering, profile/view selection logic
+  - interactive keys (=Up/Down/Left/Right=, =Shift+Left/Right=, =Shift+Up/Down=, =Enter=, =Esc=, mouse wheel)
+- Keep config/default handling working for =board=.
+- Update docs/examples/tests to use =org board=.
+
+*** TODO Convert configuration format from JSON to YAML                                     :Config:
+Switch configuration handling from JSON to YAML, and make YAML the only supported config format.
+
+- Replace JSON config parsing with YAML parsing for default config loading and =--config= files.
+- Change default config filename from =.org-cli.json= to =.org-cli.yaml=.
+- Remove JSON-specific parsing/validation code paths.
+- Keep existing config semantics unchanged (same sections/keys and validation rules), but read them from YAML.
+- Update sample/default config files to YAML format.
+- Update command help and docs to reference YAML only.
+- Update tests to use YAML fixtures and remove JSON config test coverage.
+
 *** Extra filters
 - ~--id-property NAME~ - names the property serving as the task ID
 - ~--dependencies-property NAME~ - names the property used for dependencies between tasks
@@ -5141,6 +5167,10 @@ Redo all the filters & orderings in terms of the query language
 :END:
 Use IDs for headings. Support the "usual" =org-attach= file directories for attachments.
 ** Usability fixes
+*** Agenda frequency plot
+Show a task frequency plot in the agenda header and highlight the bucket that corresponds to the selected range.
+*** Agenda & board task archival
+Use =$= key to move the task to the archive file.
 *** Check if file was modified outside of org-cli before saving it.
 *** Do not add =#+TODO:= line to file contents, but rather modify done_states.
 

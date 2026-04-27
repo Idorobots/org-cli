@@ -148,15 +148,14 @@ def test_cli_runner_tasks_list_custom_filter_required_arg_error() -> None:
         config.CONFIG_CUSTOM_FILTERS.update(original_filters)
 
 
-def test_cli_runner_flow_board_renders_columns() -> None:
-    """CliRunner should render board columns for flow board command."""
+def test_cli_runner_board_renders_columns() -> None:
+    """CliRunner should render board columns for root board command."""
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "custom_states.org").resolve())
 
     result = runner.invoke(
         app,
         [
-            "flow",
             "board",
             "--no-color",
             "--todo-states",
@@ -173,6 +172,16 @@ def test_cli_runner_flow_board_renders_columns() -> None:
     assert "NOT STARTED" in result.stdout
     assert "COMPLETED" in result.stdout
     assert "WAITING" in result.stdout
+
+
+def test_cli_runner_flow_subcommand_is_not_registered() -> None:
+    """CliRunner should reject legacy flow command tree."""
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["flow", "board", "--no-color"])
+
+    assert result.exit_code != 0
+    assert "No such command 'flow'" in clean_combined_output(result)
 
 
 def test_cli_runner_agenda_renders_day_view() -> None:

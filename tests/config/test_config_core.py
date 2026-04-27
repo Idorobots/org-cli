@@ -299,7 +299,7 @@ def test_build_default_map_strips_command_specific_values() -> None:
 
 
 def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
-    """Tasks list and flow board ordering defaults should remain boolean flags."""
+    """Tasks list and board ordering defaults should remain boolean flags."""
     default_map = config.build_default_map(
         {
             "order_by_level": True,
@@ -311,13 +311,13 @@ def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
     assert tasks_list_defaults["order_by_level"] is True
     assert tasks_list_defaults["order_by_timestamp_desc"] is False
 
-    flow_board_defaults = default_map["flow"]["board"]
-    assert flow_board_defaults["order_by_level"] is True
-    assert flow_board_defaults["order_by_timestamp_desc"] is False
+    board_defaults = default_map["board"]
+    assert board_defaults["order_by_level"] is True
+    assert board_defaults["order_by_timestamp_desc"] is False
 
 
 def test_build_default_map_strips_flow_board_unsupported_defaults() -> None:
-    """Flow board default map should omit list-only output options."""
+    """Board default map should omit list-only output options."""
     default_map = config.build_default_map(
         {
             "details": True,
@@ -330,14 +330,14 @@ def test_build_default_map_strips_flow_board_unsupported_defaults() -> None:
         },
     )
 
-    flow_board_defaults = default_map["flow"]["board"]
-    assert "details" not in flow_board_defaults
-    assert flow_board_defaults["max_results"] == 5
-    assert flow_board_defaults["offset"] == 2
-    assert "out" not in flow_board_defaults
-    assert "out_theme" not in flow_board_defaults
-    assert "pandoc_args" not in flow_board_defaults
-    assert flow_board_defaults["order_by_level"] is True
+    board_defaults = default_map["board"]
+    assert "details" not in board_defaults
+    assert board_defaults["max_results"] == 5
+    assert board_defaults["offset"] == 2
+    assert "out" not in board_defaults
+    assert "out_theme" not in board_defaults
+    assert "pandoc_args" not in board_defaults
+    assert board_defaults["order_by_level"] is True
 
 
 def test_build_default_map_includes_agenda_defaults() -> None:

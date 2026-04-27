@@ -1,11 +1,11 @@
-# `org flow board`
+# `org board`
 
 Display active tasks as an interactive workflow board with one column per state.
 
 ## Usage
 
 ```bash
-poetry run org flow board [OPTIONS] [FILE ...]
+poetry run org board [OPTIONS] [FILE ...]
 ```
 
 ## Board layout
@@ -18,7 +18,7 @@ poetry run org flow board [OPTIONS] [FILE ...]
 
 ## Interactive mode
 
-When both stdin and stdout are TTYs, `org flow board` runs in interactive mode.
+When both stdin and stdout are TTYs, `org board` runs in interactive mode.
 When not running in a TTY (for example in tests, piping, or redirected output), it falls back
 to non-interactive rendering.
 
@@ -69,13 +69,13 @@ Every interactive edit is saved immediately and logged through the standard `org
 1) Show all tasks as a board
 
 ```bash
-poetry run org flow board examples/ARCHIVE_small
+poetry run org board examples/ARCHIVE_small
 ```
 
 2) Show unfinished tasks ordered by priority and timestamp
 
 ```bash
-poetry run org flow board \
+poetry run org board \
   --filter-not-completed \
   --order-by-priority \
   --order-by-timestamp-asc \
@@ -85,7 +85,7 @@ poetry run org flow board \
 3) Use custom workflow states
 
 ```bash
-poetry run org flow board \
+poetry run org board \
   --todo-states TODO,WAITING,INPROGRESS \
   --done-states DONE,CANCELLED \
   examples/ARCHIVE_small
