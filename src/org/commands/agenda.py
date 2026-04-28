@@ -4,31 +4,33 @@ from __future__ import annotations
 
 import calendar
 import logging
-import os
-import select
 import sys
-import termios
-import tty
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
-from org_parser.element import Repeat
 from org_parser.time import Clock, Timestamp
 from rich import box
 from rich.console import Group
 from rich.live import Live
 from rich.rule import Rule
-from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data, resolve_input_paths
+from org.commands.interactive_common import (
+    append_repeat_transition,
+    decode_escape_sequence,
+    decode_mouse_sequence,
+    detail_org_block,
+    open_task_detail_in_pager,
+    read_keypress,
+    set_mouse_reporting,
+)
 from org.commands.tasks.common import iter_descendants, load_document, save_document
-from org.output_format import DEFAULT_OUTPUT_THEME
 from org.tui import (
     build_console,
     heading_title_to_text,
@@ -48,8 +50,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("org")
 _HIGHLIGHT_ROW_STYLE = "on grey23"
-_MOUSE_REPORTING_ENABLE = "\x1b[?1000h\x1b[?1006h"
-_MOUSE_REPORTING_DISABLE = "\x1b[?1000l\x1b[?1006l"
 
 
 @dataclass
@@ -333,7 +333,6 @@ def _scheduled_for_day(node: Heading, day: date) -> bool:
 def _collect_repeat_timed_entries(
     node: Heading,
     day: date,
-    done_states: list[str],
     *,
     no_completed: bool,
 ) -> list[_TimedEntry]:
@@ -342,7 +341,7 @@ def _collect_repeat_timed_entries(
     if no_completed:
         return timed
 
-    repeats: list[Repeat] = [repeat for repeat in node.repeats if repeat.after in done_states]
+    repeats = [repeat for repeat in node.repeats if repeat.is_completed]
     for repeat in repeats:
         repeat_day = repeat.timestamp.start.date()
         if repeat_day != day:
@@ -452,7 +451,6 @@ def _upcoming_deadline_entry(
 def _collect_day_entries(
     nodes: list[Heading],
     day: date,
-    done_states: list[str],
     args: AgendaArgs,
     *,
     include_relative_sections: bool,
@@ -497,7 +495,6 @@ def _collect_day_entries(
         repeat_timed = _collect_repeat_timed_entries(
             node,
             day,
-            done_states,
             no_completed=args.no_completed,
         )
         timed.extend(repeat_timed)
@@ -751,7 +748,6 @@ def _refresh_session(
         entries = _collect_day_entries(
             session.nodes,
             day,
-            session.render.done_states,
             session.args,
             include_relative_sections=(day == session.now.date()),
         )
@@ -836,101 +832,22 @@ def _move_selection(session: _AgendaSession, step: int) -> None:
 
 def _decode_mouse_sequence(sequence: bytes) -> str | None:
     """Decode xterm SGR mouse sequence into agenda key token."""
-    if not sequence.startswith(b"\x1b[<"):
-        return None
-    if sequence[-1:] not in {b"M", b"m"}:
-        return None
-
-    try:
-        body = sequence[3:-1].decode("ascii")
-        cb_text, _col_text, _row_text = body.split(";", 2)
-        cb = int(cb_text)
-    except UnicodeDecodeError, ValueError:
-        return "UNSUPPORTED-MOUSE"
-
-    if cb & 64 == 0:
-        result = "UNSUPPORTED-MOUSE"
-    elif cb & 4:
-        result = "UNSUPPORTED-SHIFT-WHEEL"
-    else:
-        button = cb & 0b11
-        result = {0: "WHEEL-UP", 1: "WHEEL-DOWN"}.get(button, "UNSUPPORTED-MOUSE")
-
-    return result
+    return decode_mouse_sequence(sequence)
 
 
 def _decode_escape_sequence(sequence: bytes) -> str:
     """Decode terminal escape sequence into one key token."""
-    mapping = {
-        b"\x1b[A": "UP",
-        b"\x1b[B": "DOWN",
-        b"\x1b[1;2A": "S-UP",
-        b"\x1b[1;2B": "S-DOWN",
-        b"\x1b[1;2C": "S-RIGHT",
-        b"\x1b[1;2D": "S-LEFT",
-        b"\x1b[;2A": "S-UP",
-        b"\x1b[;2B": "S-DOWN",
-        b"\x1b[;2C": "S-RIGHT",
-        b"\x1b[;2D": "S-LEFT",
-        b"\x1b[C": "RIGHT",
-        b"\x1b[D": "LEFT",
-    }
-    mapped = mapping.get(sequence)
-    if mapped is not None:
-        return mapped
-
-    if sequence == b"\x1b":
-        return "ESC"
-
-    mouse_token = _decode_mouse_sequence(sequence)
-    if mouse_token is not None:
-        return mouse_token
-
-    return f"UNSUPPORTED-ESC:{sequence.hex()}"
+    return decode_escape_sequence(sequence)
 
 
 def _set_mouse_reporting(enabled: bool) -> None:
     """Enable or disable terminal mouse reporting for interactive agenda."""
-    if not sys.stdout.isatty():
-        return
-
-    sequence = _MOUSE_REPORTING_ENABLE if enabled else _MOUSE_REPORTING_DISABLE
-    try:
-        sys.stdout.write(sequence)
-        sys.stdout.flush()
-    except OSError:
-        return
+    set_mouse_reporting(enabled)
 
 
 def _read_keypress(timeout_seconds: float | None = None) -> str:
     """Read one keypress and normalize to a command token."""
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        if timeout_seconds is not None:
-            ready, _, _ = select.select([fd], [], [], timeout_seconds)
-            if not ready:
-                return ""
-        first = os.read(fd, 1)
-        if first == b"\x03":
-            return "q"
-        if first in {b"\r", b"\n"}:
-            return "ENTER"
-        if first == b"\x1b":
-            payload = bytearray(first)
-            while True:
-                ready, _, _ = select.select([fd], [], [], 0.01)
-                if not ready:
-                    break
-                payload.extend(os.read(fd, 1))
-            return _decode_escape_sequence(bytes(payload))
-        try:
-            return first.decode("utf-8").lower()
-        except UnicodeDecodeError:
-            return ""
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    return read_keypress(timeout_seconds)
 
 
 def _append_repeat_transition(
@@ -940,13 +857,7 @@ def _append_repeat_transition(
     now: datetime,
 ) -> None:
     """Append one repeat transition entry at current time."""
-    transition_time = now.replace(second=0, microsecond=0)
-    repeat = Repeat(
-        before=before,
-        after=after,
-        timestamp=Timestamp.from_datetime(transition_time, is_active=False),
-    )
-    heading.repeats.append(repeat)
+    append_repeat_transition(heading, before, after, now)
 
 
 def _set_timestamp_fields(timestamp: Timestamp, start: datetime, end: datetime | None) -> None:
@@ -1549,9 +1460,7 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
 
 def _detail_org_block(node: Heading) -> str:
     """Build detailed org block text for one heading subtree."""
-    filename = node.document.filename or "unknown"
-    node_text = node.render().rstrip()
-    return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
+    return detail_org_block(node)
 
 
 def _open_selected_task_detail(console: Console, session: _AgendaSession) -> None:
@@ -1561,18 +1470,10 @@ def _open_selected_task_detail(console: Console, session: _AgendaSession) -> Non
         session.status_message = "Action available only on task rows"
         return
 
-    detail = Syntax(
-        _detail_org_block(row.node),
-        "org",
-        theme=DEFAULT_OUTPUT_THEME,
-        line_numbers=False,
-        word_wrap=True,
-    )
     session.status_message = ""
     _set_mouse_reporting(False)
     try:
-        with console.pager(styles=session.render.color_enabled):
-            console.print(detail)
+        open_task_detail_in_pager(console, row.node, color_enabled=session.render.color_enabled)
     finally:
         _set_mouse_reporting(True)
 
@@ -2018,7 +1919,6 @@ def _render_agenda(console: Console, render_input: _AgendaRenderInput) -> None:
         entries = _collect_day_entries(
             render_input.nodes,
             day,
-            render_input.render.done_states,
             render_input.args,
             include_relative_sections=(day == render_input.now.date()),
         )
@@ -2107,7 +2007,7 @@ def register(app: typer.Typer) -> None:
             help="Org-mode archive files or directories to analyze",
         ),
         config: str = typer.Option(
-            ".org-cli.json",
+            ".org-cli.yaml",
             "--config",
             metavar="FILE",
             help="Config file name to load from current directory",

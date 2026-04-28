@@ -1,4 +1,4 @@
-"""Tests for tasks board command."""
+"""Tests for board command."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import typer
 from rich.console import Console
 from rich.text import Text
 
-from org.commands.tasks import board as tasks_board
+from org.commands import board as board_command
 from tests.conftest import node_from_org
 
 
@@ -21,14 +21,14 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
+FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 
 
-def make_board_args(files: list[str], **overrides: object) -> tasks_board.BoardArgs:
+def make_board_args(files: list[str], **overrides: object) -> board_command.BoardArgs:
     """Build BoardArgs with defaults and overrides."""
-    args = tasks_board.BoardArgs(
+    args = board_command.BoardArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         exclude=None,
         mapping=None,
         mapping_inline=None,
@@ -65,7 +65,7 @@ def make_board_args(files: list[str], **overrides: object) -> tasks_board.BoardA
     return args
 
 
-def test_run_tasks_board_renders_expected_columns(
+def test_run_flow_board_renders_expected_columns(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -83,7 +83,6 @@ def test_run_tasks_board_renders_expected_columns(
         "argv",
         [
             "org",
-            "tasks",
             "board",
             "--todo-states",
             "TODO,WAITING,IN-PROGRESS",
@@ -93,7 +92,7 @@ def test_run_tasks_board_renders_expected_columns(
             "150",
         ],
     )
-    tasks_board.run_tasks_board(args)
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert "NOT STARTED" in output
@@ -103,11 +102,11 @@ def test_run_tasks_board_renders_expected_columns(
     assert "COMPLETED" in output
 
 
-def test_run_tasks_board_preserves_order_in_column(
+def test_run_flow_board_preserves_order_in_column_when_priorities_equal(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Board should keep per-column order from filtered/ordered task list."""
+    """Board should keep stable per-column order when priorities are equal."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args(
         [fixture_path],
@@ -115,8 +114,8 @@ def test_run_tasks_board_preserves_order_in_column(
         order_by_file_order=True,
     )
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--order-by-file-order"])
-    tasks_board.run_tasks_board(args)
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--order-by-file-order"])
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     first = output.find("Refactor codebase")
@@ -126,7 +125,174 @@ def test_run_tasks_board_preserves_order_in_column(
     assert first < second
 
 
-def test_run_tasks_board_does_not_hide_unknown_or_empty_states(
+def test_build_flow_board_columns_orders_by_priority() -> None:
+    """Lane content should be ordered from highest to lowest priority."""
+    nodes = node_from_org(
+        "* TODO [#C] Low\n* TODO Middle\n* TODO [#A] High\n* TODO [#B] Medium\n",
+    )
+
+    columns = board_command._build_flow_board_columns(
+        nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        coalesce_completed=True,
+    )
+
+    todo_column = next(column for column in columns if column.title == "TODO")
+    assert [node.title_text for node in todo_column.nodes] == ["High", "Medium", "Low", "Middle"]
+
+
+def test_move_selection_horizontal_skips_empty_columns() -> None:
+    """Horizontal navigation should skip empty lanes."""
+    args = make_board_args([])
+    first, second = node_from_org("* TODO First\n* TODO Second\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=[first, second],
+        todo_states=["TODO", "WAITING", "INPROGRESS"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", [first]),
+            board_command._BoardColumn("WAITING", []),
+            board_command._BoardColumn("INPROGRESS", [second]),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+
+    assert session.selected_column_index == 1
+    board_command._move_selection_horizontal(session, 1)
+    assert session.selected_column_index == 3
+
+    board_command._move_selection_horizontal(session, -1)
+    assert session.selected_column_index == 1
+
+
+def test_interactive_viewport_rows_scales_with_panel_height() -> None:
+    """Interactive viewport should account for panel line height."""
+    assert board_command._interactive_viewport_rows(24) == 4
+    assert board_command._interactive_viewport_rows(13) == 2
+    assert board_command._interactive_viewport_rows(9) == 1
+
+
+def test_sync_scroll_for_selection_keeps_selected_row_visible() -> None:
+    """Scroll sync should move viewport so selected task stays visible."""
+    args = make_board_args([])
+    nodes = node_from_org("\n".join(f"* TODO Task {index}" for index in range(6)))
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", nodes),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=4,
+        scroll_offset=0,
+        status_message="",
+    )
+    render = board_command._BoardPanelRenderConfig(
+        width=30,
+        color_enabled=False,
+        done_states=["DONE"],
+        todo_states=["TODO"],
+        coalesce_completed=True,
+    )
+    row_heights = board_command._interactive_row_heights(session, render)
+    _start, _end, _used = board_command._sync_scroll_for_selection(
+        session,
+        row_heights,
+        available_lines=8,
+    )
+
+    assert session.scroll_offset == 3
+
+
+def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Selection should stay on the same task after priority resorting."""
+    args = make_board_args([])
+    original_nodes = node_from_org("* TODO [#A] Other\n* TODO [#C] Focus\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=original_nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=board_command._build_flow_board_columns(
+            original_nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            coalesce_completed=True,
+        ),
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=1,
+        scroll_offset=0,
+        status_message="",
+    )
+
+    focused = session.columns[1].nodes[1]
+    focused.priority = "A"
+    preserve_identity = board_command._heading_identity(focused)
+
+    reloaded_nodes = node_from_org("* TODO [#A] Other\n* TODO [#A] Focus\n")
+
+    monkeypatch.setattr(
+        board_command,
+        "load_and_process_data",
+        lambda _args: (reloaded_nodes, ["TODO"], ["DONE"]),
+    )
+
+    board_command._reload_session(session, preserve_identity)
+
+    selected = board_command._selected_node(session)
+    assert selected is not None
+    assert selected.title_text == "Focus"
+
+
+def test_interactive_renderable_keeps_footer_at_bottom() -> None:
+    """Interactive render should reserve bottom lines for footer and status."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Task\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", nodes),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="Ready",
+    )
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=120, height=24)
+
+    console.print(board_command._interactive_flow_board_renderable(console, session))
+    lines = buffer.getvalue().splitlines()
+
+    assert len(lines) == 24
+    assert lines[-2].startswith("Rows ")
+    assert "Enter view" in lines[-2]
+    assert lines[-1] == "Ready"
+
+
+def test_run_flow_board_does_not_hide_unknown_or_empty_states(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -134,15 +300,15 @@ def test_run_tasks_board_does_not_hide_unknown_or_empty_states(
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args([fixture_path], width=120)
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board"])
-    tasks_board.run_tasks_board(args)
+    monkeypatch.setattr(sys, "argv", ["org", "board"])
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert "Task without any state" in output
     assert "WAITING Custom todo state" in output
 
 
-def test_run_tasks_board_no_results(
+def test_run_flow_board_no_results(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -150,24 +316,24 @@ def test_run_tasks_board_no_results(
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], filter_tags=["nomatch$"])
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--filter-tag", "nomatch$"])
-    tasks_board.run_tasks_board(args)
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--filter-tag", "nomatch$"])
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert output.strip() == "No results"
 
 
-def test_run_tasks_board_rejects_width_below_80(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_flow_board_rejects_width_below_80(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board should reject console widths below the minimum."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], width=79)
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--width", "79"])
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "79"])
     with pytest.raises(typer.BadParameter, match="--width must be at least 80"):
-        tasks_board.run_tasks_board(args)
+        board_command.run_flow_board(args)
 
 
-def test_run_tasks_board_limit_applies_before_grouping(
+def test_run_flow_board_limit_applies_before_grouping(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -175,15 +341,15 @@ def test_run_tasks_board_limit_applies_before_grouping(
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], max_results=1)
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--limit", "1"])
-    tasks_board.run_tasks_board(args)
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--limit", "1"])
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert "Refactor codebase" in output
     assert "Fix bug in parser" not in output
 
 
-def test_run_tasks_board_offset_applies_before_grouping(
+def test_run_flow_board_offset_applies_before_grouping(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -191,39 +357,39 @@ def test_run_tasks_board_offset_applies_before_grouping(
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], max_results=1, offset=1)
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--offset", "1", "--limit", "1"])
-    tasks_board.run_tasks_board(args)
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--offset", "1", "--limit", "1"])
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert "Refactor codebase" not in output
     assert "Fix bug in parser" in output
 
 
-def test_run_tasks_board_negative_max_results_raises_bad_parameter(
+def test_run_flow_board_negative_max_results_raises_bad_parameter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Board should reject negative --limit values."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], max_results=-1)
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--limit", "-1"])
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--limit", "-1"])
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        tasks_board.run_tasks_board(args)
+        board_command.run_flow_board(args)
 
 
-def test_run_tasks_board_negative_offset_raises_bad_parameter(
+def test_run_flow_board_negative_offset_raises_bad_parameter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Board should reject negative --offset values."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], offset=-1)
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--offset", "-1"])
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--offset", "-1"])
     with pytest.raises(typer.BadParameter, match="--offset must be non-negative"):
-        tasks_board.run_tasks_board(args)
+        board_command.run_flow_board(args)
 
 
-def test_run_tasks_board_uses_pager_when_render_exceeds_console_height(
+def test_run_flow_board_uses_pager_when_render_exceeds_console_height(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -249,16 +415,16 @@ def test_run_tasks_board_uses_pager_when_render_exceeds_console_height(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.tasks.board.build_console", lambda _color, _width: console)
+    monkeypatch.setattr("org.commands.board.build_console", lambda _color, _width: console)
 
     args = make_board_args([fixture_path], max_results=None)
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board"])
-    tasks_board.run_tasks_board(args)
+    monkeypatch.setattr(sys, "argv", ["org", "board"])
+    board_command.run_flow_board(args)
 
     assert pager_called["value"]
 
 
-def test_run_tasks_board_coalesce_completed_true_shows_completed_column(
+def test_run_flow_board_coalesce_completed_true_shows_completed_column(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -272,8 +438,8 @@ def test_run_tasks_board_coalesce_completed_true_shows_completed_column(
         width=200,
     )
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--width", "200"])
-    tasks_board.run_tasks_board(args)
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "200"])
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert "COMPLETED" in output
@@ -282,7 +448,7 @@ def test_run_tasks_board_coalesce_completed_true_shows_completed_column(
     assert "ARCHIVED" not in output.split("COMPLETED")[0].replace("NOT STARTED", "")
 
 
-def test_run_tasks_board_coalesce_completed_true_prefixes_state_in_panel(
+def test_run_flow_board_coalesce_completed_true_prefixes_state_in_panel(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -296,8 +462,8 @@ def test_run_tasks_board_coalesce_completed_true_prefixes_state_in_panel(
         width=200,
     )
 
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--width", "200"])
-    tasks_board.run_tasks_board(args)
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "200"])
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert "DONE Completed task" in output
@@ -305,7 +471,7 @@ def test_run_tasks_board_coalesce_completed_true_prefixes_state_in_panel(
     assert "ARCHIVED Another done state" in output
 
 
-def test_run_tasks_board_coalesce_completed_false_shows_individual_done_columns(
+def test_run_flow_board_coalesce_completed_false_shows_individual_done_columns(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -322,9 +488,9 @@ def test_run_tasks_board_coalesce_completed_false_shows_individual_done_columns(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["org", "tasks", "board", "--no-coalesce-completed", "--width", "200"],
+        ["org", "board", "--no-coalesce-completed", "--width", "200"],
     )
-    tasks_board.run_tasks_board(args)
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert "COMPLETED" not in output
@@ -333,7 +499,7 @@ def test_run_tasks_board_coalesce_completed_false_shows_individual_done_columns(
     assert "ARCHIVED" in output
 
 
-def test_run_tasks_board_coalesce_completed_false_done_columns_ordered_after_todo_columns(
+def test_run_flow_board_coalesce_completed_false_done_columns_ordered_after_todo_columns(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -350,9 +516,9 @@ def test_run_tasks_board_coalesce_completed_false_done_columns_ordered_after_tod
     monkeypatch.setattr(
         sys,
         "argv",
-        ["org", "tasks", "board", "--no-coalesce-completed", "--width", "200"],
+        ["org", "board", "--no-coalesce-completed", "--width", "200"],
     )
-    tasks_board.run_tasks_board(args)
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     pos_in_progress = output.find("IN-PROGRESS")
@@ -369,7 +535,7 @@ def test_run_tasks_board_coalesce_completed_false_done_columns_ordered_after_tod
     assert pos_cancelled < pos_archived
 
 
-def test_run_tasks_board_coalesce_completed_false_tasks_in_correct_columns(
+def test_run_flow_board_coalesce_completed_false_tasks_in_correct_columns(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -386,9 +552,9 @@ def test_run_tasks_board_coalesce_completed_false_tasks_in_correct_columns(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["org", "tasks", "board", "--no-coalesce-completed", "--width", "200"],
+        ["org", "board", "--no-coalesce-completed", "--width", "200"],
     )
-    tasks_board.run_tasks_board(args)
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert "Completed task" in output
@@ -397,7 +563,7 @@ def test_run_tasks_board_coalesce_completed_false_tasks_in_correct_columns(
 
 
 def test_build_task_panel_renders_rich_title_content() -> None:
-    """Task board panels should render heading RichText with Rich styles."""
+    """Flow board panels should render heading RichText with Rich styles."""
     nodes = node_from_org(
         (
             "* TODO *Bold* /Italic/ _Underline_ +Strike+ =Verbatim= ~InlineCode~ "
@@ -406,15 +572,16 @@ def test_build_task_panel_renders_rich_title_content() -> None:
         ),
     )
 
-    panel = tasks_board._build_task_panel(
+    panel = board_command._build_task_panel(
         nodes[0],
-        tasks_board._PanelRenderConfig(
+        board_command._BoardPanelRenderConfig(
             width=60,
             color_enabled=True,
             done_states=["DONE"],
             todo_states=["TODO"],
             coalesce_completed=True,
         ),
+        highlighted=False,
     )
 
     assert isinstance(panel.renderable, Text)
@@ -439,12 +606,12 @@ def test_build_task_panel_renders_rich_title_content() -> None:
     assert "call_fn(1)" in plain
 
 
-def test_run_tasks_board_renders_rich_title_plain_output(
+def test_run_flow_board_renders_rich_title_plain_output(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
-    """Board command should print rich title text without org inline delimiters."""
+    """Flow board command should print rich title text without org inline delimiters."""
     fixture_path = os.path.join(tmp_path, "rich_board.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -453,8 +620,8 @@ def test_run_tasks_board_renders_rich_title_plain_output(
         )
 
     args = make_board_args([fixture_path], width=120)
-    monkeypatch.setattr(sys, "argv", ["org", "tasks", "board", "--width", "120"])
-    tasks_board.run_tasks_board(args)
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "120"])
+    board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert "Bold" in output

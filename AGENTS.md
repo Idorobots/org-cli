@@ -58,7 +58,7 @@ org-cli/
 
 ### Config Layout
 
-The default config file is `.org-cli.json` in the current working directory.
+The default config file is `.org-cli.yaml` in the current working directory.
 
 Top-level sections:
 

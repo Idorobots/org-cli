@@ -1,11 +1,11 @@
-# `org tasks board`
+# `org board`
 
-Display active tasks as a workflow board with one column per todo state.
+Display active tasks as an interactive workflow board with one column per state.
 
 ## Usage
 
 ```bash
-poetry run org tasks board [OPTIONS] [FILE ...]
+poetry run org board [OPTIONS] [FILE ...]
 ```
 
 ## Board layout
@@ -14,7 +14,28 @@ poetry run org tasks board [OPTIONS] [FILE ...]
 - Tasks with todo state in `--done-states` are placed in `COMPLETED`.
 - Tasks without a todo state are placed in `NOT STARTED`.
 - Tasks with unknown states are also placed in `NOT STARTED` so no tasks are hidden.
-- Task order is preserved from the processed list after enrichments, filters, and ordering.
+- Lane contents are ordered by priority: `A`, `B`, `C`, then no priority.
+
+## Interactive mode
+
+When both stdin and stdout are TTYs, `org board` runs in interactive mode.
+When not running in a TTY (for example in tests, piping, or redirected output), it falls back
+to non-interactive rendering.
+
+Interactive keys:
+
+- Board content is rendered in a scrollable viewport with fixed headers and footer.
+- Footer shows `Rows X/Y`, keybindings, and status messages.
+- `Up` / `Down` or mouse wheel - Move highlighted task within selected column.
+- `Left` / `Right` - Move highlight between columns.
+- `Enter` - Open full selected task subtree in syntax-highlighted pager.
+- `Shift+Left` / `Shift+Right` - Move selected task to neighboring column by changing state.
+  - Moving into coalesced `COMPLETED` prompts for a specific done state.
+  - Every state change appends one repeat/logbook transition entry.
+- `Shift+Up` / `Shift+Down` - Increase/decrease priority one step (`A`/`B`/`C`/none).
+- `q` or `Esc` - Quit interactive mode.
+
+Every interactive edit is saved immediately and logged through the standard `org` logger.
 
 ## Command-specific switches
 
@@ -27,6 +48,7 @@ poetry run org tasks board [OPTIONS] [FILE ...]
 - `--limit`, `-n` - Maximum number of results to display (defaults to all results).
 - `--offset` - Skip first N results.
 - `--width` - Override console width (minimum: `80`).
+- `--coalesce-completed/--no-coalesce-completed` - Single `COMPLETED` lane vs one lane per done state.
 
 ## Available filters
 
@@ -47,13 +69,13 @@ poetry run org tasks board [OPTIONS] [FILE ...]
 1) Show all tasks as a board
 
 ```bash
-poetry run org tasks board examples/ARCHIVE_small
+poetry run org board examples/ARCHIVE_small
 ```
 
 2) Show unfinished tasks ordered by priority and timestamp
 
 ```bash
-poetry run org tasks board \
+poetry run org board \
   --filter-not-completed \
   --order-by-priority \
   --order-by-timestamp-asc \
@@ -63,7 +85,7 @@ poetry run org tasks board \
 3) Use custom workflow states
 
 ```bash
-poetry run org tasks board \
+poetry run org board \
   --todo-states TODO,WAITING,INPROGRESS \
   --done-states DONE,CANCELLED \
   examples/ARCHIVE_small
@@ -72,5 +94,5 @@ poetry run org tasks board \
 ## Output
 
 - The command always renders a Rich board layout (no `--out` format selection).
-- When rendered board height exceeds the viewport, output is shown in a pager.
+- In non-interactive mode, when rendered board height exceeds the viewport, output is shown in a pager.
 - Empty result set prints `No results`.

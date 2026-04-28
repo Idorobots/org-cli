@@ -92,7 +92,7 @@ Every interactive edit is saved immediately and logged through the standard `org
 
 ## Available orderings and enrichments
 
-- Ordering switches are the same as `org tasks list` and `org tasks board`:
+- Ordering switches are the same as `org tasks list` and `org board`:
   `--order-by-priority`, `--order-by-level`, `--order-by-file-order`,
   `--order-by-file-order-reversed`, `--order-by-timestamp-asc`, `--order-by-timestamp-desc`.
 - Enrichment: `--with-tags-as-category`.

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Protocol, TypedDict, TypeGuard, cast
 
 import typer
+import yaml
 
 
 COMMAND_OPTION_NAMES = {
@@ -237,7 +238,6 @@ class TasksDefaultMap(TypedDict):
     """Default map values for tasks subcommands."""
 
     list: dict[str, object]
-    board: dict[str, object]
 
 
 class CliDefaultMap(TypedDict):
@@ -245,6 +245,7 @@ class CliDefaultMap(TypedDict):
 
     stats: StatsDefaultMap
     tasks: TasksDefaultMap
+    board: dict[str, object]
     agenda: dict[str, object]
 
 
@@ -256,7 +257,7 @@ class ConfigDefaultsTarget(Protocol):
 
 
 def load_config(filepath: str) -> tuple[dict[str, object], bool]:
-    """Load config from JSON file.
+    """Load config from YAML file.
 
     Args:
         filepath: Path to config file
@@ -267,14 +268,14 @@ def load_config(filepath: str) -> tuple[dict[str, object], bool]:
     path = Path(filepath)
     try:
         with path.open(encoding="utf-8") as f:
-            config = json.load(f)
+            config = yaml.safe_load(f)
     except FileNotFoundError:
         return ({}, False)
     except PermissionError:
         return ({}, True)
     except OSError:
         return ({}, True)
-    except json.JSONDecodeError:
+    except yaml.YAMLError:
         return ({}, True)
 
     if not isinstance(config, dict):
@@ -700,7 +701,7 @@ def build_config_defaults(
 
 def parse_config_argument(argv: list[str]) -> str:
     """Parse only the --config argument from argv."""
-    default = ".org-cli.json"
+    default = ".org-cli.yaml"
     for idx, arg in enumerate(argv[1:], start=1):
         if arg == "--config" and idx + 1 < len(argv):
             return argv[idx + 1]
@@ -771,12 +772,10 @@ def build_default_map(defaults: dict[str, object]) -> CliDefaultMap:
     tasks_list_defaults = {
         key: value for key, value in defaults.items() if key not in task_command_disallowed
     }
-    tasks_board_disallowed = task_command_disallowed.union(
+    board_disallowed = task_command_disallowed.union(
         {"details", "out", "out_theme", "pandoc_args"},
     )
-    tasks_board_defaults = {
-        key: value for key, value in defaults.items() if key not in tasks_board_disallowed
-    }
+    board_defaults = {key: value for key, value in defaults.items() if key not in board_disallowed}
     agenda_disallowed = task_command_disallowed.union(
         {"details", "out", "out_theme", "pandoc_args"},
     )
@@ -802,7 +801,8 @@ def build_default_map(defaults: dict[str, object]) -> CliDefaultMap:
             "tags": tags_defaults,
             "groups": groups_defaults,
         },
-        "tasks": {"list": tasks_list_defaults, "board": tasks_board_defaults},
+        "tasks": {"list": tasks_list_defaults},
+        "board": board_defaults,
         "agenda": agenda_defaults,
     }
 

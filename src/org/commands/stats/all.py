@@ -717,7 +717,7 @@ def register(app: typer.Typer) -> None:
             help="Org-mode archive files or directories to analyze",
         ),
         config: str = typer.Option(
-            ".org-cli.json",
+            ".org-cli.yaml",
             "--config",
             metavar="FILE",
             help="Config file name to load from current directory",

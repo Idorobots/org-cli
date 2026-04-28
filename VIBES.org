@@ -1,6 +1,6 @@
 #+TITLE: Good Vibes
 #+CATEGORY: Vibes
-#+TODO: TODO(t) | DONE(d@/!)
+#+TODO: TODO(t) | DONE(d!)
 #+TODO: | CANCELLED(c@/!) REWORKED(r@/!)
 
 * Goals
@@ -2172,7 +2172,7 @@ Add "spinner" (the dots style from Rich) when computing loading the files and co
 
 Add syntax highlighting on the detailed display of org nodes in the ~tasks list~ command output. Do not show any line numbers.
 
-** REWORKED [#B] More stats                                                            :UX:Analysis:
+** REWORKED More stats                                                            :UX:Analysis:
 :LOGBOOK:
 - State "REWORKED"       from "TODO"       [2026-02-23 Mon 22:16] \\
   Worked fine, but forgot to update orgparse in the devcontainer. Turns out it did introduce some slop. Seems to be commond for Anthropic models.
@@ -4806,7 +4806,7 @@ When an edit is made, it should be logged, for easier debugging.
 
 Create a detailed plan for the above task and save it in plans/ directory. Specifically focus on the user interaction part - this is the first command that is interactive by design.
 
-**** DONE UX bugs                                                                           :BUG:UX:
+**** DONE UX bugs                                                                           :Bug:UX:
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-04-19 Sun 23:49]
 :END:
@@ -4935,37 +4935,55 @@ In file tests/commands/test_agenda_command.py around line 668, near the ~def tes
 #+end_example
 
 Why do we need this?
-** Command interactivity improvements
-*** Agenda notifications
-- =--watch= and =--notify= to send reminders about tasks that are due.
-*** Task board AGILE
-- A way to move tasks between columns
-- A way to view the highlighted task
-
-*** Task list
-- A way to view the highlighted task
-** Workflow command
-
+** REWORKED Tighten Ruff lint policy in =pyproject.toml= (prefer =select = ["ALL"]=)
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 16:00] \\
+  Needed extra manual work.
+:END:
+  - Evaluate switching =[tool.ruff.lint].select= to =["ALL"]=.
+  - Keep an explicit =ignore= list only for justified exceptions, with a short rationale per rule.
+  - Ensure commonly useful rule families are enabled (at minimum: =S=, =PT=, =TRY=, =PERF=, =D=, =TID=, =A=, =C90=, =G=).
+** DONE Speed up slow CLI tests by reducing subprocess usage
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 02:04]
+:END:
+- *Context:* current profiling shows most runtime is concentrated in =tests/test_chart_date_spanning.py= and =tests/cli/test_cli_smoke.py=. These tests repeatedly call =subprocess.run(...)=, so each case pays full Python startup + import cost.
+- *Scope:* optimize test runtime without reducing confidence in CLI behavior or changing command semantics.
+- *Approach:*
+  - [ ] Profile and record baseline with =poetry run pytest --durations=40 --durations-min=0.02=
+  - [ ] Keep only 1-2 true end-to-end subprocess smoke tests in =tests/cli/test_cli_smoke.py=
+  - [ ] Convert remaining subprocess-heavy cases to in-process tests (=CliRunner= and/or direct command entrypoints)
+  - [ ] Consolidate repetitive date-span scenarios in =tests/test_chart_date_spanning.py= using parametrized tests
+  - [ ] Share reusable assertion helpers (e.g., ANSI-clean output checks) to avoid repeated per-test setup
+  - [ ] Re-run profiling and compare against baseline
+- *Acceptance criteria:*
+  - [ ] Combined runtime of =tests/test_chart_date_spanning.py= + =tests/cli/test_cli_smoke.py= is significantly lower
+  - [ ] Full suite still passes via =poetry run task check=
+  - [ ] Coverage and key CLI smoke guarantees remain intact (entrypoint, multi-file input, and summary output)
+** TODO Workflow command                                                              :CLI:Workflow:
+:LOGBOOK:
+- State "TODO"       from ""           [2026-04-26 Sun 16:23]
+:END:
 Break down next task:
 #+begin_example
-org workflow current-task --agent OpenCode --details --md VIBES.org
+org flow current-task --agent OpenCode --details --md VIBES.org
 No result
 
-org workflow next-available --details --md VIBES.org
+org flow next-available --details --md VIBES.org
 
   # Do some stuff
   Blah blah
 
 # AI analyzes the task, decides to break it down into smaller chunks.
 
-# org workflow claim "Do some stuff" --agent OpenCode VIBES.org
-org workflow sub-task "Do some stuff" --id "23" --heading "Foo" --body "Bar" --tags "Baz" VIBES.org
-org workflow sub-task "Do some stuff" --id "54" --heading "Faz" --body "Bar" --tags "Baz" VIBES.org
+# org flow claim "Do some stuff" --agent OpenCode VIBES.org
+org flow sub-task "Do some stuff" --id "23" --heading "Foo" --body "Bar" --tags "Baz" VIBES.org
+org flow sub-task "Do some stuff" --id "54" --heading "Faz" --body "Bar" --tags "Baz" VIBES.org
 #+end_example
 
 Plan implementing next task:
 #+begin_example
-org workflow next-available --details --md VIBES.org
+org flow next-available --details --md VIBES.org
 
   # Foo :Baz:
   ID: 23
@@ -4973,13 +4991,13 @@ org workflow next-available --details --md VIBES.org
 
 # AI analyzes the task, decides to compute an implementation plan.
 
-org workflow claim "Foo" --agent OpenCode VIBES.org
-org workflow add-plan "Foo" path/to/plan.md VIBES.org
+org flow claim "Foo" --agent OpenCode VIBES.org
+org flow add-plan "Foo" path/to/plan.md VIBES.org
 #+end_example
 
 Implement a plan:
 #+begin_example
-org workflow next-available --details --md VIBES.org
+org flow next-available --details --md VIBES.org
 
   # Foo :Baz:
   ID: 23
@@ -4990,7 +5008,7 @@ org workflow next-available --details --md VIBES.org
 
 # AI executes the plan, puts the task in review
 
-org workflow done "Foo" VIBES.org
+org flow done "Foo" VIBES.org
 #+end_example
 
 This maps to something along those lines:
@@ -5009,6 +5027,92 @@ org task update --id "Foo" --todo ACTIVE --property AGENT=OpenCode VIBES.org
 
 org task update --id "Foo" --todo REVIEW VIBES.org
 #+end_example
+
+*** REWORKED Interactive task board                                                         :TUI:UX:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-26 Sun 16:58]
+:END:
+The AGILE =tasks board= command is pretty useful, but it could be made more useful by introducing agenda-like interactivity, specifically:
+
+- A way to highlight specific tasks in the columns - similar to highlighting the lines in agenda. The highlighted task panel should have a different background to signify the highlighted state. Keyboard arrow keys should move the highlight to subsequent tasks in the same column (up and down) and also move the highlight between the columns (left and right).
+
+- A way to view the highlighted task - when the return key is pressed on the keyboard, the task associated with the highlighted task panel should be displayed in it's entirety, including tasks descendants. The display should be the same as for the highlighted task in the agenda command, i.e. using syntax highlighting and a pager. Pressing the ESC key should close the task view and go back to the board view.
+
+- A way to move tasks between columns. When using the "shift+right" and "shift+left" key combination when a task panel is highlighted, the associated task should be moved te the neighbouring column, i.e. it's state should change accordingly. When moving to the combined completion column, the user sholud be prompted for the specific state to use. On each state change, a repeat should be added to the tasks logbook, much the same way as it is done in the agenda command.
+
+- A way to move tasks in priority - when using the "shift+up" and "shift+down" key combinations, the tasks priority sholud be increased or decreased by 1 level (assuming that no priority is level 0), with the following priority values available: A, B, C. "A" is the highest prority, no priority value set is the lowest priority. The board's lane contents should be ordered by priority, so more important tasks should be displayed at the top.
+
+The board contents should be scrollable in the same way the agenda command makes its content scrollable. The column headers should be visible at all times and a footer should be introduced that shows the key bindings and the status message.
+When scrolling (highlighting a tasks that's outside of the view), all columns should scroll at the same time.
+Scrolling should also be possible by using the mouse wheel.
+
+The =tasks board= command should be moved outside of the =tasks= command tree and be turned into a =flow board= command.
+
+**** DONE UX improvements                                                                  :Cleanup:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-26 Sun 16:26]
+:END:
+When a column is empty and highlight moves to that column, it should be skipped.
+
+Contents are not shown when scrolling past the display window - the contents should scroll so that the highlighted task is always in view. All columns should be scrolled this way.
+
+The footer should be displayed at the bottom of the command output and remain always visible (same as the header). It should display the status messages & key bindings much like the footer in agenda column.
+
+Please wrap the title, to overflow into the next lines in a panel. I don't like that panels are fixed-height.
+
+When a priority level causes a reshuffle, the task should remain highilghted.
+**** DONE Bugfixes                                                                             :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-26 Sun 16:26]
+:END:
+Do not show placeholder panels for columns that don't have enough tasks for the whole height.
+Do not show the content table frame.
+Do show a horizontal rule separating the header from the board content.
+
+**** DONE src/org/commands/agenda.py
+:PROPERTIES:
+:context:
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-26 Sun 16:45]
+:END:
+In file src/org/commands/agenda.py around line 345, near the ~def _collect_repeat_timed_entries(~
+
+#+begin_example
+-    repeats: list[Repeat] = [repeat for repeat in node.repeats if repeat.after in done_states]
++    repeats = [repeat for repeat in node.repeats if repeat.after in done_states]
+
+#+end_example
+
+You can use =repeat.is_completed= instead of =repeat.after in done_states=.
+*** DONE Refactor board command into root tree                                                 :TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-27 Mon 22:36]
+:END:
+Move board from the flow command tree to the root command tree, and expose it as =org board=.
+
+- Move command wiring so board is registered at root.
+- Remove =org flow board= registration entirely.
+- Keep existing board behavior unchanged after the move:
+  - column/lane rendering and ordering
+  - filters, ordering, profile/view selection logic
+  - interactive keys (=Up/Down/Left/Right=, =Shift+Left/Right=, =Shift+Up/Down=, =Enter=, =Esc=, mouse wheel)
+- Keep config/default handling working for =board=.
+- Update docs/examples/tests to use =org board=.
+
+*** DONE Convert configuration format from JSON to YAML                                     :Config:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-28 Tue 11:20]
+:END:
+Switch configuration handling from JSON to YAML, and make YAML the only supported config format.
+
+- Replace JSON config parsing with YAML parsing for default config loading and =--config= files.
+- Change default config filename from =.org-cli.json= to =.org-cli.yaml=.
+- Remove JSON-specific parsing/validation code paths.
+- Keep existing config semantics unchanged (same sections/keys and validation rules), but read them from YAML.
+- Update sample/default config files to YAML format.
+- Update command help and docs to reference YAML only.
+- Update tests to use YAML fixtures and remove JSON config test coverage.
 
 *** Extra filters
 - ~--id-property NAME~ - names the property serving as the task ID
@@ -5059,6 +5163,32 @@ Redo all the filters & orderings in terms of the query language
 - Loop
 
 *** Gantt chart
+*** CANCELLED Org Attach support
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-04-26 Sun 16:55] \\
+  Too cumbersome, instead it'll use links to files.
+:END:
+Use IDs for headings. Support the "usual" =org-attach= file directories for attachments.
+** Usability fixes
+*** Agenda frequency plot
+Show a task frequency plot in the agenda header and highlight the bucket that corresponds to the selected range.
+*** Agenda & board task archival
+Use =$= key to move the task to the archive file.
+*** Check if file was modified outside of org-cli before saving it.
+*** Do not add =#+TODO:= line to file contents, but rather modify done_states.
+
+*** Better heading & body parsing
+Use stripped =RichText= for body/heading tags.
+*** Parallelize document processing
+*** Query language improvements
+- Uniform function calling: =foo | not= is the same as =not(foo)=
+- Field assignment should return the mutated object: =foo.title = "bar"= evaluates to =foo= after the change.
+- =#id= selector syntax for id matching
+** Use Textual for better TUI organization
+- Selection for prompts
+- Sparkline for freequency plots
+** Capture command
+- Allows creating tasks interactively based on templates.
 ** JavaScript visualization
 
 *** D3 visualization - tag cloud
@@ -5074,6 +5204,8 @@ Allow selecting specific tags or top tags.
 Add a new CLI parameter =--watch= that will watch the =FILES= for changes and rerun the selected command to update the display.
 It should apply to each of the available commands. This parameter should be made optional. When not provided the command should exit after printing the output.
 
+*** Agenda notifications
+- =--watch= and =--notify= to send reminders about tasks that are due.
 ** Dashboard command
 - Reads a dashboard config and shows a visualization on a server.
 - Live updating.
@@ -5084,36 +5216,11 @@ It should apply to each of the available commands. This parameter should be made
 
 ** Lint/Format command
 Like linting and formatting.
-** Documentation
-- Document the CLI
-- Document the config format
-** REWORKED Tighten Ruff lint policy in =pyproject.toml= (prefer =select = ["ALL"]=)
-:LOGBOOK:
-- State "REWORKED"   from "TODO"       [2026-04-18 Sat 16:00] \\
-  Needed extra manual work.
-:END:
-  - Evaluate switching =[tool.ruff.lint].select= to =["ALL"]=.
-  - Keep an explicit =ignore= list only for justified exceptions, with a short rationale per rule.
-  - Ensure commonly useful rule families are enabled (at minimum: =S=, =PT=, =TRY=, =PERF=, =D=, =TID=, =A=, =C90=, =G=).
-** DONE Speed up slow CLI tests by reducing subprocess usage
-:LOGBOOK:
-- State "DONE"       from "TODO"       [2026-04-19 Sun 02:04]
-:END:
-- *Context:* current profiling shows most runtime is concentrated in =tests/test_chart_date_spanning.py= and =tests/cli/test_cli_smoke.py=. These tests repeatedly call =subprocess.run(...)=, so each case pays full Python startup + import cost.
-- *Scope:* optimize test runtime without reducing confidence in CLI behavior or changing command semantics.
-- *Approach:*
-  - [ ] Profile and record baseline with =poetry run pytest --durations=40 --durations-min=0.02=
-  - [ ] Keep only 1-2 true end-to-end subprocess smoke tests in =tests/cli/test_cli_smoke.py=
-  - [ ] Convert remaining subprocess-heavy cases to in-process tests (=CliRunner= and/or direct command entrypoints)
-  - [ ] Consolidate repetitive date-span scenarios in =tests/test_chart_date_spanning.py= using parametrized tests
-  - [ ] Share reusable assertion helpers (e.g., ANSI-clean output checks) to avoid repeated per-test setup
-  - [ ] Re-run profiling and compare against baseline
-- *Acceptance criteria:*
-  - [ ] Combined runtime of =tests/test_chart_date_spanning.py= + =tests/cli/test_cli_smoke.py= is significantly lower
-  - [ ] Full suite still passes via =poetry run task check=
-  - [ ] Coverage and key CLI smoke guarantees remain intact (entrypoint, multi-file input, and summary output)
-** Better heading & body parsing
-Use stripped =RichText= for body/heading tags.
+*** Check for file errors and log them
+*** LSP server
+- Error checks
+- Value auto-complete
+
 ** MCP server / RAG command
 #+begin_example
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
@@ -5127,10 +5234,9 @@ query_engine = index.as_retriever()
 query_engine.retrieve("How to fetch a list of tasks completed last year?")
 #+end_example
 
+** Documentation
+- Document the CLI
+- Document the config format
 ** Website for org-cli
 - Publish the package
 - Add a static site for org-cli.idorobots.org on github pages.
-** Parallelize document processing
-** LSP server
-- Error checks
-- Value auto-complete
