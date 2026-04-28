@@ -28,7 +28,7 @@ def make_board_args(files: list[str], **overrides: object) -> board_command.Boar
     """Build BoardArgs with defaults and overrides."""
     args = board_command.BoardArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         exclude=None,
         mapping=None,
         mapping_inline=None,

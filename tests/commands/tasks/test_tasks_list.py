@@ -31,7 +31,7 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
     """Build ListArgs with defaults and overrides."""
     args = tasks_list.ListArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         exclude=None,
         mapping=None,
         mapping_inline=None,

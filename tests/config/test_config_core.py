@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
 
 def test_load_config_missing_file_returns_empty(tmp_path: Path) -> None:
     """Missing config should return empty config without error."""
-    missing = tmp_path / "missing.json"
+    missing = tmp_path / "missing.yaml"
     data, malformed = config.load_config(str(missing))
 
     assert data == {}
@@ -37,9 +36,9 @@ def test_load_config_directory_path_is_malformed(tmp_path: Path) -> None:
 
 
 def test_load_config_non_dict_is_malformed(tmp_path: Path) -> None:
-    """Non-object JSON should be marked malformed."""
-    config_path = tmp_path / "config.json"
-    config_path.write_text("[1, 2, 3]", encoding="utf-8")
+    """Non-object YAML should be marked malformed."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("- 1\n- 2\n- 3\n", encoding="utf-8")
 
     data, malformed = config.load_config(str(config_path))
 
@@ -121,34 +120,36 @@ def test_build_config_defaults_rejects_non_boolean_ordering_flags() -> None:
 
 def test_parse_config_argument_prefers_cli_value() -> None:
     """--config argument should override default config name."""
-    argv = ["org", "stats", "all", "--config", "custom.json"]
+    argv = ["org", "stats", "all", "--config", "custom.yaml"]
 
-    assert config.parse_config_argument(argv) == "custom.json"
+    assert config.parse_config_argument(argv) == "custom.yaml"
 
 
 def test_parse_config_argument_supports_equals_form() -> None:
     """--config=FILE format should be parsed."""
-    argv = ["org", "stats", "all", "--config=inline.json"]
+    argv = ["org", "stats", "all", "--config=inline.yaml"]
 
-    assert config.parse_config_argument(argv) == "inline.json"
+    assert config.parse_config_argument(argv) == "inline.yaml"
 
 
 def test_parse_config_argument_default() -> None:
     """Default config name should be used when not specified."""
-    assert config.parse_config_argument(["org", "stats", "all"]) == ".org-cli.json"
+    assert config.parse_config_argument(["org", "stats", "all"]) == ".org-cli.yaml"
 
 
 def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """load_cli_config should load defaults from config file."""
-    config_path = tmp_path / ".org-cli.json"
+    config_path = tmp_path / ".org-cli.yaml"
     config_path.write_text(
-        json.dumps(
-            {
-                "defaults": {"--limit": 7},
-                "filter": {"custom-filter": ".[]"},
-                "order-by": {"custom-order": "."},
-                "with": {"custom-with": "."},
-            },
+        (
+            "defaults:\n"
+            "  --limit: 7\n"
+            "filter:\n"
+            "  custom-filter: .[]\n"
+            "order-by:\n"
+            "  custom-order: .\n"
+            "with:\n"
+            "  custom-with: .\n"
         ),
         encoding="utf-8",
     )
@@ -169,8 +170,8 @@ def test_load_cli_config_sections_are_optional(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Only defaults section should be enough for valid config."""
-    config_path = tmp_path / ".org-cli.json"
-    config_path.write_text(json.dumps({"defaults": {"--limit": 7}}), encoding="utf-8")
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text("defaults:\n  --limit: 7\n", encoding="utf-8")
 
     monkeypatch.chdir(config_path.parent)
     loaded = config.load_cli_config(["org"])
@@ -186,14 +187,9 @@ def test_load_cli_config_rejects_invalid_custom_section_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Custom sections must be object[string -> string]."""
-    config_path = tmp_path / ".org-cli.json"
+    config_path = tmp_path / ".org-cli.yaml"
     config_path.write_text(
-        json.dumps(
-            {
-                "defaults": {"--limit": 7},
-                "filter": {"custom-filter": 1},
-            },
-        ),
+        "defaults:\n  --limit: 7\nfilter:\n  custom-filter: 1\n",
         encoding="utf-8",
     )
 
@@ -202,10 +198,10 @@ def test_load_cli_config_rejects_invalid_custom_section_values(
         config.load_cli_config(["org"])
 
 
-def test_load_cli_config_malformed_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Malformed config should raise a BadParameter error."""
-    config_path = tmp_path / ".org-cli.json"
-    config_path.write_text("{bad json", encoding="utf-8")
+def test_load_cli_config_malformed_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Malformed YAML config should raise a BadParameter error."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text("defaults: [1, 2\n", encoding="utf-8")
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):

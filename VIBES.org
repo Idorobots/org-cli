@@ -5100,7 +5100,10 @@ Move board from the flow command tree to the root command tree, and expose it as
 - Keep config/default handling working for =board=.
 - Update docs/examples/tests to use =org board=.
 
-*** TODO Convert configuration format from JSON to YAML                                     :Config:
+*** DONE Convert configuration format from JSON to YAML                                     :Config:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-28 Tue 11:20]
+:END:
 Switch configuration handling from JSON to YAML, and make YAML the only supported config format.
 
 - Replace JSON config parsing with YAML parsing for default config loading and =--config= files.

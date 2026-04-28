@@ -28,7 +28,7 @@ FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 def _make_args(files: list[str], **overrides: object) -> agenda_command.AgendaArgs:
     args = agenda_command.AgendaArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         exclude=None,
         mapping=None,
         mapping_inline=None,

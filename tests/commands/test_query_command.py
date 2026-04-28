@@ -24,7 +24,7 @@ def _make_args(files: list[str], query: str, **overrides: object) -> QueryArgs:
     args = QueryArgs(
         query=query,
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         exclude=None,
         mapping=None,
         mapping_inline=None,

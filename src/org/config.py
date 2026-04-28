@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Protocol, TypedDict, TypeGuard, cast
 
 import typer
+import yaml
 
 
 COMMAND_OPTION_NAMES = {
@@ -256,7 +257,7 @@ class ConfigDefaultsTarget(Protocol):
 
 
 def load_config(filepath: str) -> tuple[dict[str, object], bool]:
-    """Load config from JSON file.
+    """Load config from YAML file.
 
     Args:
         filepath: Path to config file
@@ -267,14 +268,14 @@ def load_config(filepath: str) -> tuple[dict[str, object], bool]:
     path = Path(filepath)
     try:
         with path.open(encoding="utf-8") as f:
-            config = json.load(f)
+            config = yaml.safe_load(f)
     except FileNotFoundError:
         return ({}, False)
     except PermissionError:
         return ({}, True)
     except OSError:
         return ({}, True)
-    except json.JSONDecodeError:
+    except yaml.YAMLError:
         return ({}, True)
 
     if not isinstance(config, dict):
@@ -700,7 +701,7 @@ def build_config_defaults(
 
 def parse_config_argument(argv: list[str]) -> str:
     """Parse only the --config argument from argv."""
-    default = ".org-cli.json"
+    default = ".org-cli.yaml"
     for idx, arg in enumerate(argv[1:], start=1):
         if arg == "--config" and idx + 1 < len(argv):
             return argv[idx + 1]
