@@ -45,6 +45,7 @@ def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
             custom_filters={},
             custom_order_by={},
             custom_with={},
+            capture_templates={},
         ),
     )
     monkeypatch.setattr(
@@ -70,11 +71,13 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
     original_custom_filters = dict(config.CONFIG_CUSTOM_FILTERS)
     original_custom_order_by = dict(config.CONFIG_CUSTOM_ORDER_BY)
     original_custom_with = dict(config.CONFIG_CUSTOM_WITH)
+    original_capture_templates = dict(config.CONFIG_CAPTURE_TEMPLATES)
     config.CONFIG_APPEND_DEFAULTS.clear()
     config.CONFIG_INLINE_DEFAULTS.clear()
     config.CONFIG_CUSTOM_FILTERS.clear()
     config.CONFIG_CUSTOM_ORDER_BY.clear()
     config.CONFIG_CUSTOM_WITH.clear()
+    config.CONFIG_CAPTURE_TEMPLATES.clear()
 
     def fake_get_command(_app: object) -> SimpleNamespace:
         return SimpleNamespace(main=lambda **_: None)
@@ -89,6 +92,7 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
             custom_filters={"my-filter": ".[]"},
             custom_order_by={"my-order": "."},
             custom_with={"my-with": "."},
+            capture_templates={"quick": {"file": "tasks.org", "content": "* TODO {{title}}"}},
         ),
     )
     monkeypatch.setattr(config, "build_default_map", lambda _defaults: {})
@@ -103,6 +107,9 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
         assert config.CONFIG_CUSTOM_FILTERS == {"my-filter": ".[]"}
         assert config.CONFIG_CUSTOM_ORDER_BY == {"my-order": "."}
         assert config.CONFIG_CUSTOM_WITH == {"my-with": "."}
+        assert config.CONFIG_CAPTURE_TEMPLATES == {
+            "quick": {"file": "tasks.org", "content": "* TODO {{title}}"},
+        }
     finally:
         config.CONFIG_APPEND_DEFAULTS.clear()
         config.CONFIG_APPEND_DEFAULTS.update(original_append)
@@ -114,3 +121,5 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
         config.CONFIG_CUSTOM_ORDER_BY.update(original_custom_order_by)
         config.CONFIG_CUSTOM_WITH.clear()
         config.CONFIG_CUSTOM_WITH.update(original_custom_with)
+        config.CONFIG_CAPTURE_TEMPLATES.clear()
+        config.CONFIG_CAPTURE_TEMPLATES.update(original_capture_templates)

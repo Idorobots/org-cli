@@ -5433,20 +5433,376 @@ In file tests/commands/tasks/test_tasks_list.py around line 696, near the ~def t
 #+end_example
 
 It's not actually testing what it says its testing. The property value is a string. Use a number instead.
-*** Capture command
-I'd like the =org capture= command to be fairly simple - it should have a configurable set of named templates and the command invocation should be as follows:
+*** REWORKED Capture command                                                                   :TUI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-01 Fri 23:38] \\
+  Needed quite a bit of massaging to get right.
+:END:
+Objective:
+- Add a top-level =org capture= workflow that creates a task from a named config template.
+
+CLI behavior:
+- =org capture= prompts for a template selection.
+- =org capture TEMPLATE_NAME= uses that template directly.
+- Unknown template names fail with a clear error listing valid names.
+- No configured templates fails with a clear error.
+
+Template config:
+- Add a new top-level =capture= section in =.org-cli.yaml=.
+- Store templates under =capture.templates= as named objects.
+- Each template requires:
+  - =file= (file path)
+  - =content= (Org text template)
+- Each template optionally supports:
+  - =parent= (query language selector)
+- =content= supports handlebars placeholders like ={{title}}=, ={{uuid}}=.
+
+Placeholder behavior:
+- Static placeholders (no prompt): ={{uuid}}=, ={{today}}=, ={{now}}=.
+- Any other placeholder prompts once, then reuses the entered value for all repeats.
+- Rendered output must parse as a valid single heading before write.
+
+Implementation areas:
+- =src/org/commands/capture.py= (new command)
+- =src/org/cli.py= (register command and load capture config into runtime globals)
+- =src/org/config.py= (parse + validate =capture.templates=)
+- =docs/index.md= and =docs/capture_command.md= (new command docs)
+- =tests/config/test_config_core.py=
+- =tests/cli/test_cli_main.py=
+- =tests/cli/test_cli_runner.py=
+- =tests/commands/test_capture_command.py= (new)
+
+Implementation plan:
+1. Config parsing
+  - Allow =capture= in top-level config keys.
+  - Validate =capture.templates= as =dict[str, dict]=.
+  - Validate per-template fields and types (=file=, =content=, optional =parent=).
+  - Return parsed templates from =load_cli_config=.
+
+2. Runtime wiring
+  - Extend =LoadedCliConfig= with =capture_templates=.
+  - Add =CONFIG_CAPTURE_TEMPLATES= runtime store in =config.py=.
+  - Populate capture templates in =cli.main()=.
+
+3. Command registration
+  - Add new =capture= command module with Typer =register(app)=.
+  - Register =capture= in root CLI command setup.
+
+4. Template selection
+  - If template arg is missing, show numbered selection prompt.
+  - If template arg is provided, resolve by exact name.
+  - Emit concise validation errors for missing/unknown template.
+
+5. Template rendering
+  - Extract placeholders from template body.
+  - Fill static placeholders first.
+  - Prompt interactive placeholders once and cache values.
+  - Render final Org text.
+
+6. Validation and insert
+  - Parse rendered text with =Heading.from_source=.
+  - Reject invalid render before file mutation.
+  - Load target doc, resolve optional parent, append heading, save file.
+
+7. Documentation
+  - Add =docs/capture_command.md= with usage, config format, placeholder rules, examples.
+  - Update =docs/index.md= command list and config section.
+
+8. Tests
+  - Config tests: valid/invalid =capture= structure and field types.
+  - Command tests: selection flow, placeholder prompting, render validation, insertion.
+  - CLI tests: =org capture= interactive path and =org capture NAME= direct path.
+  - Error tests: empty template set, unknown template, missing target file, invalid rendered heading.
+
+Acceptance criteria:
+- =org capture= prompts and creates task from selected template.
+- =org capture TEMPLATE_NAME= bypasses template picker.
+- Templates load from =.org-cli.yaml= under =capture.templates=.
+- Static placeholders auto-fill; interactive placeholders prompt once.
+- Invalid rendered templates fail with no file write.
+- Valid captures insert into configured =file= and optional =parent=.
+- Malformed =capture= config yields =Malformed config=.
+- Docs and tests cover happy path and failure modes.
+
+**** DONE src/org/commands/capture.py                                                      :Cleanup:
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 15:47]
+:END:
+
+In file src/org/commands/capture.py around line 175, near the ~new file   src/org/commands/capture.py~
 
 #+begin_example
-# Prompts the user for the specific template to use
-org capture
-
-# Uses the selected template and proceeds to interactively populate it
-org capture template-name
++
++def _attach_heading(document: Document, parent_heading: Heading | None, heading: Heading) -> None:
++    """Attach heading at root or under one resolved parent."""
++    if parent_heading is None:
++        document.children.append(heading)
++        return
++    if heading.level <= parent_heading.level:
++        raise typer.BadParameter("Rendered heading level must be greater than parent level")
++    parent_heading.children.append(heading)
 #+end_example
 
-Templates should be defined in the configuration file as text with handlebars embeds.
+That's not the case. When the child is added to a parent node its level will automatically be adjusted if needed.
+**** DONE =--file= and =--parent= to override the capture target config in CLI.                 :UX:
+:PROPERTIES:
+:capture_time: [2026-05-01 Fri 15:42]
+:context: [[file:~/projects/software/org-cli/src/org/commands/capture.py::help="Capture template name. If omitted, interactive selection is shown",]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:09]
+:END:
 
-Upon invocation, the command should populate the template with any statically generated values and prompt the user for any interactive values.
+Add =--file= and =--parent= CLI switches to the =org capture= command that allow overriding the template-defined =file= and =parent= settings. The CLI switch values, if present, should take precedence over the configuration values.
+**** DONE ~--set K=V~ CLI switch for setting template parameter values.
+:PROPERTIES:
+:capture_time: [2026-05-01 Fri 15:48]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*=--file= and =--parent= to override the capture target config in CLI.][=--file= and =--parent= to override the capture target config in CLI.]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:20]
+:END:
+
+Add a new CLI switch =--set= to the =org capture= command that allows setting template parameter values via the CLI. When set, the command should not prompt for the values and instead use the provided values.
+**** DONE src/org/commands/capture.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:23]
+:END:
+
+In file src/org/commands/capture.py around line 158, near the ~def _resolve_placeholder_values(~
+
+#+begin_example
++    unknown_names = sorted(set(provided_values) - set(placeholders))
++    if unknown_names:
++        unknown_list = ", ".join(unknown_names)
++        raise typer.BadParameter(f"--set contains unknown template parameter(s): {unknown_list}")
+#+end_example
+
+This shouldn't cause an error, but it makes sense to log that to the logger.
+**** DONE =org capture= command should support empty template arg values                       :Bug:
+:PROPERTIES:
+:CAPTURE_TIME: 2026-05-01T16:02:24+02:00
+:ID: bc7fbff9-f481-407e-9235-d747fc5611f7
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:35]
+:END:
+When prompting for a value, any response from the user should be accepted as a valid value, even empty strings.
+**** DONE tests/cli/test_cli_runner.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:38]
+:END:
+
+In file tests/cli/test_cli_runner.py around line 808, near the ~def test_cli_runner_capture_set_values_ignores_unknown_parameter(tmp_path: Path)~
+
+#+begin_example
++def test_cli_runner_capture_accepts_empty_placeholder_value(tmp_path: Path) -> None:
++    """CliRunner capture should accept empty interactive placeholder input."""
++    runner = CliRunner()
+
+#+end_example
+
+Are these tests testing =CliRunner=? Please update all these docstrings to properly indicate that the CLI should fulfil all of those requirements.
+**** DONE Static timestamp values available in templates should be in org-mode format          :Bug:
+:PROPERTIES:
+:CAPTURE_TIME: 2026-05-01T16:09:01+02:00
+:ID: ecd4564f-60f1-44c9-870c-8c295f984263
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:41]
+:END:
+The built-in values for =now= and =today= should be expressed as valid Org-mode timestamps.
+**** DONE Document category & other fields available for templating                             :UX:
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-01 Fri 16:46>
+:ID: ff4b2087-96b4-4052-bc35-6541653e4cd7
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 17:05]
+:END:
+Make the various fields of the =Document= class (such as =category= etc) available for templating.
+
+**** DONE Template value for task IDs                                                           :UX:
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-01 Fri 16:48>
+:ID: 99d6ce33-06a9-4ab8-8d23-c6bb72dcc663
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 17:23]
+:END:
+Add a template value called =id= that returns monotonically increasing values for task IDs, for instance by using =len(document.all_headings) + 1= as the current value.
+
+**** DONE Show the template when prompting for the values.                                      :UX:
+:PROPERTIES:
+:CAPTURE_TIME: 2026-05-01T16:03:52+02:00
+:ID: 72f5e4e8-eec3-4ebb-9535-7fc30b0dafb1
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 19:53]
+:END:
+Ideally, the command should show the template with syntax highlighting and with additional highlight on the currently populated field. When the field is populated, the template, ideally, would be updated with the selected field while prompting for the next field.
+
+The template with highlighted current template field should be displayed at all times with the prompts for the template field values following.
+
+Can you show this as a full-screen editor? Similar to how agenda displays full screen. I'd like the template to be the main body with the highlights and the footer to contain the current field prompt.
+
+**** DONE Footer UX                                                                             :UX:
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-01 Fri 19:50>
+:ID: Vibes-366
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 20:23]
+:END:
+
+Please reorder the footer contents - the key bindings should be on the first line, right aligend. The value prompt should be on the second line. The placeholder marker should be on the first line, left-aligned, same style as the key bindings. It should say "Value 2/5". The footer should be separated from the content with a horizontal rule (same as in the Agenda and tasks list).
+
+When the prompt value is exceeding the width it should overflow and wrap-around. The footer can then be expanded to more than 2 lines of height.
+
+The prompt should accept copy & pasted values (both CTRL + P and mouse middle-click).
+
+**** DONE src/org/commands/capture.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 21:34]
+:END:
+
+In file src/org/commands/capture.py around line 283, near the ~def _template_placeholders(template_content: str) -> list[str]:~
+
+#+begin_example
++def _resolve_terminal_width() -> int:
++    """Resolve interactive terminal width with safe fallback."""
++    try:
++        return max(1, os.get_terminal_size(sys.stdout.fileno()).columns)
++    except OSError:
++        return 80
+
+#+end_example
+
+This can be extracted from the Typer's =Console= object.
+**** CANCELLED src/org/commands/capture.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-05-01 Fri 21:35] \\
+  It's used for copy&paste.
+:END:
+
+In file src/org/commands/capture.py around line 338, near the ~def _template_placeholders(template_content: str) -> list[str]:~
+
+#+begin_example
++
++def _utf8_char_width(first_byte: int) -> int:
++    """Return expected UTF-8 byte width for one first byte."""
++    if first_byte & 0b1000_0000 == 0:
++        return 1
++    if first_byte & 0b1110_0000 == 0b1100_0000:
++        return 2
++    if first_byte & 0b1111_0000 == 0b1110_0000:
++        return 3
++    if first_byte & 0b1111_1000 == 0b1111_0000:
++        return 4
++    return 1
+
+#+end_example
+
+This seems to be already solved in the other commands, can you please check how multi-byte characters are handled elsewhere and apply a similar approach here?
+**** DONE src/org/commands/capture.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 20:56]
+:END:
+
+In file src/org/commands/capture.py around line 400, near the ~def _template_placeholders(template_content: str) -> list[str]:~
+
+#+begin_example
++def _read_escape_sequence(fd: int) -> bytes:
++    """Read one terminal escape sequence from stdin."""
++    payload = bytearray(b"\x1b")
++    while True:
++        ready, _, _ = select.select([fd], [], [], 0.01)
++        if not ready:
++            break
++        payload.extend(os.read(fd, 1))
++    return bytes(payload)
++
++
++def _read_input_event(fd: int) -> tuple[str, str]:
++    """Read one input event token and optional text payload."""
++    first = os.read(fd, 1)
++    if first in {b"\r", b"\n"}:
++        return ("ENTER", "")
++    if first == b"\x03":
++        raise KeyboardInterrupt
++    if first in {b"\x7f", b"\x08"}:
++        return ("BACKSPACE", "")
++    if first == b"\x1b":
++        escape_sequence = _read_escape_sequence(fd)
++        if escape_sequence == b"\x1b[3~":
++            return ("DELETE", "")
++
++        token = decode_escape_sequence(escape_sequence)
++        token_map = {
++            "LEFT": "LEFT",
++            "RIGHT": "RIGHT",
++            "HOME": "HOME",
++            "END": "END",
++            "ESC": "ESC",
++        }
++        return (token_map.get(token, "IGNORE"), "")
++
++    utf8_bytes = bytearray(first)
++    expected = _utf8_char_width(first[0])
++    while len(utf8_bytes) < expected:
++        ready, _, _ = select.select([fd], [], [], 0.01)
++        if not ready:
++            break
++        utf8_bytes.extend(os.read(fd, 1))
++
++    try:
++        text = bytes(utf8_bytes).decode("utf-8")
++    except UnicodeDecodeError:
++        return ("IGNORE", "")
++    return ("TEXT", text)
+
+#+end_example
+
+Please reuse the input functions from the common module. If needed, expand the common utility set with anything that's required but missing.
+**** DONE Parent metadata in placeholders
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-01 Fri 19:57>
+:ID: Vibes-368
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 21:43]
+:END:
+When =--parent= CLI switch is set or =parent= is configured on the template, please include the parent fields in the static placeholder map, including the category, title, todo state and id. All of these values should be prefixed with =parent_= in the placeholder map.
+**** DONE Move the =org capture= command into the =org tasks= tree as =org tasks capture=. :Cleanup:
+:PROPERTIES:
+:capture_time: [2026-05-01 Fri 15:45]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*=--file= and =--parent= to override the capture target config in CLI.][=--file= and =--parent= to override the capture target config in CLI.]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 23:36]
+:END:
+
+Make sure to update the docs as well as the class names and filenames to better match the new command tree.
+
+*** Move the query command into the tasks tree
 *** Tasks edit command
 - Allows editing a specific task with $EDITOR
 *** Tasks refile command

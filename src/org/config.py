@@ -69,6 +69,7 @@ CONFIG_DEFAULTS: dict[str, object] = {}
 CONFIG_CUSTOM_FILTERS: dict[str, str] = {}
 CONFIG_CUSTOM_ORDER_BY: dict[str, str] = {}
 CONFIG_CUSTOM_WITH: dict[str, str] = {}
+CONFIG_CAPTURE_TEMPLATES: dict[str, dict[str, str]] = {}
 
 
 DEST_TO_OPTION_NAME: dict[str, str] = {
@@ -223,6 +224,7 @@ class LoadedCliConfig:
     custom_filters: dict[str, str]
     custom_order_by: dict[str, str]
     custom_with: dict[str, str]
+    capture_templates: dict[str, dict[str, str]]
 
 
 class StatsDefaultMap(TypedDict):
@@ -544,7 +546,16 @@ def apply_config_entry(
 
 def parse_config_sections(
     raw_config: dict[str, object],
-) -> tuple[dict[str, object], dict[str, str], dict[str, str], dict[str, str]] | None:
+) -> (
+    tuple[
+        dict[str, object],
+        dict[str, str],
+        dict[str, str],
+        dict[str, str],
+        dict[str, dict[str, str]],
+    ]
+    | None
+):
     """Parse top-level config sections.
 
     Accepted shape:
@@ -552,35 +563,102 @@ def parse_config_sections(
         "defaults": { ... },
         "filter": {"name": "query"},
         "order-by": {"name": "query"},
-        "with": {"name": "query"}
+        "with": {"name": "query"},
+        "capture": {
+          "templates": {
+            "name": {
+              "file": "path",
+              "content": "* TODO {{title}}",
+              "parent": ".id == 'project-1'"
+            }
+          }
+        }
       }
     """
-    allowed_keys = {"defaults", "filter", "order-by", "with"}
-    if any(key not in allowed_keys for key in raw_config):
-        return None
-
+    allowed_keys = {"defaults", "filter", "order-by", "with", "capture"}
     defaults_section = raw_config.get("defaults", {})
-    if not isinstance(defaults_section, dict):
-        return None
-
     filter_section = raw_config.get("filter", {})
-    if not is_string_dict(filter_section):
-        return None
-
     order_by_section = raw_config.get("order-by", {})
-    if not is_string_dict(order_by_section):
+    with_section = raw_config.get("with", {})
+
+    sections_are_valid = (
+        not any(key not in allowed_keys for key in raw_config)
+        and isinstance(defaults_section, dict)
+        and is_string_dict(filter_section)
+        and is_string_dict(order_by_section)
+        and is_string_dict(with_section)
+    )
+    if not sections_are_valid:
         return None
 
-    with_section = raw_config.get("with", {})
-    if not is_string_dict(with_section):
+    capture_templates = parse_capture_templates_section(raw_config.get("capture", {}))
+    if capture_templates is None:
         return None
 
     return (
         cast("dict[str, object]", defaults_section),
-        dict(filter_section),
-        dict(order_by_section),
-        dict(with_section),
+        cast("dict[str, str]", filter_section),
+        cast("dict[str, str]", order_by_section),
+        cast("dict[str, str]", with_section),
+        capture_templates,
     )
+
+
+def parse_capture_templates_section(value: object) -> dict[str, dict[str, str]] | None:
+    """Parse capture.templates section from top-level config value."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_capture_keys = {"templates"}
+    if any(key not in allowed_capture_keys for key in value):
+        return None
+
+    templates_value = value.get("templates", {})
+    if not isinstance(templates_value, dict):
+        return None
+
+    parsed_templates: dict[str, dict[str, str]] = {}
+    for template_name, template_value in templates_value.items():
+        if not isinstance(template_name, str) or not template_name.strip():
+            return None
+        parsed_template = parse_capture_template(template_value)
+        if parsed_template is None:
+            return None
+        parsed_templates[template_name] = parsed_template
+
+    return parsed_templates
+
+
+def parse_capture_template(value: object) -> dict[str, str] | None:
+    """Parse one capture template object."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_template_keys = {"file", "content", "parent"}
+    file_value = value.get("file")
+    content_value = value.get("content")
+    parent_value = value.get("parent")
+
+    template_is_valid = (
+        not any(key not in allowed_template_keys for key in value)
+        and "file" in value
+        and "content" in value
+        and isinstance(file_value, str)
+        and bool(file_value.strip())
+        and isinstance(content_value, str)
+        and bool(content_value.strip())
+        and (parent_value is None or isinstance(parent_value, str))
+    )
+    if not template_is_valid:
+        return None
+
+    parsed: dict[str, str] = {
+        "file": cast("str", file_value),
+        "content": cast("str", content_value),
+    }
+    if isinstance(parent_value, str) and parent_value.strip():
+        parsed["parent"] = parent_value
+    return parsed
 
 
 def build_config_defaults(
@@ -725,7 +803,9 @@ def load_cli_config(argv: list[str]) -> LoadedCliConfig:
     if config_sections is None:
         raise typer.BadParameter("Malformed config")
 
-    defaults_config, custom_filters, custom_order_by, custom_with = config_sections
+    defaults_config, custom_filters, custom_order_by, custom_with, capture_templates = (
+        config_sections
+    )
 
     config_defaults = build_config_defaults(defaults_config)
     if config_defaults is None:
@@ -750,6 +830,7 @@ def load_cli_config(argv: list[str]) -> LoadedCliConfig:
         custom_filters=custom_filters,
         custom_order_by=custom_order_by,
         custom_with=custom_with,
+        capture_templates=capture_templates,
     )
 
 

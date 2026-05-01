@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from org.commands.interactive_common import (
+    BRACKETED_PASTE_DISABLE,
+    BRACKETED_PASTE_ENABLE,
     KeyBinding,
     dispatch_key_binding,
+    extract_bracketed_paste_text,
     key_binding_for_action,
     key_binding_requires_live_pause,
+    read_input_event,
+    set_bracketed_paste,
 )
+
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_dispatch_key_binding_reports_unhandled_key() -> None:
@@ -52,3 +63,49 @@ def test_key_binding_requires_live_pause_reads_binding_metadata() -> None:
     assert key_binding_requires_live_pause("ENTER", bindings) is True
     assert key_binding_requires_live_pause("x", bindings) is False
     assert key_binding_requires_live_pause("missing", bindings) is False
+
+
+def test_extract_bracketed_paste_text_decodes_payload() -> None:
+    """Bracketed paste payload should decode inserted text."""
+    payload = b"\x1b[200~Line one\nLine two\x1b[201~"
+    assert extract_bracketed_paste_text(payload) == "Line one\nLine two"
+
+
+def test_read_input_event_maps_bracketed_paste_to_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bracketed paste input should be surfaced as a TEXT event."""
+    monkeypatch.setattr("org.commands.interactive_common.os.read", lambda _fd, _n: b"\x1b")
+    monkeypatch.setattr(
+        "org.commands.interactive_common.read_escape_sequence",
+        lambda _fd: b"\x1b[200~Paste value",
+    )
+    monkeypatch.setattr(
+        "org.commands.interactive_common.read_bracketed_paste_payload",
+        lambda _fd, initial_payload: initial_payload + b"\x1b[201~",
+    )
+    assert read_input_event(0, ctrl_p_as_paste=True) == ("TEXT", "Paste value")
+
+
+def test_set_bracketed_paste_writes_terminal_sequences(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bracketed paste toggles should emit proper terminal sequences."""
+
+    class _FakeStdout:
+        def __init__(self) -> None:
+            self.writes: list[str] = []
+
+        def isatty(self) -> bool:
+            return True
+
+        def write(self, value: str) -> int:
+            self.writes.append(value)
+            return len(value)
+
+        def flush(self) -> None:
+            return None
+
+    fake_stdout = _FakeStdout()
+    monkeypatch.setattr("org.commands.interactive_common.sys.stdout", fake_stdout)
+
+    set_bracketed_paste(True)
+    set_bracketed_paste(False)
+
+    assert fake_stdout.writes == [BRACKETED_PASTE_ENABLE, BRACKETED_PASTE_DISABLE]

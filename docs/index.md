@@ -15,6 +15,7 @@
 - `org tasks add` - Create new task headings in Org files. See [tasks_add_command.md](tasks_add_command.md).
 - `org tasks remove` - Delete one task heading and its subtree from Org files. See [tasks_remove_command.md](tasks_remove_command.md).
 - `org tasks update` - Update one matched task heading in Org files. See [tasks_update_command.md](tasks_update_command.md).
+- `org tasks capture` - Create tasks from named config templates. See [tasks_capture_command.md](tasks_capture_command.md).
 
 For query syntax details, use [query_language.md](query_language.md).
 
@@ -27,12 +28,13 @@ For query syntax details, use [query_language.md](query_language.md).
 
 ### Config file layout
 
-Config uses four top-level sections:
+Config uses five top-level sections:
 
 - `defaults`: built-in option defaults (for example `--done-states`, `--limit`, `--filter-priority`, `--order-by-priority`).
 - `filter`: custom `--filter-<name>` query snippets.
 - `order-by`: custom `--order-by-<name>` query snippets.
 - `with`: custom `--with-<name>` query snippets.
+- `capture`: named capture templates under `capture.templates`.
 
 Custom switch argument handling:
 

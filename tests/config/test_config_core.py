@@ -163,6 +163,7 @@ def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.Monk
     assert loaded.custom_filters == {"custom-filter": ".[]"}
     assert loaded.custom_order_by == {"custom-order": "."}
     assert loaded.custom_with == {"custom-with": "."}
+    assert loaded.capture_templates == {}
 
 
 def test_load_cli_config_sections_are_optional(
@@ -180,6 +181,80 @@ def test_load_cli_config_sections_are_optional(
     assert loaded.custom_filters == {}
     assert loaded.custom_order_by == {}
     assert loaded.custom_with == {}
+    assert loaded.capture_templates == {}
+
+
+def test_load_cli_config_parses_capture_templates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Capture templates should load from capture.templates section."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
+            "capture:\n"
+            "  templates:\n"
+            "    quick:\n"
+            "      file: tasks.org\n"
+            '      content: "* TODO {{title}}"\n'
+            "    under-project:\n"
+            "      file: tasks.org\n"
+            '      content: "** TODO {{title}}"\n'
+            '      parent: ".id == \\"project-1\\""\n'
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    loaded = config.load_cli_config(["org"])
+
+    assert loaded.capture_templates == {
+        "quick": {"file": "tasks.org", "content": "* TODO {{title}}"},
+        "under-project": {
+            "file": "tasks.org",
+            "content": "** TODO {{title}}",
+            "parent": '.id == "project-1"',
+        },
+    }
+
+
+def test_load_cli_config_rejects_malformed_capture_templates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed capture.templates content should fail config loading."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        ("capture:\n  templates:\n    broken:\n      file: tasks.org\n"),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_unknown_capture_template_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Capture template objects should reject unknown keys."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
+            "capture:\n"
+            "  templates:\n"
+            "    quick:\n"
+            "      file: tasks.org\n"
+            '      content: "* TODO {{title}}"\n'
+            "      target: root\n"
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_invalid_custom_section_values(

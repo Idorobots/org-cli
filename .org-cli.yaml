@@ -27,3 +27,15 @@ with:
                                     else "regular")
           else .heading_category = "regular")
      ); .
+capture:
+  templates:
+    task:
+      file: VIBES.org
+      parent: .title == "Features built with AI"
+      content: |
+        * {{title}}
+        :PROPERTIES:
+        :CAPTURE_TIME: {{now}}
+        :ID: {{document_category}}-{{id}}
+        :END:
+        {{body}}

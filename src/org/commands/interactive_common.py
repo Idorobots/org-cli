@@ -34,6 +34,10 @@ class _KeyHandler(Protocol):
 
 MOUSE_REPORTING_ENABLE = "\x1b[?1000h\x1b[?1006h"
 MOUSE_REPORTING_DISABLE = "\x1b[?1000l\x1b[?1006l"
+BRACKETED_PASTE_ENABLE = "\x1b[?2004h"
+BRACKETED_PASTE_DISABLE = "\x1b[?2004l"
+BRACKETED_PASTE_START = b"\x1b[200~"
+BRACKETED_PASTE_END = b"\x1b[201~"
 
 
 @dataclass(frozen=True)
@@ -226,12 +230,190 @@ def decode_escape_sequence(sequence: bytes) -> str:
     return f"UNSUPPORTED-ESC:{sequence.hex()}"
 
 
+def read_escape_sequence(fd: int) -> bytes:
+    """Read one terminal escape sequence from stdin."""
+    payload = bytearray(b"\x1b")
+    ready, _, _ = select.select([fd], [], [], 0.03)
+    if not ready:
+        return bytes(payload)
+
+    payload.extend(os.read(fd, 1))
+    while True:
+        ready, _, _ = select.select([fd], [], [], 0.01)
+        if not ready:
+            break
+        payload.extend(os.read(fd, 1))
+    return bytes(payload)
+
+
+def read_bracketed_paste_payload(fd: int, initial_payload: bytes) -> bytes:
+    """Read remaining bytes until bracketed-paste end marker is received."""
+    payload = bytearray(initial_payload)
+    while BRACKETED_PASTE_END not in payload:
+        ready, _, _ = select.select([fd], [], [], 0.05)
+        if not ready:
+            break
+        payload.extend(os.read(fd, 1024))
+    return bytes(payload)
+
+
+def extract_bracketed_paste_text(payload: bytes) -> str | None:
+    """Extract decoded text from a bracketed-paste payload."""
+    if not payload.startswith(BRACKETED_PASTE_START):
+        return None
+    end_index = payload.find(BRACKETED_PASTE_END)
+    if end_index < 0:
+        return ""
+
+    text_bytes = payload[len(BRACKETED_PASTE_START) : end_index]
+    try:
+        return text_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return text_bytes.decode("utf-8", errors="ignore")
+
+
+def read_available_bytes(fd: int) -> bytes:
+    """Read currently available bytes from stdin with short timeout."""
+    payload = bytearray()
+    ready, _, _ = select.select([fd], [], [], 0.05)
+    if not ready:
+        return b""
+
+    payload.extend(os.read(fd, 1024))
+    while True:
+        ready, _, _ = select.select([fd], [], [], 0.01)
+        if not ready:
+            break
+        payload.extend(os.read(fd, 1024))
+    return bytes(payload)
+
+
+def _utf8_char_width(first_byte: int) -> int:
+    """Return expected UTF-8 byte width for one first byte."""
+    if first_byte & 0b1000_0000 == 0:
+        return 1
+    if first_byte & 0b1110_0000 == 0b1100_0000:
+        return 2
+    if first_byte & 0b1111_0000 == 0b1110_0000:
+        return 3
+    if first_byte & 0b1111_1000 == 0b1111_0000:
+        return 4
+    return 1
+
+
+def _has_control_characters(text: str) -> bool:
+    """Return whether text contains ASCII control characters."""
+    return any(ord(char) < 32 or ord(char) == 127 for char in text)
+
+
+def read_utf8_input_text(fd: int, first_byte: bytes) -> str | None:
+    """Read one UTF-8 input text value from initial first byte."""
+    utf8_bytes = bytearray(first_byte)
+    expected = _utf8_char_width(first_byte[0])
+    while len(utf8_bytes) < expected:
+        ready, _, _ = select.select([fd], [], [], 0.01)
+        if not ready:
+            break
+        utf8_bytes.extend(os.read(fd, 1))
+
+    try:
+        text = bytes(utf8_bytes).decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    if _has_control_characters(text):
+        return None
+    return text
+
+
+def _decode_bytes_payload(payload: bytes) -> str:
+    """Decode byte payload as UTF-8 with lossy fallback."""
+    try:
+        return payload.decode("utf-8")
+    except UnicodeDecodeError:
+        return payload.decode("utf-8", errors="ignore")
+
+
+def _read_ctrl_p_paste_event(fd: int) -> tuple[str, str]:
+    """Read one Ctrl-P paste event payload."""
+    payload = read_available_bytes(fd)
+    bracketed_text = extract_bracketed_paste_text(payload)
+    if bracketed_text is not None:
+        return ("TEXT", bracketed_text)
+    return ("TEXT", _decode_bytes_payload(payload))
+
+
+def _read_escape_input_event(
+    fd: int,
+    token_map: dict[str, str] | None,
+) -> tuple[str, str]:
+    """Read one escape-sequence input event."""
+    escape_sequence = read_escape_sequence(fd)
+    if escape_sequence.startswith(BRACKETED_PASTE_START):
+        bracketed_payload = read_bracketed_paste_payload(fd, escape_sequence)
+        pasted_text = extract_bracketed_paste_text(bracketed_payload)
+        return ("IGNORE", "") if pasted_text is None else ("TEXT", pasted_text)
+
+    if escape_sequence == b"\x1b[3~":
+        return ("DELETE", "")
+
+    escape_token = decode_escape_sequence(escape_sequence)
+    defaults = {
+        "LEFT": "LEFT",
+        "RIGHT": "RIGHT",
+        "HOME": "HOME",
+        "END": "END",
+        "ESC": "ESC",
+    }
+    event_map = defaults if token_map is None else token_map
+    return (event_map.get(escape_token, "IGNORE"), "")
+
+
+def read_input_event(
+    fd: int,
+    *,
+    token_map: dict[str, str] | None = None,
+    ctrl_p_as_paste: bool = False,
+) -> tuple[str, str]:
+    """Read one input event token and optional text payload."""
+    first = os.read(fd, 1)
+    if first in {b"\r", b"\n"}:
+        return ("ENTER", "")
+    if first == b"\x03":
+        raise KeyboardInterrupt
+    if first in {b"\x7f", b"\x08"}:
+        return ("BACKSPACE", "")
+
+    if first == b"\x10" and ctrl_p_as_paste:
+        return _read_ctrl_p_paste_event(fd)
+
+    if first == b"\x1b":
+        return _read_escape_input_event(fd, token_map)
+
+    text = read_utf8_input_text(fd, first)
+    if text is None:
+        return ("IGNORE", "")
+    return ("TEXT", text)
+
+
 def set_mouse_reporting(enabled: bool) -> None:
     """Enable or disable terminal mouse reporting."""
     if not sys.stdout.isatty():
         return
 
     sequence = MOUSE_REPORTING_ENABLE if enabled else MOUSE_REPORTING_DISABLE
+    try:
+        sys.stdout.write(sequence)
+        sys.stdout.flush()
+    except OSError:
+        return
+
+
+def set_bracketed_paste(enabled: bool) -> None:
+    """Enable or disable terminal bracketed paste mode."""
+    if not sys.stdout.isatty():
+        return
+
+    sequence = BRACKETED_PASTE_ENABLE if enabled else BRACKETED_PASTE_DISABLE
     try:
         sys.stdout.write(sequence)
         sys.stdout.flush()

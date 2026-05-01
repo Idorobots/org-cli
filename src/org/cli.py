@@ -95,6 +95,8 @@ def main() -> None:
     config.CONFIG_CUSTOM_ORDER_BY.update(loaded_config.custom_order_by)
     config.CONFIG_CUSTOM_WITH.clear()
     config.CONFIG_CUSTOM_WITH.update(loaded_config.custom_with)
+    config.CONFIG_CAPTURE_TEMPLATES.clear()
+    config.CONFIG_CAPTURE_TEMPLATES.update(loaded_config.capture_templates)
 
     command = typer.main.get_command(app)
     default_map = config.build_default_map(defaults) if defaults else None
