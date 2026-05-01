@@ -8,6 +8,25 @@ List tasks as short one-line entries or full Org blocks.
 poetry run org tasks list [OPTIONS] [FILE ...]
 ```
 
+## Interactive mode
+
+When both stdin and stdout are TTYs, `org tasks list` runs in interactive backlog mode.
+If `--details` or `--out` is explicitly passed, it stays in non-interactive static mode.
+
+Interactive keys:
+
+- `Up` / `Down`, `n` / `p`, or mouse wheel - Move selection.
+- `/` - Set full-text search substring over each node's own text (excluding child subtree text).
+- `x` - Clear active search.
+- `Enter` - Open selected task details in pager.
+- `t` - Set TODO state.
+- `Shift+Up` / `Shift+Down` - Increase/decrease priority (`A`/`B`/`C`/none).
+- `g` - Replace tags from CSV input (blank clears tags).
+- `s` - Set/clear scheduled timestamp.
+- `d` - Set/clear deadline timestamp.
+- `c` - Set/clear closed timestamp.
+- `q` or `Esc` - Quit interactive mode.
+
 ## Command-specific switches
 
 - `--details` - Print full Org node blocks instead of one-line entries.

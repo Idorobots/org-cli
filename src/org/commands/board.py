@@ -6,7 +6,6 @@ import logging
 import math
 import sys
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import typer
@@ -24,10 +23,19 @@ from org.cli_common import load_and_process_data
 from org.color import escape_text, get_state_color
 from org.commands.agenda import _advance_timestamp_by_repeater
 from org.commands.interactive_common import (
+    HeadingIdentity,
+    KeyBinding,
     append_repeat_transition,
+    dispatch_key_binding,
+    heading_identity,
+    heading_identity_matches,
+    key_binding_for_action,
+    key_binding_requires_live_pause,
+    local_now,
     open_task_detail_in_pager,
     read_keypress,
     set_mouse_reporting,
+    shift_priority,
 )
 from org.commands.tasks.common import save_document
 from org.tui import (
@@ -136,22 +144,7 @@ class _BoardStaticRenderInput:
     coalesce_completed: bool
 
 
-@dataclass(frozen=True)
-class _BoardHeadingIdentity:
-    """Stable identity used to restore selected heading across reloads."""
-
-    filename: str
-    heading_id: str | None
-    title: str
-    todo: str | None
-    priority: str | None
-    scheduled: str | None
-    deadline: str | None
-
-
-def _local_now() -> datetime:
-    """Return local timezone-aware current datetime."""
-    return datetime.now(tz=UTC).astimezone()
+_BoardHeadingIdentity = HeadingIdentity
 
 
 def _priority_rank(priority: str | None) -> int:
@@ -465,36 +458,6 @@ def _render_static_flow_board(
     console.print(table)
 
 
-def _heading_identity(node: Heading) -> _BoardHeadingIdentity:
-    """Build stable heading identity for selection restoration."""
-    return _BoardHeadingIdentity(
-        filename=node.document.filename or "",
-        heading_id=node.id,
-        title=node.title_text,
-        todo=node.todo,
-        priority=node.priority,
-        scheduled=str(node.scheduled) if node.scheduled is not None else None,
-        deadline=str(node.deadline) if node.deadline is not None else None,
-    )
-
-
-def _identity_matches(node: Heading, identity: _BoardHeadingIdentity) -> bool:
-    """Return whether node matches preserved heading identity."""
-    same_file = (node.document.filename or "") == identity.filename
-    if not same_file:
-        return False
-    if identity.heading_id is not None:
-        return node.id == identity.heading_id
-
-    return (
-        node.title_text == identity.title
-        and node.todo == identity.todo
-        and node.priority == identity.priority
-        and (str(node.scheduled) if node.scheduled is not None else None) == identity.scheduled
-        and (str(node.deadline) if node.deadline is not None else None) == identity.deadline
-    )
-
-
 def _save_document_changes(document: Document) -> None:
     """Persist one mutated document to disk."""
     logger.info("Saving flow board edit file: %s", document.filename)
@@ -542,16 +505,6 @@ def _choose_target_state_for_column(
         return done_state, None
 
     return target_column.title, None
-
-
-def _shift_priority(priority: str | None, *, increase: bool) -> str | None:
-    """Shift priority one level up/down across A/B/C/none."""
-    order: list[str | None] = ["A", "B", "C", None]
-    normalized = priority if priority in {"A", "B", "C"} else None
-    index = order.index(normalized)
-    if increase:
-        return order[max(0, index - 1)]
-    return order[min(len(order) - 1, index + 1)]
 
 
 def _max_column_nodes(columns: list[_BoardColumn]) -> int:
@@ -614,7 +567,7 @@ def _reload_session(
     if preserve_identity is not None:
         for column_index, column in enumerate(session.columns):
             for row_index, node in enumerate(column.nodes):
-                if _identity_matches(node, preserve_identity):
+                if heading_identity_matches(node, preserve_identity):
                     session.selected_column_index = column_index
                     session.selected_row_index = row_index
                     _ensure_selection_bounds(session)
@@ -700,7 +653,7 @@ def _apply_state_move(console: Console, session: _BoardSession, *, direction: in
         session.status_message = "State unchanged"
         return
 
-    action_now = _local_now()
+    action_now = local_now()
     heading.todo = new_state
     append_repeat_transition(heading, old_state, new_state, action_now)
 
@@ -731,7 +684,7 @@ def _apply_state_move(console: Console, session: _BoardSession, *, direction: in
     )
 
     _save_document_changes(heading.document)
-    preserve_identity = _heading_identity(heading)
+    preserve_identity = heading_identity(heading)
     _reload_session(session, preserve_identity)
     session.status_message = f"State updated: {old_state or '-'} -> {new_state or '-'}"
 
@@ -744,7 +697,7 @@ def _apply_priority_shift(session: _BoardSession, *, increase: bool) -> None:
         return
 
     old_priority = heading.priority
-    new_priority = _shift_priority(old_priority, increase=increase)
+    new_priority = shift_priority(old_priority, increase=increase)
     if old_priority == new_priority:
         session.status_message = "Priority unchanged"
         return
@@ -759,7 +712,7 @@ def _apply_priority_shift(session: _BoardSession, *, increase: bool) -> None:
         new_priority,
     )
     _save_document_changes(heading.document)
-    preserve_identity = _heading_identity(heading)
+    preserve_identity = heading_identity(heading)
     _reload_session(session, preserve_identity)
     session.status_message = f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}"
 
@@ -968,57 +921,50 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
     )
 
 
-def _handle_flow_board_navigation_key(session: _BoardSession, key: str) -> bool:
-    """Handle one keypress for flow board navigation actions."""
-    if key in {"DOWN", "WHEEL-DOWN"}:
-        _move_selection_vertical(session, 1)
-        return True
-    if key in {"UP", "WHEEL-UP"}:
-        _move_selection_vertical(session, -1)
-        return True
-    if key == "RIGHT":
-        _move_selection_horizontal(session, 1)
-        return True
-    if key == "LEFT":
-        _move_selection_horizontal(session, -1)
-        return True
-    return False
-
-
-def _handle_flow_board_action_key(console: Console, session: _BoardSession, key: str) -> None:
-    """Handle one keypress for flow board task actions."""
-    handlers = {
-        "ENTER": lambda: _open_selected_task_detail(console, session),
-        "S-LEFT": lambda: _apply_state_move(console, session, direction=-1),
-        "S-RIGHT": lambda: _apply_state_move(console, session, direction=1),
-        "S-UP": lambda: _apply_priority_shift(session, increase=True),
-        "S-DOWN": lambda: _apply_priority_shift(session, increase=False),
+def _flow_board_key_bindings(
+    console: Console,
+    session: _BoardSession,
+) -> dict[str, KeyBinding]:
+    """Build interactive key bindings for flow board session."""
+    return {
+        "q": KeyBinding(lambda: False),
+        "ESC": KeyBinding(lambda: False),
+        "DOWN": key_binding_for_action(lambda: _move_selection_vertical(session, 1)),
+        "WHEEL-DOWN": key_binding_for_action(lambda: _move_selection_vertical(session, 1)),
+        "UP": key_binding_for_action(lambda: _move_selection_vertical(session, -1)),
+        "WHEEL-UP": key_binding_for_action(lambda: _move_selection_vertical(session, -1)),
+        "RIGHT": key_binding_for_action(lambda: _move_selection_horizontal(session, 1)),
+        "LEFT": key_binding_for_action(lambda: _move_selection_horizontal(session, -1)),
+        "ENTER": key_binding_for_action(
+            lambda: _open_selected_task_detail(console, session),
+            requires_live_pause=True,
+        ),
+        "S-LEFT": key_binding_for_action(
+            lambda: _apply_state_move(console, session, direction=-1),
+            requires_live_pause=True,
+        ),
+        "S-RIGHT": key_binding_for_action(
+            lambda: _apply_state_move(console, session, direction=1),
+            requires_live_pause=True,
+        ),
+        "S-UP": key_binding_for_action(lambda: _apply_priority_shift(session, increase=True)),
+        "S-DOWN": key_binding_for_action(lambda: _apply_priority_shift(session, increase=False)),
     }
-    handler = handlers.get(key)
-    if handler is None:
-        if key:
-            session.status_message = f"Unsupported key: {key}"
-        return
-    handler()
 
 
 def _handle_interactive_key(console: Console, session: _BoardSession, key: str) -> bool:
     """Handle one interactive keypress and return whether to continue."""
-    if key == "q":
-        return False
-    if key == "ESC":
-        return False
+    result = dispatch_key_binding(key, _flow_board_key_bindings(console, session))
+    if result.handled:
+        return result.continue_loop
 
-    if _handle_flow_board_navigation_key(session, key):
-        return True
-
-    _handle_flow_board_action_key(console, session, key)
+    if key:
+        session.status_message = f"Unsupported key: {key}"
     return True
 
 
 def _run_flow_board_interactive(console: Console, session: _BoardSession) -> None:
     """Run interactive flow board event loop."""
-    prompt_keys = {"ENTER", "S-LEFT", "S-RIGHT"}
     set_mouse_reporting(True)
     try:
         with Live(
@@ -1034,7 +980,7 @@ def _run_flow_board_interactive(console: Console, session: _BoardSession) -> Non
                     live.update(_interactive_flow_board_renderable(console, session), refresh=True)
                     continue
 
-                if key in prompt_keys:
+                if key_binding_requires_live_pause(key, _flow_board_key_bindings(console, session)):
                     live.stop()
                     should_continue = _handle_interactive_key(console, session, key)
                     live.start()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import org_parser
 import typer
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("org")
+PlanningTimestampField = Literal["scheduled", "deadline", "closed"]
 
 
 def parse_comment_flag(value: str) -> bool:
@@ -198,6 +199,82 @@ def parse_tags_csv(value: str) -> list[str]:
     if not tags or any(not tag for tag in tags):
         raise typer.BadParameter("--tags must be a comma-separated list of non-empty tags")
     return tags
+
+
+def replace_heading_tags_from_csv(
+    heading: Heading,
+    raw_tags: str,
+) -> tuple[list[str], list[str], bool]:
+    """Replace heading tags from CSV input and return change metadata."""
+    parsed_tags = parse_tags_csv(raw_tags)
+    current_tags = list(heading.heading_tags)
+    if current_tags == parsed_tags:
+        return current_tags, parsed_tags, False
+
+    heading.heading_tags = parsed_tags
+    return current_tags, parsed_tags, True
+
+
+def planning_field_option_name(field: PlanningTimestampField) -> str:
+    """Return CLI option name used for timestamp validation errors."""
+    if field == "scheduled":
+        return "--scheduled"
+    if field == "deadline":
+        return "--deadline"
+    return "--closed"
+
+
+def planning_field_label(field: PlanningTimestampField) -> str:
+    """Return human-friendly label for one planning timestamp field."""
+    if field == "scheduled":
+        return "Scheduled timestamp"
+    if field == "deadline":
+        return "Deadline timestamp"
+    return "Closed timestamp"
+
+
+def planning_field_timestamp(heading: Heading, field: PlanningTimestampField) -> Timestamp | None:
+    """Return one planning timestamp field value from heading."""
+    if field == "scheduled":
+        return heading.scheduled
+    if field == "deadline":
+        return heading.deadline
+    return heading.closed
+
+
+def set_planning_field_timestamp(
+    heading: Heading,
+    field: PlanningTimestampField,
+    timestamp: Timestamp | None,
+) -> None:
+    """Set one planning timestamp field value on heading."""
+    if field == "scheduled":
+        heading.scheduled = timestamp
+        return
+    if field == "deadline":
+        heading.deadline = timestamp
+        return
+    heading.closed = timestamp
+
+
+def parse_planning_timestamp(value: str, field: PlanningTimestampField) -> Timestamp | None:
+    """Parse raw timestamp input for one planning field."""
+    return parse_timestamp(value, planning_field_option_name(field))
+
+
+def replace_planning_timestamp_from_raw(
+    heading: Heading,
+    field: PlanningTimestampField,
+    raw_timestamp: str,
+) -> tuple[Timestamp | None, Timestamp | None, bool]:
+    """Replace planning timestamp from raw input and return change metadata."""
+    parsed_timestamp = parse_planning_timestamp(raw_timestamp, field)
+    current_timestamp = planning_field_timestamp(heading, field)
+    if str(current_timestamp) == str(parsed_timestamp):
+        return current_timestamp, parsed_timestamp, False
+
+    set_planning_field_timestamp(heading, field, parsed_timestamp)
+    return current_timestamp, parsed_timestamp, True
 
 
 def parse_properties_json(value: str) -> dict[str, str]:

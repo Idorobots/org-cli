@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.text import Text
 
 from org.commands import board as board_command
+from org.commands.interactive_common import heading_identity
 from tests.conftest import node_from_org
 
 
@@ -243,7 +244,7 @@ def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
 
     focused = session.columns[1].nodes[1]
     focused.priority = "A"
-    preserve_identity = board_command._heading_identity(focused)
+    preserve_identity = heading_identity(focused)
 
     reloaded_nodes = node_from_org("* TODO [#A] Other\n* TODO [#A] Focus\n")
 

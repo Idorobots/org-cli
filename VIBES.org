@@ -4960,7 +4960,7 @@ Why do we need this?
   - [ ] Combined runtime of =tests/test_chart_date_spanning.py= + =tests/cli/test_cli_smoke.py= is significantly lower
   - [ ] Full suite still passes via =poetry run task check=
   - [ ] Coverage and key CLI smoke guarantees remain intact (entrypoint, multi-file input, and summary output)
-** TODO Workflow command                                                              :CLI:Workflow:
+** TODO Workflow commands                                                             :CLI:Workflow:
 :LOGBOOK:
 - State "TODO"       from ""           [2026-04-26 Sun 16:23]
 :END:
@@ -5113,6 +5113,362 @@ Switch configuration handling from JSON to YAML, and make YAML the only supporte
 - Update sample/default config files to YAML format.
 - Update command help and docs to reference YAML only.
 - Update tests to use YAML fixtures and remove JSON config test coverage.
+
+*** REWORKED Interactive tasks backlog/list command                                         :TUI:UX:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-01 Fri 14:36] \\
+  See comment.
+:END:
+Goal: Provide an interactive backlog/list experience for tasks.
+
+Acceptance criteria:
+- In interactive TTY mode, =org tasks list= runs as an interactive backlog UI.
+- In non-interactive mode, =org tasks list= prints results in current static format.
+- Interactive mode supports navigation, search/filter, and in-place task mutation.
+- State, priority, tag, and scheduling edits persist safely to Org files.
+- Validation passes with =poetry run task check=.
+
+Implementation plan:
+1. Auto-select interactive vs static mode in =tasks list=
+  - Update =run_tasks_list()= in =src/org/commands/tasks/list.py= to mirror agenda/board flow:
+    - run interactive loop when =sys.stdin.isatty() and sys.stdout.isatty()=
+    - otherwise keep existing static output path.
+  - Keep current pagination/output-format behavior for non-interactive mode unchanged.
+
+2. TODO Add interactive session model and event loop for task list
+  - Implement task-list session state in =src/org/commands/tasks/list.py=: selected row, scroll offset, status message, active search text, visible nodes.
+  - Add a =rich.live.Live= render loop analogous to =_run_agenda_interactive()= in =src/org/commands/agenda.py= and =_run_flow_board_interactive()= in =src/org/commands/board.py=.
+  - Reuse key/mouse input utilities from =src/org/commands/interactive_common.py= (=read_keypress=, =set_mouse_reporting=, escape decoding).
+
+3. Build interactive task-list rendering with existing UI primitives
+  - Reuse task rendering helpers from =src/org/tui.py= (=heading_title_to_text=, =task_state_prefix_to_text=, =task_priority_to_text=, =task_tags_to_text=).
+  - Render a scrollable list viewport with highlighted selection and persistent footer/status line.
+  - Reuse full task detail pager behavior via =open_task_detail_in_pager()= from =src/org/commands/interactive_common.py=.
+
+4. Implement interactive filter/search over loaded task nodes
+  - Add in-session filtering pipeline in =src/org/commands/tasks/list.py= that applies incremental search/filter text to loaded nodes.
+  - Keep filtering semantics aligned with existing task list processing based on =load_and_process_data()= from =src/org/cli_common.py=.
+  - Support heading/tags/body/properties/state-oriented filtering using the command’s existing filter fields.
+
+5. Implement in-session task mutation actions
+  - Add key-driven actions for TODO state transitions, priority changes, tag edits, and scheduling/deadline edits in task-list interactive handlers.
+  - Reuse validation/mutation helpers from =src/org/commands/tasks/common.py= (=parse_tags_csv=, =parse_timestamp=, =save_document=).
+  - On state changes, append logbook transitions using =append_repeat_transition()= from =src/org/commands/interactive_common.py= for consistency with agenda/board.
+
+6. Ensure safe persistence and post-mutation session refresh
+  - Persist edits through =save_document()= in =src/org/commands/tasks/common.py=.
+  - Rebuild or resync session node references after writes so selection remains stable after sort/filter changes.
+  - Report parse/validation/write failures in interactive status line and keep session alive.
+
+7. Add regression tests for TTY and non-TTY behavior
+  - Extend =tests/commands/tasks/test_tasks_list.py= or add =tests/commands/tasks/test_tasks_backlog.py=.
+  - Cover TTY auto-switch behavior (interactive path when TTY, static output when non-TTY).
+  - Cover navigation, filtering, mutation, persistence, and failure handling paths.
+
+**** COMMENT
+For this one I tried using the AI to draft & refine the tickets. Didn't work too great. Initially the AI was too vague, then after asking it to research the feature it went too detailed, but somehow not detailed enough. Then after asking it to refine the subtasks it made a few changes that required manual intervention. The tasks it wrote were not great in my opinion, but I decided to give it a shot, albeit all in one go to give the AI full task context. It did implement a working prototype that kinda matched what I had in mind, so despite a different style of story-mapping, it did work fine in the end.
+
+**** DONE UX improvements                                                                  :Cleanup:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 12:03]
+:END:
+- Only use the text contents of a node itself, don't include the children in full text search.
+- Highlight entire lines to signify a selected task, much like is done in the Agenda and Board commands.
+- Render the tasks tags right-aligned to the console width. Include the heading stars in front of the TODO state in the list display. In general, the static format should be retained with the extra interactivity features on top of it.
+- The rows counter doesn't update when scrolling up.
+
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 12:44]
+:END:
+
+In file src/org/commands/tasks/list.py around line 104, near the ~class ListArgs:~
+
+#+begin_example
++    details_explicit: bool = False
++    out_explicit: bool = False
+#+end_example
+
+Can this be turned into a generic =noninteractive= flag instead? It should be set whenever either details or out is set in the args or not running in a TTY.
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 13:13]
+:END:
+
+In file src/org/commands/tasks/list.py around line 461, near the ~def _run_tasks_list_static(~
+
+#+begin_example
++def _local_now() -> datetime:
++    """Return local timezone-aware current datetime."""
++    return datetime.now(tz=UTC).astimezone()
++
++
++def _shift_priority(priority: str | None, *, increase: bool) -> str | None:
++    """Shift priority one step across A/B/C/none."""
++    order: list[str | None] = ["A", "B", "C", None]
++    normalized = priority if priority in {"A", "B", "C"} else None
++    index = order.index(normalized)
++    if increase:
++        return order[max(0, index - 1)]
++    return order[min(len(order) - 1, index + 1)]
++
++
++def _heading_identity(node: Heading) -> _TasksListHeadingIdentity:
++    """Build stable heading identity for selection restoration."""
++    return _TasksListHeadingIdentity(
++        filename=node.document.filename or "",
++        heading_id=node.id,
++        title=node.title_text,
++        todo=node.todo,
++        priority=node.priority,
++        scheduled=str(node.scheduled) if node.scheduled is not None else None,
++        deadline=str(node.deadline) if node.deadline is not None else None,
++    )
++
++
++def _identity_matches(node: Heading, identity: _TasksListHeadingIdentity) -> bool:
++    """Return whether node matches preserved heading identity."""
++    same_file = (node.document.filename or "") == identity.filename
++    if not same_file:
++        return False
++
++    if identity.heading_id is not None:
++        return node.id == identity.heading_id
++
++    return (
++        node.title_text == identity.title
++        and node.todo == identity.todo
++        and node.priority == identity.priority
++        and (str(node.scheduled) if node.scheduled is not None else None) == identity.scheduled
++        and (str(node.deadline) if node.deadline is not None else None) == identity.deadline
++    )
+#+end_example
+
+
+It appears that at least some of these functions are duplicates of what was already implemented in the =org agenda= or =org board=. Please abstract these away to a common module an re-use as much as possible.
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 13:13]
+:END:
+
+In file src/org/commands/tasks/list.py around line 806, near the ~def _run_tasks_list_static(~
+
+#+begin_example
++def _apply_priority_shift(session: _TasksListSession, *, increase: bool) -> None:
++    """Increase or decrease priority one step for selected task."""
++    node = _selected_node(session)
++    if node is None:
++        session.status_message = "Action available only on task rows"
++        return
++
++    old_priority = node.priority
++    new_priority = _shift_priority(old_priority, increase=increase)
++    if old_priority == new_priority:
++        session.status_message = "Priority unchanged"
++        return
++
++    node.priority = new_priority
++    _persist_and_reload_selected(
++        session,
++        node,
++        f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}",
++    )
++
++
++def _apply_tags_edit(console: Console, session: _TasksListSession) -> None:
++    """Prompt and replace tags on selected task."""
++    node = _selected_node(session)
++    if node is None:
++        session.status_message = "Action available only on task rows"
++        return
++
++    raw_tags = console.input("Tags CSV (blank clears): ")
++    try:
++        tags = parse_tags_csv(raw_tags)
++    except typer.BadParameter as err:
++        session.status_message = str(err)
++        return
++
++    old_tags = list(node.heading_tags)
++    if old_tags == tags:
++        session.status_message = "Tags unchanged"
++        return
++
++    node.heading_tags = tags
++    _persist_and_reload_selected(session, node, "Tags updated")
+
+#+end_example
+
+These edit functions also seem to be very similar to the ones used in =org agenda= and =org board=. Please abstract and reuse as much as possible.
+**** DONE src/org/commands/agenda.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 13:13]
+:END:
+
+In file src/org/commands/agenda.py around line 278, near the ~def _resolve_agenda_start_date(raw_date: str | None) -> date:~
+
+#+begin_example
+ 
+ def _local_now() -> datetime:
+     """Return local timezone-aware current datetime."""
+-    return datetime.now(tz=UTC).astimezone()
++    return interactive_local_now()
+ 
+#+end_example
+
+There's no need for this type of o wrappers that don't add any value. Please remove such wrappers after refactoring.
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 14:05]
+:END:
+
+In file src/org/commands/tasks/list.py around line 830, near the ~def _run_tasks_list_static(~
+
+#+begin_example
++    old_timestamp = getattr(node, field)
++    if str(old_timestamp) == str(parsed_timestamp):
++        session.status_message = f"{prompt_label} unchanged"
++        return
++
++    setattr(node, field, parsed_timestamp)
+
+#+end_example
+
+Please don't use =getattr= and =setattr=. This is really poor style.
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 14:26]
+:END:
+
+In file src/org/commands/tasks/list.py around line 870, near the ~def _run_tasks_list_static(~
+
+#+begin_example
++def _handle_action_key(console: Console, session: _TasksListSession, key: str) -> None:
++    """Handle one keypress for task actions."""
++    handlers = {
++        "ENTER": lambda: _open_selected_task_detail(console, session),
++        "/": lambda: _prompt_search(console, session),
++        "x": lambda: _clear_search(session),
++        "t": lambda: _apply_state_change(console, session),
++        "S-UP": lambda: _apply_priority_shift(session, increase=True),
++        "S-DOWN": lambda: _apply_priority_shift(session, increase=False),
++        "g": lambda: _apply_tags_edit(console, session),
++        "s": lambda: _apply_planning_edit(console, session, field="scheduled"),
++        "d": lambda: _apply_planning_edit(console, session, field="deadline"),
++    }
++    handler = handlers.get(key)
++    if handler is None:
++        if key:
++            session.status_message = f"Unsupported key: {key}"
++        return
++    handler()
+
+#+end_example
+
+I like this approach. Can we extract all the keypress handling boilerplate to a common utility function that just receives the set of handlers? Please apply that in all interactive commands.
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 14:33]
+:END:
+
+In file src/org/commands/tasks/list.py around line 903, near the ~def _run_tasks_list_static(~
+
+#+begin_example
++
++def _set_mouse_reporting(enabled: bool) -> None:
++    """Enable or disable terminal mouse reporting for interactive tasks list."""
++    set_mouse_reporting(enabled)
++
++
++def _read_keypress(timeout_seconds: float | None = None) -> str:
++    """Read one keypress and normalize to command token."""
++    return read_keypress(timeout_seconds)
+
+#+end_example
+
+There's no need for these wrappers.
+**** DONE tests/commands/tasks/test_tasks_list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 14:36]
+:END:
+
+In file tests/commands/tasks/test_tasks_list.py around line 696, near the ~def test_run_tasks_list_does_not_use_pager_for_json_output_when_overflowing(~
+
+#+begin_example
++
++def test_filter_nodes_by_search_handles_non_string_property_values() -> None:
++    """Search should not fail when node properties contain non-string values."""
++    nodes = node_from_org("* TODO Parent\n")
++    node = nodes[0]
++    node.properties["DISPLAY"] = Text("Needle")
++
++    matches = tasks_list._filter_nodes_by_search(nodes, "needle")
++
++    assert [item.title_text for item in matches] == ["Parent"]
+
+#+end_example
+
+It's not actually testing what it says its testing. The property value is a string. Use a number instead.
+*** Capture command
+I'd like the =org capture= command to be fairly simple - it should have a configurable set of named templates and the command invocation should be as follows:
+
+#+begin_example
+# Prompts the user for the specific template to use
+org capture
+
+# Uses the selected template and proceeds to interactively populate it
+org capture template-name
+#+end_example
+
+Templates should be defined in the configuration file as text with handlebars embeds.
+
+Upon invocation, the command should populate the template with any statically generated values and prompt the user for any interactive values.
+*** Tasks edit command
+- Allows editing a specific task with $EDITOR
+*** Tasks refile command
+- Move task to a different file
+- Ensure that the task is first saved correctly before it is removed from the original file.
+*** Tasks archive command
+- Archives a task in the Archive file.
+- Ensure that the task is first saved correctly before it is removed from the original file.
+*** Flow ready command
+- Find tasks that are ready to be started (based on relative position in the file & inter-dependencies & state)
+*** Flow assign command
+- Claim tasks as actively worked on.
+- Assigns a task to a specified assignee
+*** Flow move command
+- Transition task states based on configured workflow rules & validations.
+- =--to STATE= optional, used if more than one transition existis
+- =--comment= for additional information on the transition
+*** Flow subtask command
+- Like capture, but specifically for adding subtasks
+*** Flow context command
+- Add a property with additional information via a file
+- Add a specified task as a blocker or otherwise link tasks.
 
 *** Extra filters
 - ~--id-property NAME~ - names the property serving as the task ID

@@ -6,7 +6,7 @@ import calendar
 import logging
 import sys
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,10 +22,12 @@ from rich.text import Text
 from org import config as config_module
 from org.cli_common import load_and_process_data, resolve_input_paths
 from org.commands.interactive_common import (
+    KeyBinding,
     append_repeat_transition,
-    decode_escape_sequence,
-    decode_mouse_sequence,
-    detail_org_block,
+    dispatch_key_binding,
+    key_binding_for_action,
+    key_binding_requires_live_pause,
+    local_now,
     open_task_detail_in_pager,
     read_keypress,
     set_mouse_reporting,
@@ -250,13 +252,8 @@ def _is_active_planning_timestamp(timestamp: Timestamp | None) -> bool:
 def _resolve_agenda_start_date(raw_date: str | None) -> date:
     """Resolve agenda start date from --date or today's date."""
     if raw_date is None:
-        return _local_now().date()
+        return local_now().date()
     return parse_date_argument(raw_date, "--date").date()
-
-
-def _local_now() -> datetime:
-    """Return local timezone-aware current datetime."""
-    return datetime.now(tz=UTC).astimezone()
 
 
 def _resolve_tasks_limit(max_results: int | None) -> int:
@@ -739,7 +736,7 @@ def _refresh_session(
     preserve_identity: tuple[str, str, str, int | None] | None,
 ) -> None:
     """Recompute day row models and restore selection when possible."""
-    session.now = _local_now()
+    session.now = local_now()
     day_models: list[_DayRowModel] = []
     row_locations: list[tuple[int, int]] = []
 
@@ -800,7 +797,7 @@ def _selected_task_row(session: _AgendaSession) -> _AgendaRow | None:
 
 def _refresh_session_if_minute_changed(session: _AgendaSession) -> None:
     """Refresh agenda rows when local wall-clock minute changes."""
-    current_now = _local_now().replace(second=0, microsecond=0)
+    current_now = local_now().replace(second=0, microsecond=0)
     session_now = session.now.replace(second=0, microsecond=0)
     if current_now == session_now:
         return
@@ -828,36 +825,6 @@ def _move_selection(session: _AgendaSession, step: int) -> None:
     if not session.row_locations:
         return
     session.selected_row_index = (session.selected_row_index + step) % len(session.row_locations)
-
-
-def _decode_mouse_sequence(sequence: bytes) -> str | None:
-    """Decode xterm SGR mouse sequence into agenda key token."""
-    return decode_mouse_sequence(sequence)
-
-
-def _decode_escape_sequence(sequence: bytes) -> str:
-    """Decode terminal escape sequence into one key token."""
-    return decode_escape_sequence(sequence)
-
-
-def _set_mouse_reporting(enabled: bool) -> None:
-    """Enable or disable terminal mouse reporting for interactive agenda."""
-    set_mouse_reporting(enabled)
-
-
-def _read_keypress(timeout_seconds: float | None = None) -> str:
-    """Read one keypress and normalize to a command token."""
-    return read_keypress(timeout_seconds)
-
-
-def _append_repeat_transition(
-    heading: Heading,
-    before: str | None,
-    after: str,
-    now: datetime,
-) -> None:
-    """Append one repeat transition entry at current time."""
-    append_repeat_transition(heading, before, after, now)
 
 
 def _set_timestamp_fields(timestamp: Timestamp, start: datetime, end: datetime | None) -> None:
@@ -965,7 +932,7 @@ def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
                 unit=unit,
             )
         elif mark == "++":
-            now = _now_aligned_for_datetime(start, _local_now())
+            now = _now_aligned_for_datetime(start, local_now())
             shifted_start, shifted_end = _shift_datetimes_by_unit(
                 start,
                 end,
@@ -980,7 +947,7 @@ def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
                     unit=unit,
                 )
         elif mark == ".+":
-            now = _now_aligned_for_datetime(start, _local_now())
+            now = _now_aligned_for_datetime(start, local_now())
             base_start = start.replace(year=now.year, month=now.month, day=now.day)
             base_end = None if end is None else base_start + (end - start)
             shifted_start, shifted_end = _shift_datetimes_by_unit(
@@ -1458,11 +1425,6 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
     )
 
 
-def _detail_org_block(node: Heading) -> str:
-    """Build detailed org block text for one heading subtree."""
-    return detail_org_block(node)
-
-
 def _open_selected_task_detail(console: Console, session: _AgendaSession) -> None:
     """Open selected task detail in pager for scrolling and selection."""
     row = _selected_task_row(session)
@@ -1471,11 +1433,11 @@ def _open_selected_task_detail(console: Console, session: _AgendaSession) -> Non
         return
 
     session.status_message = ""
-    _set_mouse_reporting(False)
+    set_mouse_reporting(False)
     try:
         open_task_detail_in_pager(console, row.node, color_enabled=session.render.color_enabled)
     finally:
-        _set_mouse_reporting(True)
+        set_mouse_reporting(True)
 
 
 def _shift_planning_for_row(row: _AgendaRow, *, day_delta: int) -> tuple[Timestamp | None, str]:
@@ -1597,9 +1559,9 @@ def _apply_state_change(console: Console, session: _AgendaSession) -> None:
         session.status_message = "State unchanged"
         return
 
-    action_now = _local_now()
+    action_now = local_now()
     heading.todo = new_state
-    _append_repeat_transition(heading, old_state, new_state, action_now)
+    append_repeat_transition(heading, old_state, new_state, action_now)
 
     if heading.scheduled is not None and _advance_timestamp_by_repeater(heading.scheduled):
         logger.info(
@@ -1765,7 +1727,7 @@ def _apply_clock_entry(console: Console, session: _AgendaSession) -> None:
         session.status_message = str(err)
         return
 
-    action_now = _local_now()
+    action_now = local_now()
     end_time = action_now.replace(second=0, microsecond=0)
     start_time = end_time - duration
     timestamp = Timestamp.from_source(
@@ -1811,7 +1773,7 @@ def _create_agenda_session(
         ),
         start_date=_resolve_agenda_start_date(args.date),
         days=args.days,
-        now=_local_now(),
+        now=local_now(),
         day_models=[],
         row_locations=[],
         selected_row_index=0,
@@ -1822,66 +1784,77 @@ def _create_agenda_session(
     return session
 
 
-def _handle_agenda_navigation_key(session: _AgendaSession, key: str) -> bool:
-    """Handle one keypress for agenda navigation actions."""
-    if key in {"n", "DOWN", "WHEEL-DOWN"}:
-        _move_selection(session, 1)
-        return True
-    if key in {"p", "UP", "WHEEL-UP"}:
-        _move_selection(session, -1)
-        return True
-    if key in {"f", "RIGHT"}:
-        session.start_date = session.start_date + timedelta(days=session.days)
-        _refresh_session(session, None)
-        return True
-    if key in {"b", "LEFT"}:
-        session.start_date = session.start_date - timedelta(days=session.days)
-        _refresh_session(session, None)
-        return True
-    return False
-
-
-def _handle_agenda_action_key(console: Console, session: _AgendaSession, key: str) -> None:
-    """Handle one keypress for agenda task actions."""
-    handlers = {
-        "ENTER": lambda: _open_selected_task_detail(console, session),
-        "t": lambda: _apply_state_change(console, session),
-        "S-LEFT": lambda: _apply_shift_date(session, day_delta=-1),
-        "S-RIGHT": lambda: _apply_shift_date(session, day_delta=1),
-        "S-UP": lambda: _apply_shift_time(session, hour_delta=-1),
-        "S-DOWN": lambda: _apply_shift_time(session, hour_delta=1),
-        "r": lambda: _apply_refile(console, session),
-        "c": lambda: _apply_clock_entry(console, session),
+def _agenda_key_bindings(
+    console: Console,
+    session: _AgendaSession,
+) -> dict[str, KeyBinding]:
+    """Build interactive key bindings for agenda session."""
+    return {
+        "q": KeyBinding(lambda: False),
+        "ESC": KeyBinding(lambda: False),
+        "n": key_binding_for_action(lambda: _move_selection(session, 1)),
+        "DOWN": key_binding_for_action(lambda: _move_selection(session, 1)),
+        "WHEEL-DOWN": key_binding_for_action(lambda: _move_selection(session, 1)),
+        "p": key_binding_for_action(lambda: _move_selection(session, -1)),
+        "UP": key_binding_for_action(lambda: _move_selection(session, -1)),
+        "WHEEL-UP": key_binding_for_action(lambda: _move_selection(session, -1)),
+        "f": key_binding_for_action(
+            lambda: _set_start_date_relative(session, day_delta=session.days),
+        ),
+        "RIGHT": key_binding_for_action(
+            lambda: _set_start_date_relative(session, day_delta=session.days),
+        ),
+        "b": key_binding_for_action(
+            lambda: _set_start_date_relative(session, day_delta=-session.days),
+        ),
+        "LEFT": key_binding_for_action(
+            lambda: _set_start_date_relative(session, day_delta=-session.days),
+        ),
+        "ENTER": key_binding_for_action(
+            lambda: _open_selected_task_detail(console, session),
+            requires_live_pause=True,
+        ),
+        "t": key_binding_for_action(
+            lambda: _apply_state_change(console, session),
+            requires_live_pause=True,
+        ),
+        "S-LEFT": key_binding_for_action(lambda: _apply_shift_date(session, day_delta=-1)),
+        "S-RIGHT": key_binding_for_action(lambda: _apply_shift_date(session, day_delta=1)),
+        "S-UP": key_binding_for_action(lambda: _apply_shift_time(session, hour_delta=-1)),
+        "S-DOWN": key_binding_for_action(lambda: _apply_shift_time(session, hour_delta=1)),
+        "r": key_binding_for_action(
+            lambda: _apply_refile(console, session),
+            requires_live_pause=True,
+        ),
+        "c": key_binding_for_action(
+            lambda: _apply_clock_entry(console, session),
+            requires_live_pause=True,
+        ),
     }
-    handler = handlers.get(key)
-    if handler is None:
-        if key:
-            session.status_message = f"Unsupported key: {key}"
-        return
-    handler()
+
+
+def _set_start_date_relative(session: _AgendaSession, *, day_delta: int) -> None:
+    """Shift agenda start date by one relative day delta and refresh."""
+    session.start_date += timedelta(days=day_delta)
+    _refresh_session(session, None)
 
 
 def _handle_interactive_key(console: Console, session: _AgendaSession, key: str) -> bool:
     """Handle one interactive keypress and return whether to continue."""
-    if key == "q":
-        return False
-
-    if key == "ESC":
-        return False
-
     _refresh_session_if_minute_changed(session)
 
-    if _handle_agenda_navigation_key(session, key):
-        return True
+    result = dispatch_key_binding(key, _agenda_key_bindings(console, session))
+    if result.handled:
+        return result.continue_loop
 
-    _handle_agenda_action_key(console, session, key)
+    if key:
+        session.status_message = f"Unsupported key: {key}"
     return True
 
 
 def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
     """Run interactive agenda event loop."""
-    prompt_keys = {"t", "r", "c", "ENTER"}
-    _set_mouse_reporting(True)
+    set_mouse_reporting(True)
     try:
         with Live(
             _interactive_agenda_renderable(console, session),
@@ -1891,11 +1864,11 @@ def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
             auto_refresh=False,
         ) as live:
             while True:
-                key = _read_keypress(timeout_seconds=0.2)
+                key = read_keypress(timeout_seconds=0.2)
                 if not key:
                     live.update(_interactive_agenda_renderable(console, session), refresh=True)
                     continue
-                if key in prompt_keys:
+                if key_binding_requires_live_pause(key, _agenda_key_bindings(console, session)):
                     live.stop()
                     should_continue = _handle_interactive_key(console, session, key)
                     live.start()
@@ -1905,7 +1878,7 @@ def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
                     break
                 live.update(_interactive_agenda_renderable(console, session), refresh=True)
     finally:
-        _set_mouse_reporting(False)
+        set_mouse_reporting(False)
 
 
 def _render_agenda(console: Console, render_input: _AgendaRenderInput) -> None:
@@ -1983,7 +1956,7 @@ def run_agenda(args: AgendaArgs) -> None:
         _AgendaRenderInput(
             args=args,
             nodes=nodes,
-            now=_local_now(),
+            now=local_now(),
             render=_RenderContext(
                 color_enabled=color_enabled,
                 done_states=done_states,

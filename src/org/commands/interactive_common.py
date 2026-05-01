@@ -7,7 +7,9 @@ import select
 import sys
 import termios
 import tty
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Protocol
 
 from org_parser.element import Repeat
 from org_parser.time import Timestamp
@@ -17,14 +19,140 @@ from org.output_format import DEFAULT_OUTPUT_THEME
 
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from collections.abc import Mapping
 
     from org_parser.document import Heading
     from rich.console import Console
 
 
+class _KeyHandler(Protocol):
+    """Type protocol for interactive key handler callbacks."""
+
+    def __call__(self) -> bool | None:
+        """Run key handler callback and return optional continue-loop flag."""
+
+
 MOUSE_REPORTING_ENABLE = "\x1b[?1000h\x1b[?1006h"
 MOUSE_REPORTING_DISABLE = "\x1b[?1000l\x1b[?1006l"
+
+
+@dataclass(frozen=True)
+class HeadingIdentity:
+    """Stable identity used to restore selected heading across reloads."""
+
+    filename: str
+    heading_id: str | None
+    title: str
+    todo: str | None
+    priority: str | None
+    scheduled: str | None
+    deadline: str | None
+
+
+@dataclass(frozen=True)
+class KeyBinding:
+    """One interactive key binding and optional live-pause requirement."""
+
+    handler: _KeyHandler
+    requires_live_pause: bool = False
+
+
+@dataclass(frozen=True)
+class KeyDispatchResult:
+    """Result of dispatching one keypress against key bindings."""
+
+    handled: bool
+    continue_loop: bool
+    requires_live_pause: bool
+
+
+def key_binding_for_action(
+    action: _KeyHandler,
+    *,
+    requires_live_pause: bool = False,
+) -> KeyBinding:
+    """Build one key binding from a void action callback."""
+
+    def _handler() -> bool:
+        action()
+        return True
+
+    return KeyBinding(_handler, requires_live_pause=requires_live_pause)
+
+
+def dispatch_key_binding(
+    key: str,
+    bindings: Mapping[str, KeyBinding],
+) -> KeyDispatchResult:
+    """Dispatch one keypress to a key-binding map."""
+    binding = bindings.get(key)
+    if binding is None:
+        return KeyDispatchResult(handled=False, continue_loop=True, requires_live_pause=False)
+
+    outcome = binding.handler()
+    continue_loop = True if outcome is None else outcome
+    return KeyDispatchResult(
+        handled=True,
+        continue_loop=continue_loop,
+        requires_live_pause=binding.requires_live_pause,
+    )
+
+
+def key_binding_requires_live_pause(
+    key: str,
+    bindings: Mapping[str, KeyBinding],
+) -> bool:
+    """Return whether one key binding requires temporarily stopping Live."""
+    binding = bindings.get(key)
+    if binding is None:
+        return False
+    return binding.requires_live_pause
+
+
+def local_now() -> datetime:
+    """Return local timezone-aware current datetime."""
+    return datetime.now(tz=UTC).astimezone()
+
+
+def shift_priority(priority: str | None, *, increase: bool) -> str | None:
+    """Shift priority one step across A/B/C/none."""
+    order: list[str | None] = ["A", "B", "C", None]
+    normalized = priority if priority in {"A", "B", "C"} else None
+    index = order.index(normalized)
+    if increase:
+        return order[max(0, index - 1)]
+    return order[min(len(order) - 1, index + 1)]
+
+
+def heading_identity(node: Heading) -> HeadingIdentity:
+    """Build stable heading identity for selection restoration."""
+    return HeadingIdentity(
+        filename=node.document.filename or "",
+        heading_id=node.id,
+        title=node.title_text,
+        todo=node.todo,
+        priority=node.priority,
+        scheduled=str(node.scheduled) if node.scheduled is not None else None,
+        deadline=str(node.deadline) if node.deadline is not None else None,
+    )
+
+
+def heading_identity_matches(node: Heading, identity: HeadingIdentity) -> bool:
+    """Return whether node matches preserved heading identity."""
+    same_file = (node.document.filename or "") == identity.filename
+    if not same_file:
+        return False
+
+    if identity.heading_id is not None:
+        return node.id == identity.heading_id
+
+    return (
+        node.title_text == identity.title
+        and node.todo == identity.todo
+        and node.priority == identity.priority
+        and (str(node.scheduled) if node.scheduled is not None else None) == identity.scheduled
+        and (str(node.deadline) if node.deadline is not None else None) == identity.deadline
+    )
 
 
 def append_repeat_transition(
