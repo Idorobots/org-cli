@@ -50,6 +50,56 @@ def test_cli_runner_summary() -> None:
     assert "Total tasks:" in result.stdout
 
 
+def test_cli_help_root_commands_are_ordered() -> None:
+    """Root help should list commands in configured order."""
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    output = clean_combined_output(result)
+    agenda_idx = output.find("│ agenda")
+    board_idx = output.find("│ board")
+    stats_idx = output.find("│ stats")
+    tasks_idx = output.find("│ tasks")
+    assert min(agenda_idx, board_idx, stats_idx, tasks_idx) >= 0
+    assert agenda_idx < board_idx < stats_idx < tasks_idx
+
+
+def test_cli_help_tasks_commands_are_ordered() -> None:
+    """Tasks help should list commands in lexicographical order."""
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["tasks", "--help"])
+
+    assert result.exit_code == 0
+    output = clean_combined_output(result)
+    add_idx = output.find("│ add")
+    capture_idx = output.find("│ capture")
+    list_idx = output.find("│ list")
+    query_idx = output.find("│ query")
+    remove_idx = output.find("│ remove")
+    update_idx = output.find("│ update")
+    assert min(add_idx, capture_idx, list_idx, query_idx, remove_idx, update_idx) >= 0
+    assert add_idx < capture_idx < list_idx < query_idx < remove_idx < update_idx
+
+
+def test_cli_help_stats_commands_are_ordered() -> None:
+    """Stats help should list commands in lexicographical order."""
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["stats", "--help"])
+
+    assert result.exit_code == 0
+    output = clean_combined_output(result)
+    all_idx = output.find("│ all")
+    groups_idx = output.find("│ groups")
+    summary_idx = output.find("│ summary")
+    tags_idx = output.find("│ tags")
+    assert min(all_idx, groups_idx, summary_idx, tags_idx) >= 0
+    assert all_idx < groups_idx < summary_idx < tags_idx
+
+
 def test_cli_runner_tags_tag() -> None:
     """CLI should filter tags with --tag."""
     runner = CliRunner()

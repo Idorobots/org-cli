@@ -65,14 +65,14 @@ def stats_callback(
 
 
 stats_all.register(stats_app)
-tags.register(stats_app)
 groups.register(stats_app)
 stats_summary.register(stats_app)
-tasks_command.register(app)
-board_command.register(app)
-agenda.register(app)
+tags.register(stats_app)
 
+agenda.register(app)
+board_command.register(app)
 app.add_typer(stats_app, name="stats")
+tasks_command.register(app)
 
 
 def main() -> None:

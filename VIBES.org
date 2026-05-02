@@ -5802,11 +5802,21 @@ When =--parent= CLI switch is set or =parent= is configured on the template, ple
 
 Make sure to update the docs as well as the class names and filenames to better match the new command tree.
 
-*** DONE Move the =query= command into the =tasks= tree under =tasks query=
+*** DONE Move the =query= command into the =tasks= tree under =tasks query=                :Cleanup:
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-05-02 Sat 12:30]
 :END:
 Make sure to update the docs as well as the class names and filenames to better match the new command tree.
+
+*** DONE Reorder commands in help text                                                     :Cleanup:
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-02 Sat 12:34>
+:ID: Vibes-376
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 12:38]
+:END:
+Can you reorder the command list on =org= help message? I'd like the order to be =agenda=, =board=, =stats= and finally =tasks= (lexicographical ordering). Please do the same reordering for =org tasks= and =org stats=.
 
 *** Tasks edit command
 - Allows editing a specific task with $EDITOR
