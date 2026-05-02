@@ -6206,33 +6206,45 @@ Redo all the filters & orderings in terms of the query language
 
 - ~--order-by priority~ - 'sortby(.priority)'
 
-*** workflow --init
-- Task links via properties
-- External attachments (for the execution plan)
-- Optional task-ids (use heading for primary ID and property optionally)
-
-*** workflow --next
-- Find tasks that are ready to be started (based on relative position in the file & inter-dependencies & state)
-
-*** workflow --mark
-- Claim tasks as actively worked on.
-- Run commands based on task type (property/tag)
-- Add extra tasks, modify state
-- Loop
-
 *** Gantt chart
+- Show a gantt chart of tasks and their dependencies
+*** Progress view
+- List all tasks that have subtasks
+- Have a completeness bar chart visually showing how done these are.
+- List to be oredered by tree order (top-level tasks followed by their children)
 *** CANCELLED Org Attach support
 :LOGBOOK:
 - State "CANCELLED"  from              [2026-04-26 Sun 16:55] \\
   Too cumbersome, instead it'll use links to files.
 :END:
 Use IDs for headings. Support the "usual" =org-attach= file directories for attachments.
-** Usability fixes
+** Usability improvements                                                                       :UX:
+*** Board & agenda commands should omit tasks that are COMMENTs
+*** Board command should only show recently completed tasks
+Tasks older than 7 days should be omitted, the timeout should be configurable with =--days=.
+*** Help modal under =?= in interactive commands
+Have commands display a modal outlining all available key bindings when run with =?=. The same description should be added to the help strings for each of the interactive commands.
+*** Input is very jittery                                                                      :Bug:
+When holding an arrow key down to scroll a longer list the TUI gets jittery and sometimes the key escape sequence is displayed at the very bottom.
+I'm guessing the polling for input is too slow to catch key repeats and sometimes the native input handling kick is, hence printing the key escape sequence.
+*** DONE Board footer sometimes is 3 or more lines tall
+:LOGBOOK:
+- State "DONE"       from              [2026-05-02 Sat 22:55]
+:END:
+It's OK to show partially obscured task panels, so it should be possible to scroll just the content area.
+*** TODO Board columns should be ordered according to the =#+TODO= order
+*** All interactive commands should support the =--width= CLI switch
+*** Agenda non-interactive output format
+- Should be adjusted to "look and feel" just like the interactive one.
 *** Agenda frequency plot
 Show a task frequency plot in the agenda header and highlight the bucket that corresponds to the selected range.
-*** Agenda & board task archival
-Use =$= key to move the task to the archive file.
+*** Task IDs
+The tasks IDs of newly created tasks should default to ={{document_category}}-{{count_of_headings_in_file + 1}}=
+Show the task ID (when present) in the board task panels as well as agenda and task list. In all cases, it should preceed the TODO state.
+*** Bulk actions
+It should be possible to mark multiple items in agenda, board & backlog and apply an action to them in bulk
 *** Check if file was modified outside of org-cli before saving it.
+*** File watching for interactive commands and updated display
 *** Do not add =#+TODO:= line to file contents, but rather modify done_states.
 
 *** Better heading & body parsing

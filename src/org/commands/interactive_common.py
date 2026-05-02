@@ -233,16 +233,27 @@ def decode_escape_sequence(sequence: bytes) -> str:
 def read_escape_sequence(fd: int) -> bytes:
     """Read one terminal escape sequence from stdin."""
     payload = bytearray(b"\x1b")
-    ready, _, _ = select.select([fd], [], [], 0.03)
+    ready, _, _ = select.select([fd], [], [], 0.01)
     if not ready:
         return bytes(payload)
 
     payload.extend(os.read(fd, 1))
-    while True:
-        ready, _, _ = select.select([fd], [], [], 0.01)
+
+    second = payload[-1:]
+    if second != b"[":
+        return bytes(payload)
+
+    for _ in range(32):
+        ready, _, _ = select.select([fd], [], [], 0.002)
         if not ready:
             break
-        payload.extend(os.read(fd, 1))
+        next_byte = os.read(fd, 1)
+        payload.extend(next_byte)
+        if next_byte in {b"~", b"M", b"m"}:
+            break
+        if next_byte.isalpha():
+            break
+
     return bytes(payload)
 
 
@@ -437,13 +448,7 @@ def read_keypress(timeout_seconds: float | None = None) -> str:
         if first in {b"\r", b"\n"}:
             return "ENTER"
         if first == b"\x1b":
-            payload = bytearray(first)
-            while True:
-                ready, _, _ = select.select([fd], [], [], 0.01)
-                if not ready:
-                    break
-                payload.extend(os.read(fd, 1))
-            return decode_escape_sequence(bytes(payload))
+            return decode_escape_sequence(read_escape_sequence(fd))
         try:
             return first.decode("utf-8").lower()
         except UnicodeDecodeError:

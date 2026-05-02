@@ -296,7 +296,38 @@ def test_interactive_renderable_keeps_footer_at_bottom() -> None:
     assert lines[-2].startswith("Rows ")
     assert "Enter edit" in lines[-2]
     assert "$ archive" in lines[-2]
-    assert lines[-1] == "Ready"
+    assert lines[-1].strip() == "Ready"
+
+
+def test_interactive_renderable_footer_status_is_single_line() -> None:
+    """Interactive footer status should be normalized to one visible line."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Task\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", nodes),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="line one\nline two\nline three",
+    )
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=120, height=24)
+
+    console.print(board_command._interactive_flow_board_renderable(console, session))
+    lines = buffer.getvalue().splitlines()
+
+    assert len(lines) == 24
+    assert lines[-2].startswith("Rows ")
+    assert lines[-1].strip() == "line one line two line three"
 
 
 def test_handle_interactive_key_enter_edits_selected_task(

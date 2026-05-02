@@ -12,6 +12,7 @@ import typer
 from rich import box
 from rich.cells import cell_len
 from rich.console import Group, RenderableType
+from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.rule import Rule
@@ -61,6 +62,7 @@ _HIGHLIGHT_PANEL_STYLE = "on grey23"
 _INTERACTIVE_HEADER_HEIGHT = 2
 _INTERACTIVE_FOOTER_HEIGHT = 3
 _INTERACTIVE_PANEL_HEIGHT = 4
+_INTERACTIVE_INPUT_TIMEOUT_SECONDS = 0.05
 
 
 @dataclass
@@ -813,6 +815,22 @@ def _interactive_row_heights(
     return row_heights
 
 
+def _column_row_heights(nodes: list[Heading], render: _BoardPanelRenderConfig) -> list[int]:
+    """Estimate interactive panel heights for nodes within one column."""
+    return [_interactive_panel_height(node, render) for node in nodes]
+
+
+def _selected_column_row_heights(
+    session: _BoardSession,
+    render: _BoardPanelRenderConfig,
+) -> list[int]:
+    """Estimate interactive panel heights for currently selected column."""
+    if not session.columns:
+        return []
+    selected_nodes = session.columns[session.selected_column_index].nodes
+    return _column_row_heights(selected_nodes, render)
+
+
 def _window_end_for_height(
     row_heights: list[int],
     start_row: int,
@@ -877,10 +895,10 @@ def _sync_scroll_for_selection(
     return session.scroll_offset, end_row, used_lines
 
 
-def _interactive_flow_board_renderable(console: Console, session: _BoardSession) -> Group:
+def _interactive_flow_board_renderable(console: Console, session: _BoardSession) -> RenderableType:
     """Build scrollable interactive flow board with fixed headers/footer."""
     panel_content_width = _estimate_panel_content_width(console.width, len(session.columns))
-    available_lines = max(
+    body_height = max(
         1,
         console.size.height - _INTERACTIVE_HEADER_HEIGHT - _INTERACTIVE_FOOTER_HEIGHT,
     )
@@ -918,19 +936,30 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
         coalesce_completed=session.args.coalesce_completed,
     )
 
-    row_heights = _interactive_row_heights(session, render)
-    start_row, end_row, used_lines = _sync_scroll_for_selection(
+    selected_row_heights = _selected_column_row_heights(session, render)
+    start_row, end_row, _used_lines = _sync_scroll_for_selection(
         session,
-        row_heights,
-        available_lines,
+        selected_row_heights,
+        body_height,
     )
-    filler_lines = max(0, available_lines - used_lines)
 
-    for row_index in range(start_row, end_row):
-        cells: list[RenderableType] = []
-        for column_index, column in enumerate(session.columns):
+    body_cells: list[RenderableType] = []
+    for column_index, column in enumerate(session.columns):
+        panels: list[RenderableType] = []
+        if start_row >= len(column.nodes):
+            body_cells.append(Text(""))
+            continue
+
+        column_end_row, _column_used_lines = _window_end_for_height(
+            _column_row_heights(column.nodes, render),
+            start_row,
+            body_height,
+        )
+        if column_end_row < len(column.nodes):
+            column_end_row += 1
+
+        for row_index in range(start_row, column_end_row):
             if row_index >= len(column.nodes):
-                cells.append(Text(""))
                 continue
 
             node = column.nodes[row_index]
@@ -938,8 +967,10 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
                 column_index == session.selected_column_index
                 and row_index == session.selected_row_index
             )
-            cells.append(_build_task_panel(node, render, highlighted=highlighted))
-        body.add_row(*cells)
+            panels.append(_build_task_panel(node, render, highlighted=highlighted))
+
+        body_cells.append(Group(*panels) if panels else Text(""))
+    body.add_row(*body_cells)
 
     controls = (
         "Up/Down, Left/Right, Wheel move"
@@ -950,10 +981,11 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
         " | Shift+Up/Down priority"
         " | q/Esc quit"
     )
-    total_rows = max(_max_column_nodes(session.columns), 1)
+    selected_nodes = session.columns[session.selected_column_index].nodes
+    total_rows = max(len(selected_nodes), 1)
     visible_end_row = min(end_row, total_rows)
     row_text = f"Rows {visible_end_row}/{total_rows}"
-    status = session.status_message or ""
+    status = " ".join((session.status_message or "").splitlines())
     footer_style = "dim" if session.color_enabled else ""
 
     footer_line = Table.grid(expand=True)
@@ -964,20 +996,22 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
         Text(controls, style=footer_style, no_wrap=True, overflow="ellipsis"),
     )
 
-    filler = Table.grid(expand=True)
-    filler.add_column(ratio=1)
-    for _ in range(filler_lines):
-        filler.add_row(Text(""))
-
-    return Group(
-        header,
-        Rule(style=footer_style),
-        body,
-        filler,
-        Rule(style=footer_style),
-        footer_line,
-        Text(status, style=footer_style, no_wrap=True, overflow="ellipsis"),
+    layout = Layout(name="board")
+    layout.split_column(
+        Layout(name="header", size=_INTERACTIVE_HEADER_HEIGHT),
+        Layout(name="body"),
+        Layout(name="footer", size=_INTERACTIVE_FOOTER_HEIGHT),
     )
+    layout["header"].update(Group(header, Rule(style=footer_style)))
+    layout["body"].update(body)
+    layout["footer"].update(
+        Group(
+            Rule(style=footer_style),
+            footer_line,
+            Text(status, style=footer_style, no_wrap=True, overflow="ellipsis"),
+        ),
+    )
+    return layout
 
 
 def _flow_board_key_bindings(
@@ -1039,7 +1073,7 @@ def _run_flow_board_interactive(console: Console, session: _BoardSession) -> Non
             auto_refresh=False,
         ) as live:
             while True:
-                key = read_keypress(timeout_seconds=0.2)
+                key = read_keypress(timeout_seconds=_INTERACTIVE_INPUT_TIMEOUT_SECONDS)
                 if not key:
                     live.update(_interactive_flow_board_renderable(console, session), refresh=True)
                     continue
