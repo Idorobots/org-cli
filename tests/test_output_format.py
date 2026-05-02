@@ -16,8 +16,8 @@ from rich.syntax import Syntax
 
 from org import output_format
 from org.analyze import AnalysisResult, Group, Tag, TimeRange
-from org.commands import query as query_command
 from org.commands.tasks import list as tasks_list_command
+from org.commands.tasks import query as query_command
 from org.histogram import Histogram
 
 
@@ -186,7 +186,7 @@ def test_pandoc_query_formatter_uses_syntax_when_color_enabled(
     formatter = query_command.PandocQueryOutputFormatter("gfm", None)
 
     monkeypatch.setattr(
-        "org.commands.query._org_to_pandoc_format",
+        "org.commands.tasks.query._org_to_pandoc_format",
         lambda _org_text, _output, _args: "# title",
     )
 

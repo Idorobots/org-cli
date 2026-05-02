@@ -1,4 +1,4 @@
-"""Query command for jq-style data queries."""
+"""Tasks query command for jq-style data queries."""
 
 from __future__ import annotations
 
@@ -212,8 +212,8 @@ def get_query_formatter(output_format: str, pandoc_args: str | None) -> QueryOut
 
 
 @dataclass
-class QueryArgs:
-    """Arguments for the query command."""
+class TasksQueryArgs:
+    """Arguments for the tasks query command."""
 
     query: str
     files: list[str] | None
@@ -233,8 +233,8 @@ class QueryArgs:
     pandoc_args: str | None
 
 
-def run_query(args: QueryArgs) -> None:
-    """Run the query command."""
+def run_tasks_query(args: TasksQueryArgs) -> None:
+    """Run the tasks query command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
     if args.offset < 0:
@@ -288,7 +288,7 @@ def run_query(args: QueryArgs) -> None:
 
 
 def register(app: typer.Typer) -> None:
-    """Register the query command."""
+    """Register the tasks query command."""
 
     @app.command("query")
     def query_command(  # noqa: PLR0913
@@ -371,7 +371,7 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Query tasks using jq-style expressions."""
-        args = QueryArgs(
+        args = TasksQueryArgs(
             query=query,
             files=files,
             config=config,
@@ -390,6 +390,6 @@ def register(app: typer.Typer) -> None:
             pandoc_args=pandoc_args,
         )
         config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "query")
-        config_module.log_command_arguments(args, "query")
-        run_query(args)
+        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks query")
+        config_module.log_command_arguments(args, "tasks query")
+        run_tasks_query(args)

@@ -46,13 +46,13 @@ with:
 
 ## Commands
 
-### `org query`
+### `org tasks query`
 
 Run jq-style queries over your Org Mode tasks.
 
 ```bash
 # Expand all nodes, select completed tasks, extract heading, return a page of results
-poetry run org query '[ .[][] | select(.todo in $done_states) | .title_text ][$offset: $offset + $limit]' \
+poetry run org tasks query '[ .[][] | select(.todo in $done_states) | .title_text ][$offset: $offset + $limit]' \
   --done-states DONE,CANCELLED \
   --max-results 10 \
   --offset 10 \

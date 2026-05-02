@@ -623,8 +623,9 @@ def test_cli_runner_allows_missing_files_when_some_exist() -> None:
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
     missing_path = str((FIXTURES_DIR / "missing.org").resolve())
+    command_args = ["tasks", "query", ".[] | .children | length", missing_path, fixture_path]
 
-    result = runner.invoke(app, ["query", ".[] | .children | length", missing_path, fixture_path])
+    result = runner.invoke(app, command_args)
 
     assert result.exit_code == 0
     assert result.stdout.strip() == "3"
@@ -635,7 +636,7 @@ def test_cli_runner_accepts_width_override() -> None:
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
 
-    result = runner.invoke(app, ["query", "1", "--width", "50", fixture_path])
+    result = runner.invoke(app, ["tasks", "query", "1", "--width", "50", fixture_path])
 
     assert result.exit_code == 0
     assert result.stdout.strip() == "1"
@@ -646,7 +647,7 @@ def test_cli_runner_rejects_width_below_minimum() -> None:
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
 
-    result = runner.invoke(app, ["query", "1", "--width", "49", fixture_path])
+    result = runner.invoke(app, ["tasks", "query", "1", "--width", "49", fixture_path])
 
     assert result.exit_code != 0
     combined_output = clean_combined_output(result)

@@ -5802,7 +5802,12 @@ When =--parent= CLI switch is set or =parent= is configured on the template, ple
 
 Make sure to update the docs as well as the class names and filenames to better match the new command tree.
 
-*** Move the query command into the tasks tree
+*** DONE Move the =query= command into the =tasks= tree under =tasks query=
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 12:30]
+:END:
+Make sure to update the docs as well as the class names and filenames to better match the new command tree.
+
 *** Tasks edit command
 - Allows editing a specific task with $EDITOR
 *** Tasks refile command

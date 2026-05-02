@@ -4,7 +4,7 @@
 
 ## Commands
 
-- `org query` - Run jq-style queries over loaded Org data. See [query_command.md](query_command.md).
+- `org tasks query` - Run jq-style queries over loaded Org data. See [tasks_query_command.md](tasks_query_command.md).
 - `org agenda` - Day-oriented agenda view with timetable and deadlines. See [agenda_command.md](agenda_command.md).
 - `org stats all` - Full stats view (tasks + tags + groups). See [stats_all_command.md](stats_all_command.md).
 - `org stats summary` - Task-only stats and histograms. See [stats_summary_command.md](stats_summary_command.md).

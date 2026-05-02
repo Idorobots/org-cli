@@ -8,7 +8,7 @@ This document provides essential information for AI coding agents working in the
 
 Top-level commands:
 
-- `org query`
+- `org tasks query`
 - `org stats all`
 - `org stats summary`
 - `org stats tags`
@@ -82,7 +82,7 @@ poetry install
 poetry run org --help
 
 # Query command
-poetry run org query '.[][] | .title_text' -n 5 examples/ARCHIVE_small
+poetry run org tasks query '.[][] | .title_text' -n 5 examples/ARCHIVE_small
 
 # Summary stats
 poetry run org stats all --filter-priority A --max-tags 3 --max-groups 2 examples/ARCHIVE_small
@@ -104,7 +104,7 @@ Command options evolve; use the generated help for exact flags:
 
 ```bash
 poetry run org --help
-poetry run org query --help
+poetry run org tasks query --help
 poetry run org stats --help
 poetry run org stats all --help
 poetry run org stats summary --help
