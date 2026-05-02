@@ -7,7 +7,8 @@ import sys
 import typer
 
 from org import config, logging_config
-from org.commands import agenda, query
+from org.commands import agenda
+from org.commands import board as board_command
 from org.commands.stats import all as stats_all
 from org.commands.stats import groups, tags
 from org.commands.stats import summary as stats_summary
@@ -64,14 +65,14 @@ def stats_callback(
 
 
 stats_all.register(stats_app)
-tags.register(stats_app)
 groups.register(stats_app)
 stats_summary.register(stats_app)
-tasks_command.register(app)
-query.register(app)
-agenda.register(app)
+tags.register(stats_app)
 
+agenda.register(app)
+board_command.register(app)
 app.add_typer(stats_app, name="stats")
+tasks_command.register(app)
 
 
 def main() -> None:
@@ -93,6 +94,8 @@ def main() -> None:
     config.CONFIG_CUSTOM_ORDER_BY.update(loaded_config.custom_order_by)
     config.CONFIG_CUSTOM_WITH.clear()
     config.CONFIG_CUSTOM_WITH.update(loaded_config.custom_with)
+    config.CONFIG_CAPTURE_TEMPLATES.clear()
+    config.CONFIG_CAPTURE_TEMPLATES.update(loaded_config.capture_templates)
 
     command = typer.main.get_command(app)
     default_map = config.build_default_map(defaults) if defaults else None

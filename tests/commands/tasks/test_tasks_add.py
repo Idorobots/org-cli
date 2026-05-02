@@ -21,7 +21,7 @@ def make_add_args(files: list[str], **overrides: object) -> tasks_add.AddArgs:
     """Build AddArgs with defaults and overrides."""
     args = tasks_add.AddArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         level=None,
         todo="TODO",
         priority=None,

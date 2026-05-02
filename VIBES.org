@@ -1,6 +1,6 @@
 #+TITLE: Good Vibes
 #+CATEGORY: Vibes
-#+TODO: TODO(t) | DONE(d@/!)
+#+TODO: TODO(t) | DONE(d!)
 #+TODO: | CANCELLED(c@/!) REWORKED(r@/!)
 
 * Goals
@@ -2172,7 +2172,7 @@ Add "spinner" (the dots style from Rich) when computing loading the files and co
 
 Add syntax highlighting on the detailed display of org nodes in the ~tasks list~ command output. Do not show any line numbers.
 
-** REWORKED [#B] More stats                                                            :UX:Analysis:
+** REWORKED More stats                                                            :UX:Analysis:
 :LOGBOOK:
 - State "REWORKED"       from "TODO"       [2026-02-23 Mon 22:16] \\
   Worked fine, but forgot to update orgparse in the devcontainer. Turns out it did introduce some slop. Seems to be commond for Anthropic models.
@@ -4806,7 +4806,7 @@ When an edit is made, it should be logged, for easier debugging.
 
 Create a detailed plan for the above task and save it in plans/ directory. Specifically focus on the user interaction part - this is the first command that is interactive by design.
 
-**** DONE UX bugs                                                                           :BUG:UX:
+**** DONE UX bugs                                                                           :Bug:UX:
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-04-19 Sun 23:49]
 :END:
@@ -4935,37 +4935,55 @@ In file tests/commands/test_agenda_command.py around line 668, near the ~def tes
 #+end_example
 
 Why do we need this?
-** Command interactivity improvements
-*** Agenda notifications
-- =--watch= and =--notify= to send reminders about tasks that are due.
-*** Task board AGILE
-- A way to move tasks between columns
-- A way to view the highlighted task
-
-*** Task list
-- A way to view the highlighted task
-** Workflow command
-
+** REWORKED Tighten Ruff lint policy in =pyproject.toml= (prefer =select = ["ALL"]=)
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-18 Sat 16:00] \\
+  Needed extra manual work.
+:END:
+  - Evaluate switching =[tool.ruff.lint].select= to =["ALL"]=.
+  - Keep an explicit =ignore= list only for justified exceptions, with a short rationale per rule.
+  - Ensure commonly useful rule families are enabled (at minimum: =S=, =PT=, =TRY=, =PERF=, =D=, =TID=, =A=, =C90=, =G=).
+** DONE Speed up slow CLI tests by reducing subprocess usage
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-19 Sun 02:04]
+:END:
+- *Context:* current profiling shows most runtime is concentrated in =tests/test_chart_date_spanning.py= and =tests/cli/test_cli_smoke.py=. These tests repeatedly call =subprocess.run(...)=, so each case pays full Python startup + import cost.
+- *Scope:* optimize test runtime without reducing confidence in CLI behavior or changing command semantics.
+- *Approach:*
+  - [ ] Profile and record baseline with =poetry run pytest --durations=40 --durations-min=0.02=
+  - [ ] Keep only 1-2 true end-to-end subprocess smoke tests in =tests/cli/test_cli_smoke.py=
+  - [ ] Convert remaining subprocess-heavy cases to in-process tests (=CliRunner= and/or direct command entrypoints)
+  - [ ] Consolidate repetitive date-span scenarios in =tests/test_chart_date_spanning.py= using parametrized tests
+  - [ ] Share reusable assertion helpers (e.g., ANSI-clean output checks) to avoid repeated per-test setup
+  - [ ] Re-run profiling and compare against baseline
+- *Acceptance criteria:*
+  - [ ] Combined runtime of =tests/test_chart_date_spanning.py= + =tests/cli/test_cli_smoke.py= is significantly lower
+  - [ ] Full suite still passes via =poetry run task check=
+  - [ ] Coverage and key CLI smoke guarantees remain intact (entrypoint, multi-file input, and summary output)
+** TODO Workflow commands                                                             :CLI:Workflow:
+:LOGBOOK:
+- State "TODO"       from ""           [2026-04-26 Sun 16:23]
+:END:
 Break down next task:
 #+begin_example
-org workflow current-task --agent OpenCode --details --md VIBES.org
+org flow current-task --agent OpenCode --details --md VIBES.org
 No result
 
-org workflow next-available --details --md VIBES.org
+org flow next-available --details --md VIBES.org
 
   # Do some stuff
   Blah blah
 
 # AI analyzes the task, decides to break it down into smaller chunks.
 
-# org workflow claim "Do some stuff" --agent OpenCode VIBES.org
-org workflow sub-task "Do some stuff" --id "23" --heading "Foo" --body "Bar" --tags "Baz" VIBES.org
-org workflow sub-task "Do some stuff" --id "54" --heading "Faz" --body "Bar" --tags "Baz" VIBES.org
+# org flow claim "Do some stuff" --agent OpenCode VIBES.org
+org flow sub-task "Do some stuff" --id "23" --heading "Foo" --body "Bar" --tags "Baz" VIBES.org
+org flow sub-task "Do some stuff" --id "54" --heading "Faz" --body "Bar" --tags "Baz" VIBES.org
 #+end_example
 
 Plan implementing next task:
 #+begin_example
-org workflow next-available --details --md VIBES.org
+org flow next-available --details --md VIBES.org
 
   # Foo :Baz:
   ID: 23
@@ -4973,13 +4991,13 @@ org workflow next-available --details --md VIBES.org
 
 # AI analyzes the task, decides to compute an implementation plan.
 
-org workflow claim "Foo" --agent OpenCode VIBES.org
-org workflow add-plan "Foo" path/to/plan.md VIBES.org
+org flow claim "Foo" --agent OpenCode VIBES.org
+org flow add-plan "Foo" path/to/plan.md VIBES.org
 #+end_example
 
 Implement a plan:
 #+begin_example
-org workflow next-available --details --md VIBES.org
+org flow next-available --details --md VIBES.org
 
   # Foo :Baz:
   ID: 23
@@ -4990,7 +5008,7 @@ org workflow next-available --details --md VIBES.org
 
 # AI executes the plan, puts the task in review
 
-org workflow done "Foo" VIBES.org
+org flow done "Foo" VIBES.org
 #+end_example
 
 This maps to something along those lines:
@@ -5009,6 +5027,1150 @@ org task update --id "Foo" --todo ACTIVE --property AGENT=OpenCode VIBES.org
 
 org task update --id "Foo" --todo REVIEW VIBES.org
 #+end_example
+
+*** REWORKED Interactive task board                                                         :TUI:UX:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-04-26 Sun 16:58]
+:END:
+The AGILE =tasks board= command is pretty useful, but it could be made more useful by introducing agenda-like interactivity, specifically:
+
+- A way to highlight specific tasks in the columns - similar to highlighting the lines in agenda. The highlighted task panel should have a different background to signify the highlighted state. Keyboard arrow keys should move the highlight to subsequent tasks in the same column (up and down) and also move the highlight between the columns (left and right).
+
+- A way to view the highlighted task - when the return key is pressed on the keyboard, the task associated with the highlighted task panel should be displayed in it's entirety, including tasks descendants. The display should be the same as for the highlighted task in the agenda command, i.e. using syntax highlighting and a pager. Pressing the ESC key should close the task view and go back to the board view.
+
+- A way to move tasks between columns. When using the "shift+right" and "shift+left" key combination when a task panel is highlighted, the associated task should be moved te the neighbouring column, i.e. it's state should change accordingly. When moving to the combined completion column, the user sholud be prompted for the specific state to use. On each state change, a repeat should be added to the tasks logbook, much the same way as it is done in the agenda command.
+
+- A way to move tasks in priority - when using the "shift+up" and "shift+down" key combinations, the tasks priority sholud be increased or decreased by 1 level (assuming that no priority is level 0), with the following priority values available: A, B, C. "A" is the highest prority, no priority value set is the lowest priority. The board's lane contents should be ordered by priority, so more important tasks should be displayed at the top.
+
+The board contents should be scrollable in the same way the agenda command makes its content scrollable. The column headers should be visible at all times and a footer should be introduced that shows the key bindings and the status message.
+When scrolling (highlighting a tasks that's outside of the view), all columns should scroll at the same time.
+Scrolling should also be possible by using the mouse wheel.
+
+The =tasks board= command should be moved outside of the =tasks= command tree and be turned into a =flow board= command.
+
+**** DONE UX improvements                                                                  :Cleanup:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-26 Sun 16:26]
+:END:
+When a column is empty and highlight moves to that column, it should be skipped.
+
+Contents are not shown when scrolling past the display window - the contents should scroll so that the highlighted task is always in view. All columns should be scrolled this way.
+
+The footer should be displayed at the bottom of the command output and remain always visible (same as the header). It should display the status messages & key bindings much like the footer in agenda column.
+
+Please wrap the title, to overflow into the next lines in a panel. I don't like that panels are fixed-height.
+
+When a priority level causes a reshuffle, the task should remain highilghted.
+**** DONE Bugfixes                                                                             :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-26 Sun 16:26]
+:END:
+Do not show placeholder panels for columns that don't have enough tasks for the whole height.
+Do not show the content table frame.
+Do show a horizontal rule separating the header from the board content.
+
+**** DONE src/org/commands/agenda.py
+:PROPERTIES:
+:context:
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-26 Sun 16:45]
+:END:
+In file src/org/commands/agenda.py around line 345, near the ~def _collect_repeat_timed_entries(~
+
+#+begin_example
+-    repeats: list[Repeat] = [repeat for repeat in node.repeats if repeat.after in done_states]
++    repeats = [repeat for repeat in node.repeats if repeat.after in done_states]
+
+#+end_example
+
+You can use =repeat.is_completed= instead of =repeat.after in done_states=.
+*** DONE Refactor board command into root tree                                                 :TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-27 Mon 22:36]
+:END:
+Move board from the flow command tree to the root command tree, and expose it as =org board=.
+
+- Move command wiring so board is registered at root.
+- Remove =org flow board= registration entirely.
+- Keep existing board behavior unchanged after the move:
+  - column/lane rendering and ordering
+  - filters, ordering, profile/view selection logic
+  - interactive keys (=Up/Down/Left/Right=, =Shift+Left/Right=, =Shift+Up/Down=, =Enter=, =Esc=, mouse wheel)
+- Keep config/default handling working for =board=.
+- Update docs/examples/tests to use =org board=.
+
+*** DONE Convert configuration format from JSON to YAML                                     :Config:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-04-28 Tue 11:20]
+:END:
+Switch configuration handling from JSON to YAML, and make YAML the only supported config format.
+
+- Replace JSON config parsing with YAML parsing for default config loading and =--config= files.
+- Change default config filename from =.org-cli.json= to =.org-cli.yaml=.
+- Remove JSON-specific parsing/validation code paths.
+- Keep existing config semantics unchanged (same sections/keys and validation rules), but read them from YAML.
+- Update sample/default config files to YAML format.
+- Update command help and docs to reference YAML only.
+- Update tests to use YAML fixtures and remove JSON config test coverage.
+
+*** REWORKED Interactive tasks backlog/list command                                         :TUI:UX:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-01 Fri 14:36] \\
+  See comment.
+:END:
+Goal: Provide an interactive backlog/list experience for tasks.
+
+Acceptance criteria:
+- In interactive TTY mode, =org tasks list= runs as an interactive backlog UI.
+- In non-interactive mode, =org tasks list= prints results in current static format.
+- Interactive mode supports navigation, search/filter, and in-place task mutation.
+- State, priority, tag, and scheduling edits persist safely to Org files.
+- Validation passes with =poetry run task check=.
+
+Implementation plan:
+1. Auto-select interactive vs static mode in =tasks list=
+  - Update =run_tasks_list()= in =src/org/commands/tasks/list.py= to mirror agenda/board flow:
+    - run interactive loop when =sys.stdin.isatty() and sys.stdout.isatty()=
+    - otherwise keep existing static output path.
+  - Keep current pagination/output-format behavior for non-interactive mode unchanged.
+
+2. TODO Add interactive session model and event loop for task list
+  - Implement task-list session state in =src/org/commands/tasks/list.py=: selected row, scroll offset, status message, active search text, visible nodes.
+  - Add a =rich.live.Live= render loop analogous to =_run_agenda_interactive()= in =src/org/commands/agenda.py= and =_run_flow_board_interactive()= in =src/org/commands/board.py=.
+  - Reuse key/mouse input utilities from =src/org/commands/interactive_common.py= (=read_keypress=, =set_mouse_reporting=, escape decoding).
+
+3. Build interactive task-list rendering with existing UI primitives
+  - Reuse task rendering helpers from =src/org/tui.py= (=heading_title_to_text=, =task_state_prefix_to_text=, =task_priority_to_text=, =task_tags_to_text=).
+  - Render a scrollable list viewport with highlighted selection and persistent footer/status line.
+  - Reuse full task detail pager behavior via =open_task_detail_in_pager()= from =src/org/commands/interactive_common.py=.
+
+4. Implement interactive filter/search over loaded task nodes
+  - Add in-session filtering pipeline in =src/org/commands/tasks/list.py= that applies incremental search/filter text to loaded nodes.
+  - Keep filtering semantics aligned with existing task list processing based on =load_and_process_data()= from =src/org/cli_common.py=.
+  - Support heading/tags/body/properties/state-oriented filtering using the command’s existing filter fields.
+
+5. Implement in-session task mutation actions
+  - Add key-driven actions for TODO state transitions, priority changes, tag edits, and scheduling/deadline edits in task-list interactive handlers.
+  - Reuse validation/mutation helpers from =src/org/commands/tasks/common.py= (=parse_tags_csv=, =parse_timestamp=, =save_document=).
+  - On state changes, append logbook transitions using =append_repeat_transition()= from =src/org/commands/interactive_common.py= for consistency with agenda/board.
+
+6. Ensure safe persistence and post-mutation session refresh
+  - Persist edits through =save_document()= in =src/org/commands/tasks/common.py=.
+  - Rebuild or resync session node references after writes so selection remains stable after sort/filter changes.
+  - Report parse/validation/write failures in interactive status line and keep session alive.
+
+7. Add regression tests for TTY and non-TTY behavior
+  - Extend =tests/commands/tasks/test_tasks_list.py= or add =tests/commands/tasks/test_tasks_backlog.py=.
+  - Cover TTY auto-switch behavior (interactive path when TTY, static output when non-TTY).
+  - Cover navigation, filtering, mutation, persistence, and failure handling paths.
+
+**** COMMENT
+For this one I tried using the AI to draft & refine the tickets. Didn't work too great. Initially the AI was too vague, then after asking it to research the feature it went too detailed, but somehow not detailed enough. Then after asking it to refine the subtasks it made a few changes that required manual intervention. The tasks it wrote were not great in my opinion, but I decided to give it a shot, albeit all in one go to give the AI full task context. It did implement a working prototype that kinda matched what I had in mind, so despite a different style of story-mapping, it did work fine in the end.
+
+**** DONE UX improvements                                                                  :Cleanup:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 12:03]
+:END:
+- Only use the text contents of a node itself, don't include the children in full text search.
+- Highlight entire lines to signify a selected task, much like is done in the Agenda and Board commands.
+- Render the tasks tags right-aligned to the console width. Include the heading stars in front of the TODO state in the list display. In general, the static format should be retained with the extra interactivity features on top of it.
+- The rows counter doesn't update when scrolling up.
+
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 12:44]
+:END:
+
+In file src/org/commands/tasks/list.py around line 104, near the ~class ListArgs:~
+
+#+begin_example
++    details_explicit: bool = False
++    out_explicit: bool = False
+#+end_example
+
+Can this be turned into a generic =noninteractive= flag instead? It should be set whenever either details or out is set in the args or not running in a TTY.
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 13:13]
+:END:
+
+In file src/org/commands/tasks/list.py around line 461, near the ~def _run_tasks_list_static(~
+
+#+begin_example
++def _local_now() -> datetime:
++    """Return local timezone-aware current datetime."""
++    return datetime.now(tz=UTC).astimezone()
++
++
++def _shift_priority(priority: str | None, *, increase: bool) -> str | None:
++    """Shift priority one step across A/B/C/none."""
++    order: list[str | None] = ["A", "B", "C", None]
++    normalized = priority if priority in {"A", "B", "C"} else None
++    index = order.index(normalized)
++    if increase:
++        return order[max(0, index - 1)]
++    return order[min(len(order) - 1, index + 1)]
++
++
++def _heading_identity(node: Heading) -> _TasksListHeadingIdentity:
++    """Build stable heading identity for selection restoration."""
++    return _TasksListHeadingIdentity(
++        filename=node.document.filename or "",
++        heading_id=node.id,
++        title=node.title_text,
++        todo=node.todo,
++        priority=node.priority,
++        scheduled=str(node.scheduled) if node.scheduled is not None else None,
++        deadline=str(node.deadline) if node.deadline is not None else None,
++    )
++
++
++def _identity_matches(node: Heading, identity: _TasksListHeadingIdentity) -> bool:
++    """Return whether node matches preserved heading identity."""
++    same_file = (node.document.filename or "") == identity.filename
++    if not same_file:
++        return False
++
++    if identity.heading_id is not None:
++        return node.id == identity.heading_id
++
++    return (
++        node.title_text == identity.title
++        and node.todo == identity.todo
++        and node.priority == identity.priority
++        and (str(node.scheduled) if node.scheduled is not None else None) == identity.scheduled
++        and (str(node.deadline) if node.deadline is not None else None) == identity.deadline
++    )
+#+end_example
+
+
+It appears that at least some of these functions are duplicates of what was already implemented in the =org agenda= or =org board=. Please abstract these away to a common module an re-use as much as possible.
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 13:13]
+:END:
+
+In file src/org/commands/tasks/list.py around line 806, near the ~def _run_tasks_list_static(~
+
+#+begin_example
++def _apply_priority_shift(session: _TasksListSession, *, increase: bool) -> None:
++    """Increase or decrease priority one step for selected task."""
++    node = _selected_node(session)
++    if node is None:
++        session.status_message = "Action available only on task rows"
++        return
++
++    old_priority = node.priority
++    new_priority = _shift_priority(old_priority, increase=increase)
++    if old_priority == new_priority:
++        session.status_message = "Priority unchanged"
++        return
++
++    node.priority = new_priority
++    _persist_and_reload_selected(
++        session,
++        node,
++        f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}",
++    )
++
++
++def _apply_tags_edit(console: Console, session: _TasksListSession) -> None:
++    """Prompt and replace tags on selected task."""
++    node = _selected_node(session)
++    if node is None:
++        session.status_message = "Action available only on task rows"
++        return
++
++    raw_tags = console.input("Tags CSV (blank clears): ")
++    try:
++        tags = parse_tags_csv(raw_tags)
++    except typer.BadParameter as err:
++        session.status_message = str(err)
++        return
++
++    old_tags = list(node.heading_tags)
++    if old_tags == tags:
++        session.status_message = "Tags unchanged"
++        return
++
++    node.heading_tags = tags
++    _persist_and_reload_selected(session, node, "Tags updated")
+
+#+end_example
+
+These edit functions also seem to be very similar to the ones used in =org agenda= and =org board=. Please abstract and reuse as much as possible.
+**** DONE src/org/commands/agenda.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 13:13]
+:END:
+
+In file src/org/commands/agenda.py around line 278, near the ~def _resolve_agenda_start_date(raw_date: str | None) -> date:~
+
+#+begin_example
+ 
+ def _local_now() -> datetime:
+     """Return local timezone-aware current datetime."""
+-    return datetime.now(tz=UTC).astimezone()
++    return interactive_local_now()
+ 
+#+end_example
+
+There's no need for this type of o wrappers that don't add any value. Please remove such wrappers after refactoring.
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 14:05]
+:END:
+
+In file src/org/commands/tasks/list.py around line 830, near the ~def _run_tasks_list_static(~
+
+#+begin_example
++    old_timestamp = getattr(node, field)
++    if str(old_timestamp) == str(parsed_timestamp):
++        session.status_message = f"{prompt_label} unchanged"
++        return
++
++    setattr(node, field, parsed_timestamp)
+
+#+end_example
+
+Please don't use =getattr= and =setattr=. This is really poor style.
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 14:26]
+:END:
+
+In file src/org/commands/tasks/list.py around line 870, near the ~def _run_tasks_list_static(~
+
+#+begin_example
++def _handle_action_key(console: Console, session: _TasksListSession, key: str) -> None:
++    """Handle one keypress for task actions."""
++    handlers = {
++        "ENTER": lambda: _open_selected_task_detail(console, session),
++        "/": lambda: _prompt_search(console, session),
++        "x": lambda: _clear_search(session),
++        "t": lambda: _apply_state_change(console, session),
++        "S-UP": lambda: _apply_priority_shift(session, increase=True),
++        "S-DOWN": lambda: _apply_priority_shift(session, increase=False),
++        "g": lambda: _apply_tags_edit(console, session),
++        "s": lambda: _apply_planning_edit(console, session, field="scheduled"),
++        "d": lambda: _apply_planning_edit(console, session, field="deadline"),
++    }
++    handler = handlers.get(key)
++    if handler is None:
++        if key:
++            session.status_message = f"Unsupported key: {key}"
++        return
++    handler()
+
+#+end_example
+
+I like this approach. Can we extract all the keypress handling boilerplate to a common utility function that just receives the set of handlers? Please apply that in all interactive commands.
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 14:33]
+:END:
+
+In file src/org/commands/tasks/list.py around line 903, near the ~def _run_tasks_list_static(~
+
+#+begin_example
++
++def _set_mouse_reporting(enabled: bool) -> None:
++    """Enable or disable terminal mouse reporting for interactive tasks list."""
++    set_mouse_reporting(enabled)
++
++
++def _read_keypress(timeout_seconds: float | None = None) -> str:
++    """Read one keypress and normalize to command token."""
++    return read_keypress(timeout_seconds)
+
+#+end_example
+
+There's no need for these wrappers.
+**** DONE tests/commands/tasks/test_tasks_list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 14:36]
+:END:
+
+In file tests/commands/tasks/test_tasks_list.py around line 696, near the ~def test_run_tasks_list_does_not_use_pager_for_json_output_when_overflowing(~
+
+#+begin_example
++
++def test_filter_nodes_by_search_handles_non_string_property_values() -> None:
++    """Search should not fail when node properties contain non-string values."""
++    nodes = node_from_org("* TODO Parent\n")
++    node = nodes[0]
++    node.properties["DISPLAY"] = Text("Needle")
++
++    matches = tasks_list._filter_nodes_by_search(nodes, "needle")
++
++    assert [item.title_text for item in matches] == ["Parent"]
+
+#+end_example
+
+It's not actually testing what it says its testing. The property value is a string. Use a number instead.
+**** CANCELLED Tasks list should show all tasks by default, file-order                          :UX:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-05-02 Sat 17:30] \\
+  It kinda makes sense to show the most recent tasks first.
+:END:
+*** REWORKED Capture command                                                                   :TUI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-01 Fri 23:38] \\
+  Needed quite a bit of massaging to get right.
+:END:
+Objective:
+- Add a top-level =org capture= workflow that creates a task from a named config template.
+
+CLI behavior:
+- =org capture= prompts for a template selection.
+- =org capture TEMPLATE_NAME= uses that template directly.
+- Unknown template names fail with a clear error listing valid names.
+- No configured templates fails with a clear error.
+
+Template config:
+- Add a new top-level =capture= section in =.org-cli.yaml=.
+- Store templates under =capture.templates= as named objects.
+- Each template requires:
+  - =file= (file path)
+  - =content= (Org text template)
+- Each template optionally supports:
+  - =parent= (query language selector)
+- =content= supports handlebars placeholders like ={{title}}=, ={{uuid}}=.
+
+Placeholder behavior:
+- Static placeholders (no prompt): ={{uuid}}=, ={{today}}=, ={{now}}=.
+- Any other placeholder prompts once, then reuses the entered value for all repeats.
+- Rendered output must parse as a valid single heading before write.
+
+Implementation areas:
+- =src/org/commands/capture.py= (new command)
+- =src/org/cli.py= (register command and load capture config into runtime globals)
+- =src/org/config.py= (parse + validate =capture.templates=)
+- =docs/index.md= and =docs/capture_command.md= (new command docs)
+- =tests/config/test_config_core.py=
+- =tests/cli/test_cli_main.py=
+- =tests/cli/test_cli_runner.py=
+- =tests/commands/test_capture_command.py= (new)
+
+Implementation plan:
+1. Config parsing
+  - Allow =capture= in top-level config keys.
+  - Validate =capture.templates= as =dict[str, dict]=.
+  - Validate per-template fields and types (=file=, =content=, optional =parent=).
+  - Return parsed templates from =load_cli_config=.
+
+2. Runtime wiring
+  - Extend =LoadedCliConfig= with =capture_templates=.
+  - Add =CONFIG_CAPTURE_TEMPLATES= runtime store in =config.py=.
+  - Populate capture templates in =cli.main()=.
+
+3. Command registration
+  - Add new =capture= command module with Typer =register(app)=.
+  - Register =capture= in root CLI command setup.
+
+4. Template selection
+  - If template arg is missing, show numbered selection prompt.
+  - If template arg is provided, resolve by exact name.
+  - Emit concise validation errors for missing/unknown template.
+
+5. Template rendering
+  - Extract placeholders from template body.
+  - Fill static placeholders first.
+  - Prompt interactive placeholders once and cache values.
+  - Render final Org text.
+
+6. Validation and insert
+  - Parse rendered text with =Heading.from_source=.
+  - Reject invalid render before file mutation.
+  - Load target doc, resolve optional parent, append heading, save file.
+
+7. Documentation
+  - Add =docs/capture_command.md= with usage, config format, placeholder rules, examples.
+  - Update =docs/index.md= command list and config section.
+
+8. Tests
+  - Config tests: valid/invalid =capture= structure and field types.
+  - Command tests: selection flow, placeholder prompting, render validation, insertion.
+  - CLI tests: =org capture= interactive path and =org capture NAME= direct path.
+  - Error tests: empty template set, unknown template, missing target file, invalid rendered heading.
+
+Acceptance criteria:
+- =org capture= prompts and creates task from selected template.
+- =org capture TEMPLATE_NAME= bypasses template picker.
+- Templates load from =.org-cli.yaml= under =capture.templates=.
+- Static placeholders auto-fill; interactive placeholders prompt once.
+- Invalid rendered templates fail with no file write.
+- Valid captures insert into configured =file= and optional =parent=.
+- Malformed =capture= config yields =Malformed config=.
+- Docs and tests cover happy path and failure modes.
+
+**** DONE src/org/commands/capture.py                                                      :Cleanup:
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 15:47]
+:END:
+
+In file src/org/commands/capture.py around line 175, near the ~new file   src/org/commands/capture.py~
+
+#+begin_example
++
++def _attach_heading(document: Document, parent_heading: Heading | None, heading: Heading) -> None:
++    """Attach heading at root or under one resolved parent."""
++    if parent_heading is None:
++        document.children.append(heading)
++        return
++    if heading.level <= parent_heading.level:
++        raise typer.BadParameter("Rendered heading level must be greater than parent level")
++    parent_heading.children.append(heading)
+#+end_example
+
+That's not the case. When the child is added to a parent node its level will automatically be adjusted if needed.
+**** DONE =--file= and =--parent= to override the capture target config in CLI.                 :UX:
+:PROPERTIES:
+:capture_time: [2026-05-01 Fri 15:42]
+:context: [[file:~/projects/software/org-cli/src/org/commands/capture.py::help="Capture template name. If omitted, interactive selection is shown",]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:09]
+:END:
+
+Add =--file= and =--parent= CLI switches to the =org capture= command that allow overriding the template-defined =file= and =parent= settings. The CLI switch values, if present, should take precedence over the configuration values.
+**** DONE ~--set K=V~ CLI switch for setting template parameter values.
+:PROPERTIES:
+:capture_time: [2026-05-01 Fri 15:48]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*=--file= and =--parent= to override the capture target config in CLI.][=--file= and =--parent= to override the capture target config in CLI.]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:20]
+:END:
+
+Add a new CLI switch =--set= to the =org capture= command that allows setting template parameter values via the CLI. When set, the command should not prompt for the values and instead use the provided values.
+**** DONE src/org/commands/capture.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:23]
+:END:
+
+In file src/org/commands/capture.py around line 158, near the ~def _resolve_placeholder_values(~
+
+#+begin_example
++    unknown_names = sorted(set(provided_values) - set(placeholders))
++    if unknown_names:
++        unknown_list = ", ".join(unknown_names)
++        raise typer.BadParameter(f"--set contains unknown template parameter(s): {unknown_list}")
+#+end_example
+
+This shouldn't cause an error, but it makes sense to log that to the logger.
+**** DONE =org capture= command should support empty template arg values                       :Bug:
+:PROPERTIES:
+:CAPTURE_TIME: 2026-05-01T16:02:24+02:00
+:ID: bc7fbff9-f481-407e-9235-d747fc5611f7
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:35]
+:END:
+When prompting for a value, any response from the user should be accepted as a valid value, even empty strings.
+**** DONE tests/cli/test_cli_runner.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:38]
+:END:
+
+In file tests/cli/test_cli_runner.py around line 808, near the ~def test_cli_runner_capture_set_values_ignores_unknown_parameter(tmp_path: Path)~
+
+#+begin_example
++def test_cli_runner_capture_accepts_empty_placeholder_value(tmp_path: Path) -> None:
++    """CliRunner capture should accept empty interactive placeholder input."""
++    runner = CliRunner()
+
+#+end_example
+
+Are these tests testing =CliRunner=? Please update all these docstrings to properly indicate that the CLI should fulfil all of those requirements.
+**** DONE Static timestamp values available in templates should be in org-mode format          :Bug:
+:PROPERTIES:
+:CAPTURE_TIME: 2026-05-01T16:09:01+02:00
+:ID: ecd4564f-60f1-44c9-870c-8c295f984263
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 16:41]
+:END:
+The built-in values for =now= and =today= should be expressed as valid Org-mode timestamps.
+**** DONE Document category & other fields available for templating                             :UX:
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-01 Fri 16:46>
+:ID: ff4b2087-96b4-4052-bc35-6541653e4cd7
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 17:05]
+:END:
+Make the various fields of the =Document= class (such as =category= etc) available for templating.
+
+**** DONE Template value for task IDs                                                           :UX:
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-01 Fri 16:48>
+:ID: 99d6ce33-06a9-4ab8-8d23-c6bb72dcc663
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 17:23]
+:END:
+Add a template value called =id= that returns monotonically increasing values for task IDs, for instance by using =len(document.all_headings) + 1= as the current value.
+
+**** DONE Show the template when prompting for the values.                                      :UX:
+:PROPERTIES:
+:CAPTURE_TIME: 2026-05-01T16:03:52+02:00
+:ID: 72f5e4e8-eec3-4ebb-9535-7fc30b0dafb1
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 19:53]
+:END:
+Ideally, the command should show the template with syntax highlighting and with additional highlight on the currently populated field. When the field is populated, the template, ideally, would be updated with the selected field while prompting for the next field.
+
+The template with highlighted current template field should be displayed at all times with the prompts for the template field values following.
+
+Can you show this as a full-screen editor? Similar to how agenda displays full screen. I'd like the template to be the main body with the highlights and the footer to contain the current field prompt.
+
+**** DONE Footer UX                                                                             :UX:
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-01 Fri 19:50>
+:ID: Vibes-366
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 20:23]
+:END:
+
+Please reorder the footer contents - the key bindings should be on the first line, right aligend. The value prompt should be on the second line. The placeholder marker should be on the first line, left-aligned, same style as the key bindings. It should say "Value 2/5". The footer should be separated from the content with a horizontal rule (same as in the Agenda and tasks list).
+
+When the prompt value is exceeding the width it should overflow and wrap-around. The footer can then be expanded to more than 2 lines of height.
+
+The prompt should accept copy & pasted values (both CTRL + P and mouse middle-click).
+
+**** DONE src/org/commands/capture.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 21:34]
+:END:
+
+In file src/org/commands/capture.py around line 283, near the ~def _template_placeholders(template_content: str) -> list[str]:~
+
+#+begin_example
++def _resolve_terminal_width() -> int:
++    """Resolve interactive terminal width with safe fallback."""
++    try:
++        return max(1, os.get_terminal_size(sys.stdout.fileno()).columns)
++    except OSError:
++        return 80
+
+#+end_example
+
+This can be extracted from the Typer's =Console= object.
+**** CANCELLED src/org/commands/capture.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-05-01 Fri 21:35] \\
+  It's used for copy&paste.
+:END:
+
+In file src/org/commands/capture.py around line 338, near the ~def _template_placeholders(template_content: str) -> list[str]:~
+
+#+begin_example
++
++def _utf8_char_width(first_byte: int) -> int:
++    """Return expected UTF-8 byte width for one first byte."""
++    if first_byte & 0b1000_0000 == 0:
++        return 1
++    if first_byte & 0b1110_0000 == 0b1100_0000:
++        return 2
++    if first_byte & 0b1111_0000 == 0b1110_0000:
++        return 3
++    if first_byte & 0b1111_1000 == 0b1111_0000:
++        return 4
++    return 1
+
+#+end_example
+
+This seems to be already solved in the other commands, can you please check how multi-byte characters are handled elsewhere and apply a similar approach here?
+**** DONE src/org/commands/capture.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 20:56]
+:END:
+
+In file src/org/commands/capture.py around line 400, near the ~def _template_placeholders(template_content: str) -> list[str]:~
+
+#+begin_example
++def _read_escape_sequence(fd: int) -> bytes:
++    """Read one terminal escape sequence from stdin."""
++    payload = bytearray(b"\x1b")
++    while True:
++        ready, _, _ = select.select([fd], [], [], 0.01)
++        if not ready:
++            break
++        payload.extend(os.read(fd, 1))
++    return bytes(payload)
++
++
++def _read_input_event(fd: int) -> tuple[str, str]:
++    """Read one input event token and optional text payload."""
++    first = os.read(fd, 1)
++    if first in {b"\r", b"\n"}:
++        return ("ENTER", "")
++    if first == b"\x03":
++        raise KeyboardInterrupt
++    if first in {b"\x7f", b"\x08"}:
++        return ("BACKSPACE", "")
++    if first == b"\x1b":
++        escape_sequence = _read_escape_sequence(fd)
++        if escape_sequence == b"\x1b[3~":
++            return ("DELETE", "")
++
++        token = decode_escape_sequence(escape_sequence)
++        token_map = {
++            "LEFT": "LEFT",
++            "RIGHT": "RIGHT",
++            "HOME": "HOME",
++            "END": "END",
++            "ESC": "ESC",
++        }
++        return (token_map.get(token, "IGNORE"), "")
++
++    utf8_bytes = bytearray(first)
++    expected = _utf8_char_width(first[0])
++    while len(utf8_bytes) < expected:
++        ready, _, _ = select.select([fd], [], [], 0.01)
++        if not ready:
++            break
++        utf8_bytes.extend(os.read(fd, 1))
++
++    try:
++        text = bytes(utf8_bytes).decode("utf-8")
++    except UnicodeDecodeError:
++        return ("IGNORE", "")
++    return ("TEXT", text)
+
+#+end_example
+
+Please reuse the input functions from the common module. If needed, expand the common utility set with anything that's required but missing.
+**** DONE Parent metadata in placeholders
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-01 Fri 19:57>
+:ID: Vibes-368
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 21:43]
+:END:
+When =--parent= CLI switch is set or =parent= is configured on the template, please include the parent fields in the static placeholder map, including the category, title, todo state and id. All of these values should be prefixed with =parent_= in the placeholder map.
+**** DONE Move the =org capture= command into the =org tasks= tree as =org tasks capture=. :Cleanup:
+:PROPERTIES:
+:capture_time: [2026-05-01 Fri 15:45]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*=--file= and =--parent= to override the capture target config in CLI.][=--file= and =--parent= to override the capture target config in CLI.]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-01 Fri 23:36]
+:END:
+
+Make sure to update the docs as well as the class names and filenames to better match the new command tree.
+
+**** DONE Agenda, board & task list capture                                                     :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 17:53]
+:END:
+Ability to capture a new task directly in the TUI:
+- for =org agenda=, it should automatically be scheduled at the highlighted time (capture the task, then apply the schedule to the newly added task).
+- for =org board= it should be added to the task list according to the usual =org tasks capture= rules.
+- for =org tasks list= it should be added to the task list according to the usual =org tasks capture= rules.
+
+**** DONE Capturing a new task via the agenda and other commands fails with the following error :Bug:
+:PROPERTIES:
+:capture_time: [2026-05-02 Sat 17:49]
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 18:03]
+:END:
+
+#+begin_example
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sys; from importlib import import_module; sys.argv = ['/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/bin/org', 'agenda']; sys.exit(import_module('org.cli').main())
+                                                                                                                                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/k/projects/software/org-cli/src/org/cli.py", line 102, in main
+    command.main(
+    ~~~~~~~~~~~~^
+        args=sys.argv[1:],
+        ^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        default_map=default_map,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/core.py", line 795, in main
+    return _main(
+        self,
+    ...<6 lines>...
+        **extra,
+    )
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/core.py", line 188, in _main
+    rv = self.invoke(ctx)
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 1873, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+                           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 1269, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 824, in invoke
+    return callback(*args, **kwargs)
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/main.py", line 1514, in wrapper
+    return callback(**use_params)
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 2331, in agenda
+    run_agenda(args)
+    ~~~~~~~~~~^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 2049, in run_agenda
+    _run_agenda_interactive(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        console,
+        ^^^^^^^^
+    ...<6 lines>...
+        ),
+        ^^
+    )
+    ^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1980, in _run_agenda_interactive
+    should_continue = _handle_interactive_key(console, session, key)
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1953, in _handle_interactive_key
+    result = dispatch_key_binding(key, _agenda_key_bindings(console, session))
+  File "/home/k/projects/software/org-cli/src/org/commands/interactive_common.py", line 96, in dispatch_key_binding
+    outcome = binding.handler()
+  File "/home/k/projects/software/org-cli/src/org/commands/interactive_common.py", line 81, in _handler
+    action()
+    ~~~~~~^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1920, in <lambda>
+    lambda: _apply_capture_task(session),
+            ~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1851, in _apply_capture_task
+    _save_document_changes(capture_result.heading.document)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 973, in _save_document_changes
+    save_document(document)
+    ~~~~~~~~~~~~~^^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/tasks/common.py", line 149, in save_document
+    org_parser.dump(document)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/org_parser/__init__.py", line 115, in dump
+    raise ValueError("No output filename provided")
+ValueError: No output filename provided
+#+end_example
+**** DONE Copy & paste in capture command doesn't work                                         :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 18:26]
+:END:
+
+When copying & pasting text into the capture command's input prompt, only the first character is pasted. It should paste the entire copied text.
+
+**** DONE Programatic task capture should print the tasks identifier                            :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 18:11]
+:END:
+When no interactivity is needed to capture a task (template name and all placeholders given), display the =.id= or the =.title= of the newly created task.
+This way it can be consumed by the AI agent to later create subtasks for this task.
+
+**** DONE Capture =--parent= should be the same format as for the other commands                :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 18:17]
+:END:
+The =parent= specifier in the config file should still remain a full selector query. This means that the value of the =--parent= switch should be wrapped in: =.id == VALUE or .title_text == VALUE=.
+
+*** DONE Move the =query= command into the =tasks= tree under =tasks query=                :Cleanup:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 12:30]
+:END:
+Make sure to update the docs as well as the class names and filenames to better match the new command tree.
+
+*** DONE Reorder commands in help text                                                     :Cleanup:
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-02 Sat 12:34>
+:ID: Vibes-376
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 12:38]
+:END:
+Can you reorder the command list on =org= help message? I'd like the order to be =agenda=, =board=, =stats= and finally =tasks= (lexicographical ordering). Please do the same reordering for =org tasks= and =org stats=.
+
+*** REWORKED Tasks edit command                                                                :TUI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-02 Sat 15:40] \\
+  Needed some convincing to get implemented.
+:END:
+Add a new =tasks edit= command that allows editing a specific task.
+The edit should be carried out with the configured system =$EDITOR= via a temporary file that contains just the edited task.
+Upon editor exit, when the edit was completed successfully, the task format should be validated with =from_source= and the task should be overwritten in the Org document.
+
+If =$EDITOR= is not defined in the environment, an error should be reported instead.
+
+The command should accept =--query-title=, =--query-id= and =--query= CLI parameters, with the same semantics as in the =tasks update= command.
+
+When more than one task is selected, the command should report an error.
+
+Editing tasks with subheadings should include those subheadings in the temporary file used for editing and also replace the children upon edit. This means it's replacing entire subtrees.
+
+Please make sure to make the editing view generic enough to reuse elsewhere. We will be using that for the other commands next.
+
+**** DONE Agenda, board & task list                                                             :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 15:35]
+:END:
+In =org agenda=, =org board= and =org tasks list= commands, instead of openining the selected task is a pager, the =$EDITOR= flow should be used instead.
+The flow should work exactly the same as for the =org tasks edit= command, except would be triggered interactively by the user.
+
+**** DONE src/org/commands/agenda.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 15:38]
+:END:
+
+In file src/org/commands/agenda.py around line 1433, near the ~def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->~
+
+#+begin_example
++    """Edit selected task subtree in configured external editor."""
++    del console
+#+end_example
+
+Refactor the code to not pass in the console if not needed.
+**** DONE Idempotency                                                                          :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 16:08]
+:END:
+Do not update the org file if the content of the task did not change (signifies user exiting without making any edits).
+**** DONE Error when editing a task via agenda/board commands                                  :Bug:
+:PROPERTIES:
+:capture_time: [2026-05-02 Sat 16:19]
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 17:19]
+:END:
+
+#+begin_example
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sys; from importlib import import_module; sys.argv = ['/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/bin/org', 'agenda']; sys.exit(import_module('org.cli').main())
+                                                                                                                                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/k/projects/software/org-cli/src/org/cli.py", line 102, in main
+    command.main(
+    ~~~~~~~~~~~~^
+        args=sys.argv[1:],
+        ^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        default_map=default_map,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/core.py", line 795, in main
+    return _main(
+        self,
+    ...<6 lines>...
+        **extra,
+    )
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/core.py", line 188, in _main
+    rv = self.invoke(ctx)
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 1873, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+                           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 1269, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 824, in invoke
+    return callback(*args, **kwargs)
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/main.py", line 1514, in wrapper
+    return callback(**use_params)
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 2263, in agenda
+    run_agenda(args)
+    ~~~~~~~~~~^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1981, in run_agenda
+    _run_agenda_interactive(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        console,
+        ^^^^^^^^
+    ...<6 lines>...
+        ),
+        ^^
+    )
+    ^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1912, in _run_agenda_interactive
+    should_continue = _handle_interactive_key(console, session, key)
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1885, in _handle_interactive_key
+    result = dispatch_key_binding(key, _agenda_key_bindings(console, session))
+  File "/home/k/projects/software/org-cli/src/org/commands/interactive_common.py", line 96, in dispatch_key_binding
+    outcome = binding.handler()
+  File "/home/k/projects/software/org-cli/src/org/commands/interactive_common.py", line 81, in _handler
+    action()
+    ~~~~~~^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1852, in <lambda>
+    lambda: _edit_selected_task_in_external_editor(session),
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1447, in _edit_selected_task_in_external_editor
+    _save_document_changes(edit_result.heading.document)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 972, in _save_document_changes
+    save_document(document)
+    ~~~~~~~~~~~~~^^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/tasks/common.py", line 149, in save_document
+    org_parser.dump(document)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/org_parser/__init__.py", line 115, in dump
+    raise ValueError("No output filename provided")
+ValueError: No output filename provided
+#+end_example
+*** CANCELLED Tasks refile command
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-05-02 Sat 14:27] \\
+  There's a =org tasks update --query-id "foo" --file "new_file.org"= available.
+:END:
+- Move task to a different file
+- Ensure that the task is first saved correctly before it is removed from the original file.
+*** DONE Tasks archive command                                                                 :TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 17:21]
+:END:
+Add a new =tasks archive= command that moves a specified task to the Org archive.
+
+The command should accept =--query-title=, =--query-id= and =--query= CLI parameters, with the same semantics as in the =tasks update= command.
+
+Selected tasks should be moved to the archive file. The archive location is determined as follows:
+- If the task has an =ARCHIVE= property use that for the base location.
+- If the task does not have an archive property, use the documents =ARCHIVE= keyword value.
+- If the document does not have an archive keyword, use =%s_archive::= as the base location.
+
+The archive location is a pattern where =%s= means the current document file-name and the =::= part separates the archive filename from the archive heading specifier. Here are some examples:
+
+#+begin_example
+%s_archive:: - archiving a task from test.org file moves it to the document children of the file "test.org_archive"
+%s_done:: - archiving a task from test.org file moves it to the document children of the file "test.org_done"
+path/to/file.org:: - archiving a task from test.org file moves it to the document children of the file "path/to/file.org"
+%s::Archive - archiving a task from test.org file moves it to the childern of the heading with title equal to "Archive" in the current file
+path/to/file.org::Heading title  - archiving a task from test.org file moves it to the childern of the heading with title equal to "Heading title" in the "path/to/file.org" file.
+#+end_example
+
+The command should automatically compute the archive location and refile the selected tasks to that location. The outcome should be similar to calling =org tasks update --query "selector" --file "location filename" --parent "optional title"=, with the distinction, that the filename and parent name are automatically derived.
+
+Please make sure to make the archival logic generic enough to reuse elsewhere. We will be using that for the other commands next.
+
+**** DONE Agenda, board & tasks lists archival                                                  :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 16:34]
+:END:
+Add archival capability to the =org agenda=, =org board= and =org tasks list= commands. Use =$= key to move the task to the archive file according to the same rules that apply to =org tasks archive=. The highlighted task should be archived.
+
+**** DONE src/org/commands/archive.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 16:47]
+:END:
+
+In file src/org/commands/archive.py around line 49, near the ~class ArchiveTarget:~
+
+#+begin_example
++    documents_to_save: tuple[Document, ...]
+#+end_example
+
+Do we really need this? There's going to be at most two documents, the source and the destination, unless they are the same document. No need to have a dedicated tuple here.
+Alternatively, do we need the source & target document for anything, perhaps this =documents_to_save= should be the only document list here?
+
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 16:56]
+:END:
+
+In file src/org/commands/tasks/list.py around line 680, near the ~def _edit_selected_task_in_external_editor(session: _TasksListSession) -> None:~
+
+#+begin_example
++    session.status_message = ""
++    try:
++        archive_result = archive_heading_subtree(node, {})
++    except typer.BadParameter as err:
++        session.status_message = str(err)
++        return
++
++    for document in archive_result.documents_to_save:
++        try:
++            _save_document_changes(document)
++        except typer.BadParameter as err:
++            session.status_message = str(err)
++            return
+#+end_example
+
+This seems to be duplicated in all commands that perform archival of tasks. Could this be refactored into a common helper?
+**** DONE Archiving tasks should set some metadata properties                                   :UX:
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-02 Sat 16:43>
+:ID: Vibes-390
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 17:06]
+:END:
+
+When a task is archived, some metadata properties should be set on the archived version:
+- =ARCHIVE_TIME= - timestamp of the time of archival, example: =2023-10-30 pon 23:48=
+- =ARCHIVE_FILE= - the file from which the task was archived, example: =~/org/refile.org=
+- =ARCHIVE_CATEGORY= - original task category at the time of archival, example: =refile=
+- =ARCHIVE_TODO= - original todo-state at the time of archival, example: =DONE=
+*** Flow ready command
+- Find tasks that are ready to be started (based on relative position in the file & inter-dependencies & state)
+*** Flow assign command
+- Claim tasks as actively worked on.
+- Assigns a task to a specified assignee
+*** Flow move command
+- Transition task states based on configured workflow rules & validations.
+- =--to STATE= optional, used if more than one transition existis
+- =--comment= for additional information on the transition
+*** Flow subtask command
+- Like capture, but specifically for adding subtasks
+*** Flow context command
+- Add a property with additional information via a file
+- Add a specified task as a blocker or otherwise link tasks.
 
 *** Extra filters
 - ~--id-property NAME~ - names the property serving as the task ID
@@ -5044,21 +6206,59 @@ Redo all the filters & orderings in terms of the query language
 
 - ~--order-by priority~ - 'sortby(.priority)'
 
-*** workflow --init
-- Task links via properties
-- External attachments (for the execution plan)
-- Optional task-ids (use heading for primary ID and property optionally)
-
-*** workflow --next
-- Find tasks that are ready to be started (based on relative position in the file & inter-dependencies & state)
-
-*** workflow --mark
-- Claim tasks as actively worked on.
-- Run commands based on task type (property/tag)
-- Add extra tasks, modify state
-- Loop
-
 *** Gantt chart
+- Show a gantt chart of tasks and their dependencies
+*** Progress view
+- List all tasks that have subtasks
+- Have a completeness bar chart visually showing how done these are.
+- List to be oredered by tree order (top-level tasks followed by their children)
+*** CANCELLED Org Attach support
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-04-26 Sun 16:55] \\
+  Too cumbersome, instead it'll use links to files.
+:END:
+Use IDs for headings. Support the "usual" =org-attach= file directories for attachments.
+** Usability improvements                                                                       :UX:
+*** Board & agenda commands should omit tasks that are COMMENTs
+*** Board command should only show recently completed tasks
+Tasks older than 7 days should be omitted, the timeout should be configurable with =--days=.
+*** Help modal under =?= in interactive commands
+Have commands display a modal outlining all available key bindings when run with =?=. The same description should be added to the help strings for each of the interactive commands.
+*** Input is very jittery                                                                      :Bug:
+When holding an arrow key down to scroll a longer list the TUI gets jittery and sometimes the key escape sequence is displayed at the very bottom.
+I'm guessing the polling for input is too slow to catch key repeats and sometimes the native input handling kick is, hence printing the key escape sequence.
+*** DONE Board footer sometimes is 3 or more lines tall
+:LOGBOOK:
+- State "DONE"       from              [2026-05-02 Sat 22:55]
+:END:
+It's OK to show partially obscured task panels, so it should be possible to scroll just the content area.
+*** TODO Board columns should be ordered according to the =#+TODO= order
+*** All interactive commands should support the =--width= CLI switch
+*** Agenda non-interactive output format
+- Should be adjusted to "look and feel" just like the interactive one.
+*** Agenda frequency plot
+Show a task frequency plot in the agenda header and highlight the bucket that corresponds to the selected range.
+*** Task IDs
+The tasks IDs of newly created tasks should default to ={{document_category}}-{{count_of_headings_in_file + 1}}=
+Show the task ID (when present) in the board task panels as well as agenda and task list. In all cases, it should preceed the TODO state.
+*** Bulk actions
+It should be possible to mark multiple items in agenda, board & backlog and apply an action to them in bulk
+*** Check if file was modified outside of org-cli before saving it.
+*** File watching for interactive commands and updated display
+*** Do not add =#+TODO:= line to file contents, but rather modify done_states.
+
+*** Better heading & body parsing
+Use stripped =RichText= for body/heading tags.
+*** Parallelize document processing
+*** Query language improvements
+- Uniform function calling: =foo | not= is the same as =not(foo)=
+- Field assignment should return the mutated object: =foo.title = "bar"= evaluates to =foo= after the change.
+- =#id= selector syntax for id matching
+** Use Textual for better TUI organization
+- Selection for prompts
+- Sparkline for freequency plots
+** Capture command
+- Allows creating tasks interactively based on templates.
 ** JavaScript visualization
 
 *** D3 visualization - tag cloud
@@ -5074,6 +6274,8 @@ Allow selecting specific tags or top tags.
 Add a new CLI parameter =--watch= that will watch the =FILES= for changes and rerun the selected command to update the display.
 It should apply to each of the available commands. This parameter should be made optional. When not provided the command should exit after printing the output.
 
+*** Agenda notifications
+- =--watch= and =--notify= to send reminders about tasks that are due.
 ** Dashboard command
 - Reads a dashboard config and shows a visualization on a server.
 - Live updating.
@@ -5084,36 +6286,11 @@ It should apply to each of the available commands. This parameter should be made
 
 ** Lint/Format command
 Like linting and formatting.
-** Documentation
-- Document the CLI
-- Document the config format
-** REWORKED Tighten Ruff lint policy in =pyproject.toml= (prefer =select = ["ALL"]=)
-:LOGBOOK:
-- State "REWORKED"   from "TODO"       [2026-04-18 Sat 16:00] \\
-  Needed extra manual work.
-:END:
-  - Evaluate switching =[tool.ruff.lint].select= to =["ALL"]=.
-  - Keep an explicit =ignore= list only for justified exceptions, with a short rationale per rule.
-  - Ensure commonly useful rule families are enabled (at minimum: =S=, =PT=, =TRY=, =PERF=, =D=, =TID=, =A=, =C90=, =G=).
-** DONE Speed up slow CLI tests by reducing subprocess usage
-:LOGBOOK:
-- State "DONE"       from "TODO"       [2026-04-19 Sun 02:04]
-:END:
-- *Context:* current profiling shows most runtime is concentrated in =tests/test_chart_date_spanning.py= and =tests/cli/test_cli_smoke.py=. These tests repeatedly call =subprocess.run(...)=, so each case pays full Python startup + import cost.
-- *Scope:* optimize test runtime without reducing confidence in CLI behavior or changing command semantics.
-- *Approach:*
-  - [ ] Profile and record baseline with =poetry run pytest --durations=40 --durations-min=0.02=
-  - [ ] Keep only 1-2 true end-to-end subprocess smoke tests in =tests/cli/test_cli_smoke.py=
-  - [ ] Convert remaining subprocess-heavy cases to in-process tests (=CliRunner= and/or direct command entrypoints)
-  - [ ] Consolidate repetitive date-span scenarios in =tests/test_chart_date_spanning.py= using parametrized tests
-  - [ ] Share reusable assertion helpers (e.g., ANSI-clean output checks) to avoid repeated per-test setup
-  - [ ] Re-run profiling and compare against baseline
-- *Acceptance criteria:*
-  - [ ] Combined runtime of =tests/test_chart_date_spanning.py= + =tests/cli/test_cli_smoke.py= is significantly lower
-  - [ ] Full suite still passes via =poetry run task check=
-  - [ ] Coverage and key CLI smoke guarantees remain intact (entrypoint, multi-file input, and summary output)
-** Better heading & body parsing
-Use stripped =RichText= for body/heading tags.
+*** Check for file errors and log them
+*** LSP server
+- Error checks
+- Value auto-complete
+
 ** MCP server / RAG command
 #+begin_example
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
@@ -5127,10 +6304,9 @@ query_engine = index.as_retriever()
 query_engine.retrieve("How to fetch a list of tasks completed last year?")
 #+end_example
 
+** Documentation
+- Document the CLI
+- Document the config format
 ** Website for org-cli
 - Publish the package
 - Add a static site for org-cli.idorobots.org on github pages.
-** Parallelize document processing
-** LSP server
-- Error checks
-- Value auto-complete

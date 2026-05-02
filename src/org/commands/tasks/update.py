@@ -25,9 +25,9 @@ from org.commands.tasks.common import (
     normalize_selector,
     parse_comment_flag,
     parse_counter,
+    parse_planning_timestamp,
     parse_properties_json,
     parse_tags_csv,
-    parse_timestamp,
     resolve_headings_by_query,
     resolve_parent_heading,
     resolve_task_selector_query,
@@ -276,11 +276,11 @@ def _apply_heading_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
 def _apply_planning_updates(args: UpdateArgs, heading: Heading) -> None:
     """Apply planning timestamp updates."""
     if args.scheduled is not None:
-        heading.scheduled = parse_timestamp(args.scheduled)
+        heading.scheduled = parse_planning_timestamp(args.scheduled, "scheduled")
     if args.deadline is not None:
-        heading.deadline = parse_timestamp(args.deadline)
+        heading.deadline = parse_planning_timestamp(args.deadline, "deadline")
     if args.closed is not None:
-        heading.closed = parse_timestamp(args.closed)
+        heading.closed = parse_planning_timestamp(args.closed, "closed")
 
 
 def _apply_org_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
@@ -464,7 +464,6 @@ def run_tasks_update(args: UpdateArgs) -> None:
 
     for document in documents_to_save.values():
         logger.info("Saving updated file: %s", document.filename)
-        document.sync_heading_id_index()
         save_document(document)
 
     typer.echo(f"Updated {selected_count} tasks.")
@@ -481,7 +480,7 @@ def register(app: typer.Typer) -> None:
             help="Org-mode archive files or directories to search",
         ),
         config: str = typer.Option(
-            ".org-cli.json",
+            ".org-cli.yaml",
             "--config",
             metavar="FILE",
             help="Config file name to load from current directory",

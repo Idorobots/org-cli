@@ -1,4 +1,4 @@
-"""Tests for query command behavior and output formatting."""
+"""Tests for tasks query command behavior and output formatting."""
 
 from __future__ import annotations
 
@@ -13,18 +13,18 @@ from org_parser.time import Clock, Timestamp
 from typer.testing import CliRunner
 
 from org.cli import app
-from org.commands.query import QueryArgs, _is_org_object, run_query
+from org.commands.tasks.query import TasksQueryArgs, _is_org_object, run_tasks_query
 from org.output_format import OutputFormat, OutputFormatError
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 
 
-def _make_args(files: list[str], query: str, **overrides: object) -> QueryArgs:
-    args = QueryArgs(
+def _make_args(files: list[str], query: str, **overrides: object) -> TasksQueryArgs:
+    args = TasksQueryArgs(
         query=query,
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         exclude=None,
         mapping=None,
         mapping_inline=None,
@@ -49,7 +49,7 @@ def test_run_query_starts_from_root_nodes(capsys: pytest.CaptureFixture[str]) ->
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[] | .children | length")
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert captured.strip() == "3"
@@ -62,7 +62,7 @@ def test_run_query_org_node_results_render_with_file_header(
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[] | .children | .[0]")
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert f"# {fixture_path}" in captured
@@ -76,7 +76,7 @@ def test_run_query_org_root_results_render_with_file_header(
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[]")
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert f"# {fixture_path}" in captured
@@ -95,15 +95,15 @@ def test_run_query_default_org_uses_plain_formatter_for_string_results(
         return ["alpha", "beta"]
 
     monkeypatch.setattr(
-        "org.commands.query.compile_query_text",
+        "org.commands.tasks.query.compile_query_text",
         lambda _query: _fake_compiled_query,
     )
     monkeypatch.setattr(
-        "org.commands.query.load_root_data",
+        "org.commands.tasks.query.load_root_data",
         lambda _args: ([], ["TODO"], ["DONE"]),
     )
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert captured.splitlines() == ["alpha", "beta"]
@@ -121,15 +121,15 @@ def test_run_query_default_org_uses_json_formatter_for_mixed_results(
         return ["alpha", 1, None]
 
     monkeypatch.setattr(
-        "org.commands.query.compile_query_text",
+        "org.commands.tasks.query.compile_query_text",
         lambda _query: _fake_compiled_query,
     )
     monkeypatch.setattr(
-        "org.commands.query.load_root_data",
+        "org.commands.tasks.query.load_root_data",
         lambda _args: ([], ["TODO"], ["DONE"]),
     )
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert json.loads(captured) == ["alpha", 1, None]
@@ -147,15 +147,15 @@ def test_run_query_default_org_uses_json_formatter_for_none_result(
         return [None]
 
     monkeypatch.setattr(
-        "org.commands.query.compile_query_text",
+        "org.commands.tasks.query.compile_query_text",
         lambda _query: _fake_compiled_query,
     )
     monkeypatch.setattr(
-        "org.commands.query.load_root_data",
+        "org.commands.tasks.query.load_root_data",
         lambda _args: ([], ["TODO"], ["DONE"]),
     )
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert json.loads(captured) is None
@@ -168,7 +168,7 @@ def test_query_syntax_error_shows_pointer_without_invalid_value_prefix() -> None
 
     result = runner.invoke(
         app,
-        ["query", ".[][] | select(not(.todo in $done_states) | .todo", fixture_path],
+        ["tasks", "query", ".[][] | select(not(.todo in $done_states) | .todo", fixture_path],
     )
 
     assert result.exit_code != 0
@@ -185,7 +185,7 @@ def test_query_empty_scheduled_timestamp_renders_json_null(
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
     args = _make_args([fixture_path], ".[][].scheduled")
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert captured.strip() == "null"
@@ -196,7 +196,7 @@ def test_query_empty_org_result_set_prints_no_results(capsys: pytest.CaptureFixt
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[] | select(false)")
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert captured.strip() == "No results"
@@ -208,7 +208,7 @@ def test_run_query_negative_max_results_raises_bad_parameter() -> None:
     args = _make_args([fixture_path], ".[]", max_results=-1)
 
     with pytest.raises(click.BadParameter, match="--limit must be non-negative"):
-        run_query(args)
+        run_tasks_query(args)
 
 
 def test_query_runtime_error_is_reported_as_usage_error() -> None:
@@ -216,7 +216,7 @@ def test_query_runtime_error_is_reported_as_usage_error() -> None:
     runner = CliRunner()
     fixture_path = str(os.path.join(FIXTURES_DIR, "multiple_tags.org"))
 
-    result = runner.invoke(app, ["query", "1 / 0", fixture_path])
+    result = runner.invoke(app, ["tasks", "query", "1 / 0", fixture_path])
 
     assert result.exit_code != 0
     assert "Division by zero" in (result.output or result.stderr)
@@ -237,8 +237,8 @@ def test_run_query_markdown_converts_org_results(
         seen["pandoc_args"] = pandoc_args
         return "converted markdown"
 
-    monkeypatch.setattr("org.commands.query._org_to_pandoc_format", _fake_pandoc)
-    run_query(args)
+    monkeypatch.setattr("org.commands.tasks.query._org_to_pandoc_format", _fake_pandoc)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert captured.strip() == "converted markdown"
@@ -262,8 +262,8 @@ def test_run_query_markdown_converts_scalar_results(
         seen["pandoc_args"] = pandoc_args
         return "converted scalar"
 
-    monkeypatch.setattr("org.commands.query._org_to_pandoc_format", _fake_pandoc)
-    run_query(args)
+    monkeypatch.setattr("org.commands.tasks.query._org_to_pandoc_format", _fake_pandoc)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert captured.strip() == "converted scalar"
@@ -284,7 +284,7 @@ def test_run_query_accepts_arbitrary_pandoc_output_format(
         pandoc_args="--wrap=none",
     )
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert captured.strip()
@@ -313,12 +313,12 @@ def test_run_query_markdown_pandoc_error_is_usage_error(monkeypatch: pytest.Monk
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[]", out="markdown")
     monkeypatch.setattr(
-        "org.commands.query.get_query_formatter",
+        "org.commands.tasks.query.get_query_formatter",
         lambda _out, _pandoc_args: _FailingFormatter(),
     )
 
     with pytest.raises(click.UsageError, match="pandoc missing"):
-        run_query(args)
+        run_tasks_query(args)
 
 
 def test_run_query_pandoc_empty_results_prints_no_results(
@@ -336,9 +336,9 @@ def test_run_query_pandoc_empty_results_prints_no_results(
         ".[] | .children | .[] | select(false)",
         out="gfm",
     )
-    monkeypatch.setattr("org.commands.query._org_to_pandoc_format", _should_not_call)
+    monkeypatch.setattr("org.commands.tasks.query._org_to_pandoc_format", _should_not_call)
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     assert captured.strip() == "No results"
@@ -349,7 +349,7 @@ def test_run_query_json_root_result_is_single_object(capsys: pytest.CaptureFixtu
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[]", out=OutputFormat.JSON)
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     parsed = json.loads(captured)
@@ -364,7 +364,7 @@ def test_run_query_json_node_result_excludes_env(capsys: pytest.CaptureFixture[s
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[] | .children | .[0]", out=OutputFormat.JSON)
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     parsed = json.loads(captured)
@@ -378,7 +378,7 @@ def test_run_query_json_scalars_emit_single_json_value(capsys: pytest.CaptureFix
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = _make_args([fixture_path], ".[] | .children | length", out=OutputFormat.JSON)
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     parsed = json.loads(captured)
@@ -395,7 +395,7 @@ def test_run_query_json_preserves_multiple_collection_results(
     ]
     args = _make_args(fixture_paths, ".[] | .children", out=OutputFormat.JSON)
 
-    run_query(args)
+    run_tasks_query(args)
     captured = capsys.readouterr().out
 
     parsed = json.loads(captured)
@@ -427,4 +427,4 @@ def test_run_query_invalid_pandoc_args_is_usage_error() -> None:
     args = _make_args([fixture_path], ".[]", out="gfm", pandoc_args='"')
 
     with pytest.raises(click.UsageError, match="No closing quotation"):
-        run_query(args)
+        run_tasks_query(args)
