@@ -5433,6 +5433,11 @@ In file tests/commands/tasks/test_tasks_list.py around line 696, near the ~def t
 #+end_example
 
 It's not actually testing what it says its testing. The property value is a string. Use a number instead.
+**** CANCELLED Tasks list should show all tasks by default, file-order                          :UX:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-05-02 Sat 17:30] \\
+  It kinda makes sense to show the most recent tasks first.
+:END:
 *** REWORKED Capture command                                                                   :TUI:
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-05-01 Fri 23:38] \\
@@ -5802,15 +5807,114 @@ When =--parent= CLI switch is set or =parent= is configured on the template, ple
 
 Make sure to update the docs as well as the class names and filenames to better match the new command tree.
 
-**** TODO Agenda, board & task list capture                                                     :UX:
+**** DONE Agenda, board & task list capture                                                     :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 17:53]
+:END:
 Ability to capture a new task directly in the TUI:
 - for =org agenda=, it should automatically be scheduled at the highlighted time (capture the task, then apply the schedule to the newly added task).
 - for =org board= it should be added to the task list according to the usual =org tasks capture= rules.
 - for =org tasks list= it should be added to the task list according to the usual =org tasks capture= rules.
 
-**** TODO Copy & paste in capture command doesn't work                                         :Bug:
+**** DONE Capturing a new task via the agenda and other commands fails with the following error :Bug:
+:PROPERTIES:
+:capture_time: [2026-05-02 Sat 17:49]
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 18:03]
+:END:
+
+#+begin_example
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sys; from importlib import import_module; sys.argv = ['/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/bin/org', 'agenda']; sys.exit(import_module('org.cli').main())
+                                                                                                                                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/k/projects/software/org-cli/src/org/cli.py", line 102, in main
+    command.main(
+    ~~~~~~~~~~~~^
+        args=sys.argv[1:],
+        ^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        default_map=default_map,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/core.py", line 795, in main
+    return _main(
+        self,
+    ...<6 lines>...
+        **extra,
+    )
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/core.py", line 188, in _main
+    rv = self.invoke(ctx)
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 1873, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+                           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 1269, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 824, in invoke
+    return callback(*args, **kwargs)
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/main.py", line 1514, in wrapper
+    return callback(**use_params)
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 2331, in agenda
+    run_agenda(args)
+    ~~~~~~~~~~^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 2049, in run_agenda
+    _run_agenda_interactive(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        console,
+        ^^^^^^^^
+    ...<6 lines>...
+        ),
+        ^^
+    )
+    ^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1980, in _run_agenda_interactive
+    should_continue = _handle_interactive_key(console, session, key)
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1953, in _handle_interactive_key
+    result = dispatch_key_binding(key, _agenda_key_bindings(console, session))
+  File "/home/k/projects/software/org-cli/src/org/commands/interactive_common.py", line 96, in dispatch_key_binding
+    outcome = binding.handler()
+  File "/home/k/projects/software/org-cli/src/org/commands/interactive_common.py", line 81, in _handler
+    action()
+    ~~~~~~^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1920, in <lambda>
+    lambda: _apply_capture_task(session),
+            ~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1851, in _apply_capture_task
+    _save_document_changes(capture_result.heading.document)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 973, in _save_document_changes
+    save_document(document)
+    ~~~~~~~~~~~~~^^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/tasks/common.py", line 149, in save_document
+    org_parser.dump(document)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/org_parser/__init__.py", line 115, in dump
+    raise ValueError("No output filename provided")
+ValueError: No output filename provided
+#+end_example
+**** DONE Copy & paste in capture command doesn't work                                         :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 18:26]
+:END:
 
 When copying & pasting text into the capture command's input prompt, only the first character is pasted. It should paste the entire copied text.
+
+**** DONE Programatic task capture should print the tasks identifier                            :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 18:11]
+:END:
+When no interactivity is needed to capture a task (template name and all placeholders given), display the =.id= or the =.title= of the newly created task.
+This way it can be consumed by the AI agent to later create subtasks for this task.
+
+**** DONE Capture =--parent= should be the same format as for the other commands                :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 18:17]
+:END:
+The =parent= specifier in the config file should still remain a full selector query. This means that the value of the =--parent= switch should be wrapped in: =.id == VALUE or .title_text == VALUE=.
 
 *** DONE Move the =query= command into the =tasks= tree under =tasks query=                :Cleanup:
 :LOGBOOK:
@@ -5962,7 +6066,10 @@ ValueError: No output filename provided
 :END:
 - Move task to a different file
 - Ensure that the task is first saved correctly before it is removed from the original file.
-*** TODO Tasks archive command                                                                 :TUI:
+*** DONE Tasks archive command                                                                 :TUI:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 17:21]
+:END:
 Add a new =tasks archive= command that moves a specified task to the Org archive.
 
 The command should accept =--query-title=, =--query-id= and =--query= CLI parameters, with the same semantics as in the =tasks update= command.

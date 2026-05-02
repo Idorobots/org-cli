@@ -38,6 +38,7 @@ from org.commands.interactive_common import (
     set_mouse_reporting,
     shift_priority,
 )
+from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import save_document
 from org.tui import (
     build_console,
@@ -761,6 +762,33 @@ def _archive_selected_task(session: _BoardSession) -> None:
     session.status_message = "Task archived"
 
 
+def _apply_capture_task(session: _BoardSession) -> None:
+    """Capture a new task and reload board session."""
+    session.status_message = ""
+    capture_args = TasksCaptureArgs(
+        template_name=None,
+        config=session.args.config,
+        file=None,
+        parent=None,
+        set_values=None,
+    )
+    try:
+        capture_result = capture_task(capture_args)
+    except KeyboardInterrupt:
+        session.status_message = "Capture cancelled"
+        return
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    try:
+        _reload_session(session, heading_identity(capture_result.heading))
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+    session.status_message = "Task captured"
+
+
 def _interactive_viewport_rows(console_height: int) -> int:
     """Return number of visible task rows in interactive mode."""
     available_space = console_height - _INTERACTIVE_HEADER_HEIGHT - _INTERACTIVE_FOOTER_HEIGHT
@@ -916,6 +944,7 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
     controls = (
         "Up/Down, Left/Right, Wheel move"
         " | Enter edit"
+        " | a add"
         " | $ archive"
         " | Shift+Left/Right state"
         " | Shift+Up/Down priority"
@@ -967,6 +996,10 @@ def _flow_board_key_bindings(
         "LEFT": key_binding_for_action(lambda: _move_selection_horizontal(session, -1)),
         "ENTER": key_binding_for_action(
             lambda: _edit_selected_task_in_external_editor(session),
+            requires_live_pause=True,
+        ),
+        "a": key_binding_for_action(
+            lambda: _apply_capture_task(session),
             requires_live_pause=True,
         ),
         "$": key_binding_for_action(lambda: _archive_selected_task(session)),

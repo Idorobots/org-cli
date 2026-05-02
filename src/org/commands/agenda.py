@@ -33,6 +33,7 @@ from org.commands.interactive_common import (
     read_keypress,
     set_mouse_reporting,
 )
+from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import iter_descendants, load_document, save_document
 from org.tui import (
     build_console,
@@ -1397,6 +1398,7 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
     controls = (
         "n/p, Up/Down, Wheel select"
         " | Enter edit"
+        " | a add"
         " | $ archive"
         " | f/b, Left/Right span"
         " | t state"
@@ -1787,6 +1789,74 @@ def _apply_clock_entry(console: Console, session: _AgendaSession) -> None:
     session.status_message = f"Added clock entry ({duration_text})"
 
 
+def _selected_row(session: _AgendaSession) -> _AgendaRow | None:
+    """Return currently selected agenda row for interactive actions."""
+    location = _selected_row_location(session)
+    if location is None:
+        return None
+    day_index, row_index = location
+    return session.day_models[day_index].rows[row_index]
+
+
+def _timetable_schedule_for_selected_row(session: _AgendaSession) -> Timestamp | None:
+    """Return schedule timestamp from selected timetable row, or None when unavailable."""
+    row = _selected_row(session)
+    if row is None:
+        return None
+
+    if row.kind == "task" and row.source not in {"scheduled", "deadline_today", "repeat"}:
+        return None
+    if row.kind not in {"task", "hour_marker", "now_marker"}:
+        return None
+
+    time_parts = row.time_text.split(":", 1)
+    if len(time_parts) != 2 or not all(part.isdigit() for part in time_parts):
+        return None
+    hour = int(time_parts[0])
+    minute = int(time_parts[1])
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        return None
+
+    day_name = row.day.strftime("%a")
+    return Timestamp.from_source(f"<{row.day:%Y-%m-%d} {day_name} {hour:02d}:{minute:02d}>")
+
+
+def _apply_capture_task(session: _AgendaSession) -> None:
+    """Capture a task and schedule it at selected timetable row time."""
+    scheduled = _timetable_schedule_for_selected_row(session)
+    if scheduled is None:
+        session.status_message = "Capture is available only on timetable time rows"
+        return
+
+    session.status_message = ""
+    capture_args = TasksCaptureArgs(
+        template_name=None,
+        config=session.args.config,
+        file=None,
+        parent=None,
+        set_values=None,
+    )
+
+    try:
+        capture_result = capture_task(capture_args)
+    except KeyboardInterrupt:
+        session.status_message = "Capture cancelled"
+        return
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    capture_result.heading.scheduled = scheduled
+    try:
+        _save_document_changes(capture_result.document)
+        _reload_session_nodes(session)
+        _refresh_session(session, _heading_identity(capture_result.heading))
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+    session.status_message = f"Task captured and scheduled for {scheduled}"
+
+
 def _create_agenda_session(
     args: AgendaArgs,
     nodes: list[Heading],
@@ -1844,6 +1914,10 @@ def _agenda_key_bindings(
         ),
         "ENTER": key_binding_for_action(
             lambda: _edit_selected_task_in_external_editor(session),
+            requires_live_pause=True,
+        ),
+        "a": key_binding_for_action(
+            lambda: _apply_capture_task(session),
             requires_live_pause=True,
         ),
         "$": key_binding_for_action(lambda: _archive_selected_task(session)),

@@ -16,6 +16,8 @@ from rich.console import Console
 
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
+from org.commands.interactive_common import heading_identity
+from org.commands.tasks import capture as capture_command
 from org.commands.tasks import list as tasks_list
 from org.histogram import visual_len
 from org.output_format import OutputFormat, OutputFormatError
@@ -938,6 +940,79 @@ def test_handle_interactive_key_dollar_archives_selected_task(
 
     assert tasks_list._handle_interactive_key(console, session, "$") is True
     assert session.status_message == "Task archived"
+
+
+def test_handle_interactive_key_a_captures_task_and_reloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should capture a task and reload list session."""
+    nodes = node_from_org("* TODO A\n")
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+    captured_node = node_from_org("* TODO Captured\n")[0]
+    reload_args: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        tasks_list,
+        "capture_task",
+        lambda _args: capture_command.TasksCaptureResult(
+            template_name="quick",
+            heading=captured_node,
+            document=captured_node.document,
+        ),
+    )
+
+    def _fake_reload(
+        current_session: tasks_list._TasksListSession,
+        preserve_identity: tuple[str, str, str, int | None] | None,
+    ) -> bool:
+        reload_args["session"] = current_session
+        reload_args["identity"] = preserve_identity
+        return True
+
+    monkeypatch.setattr(tasks_list, "_reload_session_nodes", _fake_reload)
+
+    assert tasks_list._handle_interactive_key(console, session, "a") is True
+    assert reload_args["session"] is session
+    assert reload_args["identity"] == heading_identity(captured_node)
+    assert session.status_message == "Task captured"
+
+
+def test_handle_interactive_key_a_capture_cancelled_sets_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should report cancellation when capture is interrupted."""
+    nodes = node_from_org("* TODO A\n")
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    def _raise_interrupt(
+        _args: capture_command.TasksCaptureArgs,
+    ) -> capture_command.TasksCaptureResult:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(tasks_list, "capture_task", _raise_interrupt)
+
+    assert tasks_list._handle_interactive_key(console, session, "a") is True
+    assert session.status_message == "Capture cancelled"
 
 
 def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.MonkeyPatch) -> None:

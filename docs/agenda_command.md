@@ -52,6 +52,10 @@ Interactive keys:
   message when used on non-task rows.
 - `n` / `p`, `Up` / `Down`, or mouse wheel - Select next/previous row.
 - `f` / `b` or `Right` / `Left` - Move agenda span forward/backward by `--days`.
+- `a` - Capture a new task and schedule it at the highlighted timetable time.
+  - Available only on timetable rows with explicit `HH:MM` (hour markers, `NOW`, timed task rows).
+  - For timed task rows, capture uses the row's specific offset time (for example `09:30`).
+  - Outside timetable rows (overdue/upcoming/untimed sections), the action is blocked with a status.
 - `t` - Set TODO state from `heading.document.all_states`.
   - Also appends a repeat/log transition from previous state to new state.
   - If `SCHEDULED` or `DEADLINE` has a repeater marker, it advances one repeater step.

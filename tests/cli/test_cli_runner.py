@@ -906,7 +906,7 @@ def test_cli_runner_capture_accepts_parent_override(tmp_path: Path) -> None:
 
         result = runner.invoke(
             app,
-            ["tasks", "capture", "child", "--parent", '.id == "two"'],
+            ["tasks", "capture", "child", "--parent", "two"],
             input="From cli\n",
         )
 
@@ -914,6 +914,43 @@ def test_cli_runner_capture_accepts_parent_override(tmp_path: Path) -> None:
         updated = target.read_text(encoding="utf-8")
         assert "* TODO One\n:PROPERTIES:\n:ID: one\n:END:\n\n" in updated
         assert "* TODO Two\n:PROPERTIES:\n:ID: two\n:END:\n** TODO From cli\n" in updated
+    finally:
+        config.CONFIG_CAPTURE_TEMPLATES.clear()
+        config.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+
+
+def test_cli_runner_capture_parent_override_accepts_title(tmp_path: Path) -> None:
+    """CLI capture --parent should accept exact parent title."""
+    runner = CliRunner()
+    target = tmp_path / "tasks.org"
+    target.write_text(
+        "* TODO One\n:PROPERTIES:\n:ID: one\n:END:\n\n* TODO Two\n:PROPERTIES:\n:ID: two\n:END:\n",
+        encoding="utf-8",
+    )
+    original_templates = dict(config.CONFIG_CAPTURE_TEMPLATES)
+
+    try:
+        config.CONFIG_CAPTURE_TEMPLATES.clear()
+        config.CONFIG_CAPTURE_TEMPLATES.update(
+            {
+                "child": {
+                    "file": str(target),
+                    "content": "** TODO {{title}}",
+                    "parent": '.id == "one"',
+                },
+            },
+        )
+
+        result = runner.invoke(
+            app,
+            ["tasks", "capture", "child", "--parent", "Two"],
+            input="By title\n",
+        )
+
+        assert result.exit_code == 0
+        updated = target.read_text(encoding="utf-8")
+        assert "* TODO One\n:PROPERTIES:\n:ID: one\n:END:\n\n" in updated
+        assert "* TODO Two\n:PROPERTIES:\n:ID: two\n:END:\n** TODO By title\n" in updated
     finally:
         config.CONFIG_CAPTURE_TEMPLATES.clear()
         config.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
@@ -940,7 +977,36 @@ def test_cli_runner_capture_set_values_bypass_prompt(tmp_path: Path) -> None:
         result = runner.invoke(app, ["tasks", "capture", "quick", "--set", "title=From cli"])
 
         assert result.exit_code == 0
+        assert result.stdout.strip() == "From cli (From cli)"
         assert "* TODO From cli (From cli)" in target.read_text(encoding="utf-8")
+    finally:
+        config.CONFIG_CAPTURE_TEMPLATES.clear()
+        config.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+
+
+def test_cli_runner_capture_non_interactive_prefers_id_output(tmp_path: Path) -> None:
+    """Non-interactive capture should print created task ID when available."""
+    runner = CliRunner()
+    target = tmp_path / "tasks.org"
+    target.write_text("* TODO Existing\n", encoding="utf-8")
+    original_templates = dict(config.CONFIG_CAPTURE_TEMPLATES)
+
+    try:
+        config.CONFIG_CAPTURE_TEMPLATES.clear()
+        config.CONFIG_CAPTURE_TEMPLATES.update(
+            {
+                "quick": {
+                    "file": str(target),
+                    "content": "* TODO {{title}}\n:PROPERTIES:\n:ID: task-99\n:END:",
+                },
+            },
+        )
+
+        result = runner.invoke(app, ["tasks", "capture", "quick", "--set", "title=From cli"])
+
+        assert result.exit_code == 0
+        assert result.stdout.strip() == "task-99"
+        assert "* TODO From cli" in target.read_text(encoding="utf-8")
     finally:
         config.CONFIG_CAPTURE_TEMPLATES.clear()
         config.CONFIG_CAPTURE_TEMPLATES.update(original_templates)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import org_parser
 import pytest
@@ -132,6 +132,115 @@ def test_run_capture_prompts_non_static_placeholder_once(
     assert calls == ["Value for 'title'"]
 
 
+def test_capture_task_returns_created_heading_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reusable capture API should return metadata for the created heading."""
+    target = tmp_path / "tasks.org"
+    target.write_text("* TODO Existing\n", encoding="utf-8")
+    previous = _set_capture_templates(
+        {
+            "quick": {
+                "file": str(target),
+                "content": "* TODO {{title}}",
+            },
+        },
+    )
+
+    try:
+        monkeypatch.setattr(
+            "org.commands.tasks.capture.typer.prompt",
+            lambda _msg, **_kwargs: "Write docs",
+        )
+        result = capture.capture_task(_make_capture_args(template_name="quick"))
+    finally:
+        _restore_capture_templates(previous)
+
+    assert result.template_name == "quick"
+    assert result.document.filename == str(target)
+    assert result.heading.title_text == "Write docs"
+    assert result.interactive_used is True
+    assert "* TODO Write docs" in target.read_text(encoding="utf-8")
+
+
+def test_run_capture_non_interactive_prints_created_task_id(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Non-interactive capture should print new task ID when available."""
+    target = tmp_path / "tasks.org"
+    target.write_text("* TODO Existing\n", encoding="utf-8")
+    previous = _set_capture_templates(
+        {
+            "quick": {
+                "file": str(target),
+                "content": "* TODO {{title}}\n:PROPERTIES:\n:ID: task-42\n:END:",
+            },
+        },
+    )
+
+    try:
+        capture.run_tasks_capture(_make_capture_args("quick", set_values=["title=From set"]))
+    finally:
+        _restore_capture_templates(previous)
+
+    assert capsys.readouterr().out.strip() == "task-42"
+
+
+def test_run_capture_non_interactive_prints_created_task_title_when_id_missing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Non-interactive capture should print title when task ID is absent."""
+    target = tmp_path / "tasks.org"
+    target.write_text("* TODO Existing\n", encoding="utf-8")
+    previous = _set_capture_templates(
+        {
+            "quick": {
+                "file": str(target),
+                "content": "* TODO {{title}}",
+            },
+        },
+    )
+
+    try:
+        capture.run_tasks_capture(_make_capture_args("quick", set_values=["title=From set"]))
+    finally:
+        _restore_capture_templates(previous)
+
+    assert capsys.readouterr().out.strip() == "From set"
+
+
+def test_run_capture_interactive_does_not_print_created_identifier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Interactive capture should not print identifier output."""
+    target = tmp_path / "tasks.org"
+    target.write_text("* TODO Existing\n", encoding="utf-8")
+    previous = _set_capture_templates(
+        {
+            "quick": {
+                "file": str(target),
+                "content": "* TODO {{title}}",
+            },
+        },
+    )
+
+    try:
+        monkeypatch.setattr(
+            "org.commands.tasks.capture.typer.prompt",
+            lambda _msg, **_kwargs: "Write docs",
+        )
+        capture.run_tasks_capture(_make_capture_args(template_name="quick"))
+    finally:
+        _restore_capture_templates(previous)
+
+    assert capsys.readouterr().out.strip() == ""
+
+
 def test_render_template_preview_tracks_placeholder_spans() -> None:
     """Template preview should map placeholders to rendered output positions."""
     preview = capture._render_template_preview(
@@ -167,7 +276,7 @@ def test_resolve_placeholder_values_uses_live_preview_when_supported(
     monkeypatch.setattr("org.commands.tasks.capture._supports_live_template_prompt", lambda: True)
     monkeypatch.setattr("org.commands.tasks.capture._prompt_with_live_preview", _fake_live_prompt)
 
-    result = capture._resolve_placeholder_values(
+    result, prompted = capture._resolve_placeholder_values(
         "* TODO {{title}}",
         ["title"],
         set_values={},
@@ -176,6 +285,7 @@ def test_resolve_placeholder_values_uses_live_preview_when_supported(
     )
 
     assert result == {"title": "From live preview"}
+    assert prompted is True
     assert calls == [("* TODO {{title}}", ["title"], {})]
 
 
@@ -292,6 +402,67 @@ def test_prompt_with_live_preview_updates_current_field_sequence(
             80,
         ),
     ]
+
+
+def test_read_live_placeholder_value_keeps_raw_mode_for_full_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Live placeholder input should keep raw mode enabled while reading all events."""
+
+    class _FakeSize:
+        width = 80
+
+    class _FakeConsole:
+        size = _FakeSize()
+
+    class _FakeLive:
+        def __init__(self) -> None:
+            self.console = _FakeConsole()
+            self.updates: list[object] = []
+
+        def update(self, renderable: object, *, refresh: bool) -> None:
+            assert refresh
+            self.updates.append(renderable)
+
+    fake_live = _FakeLive()
+    events = iter(
+        [
+            ("TEXT", "Pasted text"),
+            ("ENTER", ""),
+        ],
+    )
+    setcbreak_calls: list[int] = []
+    restore_calls: list[tuple[int, int, list[int]]] = []
+
+    def _setcbreak(fd: int) -> None:
+        setcbreak_calls.append(fd)
+
+    monkeypatch.setattr("org.commands.tasks.capture.sys.stdin.fileno", lambda: 7)
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.termios.tcgetattr",
+        lambda _fd: [1, 2, 3, 4, 5, 6],
+    )
+    monkeypatch.setattr("org.commands.tasks.capture.tty.setcbreak", _setcbreak)
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.termios.tcsetattr",
+        lambda fd, when, mode: restore_calls.append((fd, when, mode)),
+    )
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.read_input_event",
+        lambda _fd, **_kwargs: next(events),
+    )
+
+    value = capture._read_live_placeholder_value(
+        cast("Any", fake_live),
+        "* TODO {{title}}",
+        {},
+        capture._ActiveField(placeholder="title", field_index=1, total_fields=1),
+    )
+
+    assert value == "Pasted text"
+    assert setcbreak_calls == [7]
+    assert len(restore_calls) == 1
+    assert restore_calls[0][0] == 7
 
 
 def test_build_footer_prompt_includes_field_index_marker() -> None:
@@ -531,7 +702,7 @@ def test_run_capture_cli_parent_override_takes_precedence(
             "org.commands.tasks.capture.typer.prompt",
             lambda _msg, **_kwargs: "Override child",
         )
-        capture.run_tasks_capture(_make_capture_args("child", parent='.id == "two"'))
+        capture.run_tasks_capture(_make_capture_args("child", parent="two"))
     finally:
         _restore_capture_templates(previous)
 
@@ -756,7 +927,46 @@ def test_run_capture_parent_fields_are_available_with_cli_parent_override(
             "org.commands.tasks.capture.typer.prompt",
             lambda _msg, **_kwargs: (_ for _ in ()).throw(AssertionError("prompt not expected")),
         )
-        capture.run_tasks_capture(_make_capture_args("child", parent='.id == "two"'))
+        capture.run_tasks_capture(_make_capture_args("child", parent="two"))
+    finally:
+        _restore_capture_templates(previous)
+
+    updated = target.read_text(encoding="utf-8")
+    assert "parent_cat=Focus" in updated
+    assert "parent_title=Two" in updated
+    assert "parent_todo=TODO" in updated
+    assert "parent_id=two" in updated
+
+
+def test_run_capture_cli_parent_override_accepts_title(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Capture CLI --parent should resolve exact parent title as override."""
+    target = tmp_path / "tasks.org"
+    target.write_text(
+        "* TODO One\n:PROPERTIES:\n:ID: one\n:END:\n\n"
+        "* TODO Two\n:PROPERTIES:\n:ID: two\n:CATEGORY: Focus\n:END:\n",
+        encoding="utf-8",
+    )
+    previous = _set_capture_templates(
+        {
+            "child": {
+                "file": str(target),
+                "content": (
+                    "** TODO parent_cat={{parent_category}} "
+                    "parent_title={{parent_title}} parent_todo={{parent_todo}} "
+                    "parent_id={{parent_id}}"
+                ),
+            },
+        },
+    )
+    try:
+        monkeypatch.setattr(
+            "org.commands.tasks.capture.typer.prompt",
+            lambda _msg, **_kwargs: (_ for _ in ()).throw(AssertionError("prompt not expected")),
+        )
+        capture.run_tasks_capture(_make_capture_args("child", parent="Two"))
     finally:
         _restore_capture_templates(previous)
 

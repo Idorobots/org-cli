@@ -17,6 +17,7 @@ from org.commands import archive as archive_command
 from org.commands import board as board_command
 from org.commands import editor as editor_command
 from org.commands.interactive_common import heading_identity
+from org.commands.tasks import capture as capture_command
 from tests.conftest import node_from_org
 
 
@@ -329,6 +330,92 @@ def test_handle_interactive_key_enter_edits_selected_task(
 
     assert board_command._handle_interactive_key(console, session, "ENTER") is True
     assert session.status_message == "No changes."
+
+
+def test_handle_interactive_key_a_captures_task_and_reloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should capture a task and reload board selection."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Existing\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", nodes),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+    captured_node = node_from_org("* TODO Captured\n")[0]
+    reloaded: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        board_command,
+        "capture_task",
+        lambda _args: capture_command.TasksCaptureResult(
+            template_name="quick",
+            heading=captured_node,
+            document=captured_node.document,
+        ),
+    )
+
+    def _fake_reload(
+        current_session: board_command._BoardSession,
+        preserve_identity: tuple[str, str, str, int | None] | None,
+    ) -> None:
+        reloaded["session"] = current_session
+        reloaded["identity"] = preserve_identity
+
+    monkeypatch.setattr(board_command, "_reload_session", _fake_reload)
+
+    assert board_command._handle_interactive_key(console, session, "a") is True
+    assert reloaded["session"] is session
+    assert reloaded["identity"] == heading_identity(captured_node)
+    assert session.status_message == "Task captured"
+
+
+def test_handle_interactive_key_a_capture_cancelled_sets_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should report cancellation when capture is interrupted."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Existing\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", nodes),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    def _raise_interrupt(
+        _args: capture_command.TasksCaptureArgs,
+    ) -> capture_command.TasksCaptureResult:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(board_command, "capture_task", _raise_interrupt)
+
+    assert board_command._handle_interactive_key(console, session, "a") is True
+    assert session.status_message == "Capture cancelled"
 
 
 def test_handle_interactive_key_enter_saves_original_document_after_changed_edit(

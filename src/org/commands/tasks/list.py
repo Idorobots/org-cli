@@ -35,6 +35,7 @@ from org.commands.interactive_common import (
     set_mouse_reporting,
     shift_priority,
 )
+from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import (
     PlanningTimestampField,
     planning_field_label,
@@ -578,6 +579,7 @@ def _interactive_tasks_list_renderable(console: Console, session: _TasksListSess
         " | / search"
         " | x clear"
         " | Enter edit"
+        " | a add"
         " | $ archive"
         " | t state"
         " | Shift+Up/Down priority"
@@ -674,6 +676,32 @@ def _archive_selected_task(session: _TasksListSession) -> None:
     preserve_identity = heading_identity(archive_result.heading)
     if _reload_session_nodes(session, preserve_identity):
         session.status_message = "Task archived"
+
+
+def _apply_capture_task(session: _TasksListSession) -> None:
+    """Capture a new task and reload list session."""
+    session.status_message = ""
+    capture_args = TasksCaptureArgs(
+        template_name=None,
+        config=session.args.config,
+        file=None,
+        parent=None,
+        set_values=None,
+    )
+    try:
+        capture_result = capture_task(capture_args)
+    except KeyboardInterrupt:
+        session.status_message = "Capture cancelled"
+        return
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    try:
+        if _reload_session_nodes(session, heading_identity(capture_result.heading)):
+            session.status_message = "Task captured"
+    except typer.BadParameter as err:
+        session.status_message = str(err)
 
 
 def _prompt_search(console: Console, session: _TasksListSession) -> None:
@@ -839,6 +867,10 @@ def _tasks_list_key_bindings(
         "WHEEL-UP": key_binding_for_action(lambda: _move_selection(session, -1)),
         "ENTER": key_binding_for_action(
             lambda: _edit_selected_task_in_external_editor(session),
+            requires_live_pause=True,
+        ),
+        "a": key_binding_for_action(
+            lambda: _apply_capture_task(session),
             requires_live_pause=True,
         ),
         "$": key_binding_for_action(lambda: _archive_selected_task(session)),

@@ -18,6 +18,7 @@ from org.commands import agenda as agenda_command
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
 from org.commands.interactive_common import decode_escape_sequence, detail_org_block, local_now
+from org.commands.tasks import capture as capture_command
 
 
 if TYPE_CHECKING:
@@ -1045,6 +1046,143 @@ def test_handle_interactive_key_dollar_archives_selected_task(
 
     assert agenda_command._handle_interactive_key(console, session, "$") is True
     assert session.status_message == "Task archived"
+
+
+def test_handle_interactive_key_a_captures_and_schedules_on_timed_task_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a on timed task row should capture and schedule with row-specific time."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+    timed_task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if (
+            session.day_models[day_index].rows[row_index].kind == "task"
+            and session.day_models[day_index].rows[row_index].source
+            in {"scheduled", "deadline_today", "repeat"}
+            and ":" in session.day_models[day_index].rows[row_index].time_text
+        )
+    )
+    session.selected_row_index = timed_task_index
+    selected_row = agenda_command._selected_row(session)
+    assert selected_row is not None
+    expected_time = selected_row.time_text
+    expected_timestamp = f"<2025-01-15 Wed {expected_time}>"
+    captured_node = next(iter(org_parser.loads("* TODO Captured\n")))
+    saved_documents: list[Document] = []
+    reloaded: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        agenda_command,
+        "capture_task",
+        lambda _args: capture_command.TasksCaptureResult(
+            template_name="quick",
+            heading=captured_node,
+            document=captured_node.document,
+        ),
+    )
+
+    def _capture_save(document: Document) -> None:
+        saved_documents.append(document)
+
+    monkeypatch.setattr(agenda_command, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+
+    def _fake_refresh(
+        current_session: agenda_command._AgendaSession,
+        preserve_identity: tuple[str, str, str, int | None] | None,
+    ) -> None:
+        reloaded["session"] = current_session
+        reloaded["identity"] = preserve_identity
+
+    monkeypatch.setattr(agenda_command, "_refresh_session", _fake_refresh)
+
+    assert agenda_command._handle_interactive_key(console, session, "a") is True
+    assert str(captured_node.scheduled) == expected_timestamp
+    assert saved_documents == [captured_node.document]
+    assert reloaded["session"] is session
+    assert reloaded["identity"] == agenda_command._heading_identity(captured_node)
+    assert session.status_message == f"Task captured and scheduled for {expected_timestamp}"
+
+
+def test_handle_interactive_key_a_uses_now_marker_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a on NOW marker row should capture and schedule using NOW row minute."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    local_tz = local_now().tzinfo
+    monkeypatch.setattr(
+        agenda_command,
+        "local_now",
+        lambda: datetime(2025, 1, 15, 17, 4, 0, tzinfo=local_tz),
+    )
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+    now_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "now_marker"
+    )
+    session.selected_row_index = now_index
+    captured_node = next(iter(org_parser.loads("* TODO Captured\n")))
+
+    monkeypatch.setattr(
+        agenda_command,
+        "capture_task",
+        lambda _args: capture_command.TasksCaptureResult(
+            template_name="quick",
+            heading=captured_node,
+            document=captured_node.document,
+        ),
+    )
+    monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+
+    assert agenda_command._handle_interactive_key(console, session, "a") is True
+    assert str(captured_node.scheduled) == "<2025-01-15 Wed 17:04>"
+
+
+def test_handle_interactive_key_a_on_non_timetable_row_reports_blocked() -> None:
+    """a outside timetable rows should be blocked with a status message."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+    blocked_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "section"
+    )
+    session.selected_row_index = blocked_index
+
+    assert agenda_command._handle_interactive_key(console, session, "a") is True
+    assert session.status_message == "Capture is available only on timetable time rows"
 
 
 def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:

@@ -29,6 +29,7 @@ Interactive keys:
 - `Up` / `Down` or mouse wheel - Move highlighted task within selected column.
 - `Left` / `Right` - Move highlight between columns.
 - `Enter` - Open full selected task subtree in syntax-highlighted pager.
+- `a` - Capture a new task using standard `org tasks capture` template rules.
 - `Shift+Left` / `Shift+Right` - Move selected task to neighboring column by changing state.
   - Moving into coalesced `COMPLETED` prompts for a specific done state.
   - Every state change appends one repeat/logbook transition entry.

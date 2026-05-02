@@ -14,7 +14,7 @@ poetry run org tasks capture [OPTIONS] [TEMPLATE_NAME]
 ## Command-specific switches
 
 - `--file FILE` - Override template `file` target path.
-- `--parent SELECTOR` - Override template `parent` selector expression.
+- `--parent ID_OR_TITLE` - Override template parent by heading ID or title.
 - `--set KEY=VALUE` - Set a template placeholder value without prompting. Repeatable.
 
 When provided, CLI switch values take precedence over template config values.
@@ -28,6 +28,11 @@ Template fields:
 - `file` (required): target Org file path.
 - `content` (required): Org heading template text.
 - `parent` (optional): selector expression wrapped automatically as `.[] | select(<selector>)` and required to resolve to exactly one heading.
+
+CLI `--parent` and template `parent` are intentionally different:
+
+- `--parent` resolves like other task commands (`ID` first, then exact `title_text`).
+- template `parent` remains a full selector expression.
 
 Example:
 

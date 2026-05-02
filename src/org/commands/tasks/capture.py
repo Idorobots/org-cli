@@ -24,7 +24,7 @@ from typer.rich_utils import _get_rich_console
 
 from org import config as config_module
 from org.commands.interactive_common import read_input_event, set_bracketed_paste
-from org.commands.tasks.common import load_document, save_document
+from org.commands.tasks.common import load_document, resolve_parent_heading, save_document
 from org.output_format import DEFAULT_OUTPUT_THEME
 from org.query_language import (
     EvalContext,
@@ -53,6 +53,16 @@ class TasksCaptureArgs:
     file: str | None
     parent: str | None
     set_values: list[str] | None
+
+
+@dataclass(frozen=True)
+class TasksCaptureResult:
+    """Result metadata for one successful capture operation."""
+
+    template_name: str
+    heading: Heading
+    document: Document
+    interactive_used: bool = False
 
 
 def _template_names(templates: dict[str, dict[str, str]]) -> list[str]:
@@ -96,14 +106,14 @@ def _select_template_name(template_names: list[str]) -> str:
 def _resolve_template_name(
     template_name: str | None,
     templates: dict[str, dict[str, str]],
-) -> str:
+) -> tuple[str, bool]:
     """Resolve template name from CLI argument or interactive selection."""
     template_names = _template_names(templates)
     if template_name is None:
-        return _select_template_name(template_names)
+        return (_select_template_name(template_names), True)
 
     if template_name in templates:
-        return template_name
+        return (template_name, False)
 
     valid_names = _valid_template_names_text(template_names)
     raise typer.BadParameter(
@@ -368,16 +378,6 @@ def _apply_input_event(
     return (value, cursor_position, False)
 
 
-def _read_input_event_from_tty(fd: int) -> tuple[str, str]:
-    """Read one input event while temporarily enabling raw mode."""
-    previous_mode = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        return read_input_event(fd, ctrl_p_as_paste=True)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, previous_mode)
-
-
 def _read_live_placeholder_value(
     live: Live,
     template_content: str,
@@ -388,33 +388,38 @@ def _read_live_placeholder_value(
     current_value = ""
     cursor_position = 0
     fd = sys.stdin.fileno()
-    while True:
-        live.update(
-            _build_fullscreen_capture_renderable(
-                template_content,
-                resolved_values,
-                _FooterState(
-                    current_placeholder=active_field.placeholder,
-                    current_input_value=current_value,
-                    cursor_position=cursor_position,
-                    current_field_index=active_field.field_index,
-                    total_fields=active_field.total_fields,
+    previous_mode = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        while True:
+            live.update(
+                _build_fullscreen_capture_renderable(
+                    template_content,
+                    resolved_values,
+                    _FooterState(
+                        current_placeholder=active_field.placeholder,
+                        current_input_value=current_value,
+                        cursor_position=cursor_position,
+                        current_field_index=active_field.field_index,
+                        total_fields=active_field.total_fields,
+                    ),
+                    console_width=live.console.size.width,
                 ),
-                console_width=live.console.size.width,
-            ),
-            refresh=True,
-        )
-        event_name, event_text = _read_input_event_from_tty(fd)
-        if event_name == "ESC":
-            raise KeyboardInterrupt
-        current_value, cursor_position, done = _apply_input_event(
-            current_value,
-            cursor_position,
-            event_name,
-            event_text,
-        )
-        if done:
-            return current_value
+                refresh=True,
+            )
+            event_name, event_text = read_input_event(fd, ctrl_p_as_paste=True)
+            if event_name == "ESC":
+                raise KeyboardInterrupt
+            current_value, cursor_position, done = _apply_input_event(
+                current_value,
+                cursor_position,
+                event_name,
+                event_text,
+            )
+            if done:
+                return current_value
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, previous_mode)
 
 
 def _prompt_with_live_preview(
@@ -574,7 +579,7 @@ def _resolve_placeholder_values(
     set_values: dict[str, str],
     static_values: dict[str, str],
     document_values: dict[str, str],
-) -> dict[str, str]:
+) -> tuple[dict[str, str], bool]:
     """Resolve placeholder values from static values, --set, and prompts."""
     values: dict[str, str] = {}
     unresolved_placeholders: list[str] = []
@@ -593,7 +598,7 @@ def _resolve_placeholder_values(
         unresolved_placeholders.append(placeholder)
 
     if _supports_live_template_prompt() and unresolved_placeholders:
-        return _prompt_with_live_preview(template_content, unresolved_placeholders, values)
+        return (_prompt_with_live_preview(template_content, unresolved_placeholders, values), True)
 
     for placeholder in unresolved_placeholders:
         values[placeholder] = typer.prompt(
@@ -601,7 +606,7 @@ def _resolve_placeholder_values(
             default="",
             show_default=False,
         )
-    return values
+    return (values, bool(unresolved_placeholders))
 
 
 def _render_capture_content(
@@ -609,7 +614,7 @@ def _render_capture_content(
     set_values: list[str] | None,
     static_values: dict[str, str],
     document: Document,
-) -> str:
+) -> tuple[str, bool]:
     """Render capture template content by replacing handlebars placeholders."""
     placeholders = _template_placeholders(template_content)
     provided_values = _parse_set_values(set_values)
@@ -618,7 +623,7 @@ def _render_capture_content(
         unknown_list = ", ".join(unknown_names)
         logger.warning("Ignoring unknown capture --set parameter(s): %s", unknown_list)
 
-    values = _resolve_placeholder_values(
+    values, prompted = _resolve_placeholder_values(
         template_content,
         placeholders,
         provided_values,
@@ -631,8 +636,8 @@ def _render_capture_content(
 
     rendered = _PLACEHOLDER_RE.sub(_replace, template_content)
     if rendered.endswith("\n"):
-        return rendered
-    return f"{rendered}\n"
+        return (rendered, prompted)
+    return (f"{rendered}\n", prompted)
 
 
 def _validate_rendered_heading(rendered_content: str) -> Heading:
@@ -683,23 +688,25 @@ def _attach_heading(document: Document, parent_heading: Heading | None, heading:
     parent_heading.children.append(heading)
 
 
-def run_tasks_capture(args: TasksCaptureArgs) -> None:
-    """Run tasks capture command using configured templates."""
+def capture_task(args: TasksCaptureArgs) -> TasksCaptureResult:
+    """Capture one task from templates and return created heading metadata."""
     templates = config_module.CONFIG_CAPTURE_TEMPLATES
     _require_templates(templates)
 
-    template_key = _resolve_template_name(args.template_name, templates)
+    template_key, template_prompted = _resolve_template_name(args.template_name, templates)
     template = templates[template_key]
     target_file = template["file"] if args.file is None else args.file
-    parent_selector = template.get("parent") if args.parent is None else args.parent
+    template_parent_selector = template.get("parent")
     document = load_document(target_file)
 
     parent_heading = None
-    if parent_selector is not None:
-        parent_heading = _resolve_parent_from_selector(document, parent_selector)
+    if args.parent is not None:
+        parent_heading = resolve_parent_heading(document, args.parent)
+    elif template_parent_selector is not None:
+        parent_heading = _resolve_parent_from_selector(document, template_parent_selector)
 
     static_values = _build_static_placeholder_values(document, parent_heading)
-    rendered_content = _render_capture_content(
+    rendered_content, placeholder_prompted = _render_capture_content(
         template["content"],
         args.set_values,
         static_values,
@@ -709,6 +716,20 @@ def run_tasks_capture(args: TasksCaptureArgs) -> None:
 
     _attach_heading(document, parent_heading, heading)
     save_document(document)
+
+    return TasksCaptureResult(
+        template_name=template_key,
+        heading=heading,
+        document=document,
+        interactive_used=template_prompted or placeholder_prompted,
+    )
+
+
+def run_tasks_capture(args: TasksCaptureArgs) -> None:
+    """Run tasks capture command using configured templates."""
+    result = capture_task(args)
+    if not result.interactive_used:
+        typer.echo(result.heading.id or result.heading.title_text)
 
 
 def register(app: typer.Typer) -> None:
@@ -736,8 +757,8 @@ def register(app: typer.Typer) -> None:
         parent: str | None = typer.Option(
             None,
             "--parent",
-            metavar="SELECTOR",
-            help="Override template parent selector expression",
+            metavar="ID_OR_TITLE",
+            help="Override template parent by heading ID or title",
         ),
         set_values: list[str] | None = typer.Option(  # noqa: B008
             None,

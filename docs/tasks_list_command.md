@@ -19,6 +19,7 @@ Interactive keys:
 - `/` - Set full-text search substring over each node's own text (excluding child subtree text).
 - `x` - Clear active search.
 - `Enter` - Open selected task details in pager.
+- `a` - Capture a new task using standard `org tasks capture` template rules.
 - `t` - Set TODO state.
 - `Shift+Up` / `Shift+Down` - Increase/decrease priority (`A`/`B`/`C`/none).
 - `g` - Replace tags from CSV input (blank clears tags).
