@@ -14,6 +14,7 @@ import pytest
 import typer
 from rich.console import Console
 
+from org.commands import editor as editor_command
 from org.commands.tasks import list as tasks_list
 from org.histogram import visual_len
 from org.output_format import OutputFormat, OutputFormatError
@@ -23,6 +24,8 @@ from tests.conftest import node_from_org
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
+
+    from org_parser.document import Heading
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
@@ -820,6 +823,32 @@ def test_handle_interactive_key_unsupported_sets_status_and_continues() -> None:
     key = "UNSUPPORTED-ESC:1b5b3939397e"
     assert tasks_list._handle_interactive_key(console, session, key) is True
     assert session.status_message == f"Unsupported key: {key}"
+
+
+def test_handle_interactive_key_enter_edits_selected_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Enter should trigger external-editor task editing on selected row."""
+    nodes = node_from_org("* TODO A\n")
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    def _fake_edit(heading: Heading) -> editor_command.HeadingEditResult:
+        return editor_command.HeadingEditResult(heading=heading, changed=False)
+
+    monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
+
+    assert tasks_list._handle_interactive_key(console, session, "ENTER") is True
+    assert session.status_message == "No changes."
 
 
 def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.MonkeyPatch) -> None:

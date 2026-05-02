@@ -5818,14 +5818,94 @@ Make sure to update the docs as well as the class names and filenames to better 
 :END:
 Can you reorder the command list on =org= help message? I'd like the order to be =agenda=, =board=, =stats= and finally =tasks= (lexicographical ordering). Please do the same reordering for =org tasks= and =org stats=.
 
-*** Tasks edit command
-- Allows editing a specific task with $EDITOR
-*** Tasks refile command
+*** REWORKED Tasks edit command                                                                :TUI:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-02 Sat 15:40] \\
+  Needed some convincing to get implemented.
+:END:
+Add a new =tasks edit= command that allows editing a specific task.
+The edit should be carried out with the configured system =$EDITOR= via a temporary file that contains just the edited task.
+Upon editor exit, when the edit was completed successfully, the task format should be validated with =from_source= and the task should be overwritten in the Org document.
+
+If =$EDITOR= is not defined in the environment, an error should be reported instead.
+
+The command should accept =--query-title=, =--query-id= and =--query= CLI parameters, with the same semantics as in the =tasks update= command.
+
+When more than one task is selected, the command should report an error.
+
+Editing tasks with subheadings should include those subheadings in the temporary file used for editing and also replace the children upon edit. This means it's replacing entire subtrees.
+
+Please make sure to make the editing view generic enough to reuse elsewhere. We will be using that for the other commands next.
+
+**** DONE Agenda, board & task list                                                             :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 15:35]
+:END:
+In =org agenda=, =org board= and =org tasks list= commands, instead of openining the selected task is a pager, the =$EDITOR= flow should be used instead.
+The flow should work exactly the same as for the =org tasks edit= command, except would be triggered interactively by the user.
+
+**** DONE src/org/commands/agenda.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 15:38]
+:END:
+
+In file src/org/commands/agenda.py around line 1433, near the ~def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->~
+
+#+begin_example
++    """Edit selected task subtree in configured external editor."""
++    del console
+#+end_example
+
+Refactor the code to not pass in the console if not needed.
+*** CANCELLED Tasks refile command
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-05-02 Sat 14:27] \\
+  There's a =org tasks update --query-id "foo" --file "new_file.org"= available.
+:END:
 - Move task to a different file
 - Ensure that the task is first saved correctly before it is removed from the original file.
-*** Tasks archive command
-- Archives a task in the Archive file.
-- Ensure that the task is first saved correctly before it is removed from the original file.
+*** TODO Tasks archive command                                                                 :TUI:
+Add a new =tasks archive= command that moves a specified task to the Org archive.
+
+The command should accept =--query-title=, =--query-id= and =--query= CLI parameters, with the same semantics as in the =tasks update= command.
+
+Selected tasks should be moved to the archive file. The archive location is determined as follows:
+- If the task has an =ARCHIVE= property use that for the base location.
+- If the task does not have an archive property, use the documents =ARCHIVE= keyword value.
+- If the document does not have an archive keyword, use =%s_archive::= as the base location.
+
+The archive location is a pattern where =%s= means the current document file-name and the =::= part separates the archive filename from the archive heading specifier. Here are some examples:
+
+#+begin_example
+%s_archive:: - archiving a task from test.org file moves it to the document children of the file "test.org_archive"
+%s_done:: - archiving a task from test.org file moves it to the document children of the file "test.org_done"
+path/to/file.org:: - archiving a task from test.org file moves it to the document children of the file "path/to/file.org"
+%s::Archive - archiving a task from test.org file moves it to the childern of the heading with title equal to "Archive" in the current file
+path/to/file.org::Heading title  - archiving a task from test.org file moves it to the childern of the heading with title equal to "Heading title" in the "path/to/file.org" file.
+#+end_example
+
+The command should automatically compute the archive location and refile the selected tasks to that location. The outcome should be similar to calling =org tasks update --query "selector" --file "location filename" --parent "optional title"=, with the distinction, that the filename and parent name are automatically derived.
+
+Please make sure to make the archival logic generic enough to reuse elsewhere. We will be using that for the other commands next.
+
+**** TODO Idempotency                                                                          :Bug:
+Do not update the org file if the content of the task did not change (signifies user exiting without making any edits).
+**** TODO Agenda, board & tasks lists archival                                                  :UX:
+Add archival capability to the =org agenda=, =org board= and =org tasks list= commands. Use =$= key to move the task to the archive file according to the same rules that apply to =org tasks archive=. The highlighted task should be archived.
+
+*** TODO Agenda, board & backlong task capture
+Ability to capture a new task directly in the TUI:
+- for =org agenda=, it should automatically be scheduled at the highlighted time (capture the task, then apply the schedule to the newly added task).
+- for =org board= it should be added to the task list according to the usual =org tasks capture= rules.
+- for =org tasks list= it should be added to the task list according to the usual =org tasks capture= rules.
+
+**** TODO Copy & paste in capture command doesn't work                                         :Bug:
+
+When copying & pasting text into the capture command's input prompt, only the first character is pasted. It should paste the entire copied text.
+
 *** Flow ready command
 - Find tasks that are ready to be started (based on relative position in the file & inter-dependencies & state)
 *** Flow assign command

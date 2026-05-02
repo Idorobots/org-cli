@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import sys
-from contextlib import contextmanager
 from datetime import datetime, timedelta
 from io import StringIO
 from typing import TYPE_CHECKING
@@ -16,11 +15,12 @@ from org_parser.time import Timestamp
 from rich.console import Console
 
 from org.commands import agenda as agenda_command
+from org.commands import editor as editor_command
 from org.commands.interactive_common import decode_escape_sequence, detail_org_block, local_now
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from org_parser.document import Heading
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -911,10 +911,10 @@ def test_apply_refile_rejects_same_file_with_equivalent_path(
     assert content.count("Refile me") == 1
 
 
-def test_handle_interactive_key_enter_opens_detail_for_selected_task(
+def test_handle_interactive_key_enter_edits_selected_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Enter should open selected task details in pager."""
+    """Enter should trigger external-editor editing on selected task row."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
     root = org_parser.load(fixture_path)
@@ -934,28 +934,17 @@ def test_handle_interactive_key_enter_opens_detail_for_selected_task(
     )
     session.selected_row_index = task_index
 
-    pager_called = {"value": False}
-    mouse_reporting_events: list[bool] = []
+    row = agenda_command._selected_task_row(session)
+    assert row is not None
+    assert row.node is not None
 
-    @contextmanager
-    def _fake_pager(*args: object, **kwargs: object) -> Iterator[None]:
-        del args, kwargs
-        pager_called["value"] = True
-        yield
+    def _fake_edit(heading: Heading) -> editor_command.HeadingEditResult:
+        return editor_command.HeadingEditResult(heading=heading, changed=False)
 
-    def _record_mouse_reporting(enabled: bool) -> None:
-        mouse_reporting_events.append(enabled)
-
-    monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr(
-        agenda_command,
-        "set_mouse_reporting",
-        _record_mouse_reporting,
-    )
+    monkeypatch.setattr(agenda_command, "edit_heading_subtree_in_external_editor", _fake_edit)
 
     assert agenda_command._handle_interactive_key(console, session, "ENTER") is True
-    assert pager_called["value"]
-    assert mouse_reporting_events == [False, True]
+    assert session.status_message == "No changes."
 
 
 def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:

@@ -464,7 +464,6 @@ def run_tasks_update(args: UpdateArgs) -> None:
 
     for document in documents_to_save.values():
         logger.info("Saving updated file: %s", document.filename)
-        document.sync_heading_id_index()
         save_document(document)
 
     typer.echo(f"Updated {selected_count} tasks.")

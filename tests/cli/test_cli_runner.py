@@ -76,12 +76,13 @@ def test_cli_help_tasks_commands_are_ordered() -> None:
     output = clean_combined_output(result)
     add_idx = output.find("│ add")
     capture_idx = output.find("│ capture")
+    edit_idx = output.find("│ edit")
     list_idx = output.find("│ list")
     query_idx = output.find("│ query")
     remove_idx = output.find("│ remove")
     update_idx = output.find("│ update")
-    assert min(add_idx, capture_idx, list_idx, query_idx, remove_idx, update_idx) >= 0
-    assert add_idx < capture_idx < list_idx < query_idx < remove_idx < update_idx
+    assert min(add_idx, capture_idx, edit_idx, list_idx, query_idx, remove_idx, update_idx) >= 0
+    assert add_idx < capture_idx < edit_idx < list_idx < query_idx < remove_idx < update_idx
 
 
 def test_cli_help_stats_commands_are_ordered() -> None:
@@ -495,6 +496,44 @@ def test_cli_runner_tasks_update_supports_query_selector(tmp_path: Path) -> None
     assert result.exit_code == 0
     updated = fixture_path.read_text(encoding="utf-8")
     assert "* TODO Updated" in updated
+
+
+def test_cli_runner_tasks_edit_updates_subtree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLI should edit one selected task subtree."""
+    runner = CliRunner()
+    fixture_path = tmp_path / "tasks.org"
+    fixture_path.write_text(
+        "* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n** TODO Child\n* TODO Tail\n",
+        encoding="utf-8",
+    )
+
+    def _fake_editor(_: str, *, suffix: str = ".org") -> str:
+        del suffix
+        return "* TODO Updated\n:PROPERTIES:\n:ID: task-1\n:END:\n** TODO New child\n"
+
+    monkeypatch.setattr("org.commands.editor.edit_text_in_external_editor", _fake_editor)
+
+    result = runner.invoke(
+        app,
+        [
+            "tasks",
+            "edit",
+            "--query-id",
+            "task-1",
+            str(fixture_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Edited 1 task." in result.stdout
+    updated = fixture_path.read_text(encoding="utf-8")
+    assert "* TODO Updated" in updated
+    assert "** TODO New child" in updated
+    assert "** TODO Child" not in updated
+    assert "* TODO Tail" in updated
 
 
 def test_cli_runner_tasks_update_requires_identifier(tmp_path: Path) -> None:

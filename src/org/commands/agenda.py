@@ -21,6 +21,7 @@ from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data, resolve_input_paths
+from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_common import (
     KeyBinding,
     append_repeat_transition,
@@ -28,7 +29,6 @@ from org.commands.interactive_common import (
     key_binding_for_action,
     key_binding_requires_live_pause,
     local_now,
-    open_task_detail_in_pager,
     read_keypress,
     set_mouse_reporting,
 )
@@ -968,7 +968,6 @@ def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
 def _save_document_changes(document: Document) -> None:
     """Persist one mutated document to disk."""
     logger.info("Saving agenda edit file: %s", document.filename)
-    document.sync_heading_id_index()
     save_document(document)
 
 
@@ -1396,7 +1395,7 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
 
     controls = (
         "n/p, Up/Down, Wheel select"
-        " | Enter view"
+        " | Enter edit"
         " | f/b, Left/Right span"
         " | t state"
         " | Shift+Left/Right day"
@@ -1425,19 +1424,29 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
     )
 
 
-def _open_selected_task_detail(console: Console, session: _AgendaSession) -> None:
-    """Open selected task detail in pager for scrolling and selection."""
+def _edit_selected_task_in_external_editor(session: _AgendaSession) -> None:
+    """Edit selected task subtree in configured external editor."""
     row = _selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
 
     session.status_message = ""
-    set_mouse_reporting(False)
     try:
-        open_task_detail_in_pager(console, row.node, color_enabled=session.render.color_enabled)
-    finally:
-        set_mouse_reporting(True)
+        edit_result = edit_heading_subtree_in_external_editor(row.node)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    if not edit_result.changed:
+        session.status_message = "No changes."
+        return
+
+    _save_document_changes(edit_result.heading.document)
+    preserve_identity = _heading_identity(edit_result.heading)
+    _reload_session_nodes(session)
+    _refresh_session(session, preserve_identity)
+    session.status_message = "Task updated"
 
 
 def _shift_planning_for_row(row: _AgendaRow, *, day_delta: int) -> tuple[Timestamp | None, str]:
@@ -1811,7 +1820,7 @@ def _agenda_key_bindings(
             lambda: _set_start_date_relative(session, day_delta=-session.days),
         ),
         "ENTER": key_binding_for_action(
-            lambda: _open_selected_task_detail(console, session),
+            lambda: _edit_selected_task_in_external_editor(session),
             requires_live_pause=True,
         ),
         "t": key_binding_for_action(

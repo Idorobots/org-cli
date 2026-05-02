@@ -14,12 +14,15 @@ from rich.console import Console
 from rich.text import Text
 
 from org.commands import board as board_command
+from org.commands import editor as editor_command
 from org.commands.interactive_common import heading_identity
 from tests.conftest import node_from_org
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from org_parser.document import Heading
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -289,8 +292,41 @@ def test_interactive_renderable_keeps_footer_at_bottom() -> None:
 
     assert len(lines) == 24
     assert lines[-2].startswith("Rows ")
-    assert "Enter view" in lines[-2]
+    assert "Enter edit" in lines[-2]
     assert lines[-1] == "Ready"
+
+
+def test_handle_interactive_key_enter_edits_selected_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Enter should trigger external-editor task editing for selected panel."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Task\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", nodes),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    def _fake_edit(heading: Heading) -> editor_command.HeadingEditResult:
+        return editor_command.HeadingEditResult(heading=heading, changed=False)
+
+    monkeypatch.setattr(board_command, "edit_heading_subtree_in_external_editor", _fake_edit)
+
+    assert board_command._handle_interactive_key(console, session, "ENTER") is True
+    assert session.status_message == "No changes."
 
 
 def test_run_flow_board_does_not_hide_unknown_or_empty_states(

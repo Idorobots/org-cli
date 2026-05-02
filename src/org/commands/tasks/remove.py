@@ -102,7 +102,6 @@ def run_tasks_remove(args: RemoveArgs) -> None:
 
     for document in affected_documents.values():
         logger.info("Saving file after delete: %s", document.filename)
-        document.sync_heading_id_index()
         save_document(document)
 
     typer.echo(f"Deleted {selected_count} tasks.")

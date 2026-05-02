@@ -19,6 +19,7 @@ from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
+from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_common import (
     HeadingIdentity,
     KeyBinding,
@@ -29,7 +30,6 @@ from org.commands.interactive_common import (
     key_binding_for_action,
     key_binding_requires_live_pause,
     local_now,
-    open_task_detail_in_pager,
     read_keypress,
     set_mouse_reporting,
     shift_priority,
@@ -496,7 +496,6 @@ def _reload_session_nodes(
 def _save_document_changes(document: Document) -> None:
     """Persist one mutated document to disk."""
     logger.info("Saving tasks list edit file: %s", document.filename)
-    document.sync_heading_id_index()
     save_document(document)
 
 
@@ -577,7 +576,7 @@ def _interactive_tasks_list_renderable(console: Console, session: _TasksListSess
         "Up/Down, n/p, Wheel move"
         " | / search"
         " | x clear"
-        " | Enter view"
+        " | Enter edit"
         " | t state"
         " | Shift+Up/Down priority"
         " | g tags"
@@ -634,19 +633,25 @@ def _choose_state(console: Console, heading: Heading) -> str | None:
     return None
 
 
-def _open_selected_task_detail(console: Console, session: _TasksListSession) -> None:
-    """Open selected task detail in pager."""
+def _edit_selected_task_in_external_editor(session: _TasksListSession) -> None:
+    """Edit selected task subtree in configured external editor."""
     node = _selected_node(session)
     if node is None:
         session.status_message = "Action available only on task rows"
         return
 
     session.status_message = ""
-    set_mouse_reporting(False)
     try:
-        open_task_detail_in_pager(console, node, color_enabled=session.color_enabled)
-    finally:
-        set_mouse_reporting(True)
+        edit_result = edit_heading_subtree_in_external_editor(node)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    if not edit_result.changed:
+        session.status_message = "No changes."
+        return
+
+    _persist_and_reload_selected(session, edit_result.heading, "Task updated")
 
 
 def _prompt_search(console: Console, session: _TasksListSession) -> None:
@@ -811,7 +816,7 @@ def _tasks_list_key_bindings(
         "UP": key_binding_for_action(lambda: _move_selection(session, -1)),
         "WHEEL-UP": key_binding_for_action(lambda: _move_selection(session, -1)),
         "ENTER": key_binding_for_action(
-            lambda: _open_selected_task_detail(console, session),
+            lambda: _edit_selected_task_in_external_editor(session),
             requires_live_pause=True,
         ),
         "/": key_binding_for_action(

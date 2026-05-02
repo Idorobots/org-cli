@@ -22,6 +22,7 @@ from org import config as config_module
 from org.cli_common import load_and_process_data
 from org.color import escape_text, get_state_color
 from org.commands.agenda import _advance_timestamp_by_repeater
+from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_common import (
     HeadingIdentity,
     KeyBinding,
@@ -32,7 +33,6 @@ from org.commands.interactive_common import (
     key_binding_for_action,
     key_binding_requires_live_pause,
     local_now,
-    open_task_detail_in_pager,
     read_keypress,
     set_mouse_reporting,
     shift_priority,
@@ -461,7 +461,6 @@ def _render_static_flow_board(
 def _save_document_changes(document: Document) -> None:
     """Persist one mutated document to disk."""
     logger.info("Saving flow board edit file: %s", document.filename)
-    document.sync_heading_id_index()
     save_document(document)
 
 
@@ -717,19 +716,28 @@ def _apply_priority_shift(session: _BoardSession, *, increase: bool) -> None:
     session.status_message = f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}"
 
 
-def _open_selected_task_detail(console: Console, session: _BoardSession) -> None:
-    """Open selected task detail in pager for scrolling and selection."""
+def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
+    """Edit selected task subtree in configured external editor."""
     heading = _selected_node(session)
     if heading is None:
         session.status_message = "Action available only on task panels"
         return
 
     session.status_message = ""
-    set_mouse_reporting(False)
     try:
-        open_task_detail_in_pager(console, heading, color_enabled=session.color_enabled)
-    finally:
-        set_mouse_reporting(True)
+        edit_result = edit_heading_subtree_in_external_editor(heading)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    if not edit_result.changed:
+        session.status_message = "No changes."
+        return
+
+    _save_document_changes(edit_result.heading.document)
+    preserve_identity = heading_identity(edit_result.heading)
+    _reload_session(session, preserve_identity)
+    session.status_message = "Task updated"
 
 
 def _interactive_viewport_rows(console_height: int) -> int:
@@ -886,7 +894,7 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
 
     controls = (
         "Up/Down, Left/Right, Wheel move"
-        " | Enter view"
+        " | Enter edit"
         " | Shift+Left/Right state"
         " | Shift+Up/Down priority"
         " | q/Esc quit"
@@ -936,7 +944,7 @@ def _flow_board_key_bindings(
         "RIGHT": key_binding_for_action(lambda: _move_selection_horizontal(session, 1)),
         "LEFT": key_binding_for_action(lambda: _move_selection_horizontal(session, -1)),
         "ENTER": key_binding_for_action(
-            lambda: _open_selected_task_detail(console, session),
+            lambda: _edit_selected_task_in_external_editor(session),
             requires_live_pause=True,
         ),
         "S-LEFT": key_binding_for_action(
