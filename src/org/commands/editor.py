@@ -69,5 +69,6 @@ def edit_heading_subtree_in_external_editor(heading: Heading) -> HeadingEditResu
     except (TypeError, ValueError) as err:
         raise typer.BadParameter(f"Edited task content is invalid: {err}") from err
 
+    updated_heading.document = heading.document
     _replace_heading_in_parent(heading, updated_heading)
     return HeadingEditResult(heading=updated_heading, changed=True)

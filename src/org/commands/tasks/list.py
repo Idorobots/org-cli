@@ -642,6 +642,7 @@ def _edit_selected_task_in_external_editor(session: _TasksListSession) -> None:
         session.status_message = "Action available only on task rows"
         return
 
+    source_node = node
     session.status_message = ""
     try:
         edit_result = edit_heading_subtree_in_external_editor(node)
@@ -653,7 +654,7 @@ def _edit_selected_task_in_external_editor(session: _TasksListSession) -> None:
         session.status_message = "No changes."
         return
 
-    _persist_and_reload_selected(session, edit_result.heading, "Task updated")
+    _persist_and_reload_selected(session, source_node, "Task updated")
 
 
 def _archive_selected_task(session: _TasksListSession) -> None:

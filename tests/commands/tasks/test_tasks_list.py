@@ -852,6 +852,49 @@ def test_handle_interactive_key_enter_edits_selected_task(
     assert session.status_message == "No changes."
 
 
+def test_handle_interactive_key_enter_persists_selected_source_node_after_changed_edit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changed edit should persist using the originally selected session node."""
+    nodes = node_from_org("* TODO A\n")
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+    source_node = nodes[0]
+    detached_heading = node_from_org("* TODO Updated\n")[0]
+
+    def _fake_edit(_heading: Heading) -> editor_command.HeadingEditResult:
+        return editor_command.HeadingEditResult(heading=detached_heading, changed=True)
+
+    persisted_node: Heading | None = None
+    persisted_status = ""
+
+    def _fake_persist(
+        current_session: tasks_list._TasksListSession,
+        node: Heading,
+        status_message: str,
+    ) -> None:
+        nonlocal persisted_node, persisted_status
+        assert current_session is session
+        persisted_node = node
+        persisted_status = status_message
+
+    monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(tasks_list, "_persist_and_reload_selected", _fake_persist)
+
+    assert tasks_list._handle_interactive_key(console, session, "ENTER") is True
+    assert persisted_node is source_node
+    assert persisted_status == "Task updated"
+
+
 def test_handle_interactive_key_dollar_archives_selected_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

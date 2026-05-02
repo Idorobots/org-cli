@@ -331,6 +331,49 @@ def test_handle_interactive_key_enter_edits_selected_task(
     assert session.status_message == "No changes."
 
 
+def test_handle_interactive_key_enter_saves_original_document_after_changed_edit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changed edit should save the selected task's original document."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Task\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", nodes),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+    source_document = nodes[0].document
+    detached_heading = node_from_org("* TODO Updated\n")[0]
+
+    def _fake_edit(_heading: Heading) -> editor_command.HeadingEditResult:
+        return editor_command.HeadingEditResult(heading=detached_heading, changed=True)
+
+    saved_documents: list[Document] = []
+
+    def _capture_save(document: Document) -> None:
+        saved_documents.append(document)
+
+    monkeypatch.setattr(board_command, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(board_command, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
+
+    assert board_command._handle_interactive_key(console, session, "ENTER") is True
+    assert session.status_message == "Task updated"
+    assert saved_documents == [source_document]
+
+
 def test_handle_interactive_key_dollar_archives_selected_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

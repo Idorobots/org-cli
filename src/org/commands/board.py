@@ -724,6 +724,7 @@ def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
         session.status_message = "Action available only on task panels"
         return
 
+    source_document = heading.document
     session.status_message = ""
     try:
         edit_result = edit_heading_subtree_in_external_editor(heading)
@@ -735,7 +736,7 @@ def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
         session.status_message = "No changes."
         return
 
-    _save_document_changes(edit_result.heading.document)
+    _save_document_changes(source_document)
     preserve_identity = heading_identity(edit_result.heading)
     _reload_session(session, preserve_identity)
     session.status_message = "Task updated"

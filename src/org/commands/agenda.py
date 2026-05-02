@@ -1433,6 +1433,7 @@ def _edit_selected_task_in_external_editor(session: _AgendaSession) -> None:
         session.status_message = "Action available only on task rows"
         return
 
+    source_document = row.node.document
     session.status_message = ""
     try:
         edit_result = edit_heading_subtree_in_external_editor(row.node)
@@ -1444,7 +1445,7 @@ def _edit_selected_task_in_external_editor(session: _AgendaSession) -> None:
         session.status_message = "No changes."
         return
 
-    _save_document_changes(edit_result.heading.document)
+    _save_document_changes(source_document)
     preserve_identity = _heading_identity(edit_result.heading)
     _reload_session_nodes(session)
     _refresh_session(session, preserve_identity)

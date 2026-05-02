@@ -5875,10 +5875,13 @@ Refactor the code to not pass in the console if not needed.
 - State "DONE"       from "TODO"       [2026-05-02 Sat 16:08]
 :END:
 Do not update the org file if the content of the task did not change (signifies user exiting without making any edits).
-**** TODO Error when editing a task via agenda/board commands                                  :Bug:
+**** DONE Error when editing a task via agenda/board commands                                  :Bug:
 :PROPERTIES:
 :capture_time: [2026-05-02 Sat 16:19]
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 17:19]
 :END:
 
 #+begin_example

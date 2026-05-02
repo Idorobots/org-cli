@@ -948,6 +948,53 @@ def test_handle_interactive_key_enter_edits_selected_task(
     assert session.status_message == "No changes."
 
 
+def test_handle_interactive_key_enter_saves_original_document_after_changed_edit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changed edit should save the selected task's original document."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "task"
+    )
+    session.selected_row_index = task_index
+
+    row = agenda_command._selected_task_row(session)
+    assert row is not None
+    assert row.node is not None
+    source_document = row.node.document
+    detached_heading = next(iter(org_parser.loads("* TODO Updated\n")))
+
+    def _fake_edit(_heading: Heading) -> editor_command.HeadingEditResult:
+        return editor_command.HeadingEditResult(heading=detached_heading, changed=True)
+
+    saved_documents: list[Document] = []
+
+    def _capture_save(document: Document) -> None:
+        saved_documents.append(document)
+
+    monkeypatch.setattr(agenda_command, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(agenda_command, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+
+    assert agenda_command._handle_interactive_key(console, session, "ENTER") is True
+    assert session.status_message == "Task updated"
+    assert saved_documents == [source_document]
+
+
 def test_handle_interactive_key_dollar_archives_selected_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
