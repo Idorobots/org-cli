@@ -22,6 +22,7 @@ from org import config as config_module
 from org.cli_common import load_and_process_data
 from org.color import escape_text, get_state_color
 from org.commands.agenda import _advance_timestamp_by_repeater
+from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_common import (
     HeadingIdentity,
@@ -740,6 +741,25 @@ def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
     session.status_message = "Task updated"
 
 
+def _archive_selected_task(session: _BoardSession) -> None:
+    """Archive selected task subtree using shared archive-location rules."""
+    heading = _selected_node(session)
+    if heading is None:
+        session.status_message = "Action available only on task panels"
+        return
+
+    session.status_message = ""
+    try:
+        archive_result = archive_heading_subtree_and_save(heading, {})
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    preserve_identity = heading_identity(archive_result.heading)
+    _reload_session(session, preserve_identity)
+    session.status_message = "Task archived"
+
+
 def _interactive_viewport_rows(console_height: int) -> int:
     """Return number of visible task rows in interactive mode."""
     available_space = console_height - _INTERACTIVE_HEADER_HEIGHT - _INTERACTIVE_FOOTER_HEIGHT
@@ -895,6 +915,7 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
     controls = (
         "Up/Down, Left/Right, Wheel move"
         " | Enter edit"
+        " | $ archive"
         " | Shift+Left/Right state"
         " | Shift+Up/Down priority"
         " | q/Esc quit"
@@ -947,6 +968,7 @@ def _flow_board_key_bindings(
             lambda: _edit_selected_task_in_external_editor(session),
             requires_live_pause=True,
         ),
+        "$": key_binding_for_action(lambda: _archive_selected_task(session)),
         "S-LEFT": key_binding_for_action(
             lambda: _apply_state_move(console, session, direction=-1),
             requires_live_pause=True,

@@ -19,6 +19,7 @@ from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
+from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_common import (
     HeadingIdentity,
@@ -577,6 +578,7 @@ def _interactive_tasks_list_renderable(console: Console, session: _TasksListSess
         " | / search"
         " | x clear"
         " | Enter edit"
+        " | $ archive"
         " | t state"
         " | Shift+Up/Down priority"
         " | g tags"
@@ -652,6 +654,25 @@ def _edit_selected_task_in_external_editor(session: _TasksListSession) -> None:
         return
 
     _persist_and_reload_selected(session, edit_result.heading, "Task updated")
+
+
+def _archive_selected_task(session: _TasksListSession) -> None:
+    """Archive selected task subtree using shared archive-location rules."""
+    node = _selected_node(session)
+    if node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    session.status_message = ""
+    try:
+        archive_result = archive_heading_subtree_and_save(node, {})
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    preserve_identity = heading_identity(archive_result.heading)
+    if _reload_session_nodes(session, preserve_identity):
+        session.status_message = "Task archived"
 
 
 def _prompt_search(console: Console, session: _TasksListSession) -> None:
@@ -819,6 +840,7 @@ def _tasks_list_key_bindings(
             lambda: _edit_selected_task_in_external_editor(session),
             requires_live_pause=True,
         ),
+        "$": key_binding_for_action(lambda: _archive_selected_task(session)),
         "/": key_binding_for_action(
             lambda: _prompt_search(console, session),
             requires_live_pause=True,

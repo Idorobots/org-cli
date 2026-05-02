@@ -15,12 +15,13 @@ from org_parser.time import Timestamp
 from rich.console import Console
 
 from org.commands import agenda as agenda_command
+from org.commands import archive as archive_command
 from org.commands import editor as editor_command
 from org.commands.interactive_common import decode_escape_sequence, detail_org_block, local_now
 
 
 if TYPE_CHECKING:
-    from org_parser.document import Heading
+    from org_parser.document import Document, Heading
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -947,6 +948,58 @@ def test_handle_interactive_key_enter_edits_selected_task(
     assert session.status_message == "No changes."
 
 
+def test_handle_interactive_key_dollar_archives_selected_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """$ should archive highlighted agenda task using shared archive helper."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "task"
+    )
+    session.selected_row_index = task_index
+
+    def _fake_archive(
+        heading: Heading,
+        _cache: dict[str, Document],
+    ) -> archive_command.ArchiveMoveResult:
+        location = archive_command.ArchiveLocation(
+            raw_spec="%s_archive::",
+            file_path="tasks.org_archive",
+            parent_title=None,
+        )
+        target = archive_command.ArchiveTarget(
+            location=location,
+            document=heading.document,
+            parent_heading=None,
+        )
+        return archive_command.ArchiveMoveResult(
+            heading=heading,
+            target=target,
+            source_document=heading.document,
+            destination_document=heading.document,
+        )
+
+    monkeypatch.setattr(agenda_command, "archive_heading_subtree_and_save", _fake_archive)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+
+    assert agenda_command._handle_interactive_key(console, session, "$") is True
+    assert session.status_message == "Task archived"
+
+
 def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:
     """Enter on non-task rows should keep agenda view and report status."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
@@ -1022,6 +1075,7 @@ def test_interactive_renderable_footer_is_two_lines_without_status() -> None:
 
     assert len(lines) == 24
     assert lines[-2].startswith("Lines ")
+    assert "$ archive" in lines[-2]
     assert "q/Esc quit" in lines[-2]
     assert lines[-1] == ""
 

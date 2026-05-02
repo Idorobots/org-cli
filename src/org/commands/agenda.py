@@ -21,6 +21,7 @@ from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data, resolve_input_paths
+from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_common import (
     KeyBinding,
@@ -1396,6 +1397,7 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
     controls = (
         "n/p, Up/Down, Wheel select"
         " | Enter edit"
+        " | $ archive"
         " | f/b, Left/Right span"
         " | t state"
         " | Shift+Left/Right day"
@@ -1447,6 +1449,26 @@ def _edit_selected_task_in_external_editor(session: _AgendaSession) -> None:
     _reload_session_nodes(session)
     _refresh_session(session, preserve_identity)
     session.status_message = "Task updated"
+
+
+def _archive_selected_task(session: _AgendaSession) -> None:
+    """Archive selected task subtree using shared archive-location rules."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    session.status_message = ""
+    try:
+        archive_result = archive_heading_subtree_and_save(row.node, {})
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    preserve_identity = _heading_identity(archive_result.heading)
+    _reload_session_nodes(session)
+    _refresh_session(session, preserve_identity)
+    session.status_message = "Task archived"
 
 
 def _shift_planning_for_row(row: _AgendaRow, *, day_delta: int) -> tuple[Timestamp | None, str]:
@@ -1823,6 +1845,7 @@ def _agenda_key_bindings(
             lambda: _edit_selected_task_in_external_editor(session),
             requires_live_pause=True,
         ),
+        "$": key_binding_for_action(lambda: _archive_selected_task(session)),
         "t": key_binding_for_action(
             lambda: _apply_state_change(console, session),
             requires_live_pause=True,

@@ -3,6 +3,7 @@
 import typer
 
 from org.commands.tasks import add as tasks_add
+from org.commands.tasks import archive as tasks_archive
 from org.commands.tasks import capture as tasks_capture
 from org.commands.tasks import edit as tasks_edit
 from org.commands.tasks import list as tasks_list
@@ -18,6 +19,7 @@ def register(app: typer.Typer) -> None:
         no_args_is_help=True,
     )
     tasks_add.register(tasks_app)
+    tasks_archive.register(tasks_app)
     tasks_capture.register(tasks_app)
     tasks_edit.register(tasks_app)
     tasks_list.register(tasks_app)

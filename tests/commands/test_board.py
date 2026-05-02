@@ -13,6 +13,7 @@ import typer
 from rich.console import Console
 from rich.text import Text
 
+from org.commands import archive as archive_command
 from org.commands import board as board_command
 from org.commands import editor as editor_command
 from org.commands.interactive_common import heading_identity
@@ -22,7 +23,7 @@ from tests.conftest import node_from_org
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from org_parser.document import Heading
+    from org_parser.document import Document, Heading
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -293,6 +294,7 @@ def test_interactive_renderable_keeps_footer_at_bottom() -> None:
     assert len(lines) == 24
     assert lines[-2].startswith("Rows ")
     assert "Enter edit" in lines[-2]
+    assert "$ archive" in lines[-2]
     assert lines[-1] == "Ready"
 
 
@@ -327,6 +329,58 @@ def test_handle_interactive_key_enter_edits_selected_task(
 
     assert board_command._handle_interactive_key(console, session, "ENTER") is True
     assert session.status_message == "No changes."
+
+
+def test_handle_interactive_key_dollar_archives_selected_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """$ should archive highlighted task using shared archive helper."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Task\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", nodes),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    def _fake_archive(
+        heading: Heading,
+        _cache: dict[str, Document],
+    ) -> archive_command.ArchiveMoveResult:
+        location = archive_command.ArchiveLocation(
+            raw_spec="%s_archive::",
+            file_path="tasks.org_archive",
+            parent_title=None,
+        )
+        target = archive_command.ArchiveTarget(
+            location=location,
+            document=heading.document,
+            parent_heading=None,
+        )
+        return archive_command.ArchiveMoveResult(
+            heading=heading,
+            target=target,
+            source_document=heading.document,
+            destination_document=heading.document,
+        )
+
+    monkeypatch.setattr(board_command, "archive_heading_subtree_and_save", _fake_archive)
+    monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
+
+    assert board_command._handle_interactive_key(console, session, "$") is True
+    assert session.status_message == "Task archived"
 
 
 def test_run_flow_board_does_not_hide_unknown_or_empty_states(

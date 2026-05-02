@@ -5802,6 +5802,16 @@ When =--parent= CLI switch is set or =parent= is configured on the template, ple
 
 Make sure to update the docs as well as the class names and filenames to better match the new command tree.
 
+**** TODO Agenda, board & task list capture                                                     :UX:
+Ability to capture a new task directly in the TUI:
+- for =org agenda=, it should automatically be scheduled at the highlighted time (capture the task, then apply the schedule to the newly added task).
+- for =org board= it should be added to the task list according to the usual =org tasks capture= rules.
+- for =org tasks list= it should be added to the task list according to the usual =org tasks capture= rules.
+
+**** TODO Copy & paste in capture command doesn't work                                         :Bug:
+
+When copying & pasting text into the capture command's input prompt, only the first character is pasted. It should paste the entire copied text.
+
 *** DONE Move the =query= command into the =tasks= tree under =tasks query=                :Cleanup:
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-05-02 Sat 12:30]
@@ -5860,6 +5870,88 @@ In file src/org/commands/agenda.py around line 1433, near the ~def _interactive_
 #+end_example
 
 Refactor the code to not pass in the console if not needed.
+**** DONE Idempotency                                                                          :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 16:08]
+:END:
+Do not update the org file if the content of the task did not change (signifies user exiting without making any edits).
+**** TODO Error when editing a task via agenda/board commands                                  :Bug:
+:PROPERTIES:
+:capture_time: [2026-05-02 Sat 16:19]
+:context: 
+:END:
+
+#+begin_example
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sys; from importlib import import_module; sys.argv = ['/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/bin/org', 'agenda']; sys.exit(import_module('org.cli').main())
+                                                                                                                                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/k/projects/software/org-cli/src/org/cli.py", line 102, in main
+    command.main(
+    ~~~~~~~~~~~~^
+        args=sys.argv[1:],
+        ^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        default_map=default_map,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/core.py", line 795, in main
+    return _main(
+        self,
+    ...<6 lines>...
+        **extra,
+    )
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/core.py", line 188, in _main
+    rv = self.invoke(ctx)
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 1873, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+                           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 1269, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/click/core.py", line 824, in invoke
+    return callback(*args, **kwargs)
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/typer/main.py", line 1514, in wrapper
+    return callback(**use_params)
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 2263, in agenda
+    run_agenda(args)
+    ~~~~~~~~~~^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1981, in run_agenda
+    _run_agenda_interactive(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        console,
+        ^^^^^^^^
+    ...<6 lines>...
+        ),
+        ^^
+    )
+    ^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1912, in _run_agenda_interactive
+    should_continue = _handle_interactive_key(console, session, key)
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1885, in _handle_interactive_key
+    result = dispatch_key_binding(key, _agenda_key_bindings(console, session))
+  File "/home/k/projects/software/org-cli/src/org/commands/interactive_common.py", line 96, in dispatch_key_binding
+    outcome = binding.handler()
+  File "/home/k/projects/software/org-cli/src/org/commands/interactive_common.py", line 81, in _handler
+    action()
+    ~~~~~~^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1852, in <lambda>
+    lambda: _edit_selected_task_in_external_editor(session),
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 1447, in _edit_selected_task_in_external_editor
+    _save_document_changes(edit_result.heading.document)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/agenda.py", line 972, in _save_document_changes
+    save_document(document)
+    ~~~~~~~~~~~~~^^^^^^^^^^
+  File "/home/k/projects/software/org-cli/src/org/commands/tasks/common.py", line 149, in save_document
+    org_parser.dump(document)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/home/k/.cache/pypoetry/virtualenvs/org-cli-7KtLWNfp-py3.14/lib/python3.14/site-packages/org_parser/__init__.py", line 115, in dump
+    raise ValueError("No output filename provided")
+ValueError: No output filename provided
+#+end_example
 *** CANCELLED Tasks refile command
 :LOGBOOK:
 - State "CANCELLED"  from              [2026-05-02 Sat 14:27] \\
@@ -5891,21 +5983,70 @@ The command should automatically compute the archive location and refile the sel
 
 Please make sure to make the archival logic generic enough to reuse elsewhere. We will be using that for the other commands next.
 
-**** TODO Idempotency                                                                          :Bug:
-Do not update the org file if the content of the task did not change (signifies user exiting without making any edits).
-**** TODO Agenda, board & tasks lists archival                                                  :UX:
+**** DONE Agenda, board & tasks lists archival                                                  :UX:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 16:34]
+:END:
 Add archival capability to the =org agenda=, =org board= and =org tasks list= commands. Use =$= key to move the task to the archive file according to the same rules that apply to =org tasks archive=. The highlighted task should be archived.
 
-*** TODO Agenda, board & backlong task capture
-Ability to capture a new task directly in the TUI:
-- for =org agenda=, it should automatically be scheduled at the highlighted time (capture the task, then apply the schedule to the newly added task).
-- for =org board= it should be added to the task list according to the usual =org tasks capture= rules.
-- for =org tasks list= it should be added to the task list according to the usual =org tasks capture= rules.
+**** DONE src/org/commands/archive.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 16:47]
+:END:
 
-**** TODO Copy & paste in capture command doesn't work                                         :Bug:
+In file src/org/commands/archive.py around line 49, near the ~class ArchiveTarget:~
 
-When copying & pasting text into the capture command's input prompt, only the first character is pasted. It should paste the entire copied text.
+#+begin_example
++    documents_to_save: tuple[Document, ...]
+#+end_example
 
+Do we really need this? There's going to be at most two documents, the source and the destination, unless they are the same document. No need to have a dedicated tuple here.
+Alternatively, do we need the source & target document for anything, perhaps this =documents_to_save= should be the only document list here?
+
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 16:56]
+:END:
+
+In file src/org/commands/tasks/list.py around line 680, near the ~def _edit_selected_task_in_external_editor(session: _TasksListSession) -> None:~
+
+#+begin_example
++    session.status_message = ""
++    try:
++        archive_result = archive_heading_subtree(node, {})
++    except typer.BadParameter as err:
++        session.status_message = str(err)
++        return
++
++    for document in archive_result.documents_to_save:
++        try:
++            _save_document_changes(document)
++        except typer.BadParameter as err:
++            session.status_message = str(err)
++            return
+#+end_example
+
+This seems to be duplicated in all commands that perform archival of tasks. Could this be refactored into a common helper?
+**** DONE Archiving tasks should set some metadata properties                                   :UX:
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-02 Sat 16:43>
+:ID: Vibes-390
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-02 Sat 17:06]
+:END:
+
+When a task is archived, some metadata properties should be set on the archived version:
+- =ARCHIVE_TIME= - timestamp of the time of archival, example: =2023-10-30 pon 23:48=
+- =ARCHIVE_FILE= - the file from which the task was archived, example: =~/org/refile.org=
+- =ARCHIVE_CATEGORY= - original task category at the time of archival, example: =refile=
+- =ARCHIVE_TODO= - original todo-state at the time of archival, example: =DONE=
 *** Flow ready command
 - Find tasks that are ready to be started (based on relative position in the file & inter-dependencies & state)
 *** Flow assign command

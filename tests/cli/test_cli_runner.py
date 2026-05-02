@@ -75,14 +75,36 @@ def test_cli_help_tasks_commands_are_ordered() -> None:
     assert result.exit_code == 0
     output = clean_combined_output(result)
     add_idx = output.find("│ add")
+    archive_idx = output.find("│ archive")
     capture_idx = output.find("│ capture")
     edit_idx = output.find("│ edit")
     list_idx = output.find("│ list")
     query_idx = output.find("│ query")
     remove_idx = output.find("│ remove")
     update_idx = output.find("│ update")
-    assert min(add_idx, capture_idx, edit_idx, list_idx, query_idx, remove_idx, update_idx) >= 0
-    assert add_idx < capture_idx < edit_idx < list_idx < query_idx < remove_idx < update_idx
+    assert (
+        min(
+            add_idx,
+            archive_idx,
+            capture_idx,
+            edit_idx,
+            list_idx,
+            query_idx,
+            remove_idx,
+            update_idx,
+        )
+        >= 0
+    )
+    assert (
+        add_idx
+        < archive_idx
+        < capture_idx
+        < edit_idx
+        < list_idx
+        < query_idx
+        < remove_idx
+        < update_idx
+    )
 
 
 def test_cli_help_stats_commands_are_ordered() -> None:

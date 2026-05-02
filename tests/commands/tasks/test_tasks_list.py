@@ -14,6 +14,7 @@ import pytest
 import typer
 from rich.console import Console
 
+from org.commands import archive as archive_command
 from org.commands import editor as editor_command
 from org.commands.tasks import list as tasks_list
 from org.histogram import visual_len
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from org_parser.document import Heading
+    from org_parser.document import Document, Heading
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
@@ -849,6 +850,51 @@ def test_handle_interactive_key_enter_edits_selected_task(
 
     assert tasks_list._handle_interactive_key(console, session, "ENTER") is True
     assert session.status_message == "No changes."
+
+
+def test_handle_interactive_key_dollar_archives_selected_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """$ should archive selected task using shared archive helper."""
+    nodes = node_from_org("* TODO A\n")
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+    console = Console(file=StringIO(), force_terminal=False)
+
+    def _fake_archive(
+        heading: Heading,
+        _cache: dict[str, Document],
+    ) -> archive_command.ArchiveMoveResult:
+        location = archive_command.ArchiveLocation(
+            raw_spec="%s_archive::",
+            file_path="tasks.org_archive",
+            parent_title=None,
+        )
+        target = archive_command.ArchiveTarget(
+            location=location,
+            document=heading.document,
+            parent_heading=None,
+        )
+        return archive_command.ArchiveMoveResult(
+            heading=heading,
+            target=target,
+            source_document=heading.document,
+            destination_document=heading.document,
+        )
+
+    monkeypatch.setattr(tasks_list, "archive_heading_subtree_and_save", _fake_archive)
+    monkeypatch.setattr(tasks_list, "_reload_session_nodes", lambda _session, _identity: True)
+
+    assert tasks_list._handle_interactive_key(console, session, "$") is True
+    assert session.status_message == "Task archived"
 
 
 def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.MonkeyPatch) -> None:
