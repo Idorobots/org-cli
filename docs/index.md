@@ -28,13 +28,14 @@ For query syntax details, use [query_language.md](query_language.md).
 
 ### Config file layout
 
-Config uses five top-level sections:
+Config uses six top-level sections:
 
 - `defaults`: built-in option defaults (for example `--done-states`, `--limit`, `--filter-priority`, `--order-by-priority`).
 - `filter`: custom `--filter-<name>` query snippets.
 - `order-by`: custom `--order-by-<name>` query snippets.
 - `with`: custom `--with-<name>` query snippets.
 - `capture`: named capture templates under `capture.templates`.
+- `board`: named board views under `board.views` with filter-based columns.
 
 Custom switch argument handling:
 

@@ -1,6 +1,6 @@
 # `org board`
 
-Display active tasks as an interactive workflow board with one column per state.
+Display tasks on an interactive board.
 
 ## Usage
 
@@ -10,11 +10,40 @@ poetry run org board [OPTIONS] [FILE ...]
 
 ## Board layout
 
-- Columns are: `NOT STARTED`, each state from `--todo-states`, and final `COMPLETED`.
-- Tasks with todo state in `--done-states` are placed in `COMPLETED`.
-- Tasks without a todo state are placed in `NOT STARTED`.
-- Tasks with unknown states are also placed in `NOT STARTED` so no tasks are hidden.
-- Lane contents are ordered by priority: `A`, `B`, `C`, then no priority.
+- Board columns are driven by filters from a configured board view.
+- Filters run independently over the full processed task list (after normal filtering/ordering/limit/offset pipeline).
+- A task may appear in multiple columns if it matches multiple filters.
+- A task that matches no filters is not shown.
+
+When no view is selected (explicitly or via defaults), `org board` uses the built-in fallback view:
+
+- `Backlog` => `.todo == null`
+- `TODO` => `.todo != null and not(.is_completed)`
+- `DONE` => `.is_completed`
+
+Configured views live under `board.views` in `.org-cli.yaml`.
+
+Example:
+
+```yaml
+board:
+  views:
+    - name: kanban
+      columns:
+        - name: Backlog
+          filter: ".todo == null"
+        - name: TODO
+          filter: ".todo == \"TODO\""
+          order-by: ".priority"
+        - name: In progress
+          filter: "all([.todo != null, .todo != \"TODO\", not(.is_completed)])"
+        - name: "[bold green]Complete[/]"
+          filter: ".is_completed"
+```
+
+`order-by` is optional per column. When present, it is applied as `sort_by(<order-by>)` after
+`filter` selection for that column, overriding the incoming processed order for that column only.
+When omitted, column results keep the processed order from the main board pipeline.
 
 ## Interactive mode
 
@@ -27,12 +56,10 @@ Interactive keys:
 - Board content is rendered in a scrollable viewport with fixed headers and footer.
 - Footer shows `Rows X/Y`, keybindings, and status messages.
 - `Up` / `Down` or mouse wheel - Move highlighted task within selected column.
-- `Left` / `Right` - Move highlight between columns.
+- `Left` / `Right` - Move highlight between columns (visual navigation only).
 - `Enter` - Open full selected task subtree in syntax-highlighted pager.
 - `a` - Capture a new task using standard `org tasks capture` template rules.
-- `Shift+Left` / `Shift+Right` - Move selected task to neighboring column by changing state.
-  - Moving into coalesced `COMPLETED` prompts for a specific done state.
-  - Every state change appends one repeat/logbook transition entry.
+- `Shift+Left` / `Shift+Right` - Step selected task state through document state order.
 - `Shift+Up` / `Shift+Down` - Increase/decrease priority one step (`A`/`B`/`C`/none).
 - `q` or `Esc` - Quit interactive mode.
 
@@ -40,6 +67,7 @@ Every interactive edit is saved immediately and logged through the standard `org
 
 ## Command-specific switches
 
+- `--view NAME` - Select configured board view by name.
 - `--order-by-level` - Sort by heading level (repeatable).
 - `--order-by-file-order` - Keep/archive input order (repeatable).
 - `--order-by-file-order-reversed` - Reverse archive input order (repeatable).
@@ -49,7 +77,18 @@ Every interactive edit is saved immediately and logged through the standard `org
 - `--limit`, `-n` - Maximum number of results to display (defaults to all results).
 - `--offset` - Skip first N results.
 - `--width` - Override console width (minimum: `80`).
-- `--coalesce-completed/--no-coalesce-completed` - Single `COMPLETED` lane vs one lane per done state.
+
+View selection behavior:
+
+- If `--view` is set, that configured view must exist.
+- If `--view` is set but no board views are configured, the command fails with an explicit error.
+- If `--view` is omitted, config defaults may provide `defaults: --view: <name>`.
+- If neither explicit nor default view is set, fallback columns are used.
+
+Filter errors:
+
+- Invalid filter/order-by parse/runtime errors are reported with context including
+  `view=<name>, column=<name>`.
 
 ## Available filters
 

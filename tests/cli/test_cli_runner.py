@@ -246,9 +246,9 @@ def test_cli_runner_board_renders_columns() -> None:
     )
 
     assert result.exit_code == 0
-    assert "NOT STARTED" in result.stdout
-    assert "COMPLETED" in result.stdout
-    assert "WAITING" in result.stdout
+    assert "Backlog" in result.stdout
+    assert "TODO" in result.stdout
+    assert "DONE" in result.stdout
 
 
 def test_cli_runner_flow_subcommand_is_not_registered() -> None:

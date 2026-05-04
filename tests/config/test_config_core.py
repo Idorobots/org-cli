@@ -109,9 +109,29 @@ def test_build_config_defaults_accepts_ordering_flags() -> None:
     assert default_values["order_by_timestamp_desc"] is True
 
 
+def test_build_config_defaults_accepts_view_default() -> None:
+    """Board view default should be accepted as a non-empty string."""
+    raw: dict[str, object] = {"--view": "kanban"}
+
+    defaults = config.build_config_defaults(raw)
+
+    assert defaults is not None
+    default_values, _stats_defaults, _append_defaults = defaults
+    assert default_values["view"] == "kanban"
+
+
 def test_build_config_defaults_rejects_non_boolean_ordering_flags() -> None:
     """Ordering switch defaults must be boolean values."""
     raw: dict[str, object] = {"--order-by-level": "yes"}
+
+    defaults = config.build_config_defaults(raw)
+
+    assert defaults is None
+
+
+def test_build_config_defaults_rejects_empty_view_default() -> None:
+    """Board view default must not be empty."""
+    raw: dict[str, object] = {"--view": ""}
 
     defaults = config.build_config_defaults(raw)
 
@@ -164,6 +184,7 @@ def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.Monk
     assert loaded.custom_order_by == {"custom-order": "."}
     assert loaded.custom_with == {"custom-with": "."}
     assert loaded.capture_templates == {}
+    assert loaded.board_views == {}
 
 
 def test_load_cli_config_sections_are_optional(
@@ -182,6 +203,7 @@ def test_load_cli_config_sections_are_optional(
     assert loaded.custom_order_by == {}
     assert loaded.custom_with == {}
     assert loaded.capture_templates == {}
+    assert loaded.board_views == {}
 
 
 def test_load_cli_config_parses_capture_templates(
@@ -216,6 +238,321 @@ def test_load_cli_config_parses_capture_templates(
             "parent": '.id == "project-1"',
         },
     }
+    assert loaded.board_views == {}
+
+
+def test_load_cli_config_parses_board_views(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board views should load from board.views section."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
+            "board:\n"
+            "  views:\n"
+            "    - name: kanban\n"
+            "      columns:\n"
+            "        - name: Backlog\n"
+            "          filter: .todo == null\n"
+            "        - name: TODO\n"
+            '          filter: .todo == "TODO"\n'
+            "          order-by: .priority\n"
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    loaded = config.load_cli_config(["org"])
+
+    assert set(loaded.board_views) == {"kanban"}
+    assert loaded.board_views["kanban"].name == "kanban"
+    assert [column.name for column in loaded.board_views["kanban"].columns] == ["Backlog", "TODO"]
+    assert [column.filter for column in loaded.board_views["kanban"].columns] == [
+        ".todo == null",
+        '.todo == "TODO"',
+    ]
+    assert [column.order_by for column in loaded.board_views["kanban"].columns] == [
+        None,
+        ".priority",
+    ]
+
+
+def test_load_cli_config_rejects_empty_board_section(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board section requires views key when present."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text("board: {}\n", encoding="utf-8")
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_board_views_not_list(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board views must be a list."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text("board:\n  views: {}\n", encoding="utf-8")
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_duplicate_board_view_names(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board views must have unique non-empty names."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
+            "board:\n"
+            "  views:\n"
+            "    - name: kanban\n"
+            "      columns:\n"
+            "        - name: TODO\n"
+            '          filter: .todo == "TODO"\n'
+            "    - name: kanban\n"
+            "      columns:\n"
+            "        - name: DONE\n"
+            "          filter: .is_completed\n"
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_empty_board_columns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each board view requires at least one column."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        "board:\n  views:\n    - name: kanban\n      columns: []\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_invalid_board_column_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board columns require non-empty name and filter fields."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
+            "board:\n"
+            "  views:\n"
+            "    - name: kanban\n"
+            "      columns:\n"
+            '        - name: ""\n'
+            '          filter: .todo == "TODO"\n'
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_unknown_board_keys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board schema should reject unknown keys at any level."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
+            "board:\n"
+            "  views:\n"
+            "    - name: kanban\n"
+            "      style: compact\n"
+            "      columns:\n"
+            "        - name: TODO\n"
+            '          filter: .todo == "TODO"\n'
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_board_with_wrong_top_level_type(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board section must be an object with views."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text("board: []\n", encoding="utf-8")
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_empty_board_view_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board views require non-empty names."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
+            "board:\n"
+            "  views:\n"
+            '    - name: ""\n'
+            "      columns:\n"
+            "        - name: TODO\n"
+            '          filter: .todo == "TODO"\n'
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_missing_board_view_columns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board view objects must define columns."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        ("board:\n  views:\n    - name: kanban\n"),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_missing_board_column_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board column objects must define name."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
+            "board:\n"
+            "  views:\n"
+            "    - name: kanban\n"
+            "      columns:\n"
+            '        - filter: .todo == "TODO"\n'
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_missing_board_column_filter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board column objects must define filter."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        ("board:\n  views:\n    - name: kanban\n      columns:\n        - name: TODO\n"),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_empty_board_column_filter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board column filter must be a non-empty string."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
+            "board:\n"
+            "  views:\n"
+            "    - name: kanban\n"
+            "      columns:\n"
+            "        - name: TODO\n"
+            '          filter: ""\n'
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_empty_board_column_order_by(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board column order-by must be non-empty when provided."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
+            "board:\n"
+            "  views:\n"
+            "    - name: kanban\n"
+            "      columns:\n"
+            "        - name: TODO\n"
+            '          filter: .todo == "TODO"\n'
+            '          order-by: ""\n'
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_non_string_board_column_order_by(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board column order-by must be a string when provided."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
+            "board:\n"
+            "  views:\n"
+            "    - name: kanban\n"
+            "      columns:\n"
+            "        - name: TODO\n"
+            '          filter: .todo == "TODO"\n'
+            "          order-by: 1\n"
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        config.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_malformed_capture_templates(

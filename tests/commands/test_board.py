@@ -13,6 +13,7 @@ import typer
 from rich.console import Console
 from rich.text import Text
 
+from org import config as config_module
 from org.commands import archive as archive_command
 from org.commands import board as board_command
 from org.commands import editor as editor_command
@@ -54,6 +55,7 @@ def make_board_args(files: list[str], **overrides: object) -> board_command.Boar
         filter_completed=False,
         filter_not_completed=False,
         color_flag=False,
+        view=None,
         width=120,
         max_results=None,
         offset=0,
@@ -64,7 +66,6 @@ def make_board_args(files: list[str], **overrides: object) -> board_command.Boar
         order_by_timestamp_asc=False,
         order_by_timestamp_desc=False,
         with_tags_as_category=False,
-        coalesce_completed=True,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -75,7 +76,7 @@ def test_run_flow_board_renders_expected_columns(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Board should render NOT STARTED, todo columns, and COMPLETED."""
+    """Board should render built-in selector fallback columns."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
@@ -101,11 +102,9 @@ def test_run_flow_board_renders_expected_columns(
     board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
-    assert "NOT STARTED" in output
+    assert "Backlog" in output
     assert "TODO" in output
-    assert "WAITING" in output
-    assert "IN-PROGRESS" in output
-    assert "COMPLETED" in output
+    assert "DONE" in output
 
 
 def test_run_flow_board_column_order_follows_document_todo_order(
@@ -113,7 +112,7 @@ def test_run_flow_board_column_order_follows_document_todo_order(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
-    """Board columns should follow merged document TODO/DONE key order."""
+    """Board fallback columns should keep Backlog/TODO/DONE order."""
     fixture_path = os.path.join(tmp_path, "ordered_states.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -128,38 +127,21 @@ def test_run_flow_board_column_order_follows_document_todo_order(
         [fixture_path],
         todo_states="TODO",
         done_states="DONE",
-        coalesce_completed=False,
         width=220,
     )
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["org", "board", "--no-coalesce-completed", "--width", "220"],
-    )
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "220"])
     board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
-    pos_not_started = output.find("NOT STARTED")
+    pos_not_started = output.find("Backlog")
     pos_todo = output.find("TODO")
-    pos_backlog = output.find("BACKLOG")
-    pos_next = output.find("NEXT")
-    pos_active = output.find("ACTIVE")
     pos_done = output.find("DONE")
-    pos_cancelled = output.find("CANCELLED")
 
     assert pos_not_started != -1
     assert pos_todo != -1
-    assert pos_backlog != -1
-    assert pos_next != -1
-    assert pos_active != -1
     assert pos_done != -1
-    assert pos_cancelled != -1
     assert pos_not_started < pos_todo
-    assert pos_todo < pos_backlog
-    assert pos_backlog < pos_next
-    assert pos_next < pos_active
-    assert pos_active < pos_done
-    assert pos_done < pos_cancelled
+    assert pos_todo < pos_done
 
 
 def test_run_flow_board_preserves_order_in_column_when_priorities_equal(
@@ -185,21 +167,99 @@ def test_run_flow_board_preserves_order_in_column_when_priorities_equal(
     assert first < second
 
 
-def test_build_flow_board_columns_orders_by_priority() -> None:
-    """Lane content should be ordered from highest to lowest priority."""
+def test_build_selector_board_columns_preserves_processed_order() -> None:
+    """Selector lane content should preserve input processed order."""
     nodes = node_from_org(
         "* TODO [#C] Low\n* TODO Middle\n* TODO [#A] High\n* TODO [#B] Medium\n",
     )
 
-    columns = board_command._build_flow_board_columns(
+    specs = board_command._resolve_column_specs(make_board_args([]))
+    columns = board_command._build_selector_board_columns(nodes, specs)
+
+    todo_column = next(column for column in columns if column.title == "TODO")
+    assert [node.title_text for node in todo_column.nodes] == ["Low", "Middle", "High", "Medium"]
+
+
+def test_build_selector_board_columns_with_order_by_overrides_processed_order() -> None:
+    """Column order-by should apply sort_by selector after filtering."""
+    nodes = node_from_org(
+        "* TODO a\n* TODO c\n* TODO b\n",
+    )
+    view = config_module.BoardViewConfig(
+        name="ordered",
+        columns=[
+            config_module.BoardColumnConfig(
+                name="TODO",
+                filter=".todo != null",
+                order_by=".title_text",
+            ),
+        ],
+    )
+
+    columns = board_command._build_selector_board_columns(
         nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
-        coalesce_completed=True,
+        board_command._compile_view_column_specs(view),
     )
 
     todo_column = next(column for column in columns if column.title == "TODO")
-    assert [node.title_text for node in todo_column.nodes] == ["High", "Medium", "Low", "Middle"]
+    assert [node.title_text for node in todo_column.nodes] == ["c", "b", "a"]
+
+
+def test_build_selector_board_columns_allows_matches_in_multiple_columns() -> None:
+    """One task can appear in multiple selector columns."""
+    nodes = node_from_org("* TODO Shared\n* DONE Finished\n")
+    view = config_module.BoardViewConfig(
+        name="overlap",
+        columns=[
+            config_module.BoardColumnConfig(name="Any todo", filter=".todo != null"),
+            config_module.BoardColumnConfig(name="Open", filter="not(.is_completed)"),
+        ],
+    )
+
+    columns = board_command._build_selector_board_columns(
+        nodes,
+        board_command._compile_view_column_specs(view),
+    )
+
+    any_todo_column = next(column for column in columns if column.title == "Any todo")
+    open_column = next(column for column in columns if column.title == "Open")
+    assert [node.title_text for node in any_todo_column.nodes] == ["Shared", "Finished"]
+    assert [node.title_text for node in open_column.nodes] == ["Shared"]
+
+
+def test_build_selector_board_columns_omits_non_matching_tasks() -> None:
+    """Tasks that match no selectors should not appear in any column."""
+    nodes = node_from_org("* TODO Open\n* DONE Closed\n")
+    view = config_module.BoardViewConfig(
+        name="nomatch",
+        columns=[
+            config_module.BoardColumnConfig(name="Backlog", filter=".todo == null"),
+        ],
+    )
+
+    columns = board_command._build_selector_board_columns(
+        nodes,
+        board_command._compile_view_column_specs(view),
+    )
+
+    assert len(columns) == 1
+    assert columns[0].title == "Backlog"
+    assert columns[0].nodes == []
+
+
+def test_render_column_title_text_allows_rich_markup() -> None:
+    """Column titles should support Rich markup syntax."""
+    title = board_command._render_column_title_text("[bold green]Complete[/]")
+
+    assert title.plain == "Complete"
+    assert title.spans
+
+
+def test_render_column_title_text_falls_back_on_invalid_markup() -> None:
+    """Invalid markup in column title should render as literal text."""
+    title = board_command._render_column_title_text("[bold")
+
+    assert title.plain == "[bold"
 
 
 def test_move_selection_horizontal_skips_empty_columns() -> None:
@@ -265,7 +325,6 @@ def test_sync_scroll_for_selection_keeps_selected_row_visible() -> None:
         color_enabled=False,
         done_states=["DONE"],
         todo_states=["TODO"],
-        coalesce_completed=True,
     )
     row_heights = board_command._interactive_row_heights(session, render)
     _start, _end, _used = board_command._sync_scroll_for_selection(
@@ -275,6 +334,103 @@ def test_sync_scroll_for_selection_keeps_selected_row_visible() -> None:
     )
 
     assert session.scroll_offset == 3
+
+
+def test_step_heading_state_right_from_none_uses_first_document_state() -> None:
+    """Shift-right from empty state should use first all_states item."""
+    heading = node_from_org("#+TODO: TODO WAITING | DONE\n* Task\n")[0]
+
+    new_state, status = board_command._step_heading_state(heading, direction=1)
+
+    assert new_state == "TODO"
+    assert status is None
+
+
+def test_step_heading_state_left_from_first_moves_to_none() -> None:
+    """Shift-left from first state should clear todo state."""
+    heading = node_from_org("#+TODO: TODO WAITING | DONE\n* TODO Task\n")[0]
+
+    new_state, status = board_command._step_heading_state(heading, direction=-1)
+
+    assert new_state is None
+    assert status is None
+
+
+def test_step_heading_state_moves_prev_next_in_middle() -> None:
+    """Shift-left/right should move through middle states."""
+    heading = node_from_org("#+TODO: TODO WAITING | DONE\n* WAITING Task\n")[0]
+
+    next_state, next_status = board_command._step_heading_state(heading, direction=1)
+    prev_state, prev_status = board_command._step_heading_state(heading, direction=-1)
+
+    assert next_state == "DONE"
+    assert next_status is None
+    assert prev_state == "TODO"
+    assert prev_status is None
+
+
+def test_step_heading_state_boundary_no_ops() -> None:
+    """Null-left and last-right should be no-op with status."""
+    empty_heading = node_from_org("#+TODO: TODO | DONE\n* Task\n")[0]
+    done_heading = node_from_org("#+TODO: TODO | DONE\n* DONE Task\n")[0]
+
+    no_state, no_state_status = board_command._step_heading_state(empty_heading, direction=-1)
+    last_state, last_state_status = board_command._step_heading_state(done_heading, direction=1)
+
+    assert no_state is None
+    assert no_state_status == "State unchanged"
+    assert last_state == "DONE"
+    assert last_state_status == "Already at last state"
+
+
+def test_step_heading_state_deduplicates_document_states() -> None:
+    """State stepping should deduplicate repeated all_states values."""
+    heading = node_from_org("#+TODO: TODO TODO WAITING | DONE DONE\n* TODO Task\n")[0]
+
+    new_state, status = board_command._step_heading_state(heading, direction=1)
+
+    assert new_state == "WAITING"
+    assert status is None
+
+
+def test_apply_state_move_steps_state_and_reloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shift state move should persist, reload, and keep repeater behavior path."""
+    args = make_board_args([])
+    node = node_from_org("#+TODO: TODO | DONE\n* TODO Task\n")[0]
+    session = board_command._BoardSession(
+        args=args,
+        nodes=[node],
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[board_command._BoardColumn("TODO", [node])],
+        color_enabled=False,
+        selected_column_index=0,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+
+    saved_documents: list[Document] = []
+    reloaded: list[tuple[str, str, str, int | None] | None] = []
+
+    def _capture_save(document: Document) -> None:
+        saved_documents.append(document)
+
+    monkeypatch.setattr(board_command, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(
+        board_command,
+        "_reload_session",
+        lambda _session, preserve_identity: reloaded.append(preserve_identity),
+    )
+
+    board_command._apply_state_move(session, direction=1)
+
+    assert node.todo == "DONE"
+    assert saved_documents == [node.document]
+    assert len(reloaded) == 1
+    assert session.status_message == "State updated: TODO -> DONE"
 
 
 def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
@@ -288,11 +444,9 @@ def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
         nodes=original_nodes,
         todo_states=["TODO"],
         done_states=["DONE"],
-        columns=board_command._build_flow_board_columns(
+        columns=board_command._build_selector_board_columns(
             original_nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            coalesce_completed=True,
+            board_command._resolve_column_specs(args),
         ),
         color_enabled=False,
         selected_column_index=1,
@@ -406,15 +560,38 @@ def test_handle_interactive_key_enter_edits_selected_task(
         scroll_offset=0,
         status_message="",
     )
-    console = Console(file=StringIO(), force_terminal=False)
 
     def _fake_edit(heading: Heading) -> editor_command.HeadingEditResult:
         return editor_command.HeadingEditResult(heading=heading, changed=False)
 
     monkeypatch.setattr(board_command, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    assert board_command._handle_interactive_key(console, session, "ENTER") is True
+    assert board_command._handle_interactive_key(session, "ENTER") is True
     assert session.status_message == "No changes."
+
+
+def test_state_shift_key_bindings_do_not_require_live_pause() -> None:
+    """State shifts should run without stopping Live screen rendering."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Task\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[board_command._BoardColumn("TODO", nodes)],
+        color_enabled=False,
+        selected_column_index=0,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+
+    bindings = board_command._flow_board_key_bindings(session)
+
+    assert bindings["S-LEFT"].requires_live_pause is False
+    assert bindings["S-RIGHT"].requires_live_pause is False
+    assert bindings["ENTER"].requires_live_pause is True
 
 
 def test_handle_interactive_key_a_captures_task_and_reloads(
@@ -439,7 +616,6 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
         scroll_offset=0,
         status_message="",
     )
-    console = Console(file=StringIO(), force_terminal=False)
     captured_node = node_from_org("* TODO Captured\n")[0]
     reloaded: dict[str, object] = {}
 
@@ -462,7 +638,7 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
 
     monkeypatch.setattr(board_command, "_reload_session", _fake_reload)
 
-    assert board_command._handle_interactive_key(console, session, "a") is True
+    assert board_command._handle_interactive_key(session, "a") is True
     assert reloaded["session"] is session
     assert reloaded["identity"] == heading_identity(captured_node)
     assert session.status_message == "Task captured"
@@ -490,7 +666,6 @@ def test_handle_interactive_key_a_capture_cancelled_sets_status(
         scroll_offset=0,
         status_message="",
     )
-    console = Console(file=StringIO(), force_terminal=False)
 
     def _raise_interrupt(
         _args: capture_command.TasksCaptureArgs,
@@ -499,7 +674,7 @@ def test_handle_interactive_key_a_capture_cancelled_sets_status(
 
     monkeypatch.setattr(board_command, "capture_task", _raise_interrupt)
 
-    assert board_command._handle_interactive_key(console, session, "a") is True
+    assert board_command._handle_interactive_key(session, "a") is True
     assert session.status_message == "Capture cancelled"
 
 
@@ -525,7 +700,6 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
         scroll_offset=0,
         status_message="",
     )
-    console = Console(file=StringIO(), force_terminal=False)
     source_document = nodes[0].document
     detached_heading = node_from_org("* TODO Updated\n")[0]
 
@@ -541,7 +715,7 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
     monkeypatch.setattr(board_command, "_save_document_changes", _capture_save)
     monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
 
-    assert board_command._handle_interactive_key(console, session, "ENTER") is True
+    assert board_command._handle_interactive_key(session, "ENTER") is True
     assert session.status_message == "Task updated"
     assert saved_documents == [source_document]
 
@@ -568,7 +742,6 @@ def test_handle_interactive_key_dollar_archives_selected_task(
         scroll_offset=0,
         status_message="",
     )
-    console = Console(file=StringIO(), force_terminal=False)
 
     def _fake_archive(
         heading: Heading,
@@ -594,7 +767,7 @@ def test_handle_interactive_key_dollar_archives_selected_task(
     monkeypatch.setattr(board_command, "archive_heading_subtree_and_save", _fake_archive)
     monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
 
-    assert board_command._handle_interactive_key(console, session, "$") is True
+    assert board_command._handle_interactive_key(session, "$") is True
     assert session.status_message == "Task archived"
 
 
@@ -730,17 +903,50 @@ def test_run_flow_board_uses_pager_when_render_exceeds_console_height(
     assert pager_called["value"]
 
 
+def test_run_flow_board_selector_uses_full_nodes_from_multiple_files(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Selector passes should evaluate across all loaded files as one processed list."""
+    first_path = os.path.join(tmp_path, "first.org")
+    second_path = os.path.join(tmp_path, "second.org")
+    with open(first_path, "w", encoding="utf-8") as first_handle:
+        first_handle.write("* TODO First file task\n")
+    with open(second_path, "w", encoding="utf-8") as second_handle:
+        second_handle.write("* TODO Second file task\n")
+
+    args = make_board_args([first_path, second_path], view="kanban", width=160)
+    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
+    config_module.CONFIG_BOARD_VIEWS.clear()
+    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+        name="kanban",
+        columns=[
+            config_module.BoardColumnConfig(name="TODO", filter='str(.todo) == "TODO"'),
+        ],
+    )
+
+    try:
+        monkeypatch.setattr(sys, "argv", ["org", "board", "--view", "kanban", "--width", "160"])
+        board_command.run_flow_board(args)
+        output = capsys.readouterr().out
+        assert "First file task" in output
+        assert "Second file task" in output
+    finally:
+        config_module.CONFIG_BOARD_VIEWS.clear()
+        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+
+
 def test_run_flow_board_coalesce_completed_true_shows_completed_column(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With coalesce_completed=True, all done tasks appear under a single COMPLETED column."""
+    """Fallback selector view should include DONE column for completed tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
         todo_states="TODO,WAITING,IN-PROGRESS",
         done_states="DONE,CANCELLED,ARCHIVED",
-        coalesce_completed=True,
         width=200,
     )
 
@@ -748,23 +954,20 @@ def test_run_flow_board_coalesce_completed_true_shows_completed_column(
     board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
-    assert "COMPLETED" in output
-    assert "DONE" not in output.split("COMPLETED")[0].replace("NOT STARTED", "")
-    assert "CANCELLED" not in output.split("COMPLETED")[0].replace("NOT STARTED", "")
-    assert "ARCHIVED" not in output.split("COMPLETED")[0].replace("NOT STARTED", "")
+    assert "DONE" in output
+    assert "Completed task" in output
 
 
 def test_run_flow_board_coalesce_completed_true_prefixes_state_in_panel(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With coalesce_completed=True, each completed task panel shows its state in the title."""
+    """Fallback DONE selector should include all completed state tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
         todo_states="TODO,WAITING,IN-PROGRESS",
         done_states="DONE,CANCELLED,ARCHIVED",
-        coalesce_completed=True,
         width=200,
     )
 
@@ -772,100 +975,320 @@ def test_run_flow_board_coalesce_completed_true_prefixes_state_in_panel(
     board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
-    assert "DONE Completed task" in output
-    assert "CANCELLED Custom done state" in output
-    assert "ARCHIVED Another done state" in output
+    assert "Completed task" in output
+    assert "Custom done state" in output
+    assert "Another done state" in output
 
 
 def test_run_flow_board_coalesce_completed_false_shows_individual_done_columns(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With coalesce_completed=False, each done state gets its own column header."""
+    """Fallback selector view should not render legacy COMPLETED header."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
         todo_states="TODO,WAITING,IN-PROGRESS",
         done_states="DONE,CANCELLED,ARCHIVED",
-        coalesce_completed=False,
         width=200,
     )
 
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["org", "board", "--no-coalesce-completed", "--width", "200"],
-    )
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "200"])
     board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert "COMPLETED" not in output
     assert "DONE" in output
-    assert "CANCELLED" in output
-    assert "ARCHIVED" in output
+    assert "Custom done state" in output
+    assert "Another done state" in output
 
 
 def test_run_flow_board_coalesce_completed_false_done_columns_ordered_after_todo_columns(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With coalesce_completed=False, done key columns appear to the right of todo key columns."""
+    """Fallback selector headers should stay in Backlog/TODO/DONE order."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
         todo_states="TODO,WAITING,IN-PROGRESS",
         done_states="DONE,CANCELLED,ARCHIVED",
-        coalesce_completed=False,
         width=200,
     )
 
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["org", "board", "--no-coalesce-completed", "--width", "200"],
-    )
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "200"])
     board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
-    pos_in_progress = output.find("IN-PROGRESS")
+    pos_in_progress = output.find("TODO")
     pos_done = output.find("DONE")
-    pos_cancelled = output.find("CANCELLED")
-    pos_archived = output.find("ARCHIVED")
 
     assert pos_in_progress != -1
     assert pos_done != -1
-    assert pos_cancelled != -1
-    assert pos_archived != -1
     assert pos_in_progress < pos_done
-    assert pos_done < pos_cancelled
-    assert pos_cancelled < pos_archived
 
 
 def test_run_flow_board_coalesce_completed_false_tasks_in_correct_columns(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With coalesce_completed=False, tasks appear under their specific done state column."""
+    """Fallback DONE selector should show all completed-state tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
         [fixture_path],
         todo_states="TODO,WAITING,IN-PROGRESS",
         done_states="DONE,CANCELLED,ARCHIVED",
-        coalesce_completed=False,
         width=200,
     )
 
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["org", "board", "--no-coalesce-completed", "--width", "200"],
-    )
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "200"])
     board_command.run_flow_board(args)
     output = capsys.readouterr().out
 
     assert "Completed task" in output
     assert "Custom done state" in output
     assert "Another done state" in output
+
+
+def test_run_flow_board_uses_configured_view_columns(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Requested configured view should render configured columns."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    args = make_board_args([fixture_path], view="kanban", width=150)
+    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
+    config_module.CONFIG_BOARD_VIEWS.clear()
+    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+        name="kanban",
+        columns=[
+            config_module.BoardColumnConfig(
+                name="Backlog",
+                filter=".todo == null",
+            ),
+            config_module.BoardColumnConfig(
+                name="Working",
+                filter=".todo != null and not(.is_completed)",
+            ),
+        ],
+    )
+
+    try:
+        monkeypatch.setattr(sys, "argv", ["org", "board", "--view", "kanban", "--width", "150"])
+        board_command.run_flow_board(args)
+        output = capsys.readouterr().out
+        assert "Backlog" in output
+        assert "Working" in output
+    finally:
+        config_module.CONFIG_BOARD_VIEWS.clear()
+        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+
+
+def test_run_flow_board_missing_requested_view_raises() -> None:
+    """Missing requested view should return explicit BadParameter."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_board_args([fixture_path], view="missing")
+    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
+    config_module.CONFIG_BOARD_VIEWS.clear()
+    config_module.CONFIG_BOARD_VIEWS["other"] = config_module.BoardViewConfig(
+        name="other",
+        columns=[
+            config_module.BoardColumnConfig(
+                name="TODO",
+                filter='.todo == "TODO"',
+            ),
+        ],
+    )
+    try:
+        with pytest.raises(typer.BadParameter, match="Requested board view not found"):
+            board_command.run_flow_board(args)
+    finally:
+        config_module.CONFIG_BOARD_VIEWS.clear()
+        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+
+
+def test_run_flow_board_requested_view_without_configured_views_raises() -> None:
+    """Explicit --view should fail when no configured views exist."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_board_args([fixture_path], view="kanban")
+    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
+    config_module.CONFIG_BOARD_VIEWS.clear()
+    try:
+        with pytest.raises(typer.BadParameter, match="no board views are configured"):
+            board_command.run_flow_board(args)
+    finally:
+        config_module.CONFIG_BOARD_VIEWS.clear()
+        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+
+
+def test_run_flow_board_uses_default_view_from_config(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Config-defaulted view value should drive board view resolution."""
+    fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    args = make_board_args([fixture_path], view=None, width=150)
+    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
+    config_module.CONFIG_BOARD_VIEWS.clear()
+    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+        name="kanban",
+        columns=[
+            config_module.BoardColumnConfig(name="Backlog", filter=".todo == null"),
+            config_module.BoardColumnConfig(
+                name="Working",
+                filter=".todo != null and not(.is_completed)",
+            ),
+        ],
+    )
+
+    try:
+        # Simulate Typer default_map applying defaults: --view=kanban
+        args.view = "kanban"
+        specs = board_command._resolve_column_specs(args)
+        assert [spec.name for spec in specs] == ["Backlog", "Working"]
+        monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "150"])
+        board_command.run_flow_board(args)
+        output = capsys.readouterr().out
+        assert "Backlog" in output
+    finally:
+        config_module.CONFIG_BOARD_VIEWS.clear()
+        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+
+
+def test_run_flow_board_invalid_filter_or_order_by_parse_error_has_context() -> None:
+    """Filter/order-by parse failures should include view and column context."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_board_args([fixture_path], view="kanban")
+    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
+    config_module.CONFIG_BOARD_VIEWS.clear()
+    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+        name="kanban",
+        columns=[
+            config_module.BoardColumnConfig(name="Broken", filter=".todo =="),
+        ],
+    )
+    try:
+        with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
+            board_command.run_flow_board(args)
+    finally:
+        config_module.CONFIG_BOARD_VIEWS.clear()
+        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+
+
+def test_run_flow_board_invalid_filter_or_order_by_runtime_error_has_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Filter/order-by runtime failures should include view and column context."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_board_args([fixture_path], view="kanban")
+    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
+    config_module.CONFIG_BOARD_VIEWS.clear()
+    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+        name="kanban",
+        columns=[
+            config_module.BoardColumnConfig(
+                name="Broken",
+                filter="unknown_fn(.todo)",
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        board_command,
+        "load_and_process_data",
+        lambda _args: ([node_from_org("* TODO Task\n")[0]], ["TODO"], ["DONE"]),
+    )
+    try:
+        with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
+            board_command.run_flow_board(args)
+    finally:
+        config_module.CONFIG_BOARD_VIEWS.clear()
+        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+
+
+def test_run_flow_board_invalid_order_by_parse_error_has_context() -> None:
+    """Invalid order-by parse should include view and column context."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_board_args([fixture_path], view="kanban")
+    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
+    config_module.CONFIG_BOARD_VIEWS.clear()
+    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+        name="kanban",
+        columns=[
+            config_module.BoardColumnConfig(
+                name="Broken",
+                filter='.todo == "TODO"',
+                order_by=".priority ==",
+            ),
+        ],
+    )
+    try:
+        with pytest.raises(
+            typer.BadParameter,
+            match=r"Invalid board filter/order-by \(view=kanban, column=Broken\)",
+        ):
+            board_command.run_flow_board(args)
+    finally:
+        config_module.CONFIG_BOARD_VIEWS.clear()
+        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+
+
+def test_apply_state_move_reload_reassigns_task_across_selector_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """State changes should reload and move task to new selector column."""
+    args = make_board_args([], view="kanban")
+    source_node = node_from_org("#+TODO: TODO | DONE\n* TODO Task\n")[0]
+    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
+    config_module.CONFIG_BOARD_VIEWS.clear()
+    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+        name="kanban",
+        columns=[
+            config_module.BoardColumnConfig(name="TODO", filter='.todo == "TODO"'),
+            config_module.BoardColumnConfig(name="DONE", filter='.todo == "DONE"'),
+        ],
+    )
+
+    session = board_command._BoardSession(
+        args=args,
+        nodes=[source_node],
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=board_command._build_selector_board_columns(
+            [source_node],
+            board_command._resolve_column_specs(args),
+        ),
+        color_enabled=False,
+        selected_column_index=0,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+
+    saved_documents: list[Document] = []
+
+    def _capture_save(document: Document) -> None:
+        saved_documents.append(document)
+
+    def _load_after_change(
+        _args: board_command.BoardArgs,
+    ) -> tuple[list[Heading], list[str], list[str]]:
+        if source_node.todo == "DONE":
+            return (node_from_org("#+TODO: TODO | DONE\n* DONE Task\n"), ["TODO"], ["DONE"])
+        return ([source_node], ["TODO"], ["DONE"])
+
+    monkeypatch.setattr(board_command, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(board_command, "load_and_process_data", _load_after_change)
+
+    try:
+        board_command._apply_state_move(session, direction=1)
+        assert saved_documents == [source_node.document]
+        assert session.selected_column_index == 1
+        selected = board_command._selected_node(session)
+        assert selected is not None
+        assert selected.todo == "DONE"
+    finally:
+        config_module.CONFIG_BOARD_VIEWS.clear()
+        config_module.CONFIG_BOARD_VIEWS.update(original_views)
 
 
 def test_build_task_panel_renders_rich_title_content() -> None:
@@ -885,7 +1308,6 @@ def test_build_task_panel_renders_rich_title_content() -> None:
             color_enabled=True,
             done_states=["DONE"],
             todo_states=["TODO"],
-            coalesce_completed=True,
         ),
         highlighted=False,
     )
@@ -949,3 +1371,44 @@ def test_run_flow_board_renders_rich_title_plain_output(
     assert "=Verbatim=" not in output
     assert "~InlineCode~" not in output
     assert "[[https://example.com/docs][Docs]]" not in output
+
+
+def test_build_task_panel_shows_colored_todo_state_prefix() -> None:
+    """Task panels should show and colorize current TODO state."""
+    node = node_from_org("#+TODO: TODO WAITING | DONE\n* TODO Task\n")[0]
+
+    panel = board_command._build_task_panel(
+        node,
+        board_command._BoardPanelRenderConfig(
+            width=60,
+            color_enabled=True,
+            done_states=["DONE"],
+            todo_states=["TODO", "WAITING"],
+        ),
+        highlighted=False,
+    )
+
+    renderable = panel.renderable
+    assert isinstance(renderable, Text)
+    assert renderable.plain.startswith("TODO Task")
+    assert renderable.spans
+
+
+def test_build_task_panel_without_todo_state_has_no_prefix() -> None:
+    """Task panels without TODO state should keep heading text unchanged."""
+    node = node_from_org("* Task without state\n")[0]
+
+    panel = board_command._build_task_panel(
+        node,
+        board_command._BoardPanelRenderConfig(
+            width=60,
+            color_enabled=True,
+            done_states=["DONE"],
+            todo_states=["TODO"],
+        ),
+        highlighted=False,
+    )
+
+    renderable = panel.renderable
+    assert isinstance(renderable, Text)
+    assert renderable.plain.startswith("Task without state")

@@ -6157,21 +6157,531 @@ When a task is archived, some metadata properties should be set on the archived 
 - =ARCHIVE_FILE= - the file from which the task was archived, example: =~/org/refile.org=
 - =ARCHIVE_CATEGORY= - original task category at the time of archival, example: =refile=
 - =ARCHIVE_TODO= - original todo-state at the time of archival, example: =DONE=
-*** Flow ready command
+*** REWORKED Board lane configuration
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-04 Mon 23:51] \\
+  Tried separating agent roles to product manager, architect and a developer, but the AI proved to drop a lot of the details along the way. In general this was much slower to implement than the "usual" plan->build flow.
+:END:
+The task board layout should be made configurable:
+- add an optional =board= section to the configuration file that will outline configured board views.
+- each view should have a =name= and a =columns= definition.
+- each column definition should have a =name= and a =selector= that will be used to extract the tasks that belong to that column.
+
+Here's an example:
+
+#+begin_src yaml
+board:
+  views:
+    - name: kanban
+      columns:
+        - name: Backlog
+          selector: '.todo == null'
+        - name: TODO
+          selector: '.todo == "TODO"'
+        - name: In progress
+          selector: 'all([.todo != null, .todo != "TODO", not .is_completed])'
+        - name: '[bold green]Complete[/]'
+          selector: '.is_completed'
+#+end_src
+
+Selectors should be wrapped into a =select(...)= expression and used as a query processing step selecting from all the tasks. Run the selector for each column once before the display, the selector will result in a subset od tasks to be obtained.
+
+It should be possible to use the Rich markup to set colors/styles on the column names.
+
+The views should be selectable with a new CLI switch called =--view VIEW=. The board output should be built with accordance to the specified view column specifications - when =--view= is set use that view, or procude an error if no such view is configured.
+
+By default, when the configuration is not provided or =--view= is not specified, a simple three column setup should be used. The column configuration should be analogous to the following:
+- ~.todo == null~ - all tasks that don't have a state, title "Backlog",
+- ~.todo != null and not .is_completed~ - all incomplete tasks that do have a state, title "TODO",
+- =.is_completed= - all completed tasks, title "DONE".
+
+It should be possible to pin the specific view by setting =--view: "name"= in the =defaults= section of the configuration.
+
+Adjust the task panels to always show the current task TODO state, not only on the coalesced completed column.
+
+Remove the =--coalesce-completed= and =--no-coalesce-completed= CLI switches along with the coalescing logic - it's no longer required.
+
+Adjust the semantics of the Shift + left/right key combination, to only change the task state. The ordering of states should be determined by the =heading.document.all_states= property. After the change, the board should be rerendered as the task could have been moved to another column.
+**** COMMENT Design
+#+begin_src markdown
+**TODO Board Lane Configuration**
+
+- Add optional `board` section to config with `views`.
+- Each `view` must define:
+  - `name` (string, unique, non-empty)
+  - `columns` (non-empty list)
+- Each `column` must define:
+  - `name` (string, non-empty, Rich markup allowed)
+  - `selector` (string, non-empty query predicate)
+
+Example shape:
+```yaml
+board:
+  views:
+    - name: kanban
+      columns:
+        - name: Backlog
+          selector: '.todo == null'
+        - name: TODO
+          selector: '.todo == "TODO"'
+        - name: In progress
+          selector: 'all([.todo != null, .todo != "TODO", not(.is_completed)])'
+        - name: '[bold green]Complete[/]'
+          selector: '.is_completed'
+```
+
+- Add `org board --view VIEW`.
+- Selection rules:
+  - If `--view` is set, use that configured view.
+  - If `--view` is set and missing, return an error.
+  - If `--view` is not set and `defaults: --view: <name>` exists, use that.
+  - Otherwise use built-in fallback view:
+    - `Backlog` => `.todo == null`
+    - `TODO` => `.todo != null and not(.is_completed)`
+    - `DONE` => `.is_completed`
+
+**Selector execution semantics**
+- For each render pass, take the full processed task list (after normal filtering/ordering pipeline).
+- For each column, build `select(<selector>)` and run it once to obtain that column’s subset.
+- If a task matches multiple selectors, it appears in multiple columns.
+- If a task matches none, it is not shown.
+
+**Interactive state-change semantics (`Shift+Left` / `Shift+Right`)**
+- These keys no longer move across board columns.
+- They only change task state based on `heading.document.all_states` ordering.
+- Transition rules:
+  - If current state is `null` and `Shift+Right`: set to first state in `all_states`.
+  - If current state is first state and `Shift+Left`: set to `null`.
+  - Otherwise:
+    - `Shift+Right` => next state in `all_states`
+    - `Shift+Left` => previous state in `all_states`
+  - Boundary no-op behavior:
+    - `null` + `Shift+Left` => no change (status message)
+    - last state + `Shift+Right` => no change (status message)
+- After a state change, persist and rerender/reload board, since selector-based column membership may change.
+
+**Validation and errors**
+- Invalid `board` schema (wrong types, missing fields, duplicate view names, empty columns) => malformed config error.
+- Invalid selector parse/runtime => board command error including view+column context.
+- `--view` requested without configured views => explicit error.
+
+**Compatibility stance**
+- Backward compatibility is not required for this prototype.
+#+end_src
+
+**** DONE Extend config model with board views
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 20:04]
+:END:
+- Add typed config structures in =src/org/config.py=:
+  - =BoardColumnConfig(name, selector)=
+  - =BoardViewConfig(name, columns)=
+- Add parsed storage to =LoadedCliConfig= (e.g., =board_views: dict[str, BoardViewConfig]=).
+- Update =parse_config_sections= to allow top-level =board=.
+- Add =parse_board_section= + =parse_board_view(s)= validators:
+  - =views= must be list
+  - each =view.name= non-empty string, unique
+  - each =view.columns= non-empty list
+  - each =column.name= non-empty string
+  - each =column.selector= non-empty string
+  - unknown keys rejected (consistent with strict parser behavior)
+- Invalid board schema should return =None= from parser path so =load_cli_config= raises =typer.BadParameter("Malformed config")=.
+
+**** DONE Wire board views into global runtime config
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 20:10]
+:END:
+- Add global holder (similar to =CONFIG_CAPTURE_TEMPLATES=) in =src/org/config.py= for board views.
+- In =src/org/cli.py=, copy parsed board views into that global in =main()=.
+- Keep this independent from =default_map=; default map only handles option defaults, not structural board config.
+
+**** DONE Support =defaults: --view: <name>=
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 20:14]
+:END:
+- Add ="view"= to =COMMAND_OPTION_NAMES= and =DEST_TO_OPTION_NAME= in =src/org/config.py=.
+- Add ="--view": "view"= to =global_str_options= in =build_config_defaults=.
+- Update =validate_str_option= to reject empty =--view=.
+- Add =view: str | None= field to =BoardArgs= in =src/org/commands/board.py=.
+- Add Typer option =--view= to =register()= and pass into =BoardArgs=.
+
+**** DONE Introduce selector-based column resolution in board command
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 20:37]
+:END:
+- Replace/augment current state-lane builder with selector view builder:
+  - New internal “column spec” type containing =name= + compiled selector query.
+  - Built-in fallback spec (if no view selected):
+    - Backlog - ~.todo == null~
+    - TODO - ~.todo != null and not(.is_completed)~
+    - DONE - =.is_completed=
+- View selection resolution logic:
+  - if =args.view= set: require configured views exist and contain that view, else explicit error
+  - else if default =view= provided via config defaults: use it (same missing behavior as explicit =--view=)
+  - else use built-in fallback
+- Error semantics:
+  - missing requested view - =typer.BadParameter(...)= with clear message
+  - =--view= requested but no configured views => explicit message
+  - invalid selector parse/runtime - =typer.BadParameter(...)= with =view=<name>, column=<name>= context
+
+**** DONE src/org/commands/board.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 20:39]
+:END:
+
+In file src/org/commands/board.py around line 126, near the ~class _BoardColumn:~
+
+#+begin_example
++    """One board column selector specification."""
++
++    name: str
++    view_name: str
++    selector_text: str
++    query: CompiledQuery
+
+#+end_example
+
+Do we really need the =selector_text= here? Seems like compiling the query should be enugh.
+**** DONE src/org/commands/board.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 20:41]
+:END:
+
+In file src/org/commands/board.py around line 357, near the ~def _column_title_markup(~
+
+#+begin_example
++
++    if selected_view is None:
++        view_name = "fallback"
++        column_specs: list[_BoardColumnSpec] = []
++        for name, selector_text in _fallback_column_specs():
++            try:
++                query = _compile_column_selector_query(selector_text)
++            except QueryParseError as err:
++                raise typer.BadParameter(
++                    f"Invalid board selector (view={view_name}, column={name}): {err}",
++                ) from err
++            column_specs.append(
++                _BoardColumnSpec(
++                    name=name,
++                    view_name=view_name,
++                    selector_text=selector_text,
++                    query=query,
++                ),
++            )
++        return column_specs
++
++    if not configured_views:
++        raise typer.BadParameter("--view requested, but no board views are configured")
++
++    selected_view_config = configured_views.get(selected_view)
++    if selected_view_config is None:
++        raise typer.BadParameter(f"Requested board view not found: {selected_view}")
++
++    column_specs = []
++    for column in selected_view_config.columns:
++        try:
++            query = _compile_column_selector_query(column.selector)
++        except QueryParseError as err:
++            raise typer.BadParameter(
++                f"Invalid board selector (view={selected_view}, column={column.name}): {err}",
++            ) from err
++        column_specs.append(
++            _BoardColumnSpec(
++                name=column.name,
++                view_name=selected_view,
++                selector_text=column.selector,
++                query=query,
++            ),
++        )
+
+#+end_example
+
+Looks like this could be simplified by creating a fallback view object arnd running the columns query compilation just once.
+**** DONE src/org/commands/board.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 20:45]
+:END:
+
+In file src/org/commands/board.py around line 444, near the ~def _column_title_markup(~
+
+#+begin_example
++            if not isinstance(result, Heading):
++                raise typer.BadParameter(
++                    f"Board selector must return tasks (view={spec.view_name}, column={spec.name})",
++                )
++            column_nodes.append(result)
+
+#+end_example
+
+This probably doesn't happen in practice.
+**** DONE src/org/commands/board.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 20:46]
+:END:
+
+In file src/org/commands/board.py around line 444, near the ~def _resolve_header_state(~
+
+#+begin_example
+     """Resolve the state name used for coloring a column header."""
+-    if column.title == "NOT STARTED":
++    if column.title in {"NOT STARTED", "Backlog"}:
+         return ""
+-    if coalesce_completed and column.title == "COMPLETED":
++    if coalesce_completed and column.title in {"COMPLETED", "DONE"}:
+         return _completed_header_state(done_states)
+#+end_example
+
+This isn't needed. The coloring is handled by the column name.
+**** DONE Implement selector execution semantics
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 20:56]
+:END:
+- For each render/reload pass:
+  - take full =nodes= list from =load_and_process_data= (already post filter/order/slice)
+  - for each column selector, run =select(<selector>)= once against =Stream(nodes)=
+  - gather matched =Heading= results for that column
+- Preserve “match many columns” behavior naturally by independent per-column query runs.
+- Tasks matching none are simply absent.
+
+**** DONE Refactor interactive state transition behavior
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 21:15]
+:END:
+- Remove coupling between =Shift+Left/Right= and neighbor columns.
+- Introduce state stepper helper:
+  - ordered states = =list(dict.fromkeys(heading.document.all_states))=
+  - =null + right -> first=
+  - =first + left -> null=
+  - middle moves prev/next
+  - =null + left= no-op status
+  - =last + right= no-op status
+- Keep existing persistence and reload mechanics:
+  - update =heading.todo=
+  - append repeat transition
+  - repeater advance behavior unchanged
+  - save + reload session to refresh selector membership
+- Keep Left/Right arrow keys for visual navigation only.
+
+**** DONE src/org/commands/board.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 21:18]
+:END:
+
+In file src/org/commands/board.py around line 555, near the ~def _save_document_changes(document: Document) -> None:~
+
+#+begin_example
++def _step_heading_state(heading: Heading, *, direction: int) -> tuple[str | None, str | None]:
++    """Resolve next heading state from document all_states ordering."""
++    ordered_states = list(dict.fromkeys(heading.document.all_states))
++    if not ordered_states:
++        return heading.todo, "No TODO states configured in document"
++
++    current_state = heading.todo
++    if current_state in ordered_states:
++        current_index: int | None = ordered_states.index(current_state)
++    else:
++        current_index = None
++
++    new_state = current_state
++    status: str | None = None
++
++    if direction > 0:
++        if current_index is None:
++            new_state = ordered_states[0]
++        elif current_index == len(ordered_states) - 1:
++            status = "Already at last state"
++        else:
++            new_state = ordered_states[current_index + 1]
++        return new_state, status
++
++    if current_index is None and current_state is None:
++        status = "State unchanged"
++    elif current_index is None or current_index == 0:
++        new_state = None
++    else:
++        new_state = ordered_states[current_index - 1]
++    return new_state, status
+
+#+end_example
+
+This code can probably be a bit simplified, can you find a way to do that? Get the current index, use the index as an offset in the array.
+**** DONE src/org/commands/board.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 21:26]
+:END:
+
+In file src/org/commands/board.py around line 1077, near the ~def _flow_board_key_bindings(~
+
+#+begin_example
+     """Handle one interactive keypress and return whether to continue."""
+-    result = dispatch_key_binding(key, _flow_board_key_bindings(console, session))
++    del console
++    result = dispatch_key_binding(key, _flow_board_key_bindings(session))
+     if result.handled:
+         return result.continue_loop
+
+#+end_example
+
+Don't use =del= when an argument is unused. Refactor the code instead to remove that argument altogether.
+**** DONE Adjust rendering for custom column names with Rich markup
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 21:46]
+:END:
+- Existing header path escapes markup (=escape_text=) and applies state color styling; that conflicts with “Rich markup allowed” in configured names.
+- Add rendering branch:
+  - configured views: render header names via =Text.from_markup(name)= (with fallback/error handling if needed)
+  - fallback built-in view: keep plain/escaped behavior
+- Avoid auto state-color assumptions for selector-driven custom columns.
+
+**** DONE Update tests (primary effort)
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 22:08]
+:END:
+- =tests/config/test_config_core.py=:
+  - valid =board.views= parsing
+  - malformed board cases (wrong types, empty strings, duplicate view names, empty columns, missing fields)
+  - defaults =--view= accepted/rejected when empty
+- =tests/cli/test_cli_main.py=:
+  - update =LoadedCliConfig(...)= constructors for new field
+  - assert board views global propagation in =cli.main()=
+- =tests/commands/test_board.py=:
+  - non-interactive rendering with configured view
+  - missing =--view= errors
+  - explicit =--view= with no configured views error
+  - default =--view= from config works
+  - fallback view used when no view selected/defaulted
+  - selector runtime/parse errors include view+column context
+  - overlapping selectors duplicate tasks across columns
+  - no-match selectors show empty columns
+  - Shift+Left/Right state transition semantics + boundary no-op messages
+  - reload after state change reassigns task across selector columns
+- =tests/cli/test_cli_runner.py=:
+  - integration-style check for =org board --view ...=
+
+**** DONE Docs updates
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 22:56]
+:END:
+- =docs/index.md=: add =board= top-level config section to config layout.
+- =docs/board_command.md=:
+  - describe selector-based views
+  - document =--view=
+  - document fallback columns
+  - update interactive Shift+Left/Right semantics (state stepping, not column movement)
+  - document selector error context behavior.
+
+**** DONE Remove column coalescence
+:LOGBOOK:
+- State "DONE"   from "TODO"       [2026-05-04 Mon 21:55] \\
+  This subtask was entirely missed by the architect agent.
+:END:
+
+Remove the =--coalesce-completed= and =--no-coalesce-completed= CLI switches along with the coalescing logic - it's no longer required.
+
+**** DONE State changes should not cause the board view to exit briefly.
+:PROPERTIES:
+:capture_time: [2026-05-04 Mon 22:06]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Update tests (primary effort)][Update tests (primary effort)]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 22:12]
+:END:
+**** DONE Board task panels should always show the current todo state.
+:PROPERTIES:
+:capture_time: [2026-05-04 Mon 22:07]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Treat all --done-keys equally][Treat all --done-keys equally]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 22:26]
+:END:
+When there's no state, leave it as is. Only display the state when it is available. The state should be colored according to the usual state coloring semantic.
+
+**** DONE Rename Board column =selector= to =filter=.
+:PROPERTIES:
+:capture_time: [2026-05-04 Mon 22:41]
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 23:21]
+:END:
+**** DONE Add optional =order-by= property to the board column setup.
+:PROPERTIES:
+:capture_time: [2026-05-04 Mon 22:42]
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 23:39]
+:END:
+
+It should be optional, when present it should be applied after the filtering to override the task order.
+When not present, tasks should only be filtered by the =filter=.
+
+**** DONE src/org/commands/board.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-04 Mon 23:43]
+:END:
+
+In file src/org/commands/board.py around line 282, near the ~def _render_column_title_text(title: str) -> Text:~
+
+#+begin_example
++    filter_text: str,
++    order_by_selector: str | None,
+
+#+end_example
+
+Rename =filter_text= to just =filter= and =order_by_selector= to just =order_by=.
+*** Workflow configuration
+- Defines stages a task can be in and their requirements
+- Defines state transitions
+- Defines agent personas responsible for a given stage
+
+*** Tasks find
+Find tasks by title/id/rag.
+
+- =--out org-with-context= - Tasks should be presented together with the parent chain tasks for context.
+- =--out prompt= - show the task as an AI consumable prompt
+
+*** Flow find command
 - Find tasks that are ready to be started (based on relative position in the file & inter-dependencies & state)
-*** Flow assign command
 - Claim tasks as actively worked on.
 - Assigns a task to a specified assignee
+
+*** Flow refine command
+- Add a property with additional information via a file
+- Add a specified task as a blocker or otherwise link tasks.
+
 *** Flow move command
 - Transition task states based on configured workflow rules & validations.
 - =--to STATE= optional, used if more than one transition existis
 - =--comment= for additional information on the transition
-*** Flow subtask command
+*** CANCELLED Flow subtask command
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-05-04 Mon 13:38] \\
+  Can be done with org tasks capture.
+:END:
 - Like capture, but specifically for adding subtasks
-*** Flow context command
-- Add a property with additional information via a file
-- Add a specified task as a blocker or otherwise link tasks.
-
 *** Extra filters
 - ~--id-property NAME~ - names the property serving as the task ID
 - ~--dependencies-property NAME~ - names the property used for dependencies between tasks

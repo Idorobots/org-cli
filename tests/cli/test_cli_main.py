@@ -46,6 +46,7 @@ def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
             custom_order_by={},
             custom_with={},
             capture_templates={},
+            board_views={},
         ),
     )
     monkeypatch.setattr(
@@ -72,12 +73,14 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
     original_custom_order_by = dict(config.CONFIG_CUSTOM_ORDER_BY)
     original_custom_with = dict(config.CONFIG_CUSTOM_WITH)
     original_capture_templates = dict(config.CONFIG_CAPTURE_TEMPLATES)
+    original_board_views = dict(config.CONFIG_BOARD_VIEWS)
     config.CONFIG_APPEND_DEFAULTS.clear()
     config.CONFIG_INLINE_DEFAULTS.clear()
     config.CONFIG_CUSTOM_FILTERS.clear()
     config.CONFIG_CUSTOM_ORDER_BY.clear()
     config.CONFIG_CUSTOM_WITH.clear()
     config.CONFIG_CAPTURE_TEMPLATES.clear()
+    config.CONFIG_BOARD_VIEWS.clear()
 
     def fake_get_command(_app: object) -> SimpleNamespace:
         return SimpleNamespace(main=lambda **_: None)
@@ -93,6 +96,14 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
             custom_order_by={"my-order": "."},
             custom_with={"my-with": "."},
             capture_templates={"quick": {"file": "tasks.org", "content": "* TODO {{title}}"}},
+            board_views={
+                "kanban": config.BoardViewConfig(
+                    name="kanban",
+                    columns=[
+                        config.BoardColumnConfig(name="TODO", filter='.todo == "TODO"'),
+                    ],
+                ),
+            },
         ),
     )
     monkeypatch.setattr(config, "build_default_map", lambda _defaults: {})
@@ -110,6 +121,8 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
         assert config.CONFIG_CAPTURE_TEMPLATES == {
             "quick": {"file": "tasks.org", "content": "* TODO {{title}}"},
         }
+        assert set(config.CONFIG_BOARD_VIEWS) == {"kanban"}
+        assert config.CONFIG_BOARD_VIEWS["kanban"].name == "kanban"
     finally:
         config.CONFIG_APPEND_DEFAULTS.clear()
         config.CONFIG_APPEND_DEFAULTS.update(original_append)
@@ -123,3 +136,5 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
         config.CONFIG_CUSTOM_WITH.update(original_custom_with)
         config.CONFIG_CAPTURE_TEMPLATES.clear()
         config.CONFIG_CAPTURE_TEMPLATES.update(original_capture_templates)
+        config.CONFIG_BOARD_VIEWS.clear()
+        config.CONFIG_BOARD_VIEWS.update(original_board_views)

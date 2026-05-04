@@ -6,12 +6,13 @@ import logging
 import math
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import typer
 from rich import box
 from rich.cells import cell_len
 from rich.console import Group, RenderableType
+from rich.errors import MarkupError
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
@@ -21,7 +22,7 @@ from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
-from org.color import escape_text, get_state_color
+from org.color import get_state_color
 from org.commands.agenda import _advance_timestamp_by_repeater
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
@@ -41,13 +42,20 @@ from org.commands.interactive_common import (
 )
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import save_document
+from org.query_language import (
+    CompiledQuery,
+    EvalContext,
+    QueryParseError,
+    QueryRuntimeError,
+    Stream,
+    compile_query_text,
+)
 from org.tui import (
     build_console,
     heading_title_to_text,
     processing_status,
     setup_output,
     task_priority_to_text,
-    task_state_prefix_to_text,
     task_tags_to_text,
 )
 
@@ -90,6 +98,7 @@ class BoardArgs:
     filter_completed: bool
     filter_not_completed: bool
     color_flag: bool | None
+    view: str | None
     width: int | None
     max_results: int | None
     offset: int
@@ -100,7 +109,6 @@ class BoardArgs:
     order_by_timestamp_asc: bool
     order_by_timestamp_desc: bool
     with_tags_as_category: bool
-    coalesce_completed: bool
 
 
 @dataclass(frozen=True)
@@ -112,6 +120,15 @@ class _BoardColumn:
 
 
 @dataclass(frozen=True)
+class _BoardColumnSpec:
+    """One board column filter specification."""
+
+    name: str
+    view_name: str
+    query: CompiledQuery
+
+
+@dataclass(frozen=True)
 class _BoardPanelRenderConfig:
     """Rendering context passed to task panel builders."""
 
@@ -119,7 +136,6 @@ class _BoardPanelRenderConfig:
     color_enabled: bool
     done_states: list[str]
     todo_states: list[str]
-    coalesce_completed: bool
 
 
 @dataclass
@@ -145,7 +161,6 @@ class _BoardStaticRenderInput:
     done_states: list[str]
     todo_states: list[str]
     color_enabled: bool
-    coalesce_completed: bool
 
 
 _BoardHeadingIdentity = HeadingIdentity
@@ -155,22 +170,6 @@ def _priority_rank(priority: str | None) -> int:
     """Return sort rank for board priority ordering."""
     rank = {"A": 0, "B": 1, "C": 2}
     return rank.get(priority or "", 3)
-
-
-def _state_prefix(
-    node: Heading,
-    done_states: list[str],
-    todo_states: list[str],
-    color_enabled: bool,
-) -> Text:
-    """Build a state prefix text fragment for a task panel title line."""
-    state = node.todo or ""
-    return task_state_prefix_to_text(
-        state,
-        done_states=done_states,
-        todo_states=todo_states,
-        color_enabled=color_enabled,
-    )
 
 
 def _task_metadata_text(node: Heading, color_enabled: bool) -> Text:
@@ -187,6 +186,22 @@ def _task_metadata_text(node: Heading, color_enabled: bool) -> Text:
     return meta
 
 
+def _state_prefix(
+    state: str | None,
+    done_states: list[str],
+    todo_states: list[str],
+    color_enabled: bool,
+) -> Text:
+    """Build a styled state prefix for task heading text."""
+    if state is None:
+        return Text("")
+    style = get_state_color(state, done_states, todo_states, color_enabled)
+    prefix = Text("")
+    prefix.append(state, style=style or "")
+    prefix.append(" ")
+    return prefix
+
+
 def _build_task_panel(
     node: Heading,
     render: _BoardPanelRenderConfig,
@@ -195,11 +210,14 @@ def _build_task_panel(
 ) -> Panel:
     """Build a visual panel for one task."""
     content = Text("")
-    if render.coalesce_completed and node.todo and node.todo in render.done_states:
-        content.append_text(
-            _state_prefix(node, render.done_states, render.todo_states, render.color_enabled),
-        )
-
+    content.append_text(
+        _state_prefix(
+            node.todo,
+            render.done_states,
+            render.todo_states,
+            render.color_enabled,
+        ),
+    )
     content.append_text(heading_title_to_text(node))
 
     meta = _task_metadata_text(node, render.color_enabled)
@@ -222,10 +240,14 @@ def _build_task_panel(
 def _heading_and_meta_lines(node: Heading, render: _BoardPanelRenderConfig) -> tuple[int, int]:
     """Estimate wrapped line counts for panel heading and metadata."""
     heading = Text("")
-    if render.coalesce_completed and node.todo and node.todo in render.done_states:
-        heading.append_text(
-            _state_prefix(node, render.done_states, render.todo_states, color_enabled=False),
-        )
+    heading.append_text(
+        _state_prefix(
+            node.todo,
+            render.done_states,
+            render.todo_states,
+            color_enabled=False,
+        ),
+    )
     heading.append_text(heading_title_to_text(node))
     heading_lines = max(1, math.ceil(cell_len(heading.plain) / max(1, render.width)))
 
@@ -243,92 +265,110 @@ def _interactive_panel_height(node: Heading, render: _BoardPanelRenderConfig) ->
     return heading_lines + metadata_lines + 2
 
 
-def _completed_header_state(done_states: list[str]) -> str:
-    """Resolve representative completed state for header coloring."""
-    non_cancelled = [key for key in done_states if key != "CANCELLED"]
-    if non_cancelled:
-        return non_cancelled[0]
-    if done_states:
-        return done_states[0]
-    return "DONE"
+def _render_column_title_text(title: str) -> Text:
+    """Render column title as Rich markup with literal fallback."""
+    try:
+        return Text.from_markup(title)
+    except MarkupError:
+        return Text(title)
 
 
-def _column_title_markup(
-    title: str,
-    state: str,
-    done_states: list[str],
-    todo_states: list[str],
-    color_enabled: bool,
-) -> str:
-    """Build column title with state-aligned coloring."""
-    style = get_state_color(state, done_states, todo_states, color_enabled)
-    safe_title = escape_text(title, color_enabled)
-    if color_enabled and style:
-        return f"[{style}]{safe_title}[/]"
-    return safe_title
+def _compile_column_filter_query(
+    filter_query: str,
+    order_by: str | None,
+) -> CompiledQuery:
+    """Compile one board column filter/order query text."""
+    base_query = f"select({filter_query})"
+    if order_by is None:
+        return compile_query_text(base_query)
+    return compile_query_text(f"{base_query} | sort_by({order_by})")
 
 
-def _initial_columns(
-    todo_states: list[str],
-    done_states: list[str],
-    coalesce_completed: bool,
-) -> dict[str, list[Heading]]:
-    """Create mutable flow board columns keyed by title."""
-    columns: dict[str, list[Heading]] = {"NOT STARTED": []}
-    for key in todo_states:
-        columns[key] = []
-    if coalesce_completed:
-        columns["COMPLETED"] = []
-    else:
-        for key in done_states:
-            columns[key] = []
-    return columns
+def _fallback_view_config() -> config_module.BoardViewConfig:
+    """Return built-in fallback board filter view definition."""
+    return config_module.BoardViewConfig(
+        name="fallback",
+        columns=[
+            config_module.BoardColumnConfig(name="Backlog", filter=".todo == null"),
+            config_module.BoardColumnConfig(
+                name="TODO",
+                filter=".todo != null and not(.is_completed)",
+            ),
+            config_module.BoardColumnConfig(name="DONE", filter=".is_completed"),
+        ],
+    )
 
 
-def _place_node(
-    columns: dict[str, list[Heading]],
-    node: Heading,
-    todo_states: list[str],
-    done_states: list[str],
-    coalesce_completed: bool,
-) -> None:
-    """Assign one node to its flow board column."""
-    state = node.todo
-    if not state:
-        columns["NOT STARTED"].append(node)
-        return
-    if state in done_states:
-        if coalesce_completed:
-            columns["COMPLETED"].append(node)
-        else:
-            columns[state].append(node)
-        return
-    if state in todo_states:
-        columns[state].append(node)
-        return
-    columns["NOT STARTED"].append(node)
+def _compile_view_column_specs(view: config_module.BoardViewConfig) -> list[_BoardColumnSpec]:
+    """Compile one board view's filters into renderable column specs."""
+    column_specs: list[_BoardColumnSpec] = []
+    for column in view.columns:
+        try:
+            query = _compile_column_filter_query(column.filter, column.order_by)
+        except QueryParseError as err:
+            raise typer.BadParameter(
+                f"Invalid board filter/order-by (view={view.name}, column={column.name}): {err}",
+            ) from err
+        column_specs.append(
+            _BoardColumnSpec(
+                name=column.name,
+                view_name=view.name,
+                query=query,
+            ),
+        )
+    return column_specs
 
 
-def _build_flow_board_columns(
+def _resolve_selected_view_name(args: BoardArgs) -> str | None:
+    """Resolve selected board view name from command args."""
+    if args.view is None:
+        return None
+
+    selected_view = args.view.strip()
+    if not selected_view:
+        return None
+    return selected_view
+
+
+def _resolve_column_specs(args: BoardArgs) -> list[_BoardColumnSpec]:
+    """Resolve configured or fallback filter columns for board rendering."""
+    selected_view = _resolve_selected_view_name(args)
+    configured_views = config_module.CONFIG_BOARD_VIEWS
+
+    if selected_view is None:
+        return _compile_view_column_specs(_fallback_view_config())
+
+    if not configured_views:
+        raise typer.BadParameter("--view requested, but no board views are configured")
+
+    selected_view_config = configured_views.get(selected_view)
+    if selected_view_config is None:
+        raise typer.BadParameter(f"Requested board view not found: {selected_view}")
+
+    return _compile_view_column_specs(selected_view_config)
+
+
+def _build_selector_board_columns(
     nodes: list[Heading],
-    todo_states: list[str],
-    done_states: list[str],
-    coalesce_completed: bool,
+    column_specs: list[_BoardColumnSpec],
 ) -> list[_BoardColumn]:
-    """Group nodes into ordered flow board columns."""
-    columns = _initial_columns(todo_states, done_states, coalesce_completed)
-    for node in nodes:
-        _place_node(columns, node, todo_states, done_states, coalesce_completed)
-    if coalesce_completed:
-        ordered_titles = ["NOT STARTED", *todo_states, "COMPLETED"]
-    else:
-        ordered_titles = ["NOT STARTED", *todo_states, *done_states]
+    """Evaluate filter specs against processed task stream."""
+    columns: list[_BoardColumn] = []
+    for spec in column_specs:
+        try:
+            results = spec.query(Stream(nodes), EvalContext({}))
+        except QueryRuntimeError as err:
+            raise typer.BadParameter(
+                (
+                    "Board filter/order-by query failed "
+                    f"(view={spec.view_name}, column={spec.name}): {err}"
+                ),
+            ) from err
 
-    output_columns: list[_BoardColumn] = []
-    for title in ordered_titles:
-        sorted_nodes = sorted(columns[title], key=lambda node: _priority_rank(node.priority))
-        output_columns.append(_BoardColumn(title=title, nodes=sorted_nodes))
-    return output_columns
+        column_nodes = [cast("Heading", result) for result in results]
+        columns.append(_BoardColumn(title=spec.name, nodes=column_nodes))
+
+    return columns
 
 
 def _estimate_panel_content_width(console_width: int, column_count: int) -> int:
@@ -369,19 +409,6 @@ def _estimate_board_height(columns: list[_BoardColumn], panel_content_width: int
     return content_row_height + 3
 
 
-def _resolve_header_state(
-    column: _BoardColumn,
-    done_states: list[str],
-    coalesce_completed: bool,
-) -> str:
-    """Resolve the state name used for coloring a column header."""
-    if column.title == "NOT STARTED":
-        return ""
-    if coalesce_completed and column.title == "COMPLETED":
-        return _completed_header_state(done_states)
-    return column.title
-
-
 def _restore_key_order(specified: list[str], discovered: list[str]) -> list[str]:
     """Return discovered keys with user-specified keys first in their original order."""
     specified_set = set(specified)
@@ -418,22 +445,7 @@ def _render_static_flow_board(
     for _ in columns:
         table.add_column(ratio=1)
 
-    header_row: list[str] = []
-    for column in columns:
-        state = _resolve_header_state(
-            column,
-            render_input.done_states,
-            render_input.coalesce_completed,
-        )
-        header_row.append(
-            _column_title_markup(
-                column.title,
-                state,
-                render_input.done_states,
-                render_input.todo_states,
-                render_input.color_enabled,
-            ),
-        )
+    header_row = [_render_column_title_text(column.title) for column in columns]
     table.add_row(*header_row)
 
     panel_content_width = _estimate_panel_content_width(console.width, len(columns))
@@ -442,7 +454,6 @@ def _render_static_flow_board(
         color_enabled=render_input.color_enabled,
         done_states=render_input.done_states,
         todo_states=render_input.todo_states,
-        coalesce_completed=render_input.coalesce_completed,
     )
     content_cells: list[RenderableType] = []
     for column in columns:
@@ -468,46 +479,34 @@ def _save_document_changes(document: Document) -> None:
     save_document(document)
 
 
-def _choose_done_state(console: Console, done_states: list[str]) -> str | None:
-    """Prompt for a done state when moving into COMPLETED lane."""
-    if not done_states:
-        return None
+def _step_heading_state(heading: Heading, *, direction: int) -> tuple[str | None, str | None]:
+    """Resolve next heading state from document all_states ordering."""
+    ordered_states = list(dict.fromkeys(heading.document.all_states))
+    if not ordered_states:
+        return heading.todo, "No TODO states configured in document"
 
-    console.print("Choose completed state:")
-    for idx, state in enumerate(done_states, start=1):
-        console.print(f"{idx}) {state}")
+    current_state = heading.todo
+    current_index = ordered_states.index(current_state) if current_state in ordered_states else -1
 
-    selection = console.input("State number or value (blank cancels): ").strip()
-    if not selection:
-        return None
-
-    if selection.isdigit():
-        index = int(selection) - 1
-        if 0 <= index < len(done_states):
-            return done_states[index]
-        return None
-
-    if selection in done_states:
-        return selection
-    return None
-
-
-def _choose_target_state_for_column(
-    console: Console,
-    session: _BoardSession,
-    target_column: _BoardColumn,
-) -> tuple[str | None, str | None]:
-    """Resolve target state for a destination column."""
-    if target_column.title == "NOT STARTED":
-        return None, None
-
-    if session.args.coalesce_completed and target_column.title == "COMPLETED":
-        done_state = _choose_done_state(console, session.done_states)
-        if done_state is None:
-            return None, "State move cancelled"
-        return done_state, None
-
-    return target_column.title, None
+    new_state = current_state
+    status: str | None = None
+    if current_index == -1:
+        if direction > 0:
+            new_state = ordered_states[0]
+        elif current_state is None:
+            status = "State unchanged"
+        else:
+            new_state = None
+    else:
+        step = 1 if direction > 0 else -1
+        next_index = current_index + step
+        if next_index < 0:
+            new_state = None
+        elif next_index >= len(ordered_states):
+            status = "Already at last state"
+        else:
+            new_state = ordered_states[next_index]
+    return new_state, status
 
 
 def _max_column_nodes(columns: list[_BoardColumn]) -> int:
@@ -560,12 +559,7 @@ def _reload_session(
     session.nodes = nodes
     session.todo_states = todo_states
     session.done_states = done_states
-    session.columns = _build_flow_board_columns(
-        nodes,
-        todo_states,
-        done_states,
-        session.args.coalesce_completed,
-    )
+    session.columns = _build_selector_board_columns(nodes, _resolve_column_specs(session.args))
 
     if preserve_identity is not None:
         for column_index, column in enumerate(session.columns):
@@ -587,7 +581,7 @@ def _create_flow_board_session(
     color_enabled: bool,
 ) -> _BoardSession:
     """Create interactive flow board session state."""
-    columns = _build_flow_board_columns(nodes, todo_states, done_states, args.coalesce_completed)
+    columns = _build_selector_board_columns(nodes, _resolve_column_specs(args))
     selected_column_index = 0
     for index, column in enumerate(columns):
         if column.nodes:
@@ -633,20 +627,14 @@ def _move_selection_horizontal(session: _BoardSession, step: int) -> None:
         next_column += step
 
 
-def _apply_state_move(console: Console, session: _BoardSession, *, direction: int) -> None:
-    """Move selected task to neighboring column by changing TODO state."""
+def _apply_state_move(session: _BoardSession, *, direction: int) -> None:
+    """Step selected task state through document state ordering."""
     heading = _selected_node(session)
     if heading is None:
         session.status_message = "Action available only on task panels"
         return
 
-    target_column_index = session.selected_column_index + direction
-    if target_column_index < 0 or target_column_index >= len(session.columns):
-        session.status_message = "No neighboring column in that direction"
-        return
-
-    target_column = session.columns[target_column_index]
-    new_state, status = _choose_target_state_for_column(console, session, target_column)
+    new_state, status = _step_heading_state(heading, direction=direction)
     if status is not None:
         session.status_message = status
         return
@@ -688,7 +676,11 @@ def _apply_state_move(console: Console, session: _BoardSession, *, direction: in
 
     _save_document_changes(heading.document)
     preserve_identity = heading_identity(heading)
-    _reload_session(session, preserve_identity)
+    try:
+        _reload_session(session, preserve_identity)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
     session.status_message = f"State updated: {old_state or '-'} -> {new_state or '-'}"
 
 
@@ -716,7 +708,11 @@ def _apply_priority_shift(session: _BoardSession, *, increase: bool) -> None:
     )
     _save_document_changes(heading.document)
     preserve_identity = heading_identity(heading)
-    _reload_session(session, preserve_identity)
+    try:
+        _reload_session(session, preserve_identity)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
     session.status_message = f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}"
 
 
@@ -741,7 +737,11 @@ def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
 
     _save_document_changes(source_document)
     preserve_identity = heading_identity(edit_result.heading)
-    _reload_session(session, preserve_identity)
+    try:
+        _reload_session(session, preserve_identity)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
     session.status_message = "Task updated"
 
 
@@ -760,7 +760,11 @@ def _archive_selected_task(session: _BoardSession) -> None:
         return
 
     preserve_identity = heading_identity(archive_result.heading)
-    _reload_session(session, preserve_identity)
+    try:
+        _reload_session(session, preserve_identity)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
     session.status_message = "Task archived"
 
 
@@ -908,15 +912,7 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
         header.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
     header_cells: list[Text] = []
     for column in session.columns:
-        state = _resolve_header_state(column, session.done_states, session.args.coalesce_completed)
-        title_markup = _column_title_markup(
-            column.title,
-            state,
-            session.done_states,
-            session.todo_states,
-            session.color_enabled,
-        )
-        title_text = Text.from_markup(title_markup)
+        title_text = _render_column_title_text(column.title)
         title_text.overflow = "ellipsis"
         title_text.no_wrap = True
         header_cells.append(
@@ -933,7 +929,6 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
         color_enabled=session.color_enabled,
         done_states=session.done_states,
         todo_states=session.todo_states,
-        coalesce_completed=session.args.coalesce_completed,
     )
 
     selected_row_heights = _selected_column_row_heights(session, render)
@@ -1015,7 +1010,6 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
 
 
 def _flow_board_key_bindings(
-    console: Console,
     session: _BoardSession,
 ) -> dict[str, KeyBinding]:
     """Build interactive key bindings for flow board session."""
@@ -1038,21 +1032,19 @@ def _flow_board_key_bindings(
         ),
         "$": key_binding_for_action(lambda: _archive_selected_task(session)),
         "S-LEFT": key_binding_for_action(
-            lambda: _apply_state_move(console, session, direction=-1),
-            requires_live_pause=True,
+            lambda: _apply_state_move(session, direction=-1),
         ),
         "S-RIGHT": key_binding_for_action(
-            lambda: _apply_state_move(console, session, direction=1),
-            requires_live_pause=True,
+            lambda: _apply_state_move(session, direction=1),
         ),
         "S-UP": key_binding_for_action(lambda: _apply_priority_shift(session, increase=True)),
         "S-DOWN": key_binding_for_action(lambda: _apply_priority_shift(session, increase=False)),
     }
 
 
-def _handle_interactive_key(console: Console, session: _BoardSession, key: str) -> bool:
+def _handle_interactive_key(session: _BoardSession, key: str) -> bool:
     """Handle one interactive keypress and return whether to continue."""
-    result = dispatch_key_binding(key, _flow_board_key_bindings(console, session))
+    result = dispatch_key_binding(key, _flow_board_key_bindings(session))
     if result.handled:
         return result.continue_loop
 
@@ -1078,12 +1070,12 @@ def _run_flow_board_interactive(console: Console, session: _BoardSession) -> Non
                     live.update(_interactive_flow_board_renderable(console, session), refresh=True)
                     continue
 
-                if key_binding_requires_live_pause(key, _flow_board_key_bindings(console, session)):
+                if key_binding_requires_live_pause(key, _flow_board_key_bindings(session)):
                     live.stop()
-                    should_continue = _handle_interactive_key(console, session, key)
+                    should_continue = _handle_interactive_key(session, key)
                     live.start()
                 else:
-                    should_continue = _handle_interactive_key(console, session, key)
+                    should_continue = _handle_interactive_key(session, key)
 
                 if not should_continue:
                     break
@@ -1129,7 +1121,7 @@ def run_flow_board(args: BoardArgs) -> None:
         )
         return
 
-    columns = _build_flow_board_columns(nodes, todo_states, done_states, args.coalesce_completed)
+    columns = _build_selector_board_columns(nodes, _resolve_column_specs(args))
     _render_static_flow_board(
         console,
         columns,
@@ -1137,7 +1129,6 @@ def run_flow_board(args: BoardArgs) -> None:
             done_states=done_states,
             todo_states=todo_states,
             color_enabled=color_enabled,
-            coalesce_completed=args.coalesce_completed,
         ),
     )
 
@@ -1271,6 +1262,12 @@ def register(app: typer.Typer) -> None:
             "--color/--no-color",
             help="Force colored output",
         ),
+        view: str | None = typer.Option(
+            None,
+            "--view",
+            metavar="NAME",
+            help="Configured board view name",
+        ),
         width: int | None = typer.Option(
             None,
             "--width",
@@ -1326,14 +1323,6 @@ def register(app: typer.Typer) -> None:
             "--with-tags-as-category",
             help="Preprocess nodes to set category from first tag",
         ),
-        coalesce_completed: bool = typer.Option(
-            True,
-            "--coalesce-completed/--no-coalesce-completed",
-            help=(
-                "Coalesce all completed states into a single COMPLETED column. "
-                "When disabled, each done state gets its own column."
-            ),
-        ),
     ) -> None:
         """Display tasks as an interactive flow board."""
         args = BoardArgs(
@@ -1358,6 +1347,7 @@ def register(app: typer.Typer) -> None:
             filter_completed=filter_completed,
             filter_not_completed=filter_not_completed,
             color_flag=color_flag,
+            view=view,
             width=width,
             max_results=max_results,
             offset=offset,
@@ -1368,7 +1358,6 @@ def register(app: typer.Typer) -> None:
             order_by_timestamp_asc=order_by_timestamp_asc,
             order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
-            coalesce_completed=coalesce_completed,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "board")
