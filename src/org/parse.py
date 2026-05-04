@@ -44,6 +44,18 @@ def _prepend_todo_config(contents: str, todo_states: list[str], done_states: lis
     return todo_config + contents
 
 
+def _merge_state_order(existing: list[str], discovered: list[str]) -> list[str]:
+    """Merge discovered states into existing list while preserving order."""
+    merged = list(existing)
+    seen = set(merged)
+    for state in discovered:
+        if state in seen:
+            continue
+        merged.append(state)
+        seen.add(state)
+    return merged
+
+
 def load_root_nodes(
     filenames: list[str],
     todo_states: list[str],
@@ -51,15 +63,15 @@ def load_root_nodes(
 ) -> tuple[list[Document], list[str], list[str]]:
     """Load org-mode files and return root nodes with merged todo/done keys."""
     roots: list[Document] = []
-    all_todo_states: set[str] = set(todo_states)
-    all_done_states: set[str] = set(done_states)
+    all_todo_states = list(todo_states)
+    all_done_states = list(done_states)
 
     for name in filenames:
         contents = _read_org_file(name)
         contents = _prepend_todo_config(contents, todo_states, done_states)
         root = loads(contents, filename=name)
-        all_todo_states = all_todo_states.union(set(root.todo_states))
-        all_done_states = all_done_states.union(set(root.done_states))
+        all_todo_states = _merge_state_order(all_todo_states, list(root.todo_states))
+        all_done_states = _merge_state_order(all_done_states, list(root.done_states))
         roots.append(root)
 
-    return roots, list(all_todo_states), list(all_done_states)
+    return roots, all_todo_states, all_done_states

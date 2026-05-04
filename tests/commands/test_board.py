@@ -108,6 +108,60 @@ def test_run_flow_board_renders_expected_columns(
     assert "COMPLETED" in output
 
 
+def test_run_flow_board_column_order_follows_document_todo_order(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Board columns should follow merged document TODO/DONE key order."""
+    fixture_path = os.path.join(tmp_path, "ordered_states.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write(
+            "#+TODO: BACKLOG NEXT ACTIVE | DONE CANCELLED\n"
+            "* BACKLOG First\n"
+            "* NEXT Second\n"
+            "* ACTIVE Third\n"
+            "* DONE Fourth\n",
+        )
+
+    args = make_board_args(
+        [fixture_path],
+        todo_states="TODO",
+        done_states="DONE",
+        coalesce_completed=False,
+        width=220,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "board", "--no-coalesce-completed", "--width", "220"],
+    )
+    board_command.run_flow_board(args)
+    output = capsys.readouterr().out
+
+    pos_not_started = output.find("NOT STARTED")
+    pos_todo = output.find("TODO")
+    pos_backlog = output.find("BACKLOG")
+    pos_next = output.find("NEXT")
+    pos_active = output.find("ACTIVE")
+    pos_done = output.find("DONE")
+    pos_cancelled = output.find("CANCELLED")
+
+    assert pos_not_started != -1
+    assert pos_todo != -1
+    assert pos_backlog != -1
+    assert pos_next != -1
+    assert pos_active != -1
+    assert pos_done != -1
+    assert pos_cancelled != -1
+    assert pos_not_started < pos_todo
+    assert pos_todo < pos_backlog
+    assert pos_backlog < pos_next
+    assert pos_next < pos_active
+    assert pos_active < pos_done
+    assert pos_done < pos_cancelled
+
+
 def test_run_flow_board_preserves_order_in_column_when_priorities_equal(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,

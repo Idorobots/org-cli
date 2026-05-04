@@ -198,5 +198,5 @@ def test_load_root_nodes_todo_states() -> None:
     roots, todo_states, done_states = load_root_nodes([fixture_path], ["TODO"], ["DONE"])
 
     assert len(roots) == 1
-    assert set(todo_states) == {"TODO", "STARTED"}
-    assert set(done_states) == {"DONE", "CANCELLED"}
+    assert todo_states == ["TODO", "STARTED"]
+    assert done_states == ["DONE", "CANCELLED"]

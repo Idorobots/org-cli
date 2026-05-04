@@ -1,11 +1,11 @@
 #+TITLE: Good Vibes
 #+CATEGORY: Vibes
-#+TODO: TODO(t) | DONE(d!)
-#+TODO: | CANCELLED(c@/!) REWORKED(r@/!)
+#+TODO: RESEARCH(e!) REFINE(r!) TODO(t!) PLAN(p!) REVIEW(w!) IMPLEMENT(i!) VERIFY(v!) | DONE(d!) CANCELLED(c@/!)
+#+TODO: | REWORKED(r@/!)
 
-* Goals
+* COMMENT Goals
 
-** Initial state
+** COMMENT Initial state
 The goal of the project was to attempt to achieve the fabled 10x productivity boost by vibe-coding as much of the project, while only focusing attention on the parts that matter. Simply put, go as fast as possible, break things and run out of quota. That last part was certainly achieved.
 
 The project started as a very simple script that would do rudimentary task counting using ~orgparse~ (about 115 lines of Python, no tests). The remainder was implemented by Claude Sonnet 4.5 (with a touch of Opus and Haiku) on the Pro plan via Emacs agent-shell & OpenCode. It was sloperated along the way to a small extent.
@@ -6232,7 +6232,10 @@ I'm guessing the polling for input is too slow to catch key repeats and sometime
 - State "DONE"       from              [2026-05-02 Sat 22:55]
 :END:
 It's OK to show partially obscured task panels, so it should be possible to scroll just the content area.
-*** TODO Board columns should be ordered according to the =#+TODO= order
+*** DONE Board columns should be ordered according to the =#+TODO= order
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-03 Sun 00:29]
+:END:
 *** All interactive commands should support the =--width= CLI switch
 *** Agenda non-interactive output format
 - Should be adjusted to "look and feel" just like the interactive one.
