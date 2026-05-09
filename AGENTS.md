@@ -363,6 +363,7 @@ poetry run task check
 - Avoid emojis and colorful language.
 - Do not summarize work done unless explicitly asked to do that.
 - When a file requires multiple changes, apply them all to the file in a single tool call instead of performing each edit separately.
+- Never add "backward-compatible" wrappers solely to satisfy tests; update tests to target the real production code paths instead.
 
 ---
 

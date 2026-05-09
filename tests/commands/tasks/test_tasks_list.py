@@ -723,11 +723,9 @@ def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:
             color_enabled=False,
         ),
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
-    assert tasks_list._handle_interactive_key(console, session, "WHEEL-DOWN") is True
+    assert tasks_list._handle_interactive_key(session, "WHEEL-DOWN") is True
     assert session.selected_index == 1
-    assert tasks_list._handle_interactive_key(console, session, "WHEEL-UP") is True
+    assert tasks_list._handle_interactive_key(session, "WHEEL-UP") is True
     assert session.selected_index == 0
 
 
@@ -821,10 +819,8 @@ def test_handle_interactive_key_unsupported_sets_status_and_continues() -> None:
             color_enabled=False,
         ),
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     key = "UNSUPPORTED-ESC:1b5b3939397e"
-    assert tasks_list._handle_interactive_key(console, session, key) is True
+    assert tasks_list._handle_interactive_key(session, key) is True
     assert session.status_message == f"Unsupported key: {key}"
 
 
@@ -843,14 +839,13 @@ def test_handle_interactive_key_enter_edits_selected_task(
             color_enabled=False,
         ),
     )
-    console = Console(file=StringIO(), force_terminal=False)
 
     def _fake_edit(heading: Heading) -> editor_command.HeadingEditResult:
         return editor_command.HeadingEditResult(heading=heading, changed=False)
 
     monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    assert tasks_list._handle_interactive_key(console, session, "ENTER") is True
+    assert tasks_list._handle_interactive_key(session, "ENTER") is True
     assert session.status_message == "No changes."
 
 
@@ -869,7 +864,6 @@ def test_handle_interactive_key_enter_persists_selected_source_node_after_change
             color_enabled=False,
         ),
     )
-    console = Console(file=StringIO(), force_terminal=False)
     source_node = nodes[0]
     detached_heading = node_from_org("* TODO Updated\n")[0]
 
@@ -892,7 +886,7 @@ def test_handle_interactive_key_enter_persists_selected_source_node_after_change
     monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
     monkeypatch.setattr(tasks_list, "_persist_and_reload_selected", _fake_persist)
 
-    assert tasks_list._handle_interactive_key(console, session, "ENTER") is True
+    assert tasks_list._handle_interactive_key(session, "ENTER") is True
     assert persisted_node is source_node
     assert persisted_status == "Task updated"
 
@@ -912,7 +906,6 @@ def test_handle_interactive_key_dollar_archives_selected_task(
             color_enabled=False,
         ),
     )
-    console = Console(file=StringIO(), force_terminal=False)
 
     def _fake_archive(
         heading: Heading,
@@ -938,7 +931,7 @@ def test_handle_interactive_key_dollar_archives_selected_task(
     monkeypatch.setattr(tasks_list, "archive_heading_subtree_and_save", _fake_archive)
     monkeypatch.setattr(tasks_list, "_reload_session_nodes", lambda _session, _identity: True)
 
-    assert tasks_list._handle_interactive_key(console, session, "$") is True
+    assert tasks_list._handle_interactive_key(session, "$") is True
     assert session.status_message == "Task archived"
 
 
@@ -957,7 +950,6 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
             color_enabled=False,
         ),
     )
-    console = Console(file=StringIO(), force_terminal=False)
     captured_node = node_from_org("* TODO Captured\n")[0]
     reload_args: dict[str, object] = {}
 
@@ -981,7 +973,7 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
 
     monkeypatch.setattr(tasks_list, "_reload_session_nodes", _fake_reload)
 
-    assert tasks_list._handle_interactive_key(console, session, "a") is True
+    assert tasks_list._handle_interactive_key(session, "a") is True
     assert reload_args["session"] is session
     assert reload_args["identity"] == heading_identity(captured_node)
     assert session.status_message == "Task captured"
@@ -1002,7 +994,6 @@ def test_handle_interactive_key_a_capture_cancelled_sets_status(
             color_enabled=False,
         ),
     )
-    console = Console(file=StringIO(), force_terminal=False)
 
     def _raise_interrupt(
         _args: capture_command.TasksCaptureArgs,
@@ -1011,7 +1002,7 @@ def test_handle_interactive_key_a_capture_cancelled_sets_status(
 
     monkeypatch.setattr(tasks_list, "capture_task", _raise_interrupt)
 
-    assert tasks_list._handle_interactive_key(console, session, "a") is True
+    assert tasks_list._handle_interactive_key(session, "a") is True
     assert session.status_message == "Capture cancelled"
 
 
@@ -1029,15 +1020,13 @@ def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.Monkey
             color_enabled=False,
         ),
     )
-    console = Console(file=StringIO(), force_terminal=False)
-    monkeypatch.setattr(tasks_list, "_choose_state", lambda _console, _node: "DONE")
     monkeypatch.setattr(
         tasks_list,
         "_persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list._apply_state_change(console, session)
+    tasks_list._apply_state_change_with_value(session, "DONE")
 
     assert node.todo == "DONE"
     assert node.repeats
@@ -1059,15 +1048,17 @@ def test_apply_scheduled_edit_updates_scheduled(monkeypatch: pytest.MonkeyPatch)
             color_enabled=False,
         ),
     )
-    console = Console(file=StringIO(), force_terminal=False)
-    monkeypatch.setattr(console, "input", lambda _prompt: "<2025-01-20 Mon>")
     monkeypatch.setattr(
         tasks_list,
         "_persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list._apply_scheduled_edit(console, session)
+    tasks_list._apply_planning_timestamp_edit(
+        session,
+        field="scheduled",
+        raw_timestamp="<2025-01-20 Mon>",
+    )
 
     assert node.scheduled is not None
     assert str(node.scheduled).startswith("<2025-01-20")
@@ -1087,15 +1078,17 @@ def test_apply_closed_edit_updates_closed(monkeypatch: pytest.MonkeyPatch) -> No
             color_enabled=False,
         ),
     )
-    console = Console(file=StringIO(), force_terminal=False)
-    monkeypatch.setattr(console, "input", lambda _prompt: "[2025-01-20 Mon 09:00]")
     monkeypatch.setattr(
         tasks_list,
         "_persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list._apply_closed_edit(console, session)
+    tasks_list._apply_planning_timestamp_edit(
+        session,
+        field="closed",
+        raw_timestamp="[2025-01-20 Mon 09:00]",
+    )
 
     assert node.closed is not None
     assert str(node.closed).startswith("[2025-01-20")

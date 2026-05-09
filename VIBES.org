@@ -6729,6 +6729,150 @@ Redo all the filters & orderings in terms of the query language
 :END:
 Use IDs for headings. Support the "usual" =org-attach= file directories for attachments.
 ** Usability improvements                                                                       :UX:
+*** TODO User input prompts should be resolved in the active TUI view
+Currently, when an interactive action requires user input, the TUI view is exited and instead the user is presented with a text prompt.
+I'd like to improve that so that the prompt is displayed within the footer of the TUI view that is active at the moment, identically to how it is done in the =org tasks capture= command.
+
+To this end, any action that requires users input should be displayed in the footer, on line 2. If there are multiple options required, it is OK to overflow and text-wrap to multiple lines.
+The input capture should be made generic, so that the same code path can be reused for all interactive actions in all commands that require input.
+
+I'd like this to also be the case for capture template selection, when capturing a new task from the TUI. The capture command prompt can be left as is for now.
+
+**** DONE src/org/commands/agenda.py                                                       :Cleanup:
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 12:32]
+:END:
+
+In file src/org/commands/agenda.py around line 2087, near the ~def _handle_interactive_key(console: Console, session: _AgendaSession, key: str)~
+
+#+begin_example
+-    result = dispatch_key_binding(key, _agenda_key_bindings(console, session))
++    del console
++    result = dispatch_key_binding(key, _agenda_key_bindings(session))
+#+end_example
+
+Do not leave unused parameters in. Instead refactor the function not to require the parameter in the first place. Do the same for the tasks list.
+**** DONE src/org/commands/tasks/list.py                                                   :Cleanup:
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 12:52]
+:END:
+
+In file src/org/commands/tasks/list.py around line 961, near the ~def _apply_planning_timestamp_edit(~
+
+#+begin_example
++def _choose_state(console: Console, heading: Heading) -> str | None:
++    """Backward-compatible state chooser used by legacy tests."""
++    states = list(dict.fromkeys(heading.document.all_states))
++    if not states:
++        return None
++
++    selection = console.input("State number or value (blank cancels): ").strip()
++    if not selection:
++        return None
++    if selection.isdigit():
++        index = int(selection) - 1
++        if 0 <= index < len(states):
++            return states[index]
++        return None
++    if selection in states:
++        return selection
+#+end_example
+
+Some of these helper functions look very similar between different interactive commands, could these be extracted to the common module and re-used?
+This way we could have consistent behaviour between all the commands that modify the tasks.
+**** DONE src/org/commands/agenda.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 13:25]
+:END:
+
+In file src/org/commands/agenda.py around line 1899, near the ~def _submit_active_prompt(session: _AgendaSession) -> str | None:~
+
+#+begin_example
++    active = session.active_prompt
++    cancel_message = "State change cancelled"
++    invalid_message = "Invalid TODO state selection"
++    if active is not None:
++        cancel_message = active.config.cancel_status or cancel_message
++        invalid_message = active.config.invalid_status or invalid_message
+#+end_example
+
+Are these fallbacks needed? It seems to me thaht if there's an action that requires a prompt, there will be an active prompt present.
+**** DONE Backward-compatibility for tests slop.
+:PROPERTIES:
+:capture_time: [2026-05-09 Sat 12:51]
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 13:30]
+:END:
+
+I see there are a lot of functions described as "Backward-compatible ... for tests." This is really poor code, you should be ashamed. Remove all of these, refactor the code and tests to not require them at all and make sure to add a guideline to the AGENTS.md file to never do that again.
+**** DONE src/org/commands/agenda.py                                                       :Cleanup:
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 13:31]
+:END:
+
+In file src/org/commands/agenda.py around line 1964, near the ~def _submit_clock_prompt(session: _AgendaSession, value: str) -> str | None:~
+
+#+begin_example
+ def _choose_state(console: Console, heading: Heading) -> str | None:
+     """Backward-compatible state chooser used by legacy tests."""
+-    states = list(dict.fromkeys(heading.document.all_states))
++    states = todo_states_for_heading(heading)
+     if not states:
+         return None
+-
+-    selection = console.input("State number or value (blank cancels): ").strip()
+-    if not selection:
+-        return None
+-    if selection.isdigit():
+-        index = int(selection) - 1
+-        if 0 <= index < len(states):
+-            return states[index]
+-        return None
+-    if selection in states:
+-        return selection
+-    return None
++    selection = console.input("State number or value (blank cancels): ")
++    return resolve_todo_state_selection(selection, states)
+#+end_example
+
+Remove all such "backward-compatible" input handlers, the tests should always test the primary code paths. There's never a need for backwards-compatibility, in fact in this case it makes the code much, much worse.
+**** TODO Refactor the interactive actions execution logic.                                :Cleanup:
+:PROPERTIES:
+:capture_time: [2026-05-09 Sat 13:31]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Backward-compatibility for tests slop.][Backward-compatibility for tests slop.]]
+:END:
+
+We extracted the action prompts, but the logic for executing the actions is still separate for all the commands. In actuality, the actions are performed mostly the same way, so they can be extracted into a common module.
+
+I'd like the outcome to be a single =InteractiveAction= data class that conveys the prompt, any selection options and the action function to be applied once the user input is provided. The action function should take a task that the action is applied on and mutate it according to the actions semantics. The action function should return a result indicating if the action was successful or not.
+
+The commands should map their respective key bindings to those interactive action objects and whenever a bound key is pressed, the associated action should be evaluated - by presenting the user with the action prompt and then, once the input is provided by running the action function on the selected task and the users input.
+
+The action results should be interpreted and the status message should be updated accordingly.
+
+In essence, the commands such as =board=, =agenda= or =tasks list= will serve as task selectors and the interactive actions will operate on those selected tasks.
+
+For the other, non-interactive actions an additional data class should be defined - these actions tend to change the state of the TUI view they are a part of (filtering criteria, highlight position, etc). These noninteractive actions don't need a prompt, but they should still have an action function that takes the state and modifies it.
+
+Action dispatch, regardless if they are interactive or not, should be the same for both kinds and made generic.
+Actions should be extracted to a common module so that they can be re-used in different commands as much as possible.
+
+Actions that require special TUI handling (edit & capture) should also be special cased as interactive actions.
+
 *** Board & agenda commands should omit tasks that are COMMENTs
 *** Board command should only show recently completed tasks
 Tasks older than 7 days should be omitted, the timeout should be configurable with =--days=.

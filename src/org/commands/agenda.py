@@ -26,15 +26,31 @@ from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_common import (
     KeyBinding,
     append_repeat_transition,
+    apply_footer_prompt_input_event,
+    build_footer_prompt_text,
     dispatch_key_binding,
     key_binding_for_action,
     key_binding_requires_live_pause,
     local_now,
+    read_input_event_with_timeout,
     read_keypress,
     set_mouse_reporting,
 )
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
-from org.commands.tasks.common import iter_descendants, load_document, save_document
+from org.commands.tasks.common import (
+    PromptActionConfig,
+    clock_duration_prompt_config,
+    duration_to_org_text,
+    iter_descendants,
+    load_document,
+    parse_clock_duration,
+    refile_prompt_config,
+    resolve_refile_destination_input,
+    resolve_todo_state_selection,
+    save_document,
+    state_selection_prompt_config,
+    todo_states_for_heading,
+)
 from org.tui import (
     build_console,
     heading_title_to_text,
@@ -217,6 +233,16 @@ class _AgendaSession:
     selected_row_index: int
     scroll_offset: int
     status_message: str
+    active_prompt: _AgendaPrompt | None
+
+
+@dataclass
+class _AgendaPrompt:
+    """One active footer input prompt in agenda."""
+
+    kind: str
+    config: PromptActionConfig
+    choices: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -973,42 +999,6 @@ def _save_document_changes(document: Document) -> None:
     save_document(document)
 
 
-def _parse_clock_duration(value: str) -> timedelta:
-    """Parse user-entered clock duration text."""
-    normalized = value.strip().lower()
-    if not normalized:
-        raise ValueError("Duration cannot be empty")
-
-    if ":" in normalized:
-        parts = normalized.split(":", 1)
-        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
-            raise ValueError("Duration must be H:MM")
-        hours = int(parts[0])
-        minutes = int(parts[1])
-        if minutes >= 60:
-            raise ValueError("Minutes must be below 60")
-        delta = timedelta(hours=hours, minutes=minutes)
-    elif normalized.endswith("m") and normalized[:-1].isdigit():
-        delta = timedelta(minutes=int(normalized[:-1]))
-    elif normalized.endswith("h") and normalized[:-1].isdigit():
-        delta = timedelta(hours=int(normalized[:-1]))
-    elif normalized.isdigit():
-        delta = timedelta(minutes=int(normalized))
-    else:
-        raise ValueError("Duration must be H:MM, Xm, Xh, or minutes")
-
-    if delta <= timedelta(0):
-        raise ValueError("Duration must be positive")
-    return delta
-
-
-def _duration_to_org_text(duration: timedelta) -> str:
-    """Format duration as Org clock text H:MM."""
-    total_minutes = int(duration.total_seconds() // 60)
-    hours, minutes = divmod(total_minutes, 60)
-    return f"{hours}:{minutes:02d}"
-
-
 def _reload_session_nodes(session: _AgendaSession) -> None:
     """Reload nodes through standard processing pipeline after mutations."""
     nodes, _, _ = load_and_process_data(session.args)
@@ -1411,6 +1401,9 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
     end_line = min(session.scroll_offset + viewport_height, len(rows))
     total_lines = max(len(rows), 1)
     scroll_text = f"Lines {end_line}/{total_lines}"
+    prompt_line = None
+    if session.active_prompt is not None:
+        prompt_line = build_footer_prompt_text(session.active_prompt.config.prompt)
     status = session.status_message or ""
     footer_style = "dim" if session.render.color_enabled else ""
     footer_line = Table.grid(expand=True)
@@ -1420,12 +1413,10 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
         Text(scroll_text, style=footer_style, no_wrap=True, overflow="ellipsis"),
         Text(controls, style=footer_style, no_wrap=True, overflow="ellipsis"),
     )
-    return Group(
-        table,
-        Rule(style=footer_style),
-        footer_line,
-        Text(status, style=footer_style, no_wrap=True, overflow="ellipsis"),
-    )
+    status_text = Text(status, style=footer_style, no_wrap=True, overflow="ellipsis")
+    if prompt_line is None:
+        return Group(table, Rule(style=footer_style), footer_line, status_text)
+    return Group(table, Rule(style=footer_style), footer_line, prompt_line, status_text)
 
 
 def _edit_selected_task_in_external_editor(session: _AgendaSession) -> None:
@@ -1550,32 +1541,7 @@ def _shift_planning_time_for_row(
     return timestamp, f"Shifted {field_name} {direction} by {abs(hour_delta)} hour"
 
 
-def _choose_state(console: Console, heading: Heading) -> str | None:
-    """Prompt for a new TODO state from document states."""
-    states = list(dict.fromkeys(heading.document.all_states))
-    if not states:
-        return None
-
-    console.print("Choose new TODO state:")
-    for idx, state in enumerate(states, start=1):
-        console.print(f"{idx}) {state}")
-
-    selection = console.input("State number or value (blank cancels): ").strip()
-    if not selection:
-        return None
-
-    if selection.isdigit():
-        index = int(selection) - 1
-        if 0 <= index < len(states):
-            return states[index]
-        return None
-
-    if selection in states:
-        return selection
-    return None
-
-
-def _apply_state_change(console: Console, session: _AgendaSession) -> None:
+def _apply_state_change_with_value(session: _AgendaSession, new_state: str) -> None:
     """Apply interactive TODO-state transition on selected task."""
     row = _selected_task_row(session)
     if row is None or row.node is None:
@@ -1583,11 +1549,6 @@ def _apply_state_change(console: Console, session: _AgendaSession) -> None:
         return
 
     heading = row.node
-    new_state = _choose_state(console, heading)
-    if new_state is None:
-        session.status_message = "State change cancelled"
-        return
-
     old_state = heading.todo
     if old_state == new_state:
         session.status_message = "State unchanged"
@@ -1681,7 +1642,7 @@ def _move_heading_to_document(heading: Heading, destination: Document) -> None:
         descendant.document = destination
 
 
-def _apply_refile(console: Console, session: _AgendaSession) -> None:
+def _apply_refile_with_value(session: _AgendaSession, destination_input: str) -> None:
     """Prompt and refile selected task into another file."""
     row = _selected_task_row(session)
     if row is None or row.node is None:
@@ -1689,22 +1650,19 @@ def _apply_refile(console: Console, session: _AgendaSession) -> None:
         return
 
     current_files = resolve_input_paths(session.args.files)
-    console.print("Refile destination:")
-    for index, filename in enumerate(current_files, start=1):
-        console.print(f"{index}) {filename}")
-    destination_input = console.input("Destination file (# or path, blank cancels): ").strip()
-    if not destination_input:
+    destination_path, validation_error = resolve_refile_destination_input(
+        destination_input,
+        current_files,
+    )
+    if destination_path is None and validation_error is None:
         session.status_message = "Refile cancelled"
         return
-
-    if destination_input.isdigit():
-        index = int(destination_input) - 1
-        if not (0 <= index < len(current_files)):
-            session.status_message = "Invalid destination shortcut"
-            return
-        destination_path = current_files[index]
-    else:
-        destination_path = destination_input
+    if validation_error is not None:
+        session.status_message = validation_error
+        return
+    if destination_path is None:
+        session.status_message = "Refile cancelled"
+        return
 
     try:
         destination_document = load_document(destination_path)
@@ -1741,22 +1699,20 @@ def _apply_refile(console: Console, session: _AgendaSession) -> None:
     session.status_message = f"Refiled task to {destination_doc_path}"
 
 
-def _apply_clock_entry(console: Console, session: _AgendaSession) -> None:
+def _apply_clock_entry_with_value(session: _AgendaSession, duration_input: str) -> None:
     """Prompt and append one clock entry ending now to selected task."""
     row = _selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
 
-    duration_input = console.input(
-        "Clock duration (H:MM, Xm, Xh, minutes; blank cancels): ",
-    ).strip()
+    duration_input = duration_input.strip()
     if not duration_input:
         session.status_message = "Clock action cancelled"
         return
 
     try:
-        duration = _parse_clock_duration(duration_input)
+        duration = parse_clock_duration(duration_input)
     except ValueError as err:
         session.status_message = str(err)
         return
@@ -1767,7 +1723,7 @@ def _apply_clock_entry(console: Console, session: _AgendaSession) -> None:
     timestamp = Timestamp.from_source(
         f"[{start_time:%Y-%m-%d %a %H:%M}]--[{end_time:%Y-%m-%d %a %H:%M}]",
     )
-    duration_text = _duration_to_org_text(duration)
+    duration_text = duration_to_org_text(duration)
     clock_entry = Clock(timestamp=timestamp, duration=duration_text)
 
     heading = row.node
@@ -1857,6 +1813,127 @@ def _apply_capture_task(session: _AgendaSession) -> None:
     session.status_message = f"Task captured and scheduled for {scheduled}"
 
 
+def _start_prompt_state_change(session: _AgendaSession) -> None:
+    """Start footer prompt for TODO state change."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        session.status_message = "Action available only on task rows"
+        return
+    states = todo_states_for_heading(row.node)
+    if not states:
+        session.status_message = "No TODO states defined"
+        return
+    config = state_selection_prompt_config(states)
+    session.active_prompt = _AgendaPrompt(
+        kind="state",
+        config=config,
+        choices=states,
+    )
+
+
+def _start_prompt_refile(session: _AgendaSession) -> None:
+    """Start footer prompt for refile destination."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        session.status_message = "Action available only on task rows"
+        return
+    current_files = resolve_input_paths(session.args.files)
+    config = refile_prompt_config(current_files)
+    session.active_prompt = _AgendaPrompt(
+        kind="refile",
+        config=config,
+        choices=current_files,
+    )
+
+
+def _start_prompt_clock_entry(session: _AgendaSession) -> None:
+    """Start footer prompt for clock duration."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        session.status_message = "Action available only on task rows"
+        return
+    config = clock_duration_prompt_config()
+    session.active_prompt = _AgendaPrompt(
+        kind="clock",
+        config=config,
+    )
+
+
+def _submit_active_prompt(session: _AgendaSession) -> str | None:
+    """Submit active prompt and return validation error when invalid."""
+    active = session.active_prompt
+    if active is None:
+        return None
+
+    value = active.config.prompt.value.strip()
+    handlers = {
+        "state": lambda: _submit_state_prompt(session, active, value, active.choices or []),
+        "refile": lambda: _submit_refile_prompt(session, active, value),
+        "clock": lambda: _submit_clock_prompt(session, active, value),
+    }
+    handler = handlers.get(active.kind)
+    if handler is None:
+        session.active_prompt = None
+        return None
+    return handler()
+
+
+def _submit_state_prompt(
+    session: _AgendaSession,
+    prompt: _AgendaPrompt,
+    value: str,
+    states: list[str],
+) -> str | None:
+    """Apply submitted agenda TODO-state prompt value."""
+    cancel_message = prompt.config.cancel_status
+    invalid_message = prompt.config.invalid_status
+
+    selected_state = resolve_todo_state_selection(value, states)
+    if selected_state is None and not value:
+        session.status_message = cancel_message
+        session.active_prompt = None
+        return None
+    if selected_state is not None:
+        _apply_state_change_with_value(session, selected_state)
+        session.active_prompt = None
+        return None
+    return invalid_message
+
+
+def _submit_refile_prompt(
+    session: _AgendaSession,
+    prompt: _AgendaPrompt,
+    value: str,
+) -> str | None:
+    """Apply submitted agenda refile prompt value."""
+    cancel_message = prompt.config.cancel_status
+
+    if not value:
+        session.status_message = cancel_message
+        session.active_prompt = None
+        return None
+    _apply_refile_with_value(session, value)
+    session.active_prompt = None
+    return None
+
+
+def _submit_clock_prompt(
+    session: _AgendaSession,
+    prompt: _AgendaPrompt,
+    value: str,
+) -> str | None:
+    """Apply submitted agenda clock prompt value."""
+    cancel_message = prompt.config.cancel_status
+
+    if not value:
+        session.status_message = cancel_message
+        session.active_prompt = None
+        return None
+    _apply_clock_entry_with_value(session, value)
+    session.active_prompt = None
+    return None
+
+
 def _create_agenda_session(
     args: AgendaArgs,
     nodes: list[Heading],
@@ -1881,15 +1958,13 @@ def _create_agenda_session(
         selected_row_index=0,
         scroll_offset=0,
         status_message="",
+        active_prompt=None,
     )
     _refresh_session(session, None)
     return session
 
 
-def _agenda_key_bindings(
-    console: Console,
-    session: _AgendaSession,
-) -> dict[str, KeyBinding]:
+def _agenda_key_bindings(session: _AgendaSession) -> dict[str, KeyBinding]:
     """Build interactive key bindings for agenda session."""
     return {
         "q": KeyBinding(lambda: False),
@@ -1922,20 +1997,17 @@ def _agenda_key_bindings(
         ),
         "$": key_binding_for_action(lambda: _archive_selected_task(session)),
         "t": key_binding_for_action(
-            lambda: _apply_state_change(console, session),
-            requires_live_pause=True,
+            lambda: _start_prompt_state_change(session),
         ),
         "S-LEFT": key_binding_for_action(lambda: _apply_shift_date(session, day_delta=-1)),
         "S-RIGHT": key_binding_for_action(lambda: _apply_shift_date(session, day_delta=1)),
         "S-UP": key_binding_for_action(lambda: _apply_shift_time(session, hour_delta=-1)),
         "S-DOWN": key_binding_for_action(lambda: _apply_shift_time(session, hour_delta=1)),
         "r": key_binding_for_action(
-            lambda: _apply_refile(console, session),
-            requires_live_pause=True,
+            lambda: _start_prompt_refile(session),
         ),
         "c": key_binding_for_action(
-            lambda: _apply_clock_entry(console, session),
-            requires_live_pause=True,
+            lambda: _start_prompt_clock_entry(session),
         ),
     }
 
@@ -1946,11 +2018,11 @@ def _set_start_date_relative(session: _AgendaSession, *, day_delta: int) -> None
     _refresh_session(session, None)
 
 
-def _handle_interactive_key(console: Console, session: _AgendaSession, key: str) -> bool:
+def _handle_interactive_key(session: _AgendaSession, key: str) -> bool:
     """Handle one interactive keypress and return whether to continue."""
     _refresh_session_if_minute_changed(session)
 
-    result = dispatch_key_binding(key, _agenda_key_bindings(console, session))
+    result = dispatch_key_binding(key, _agenda_key_bindings(session))
     if result.handled:
         return result.continue_loop
 
@@ -1971,21 +2043,50 @@ def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
             auto_refresh=False,
         ) as live:
             while True:
+                if _handle_active_prompt_input(session, live):
+                    continue
+
                 key = read_keypress(timeout_seconds=0.2)
                 if not key:
                     live.update(_interactive_agenda_renderable(console, session), refresh=True)
                     continue
-                if key_binding_requires_live_pause(key, _agenda_key_bindings(console, session)):
+                if key_binding_requires_live_pause(key, _agenda_key_bindings(session)):
                     live.stop()
-                    should_continue = _handle_interactive_key(console, session, key)
+                    should_continue = _handle_interactive_key(session, key)
                     live.start()
                 else:
-                    should_continue = _handle_interactive_key(console, session, key)
+                    should_continue = _handle_interactive_key(session, key)
                 if not should_continue:
                     break
                 live.update(_interactive_agenda_renderable(console, session), refresh=True)
     finally:
         set_mouse_reporting(False)
+
+
+def _handle_active_prompt_input(session: _AgendaSession, live: Live) -> bool:
+    """Handle one agenda prompt event and return whether consumed."""
+    if session.active_prompt is None:
+        return False
+
+    event = read_input_event_with_timeout(0.2, ctrl_p_as_paste=True)
+    if event is None:
+        live.update(_interactive_agenda_renderable(live.console, session), refresh=True)
+        return True
+
+    event_name, event_text = event
+    if event_name == "ESC":
+        session.active_prompt = None
+        session.status_message = "Input cancelled"
+    elif event_name != "IGNORE":
+        prompt = session.active_prompt.config.prompt
+        submitted = apply_footer_prompt_input_event(prompt, event_name, event_text)
+        if submitted:
+            error_message = _submit_active_prompt(session)
+            if error_message is not None:
+                session.status_message = error_message
+
+    live.update(_interactive_agenda_renderable(live.console, session), refresh=True)
+    return True
 
 
 def _render_agenda(console: Console, render_input: _AgendaRenderInput) -> None:

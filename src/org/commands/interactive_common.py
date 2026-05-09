@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Protocol
 from org_parser.element import Repeat
 from org_parser.time import Timestamp
 from rich.syntax import Syntax
+from rich.text import Text
 
 from org.output_format import DEFAULT_OUTPUT_THEME
 
@@ -68,6 +69,16 @@ class KeyDispatchResult:
     handled: bool
     continue_loop: bool
     requires_live_pause: bool
+
+
+@dataclass
+class FooterPromptState:
+    """Editable footer prompt state shared by interactive TUIs."""
+
+    label: str
+    value: str = ""
+    cursor_position: int = 0
+    error_message: str = ""
 
 
 def key_binding_for_action(
@@ -455,6 +466,81 @@ def read_keypress(timeout_seconds: float | None = None) -> str:
             return ""
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def read_input_event_with_timeout(
+    timeout_seconds: float,
+    *,
+    token_map: dict[str, str] | None = None,
+    ctrl_p_as_paste: bool = False,
+) -> tuple[str, str] | None:
+    """Read one input event with timeout, returning None when idle."""
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        ready, _, _ = select.select([fd], [], [], timeout_seconds)
+        if not ready:
+            return None
+        return read_input_event(fd, token_map=token_map, ctrl_p_as_paste=ctrl_p_as_paste)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def apply_footer_prompt_input_event(
+    prompt: FooterPromptState,
+    event_name: str,
+    event_text: str,
+) -> bool:
+    """Apply one input event to footer prompt and return submit status."""
+    if event_name == "ENTER":
+        return True
+
+    cursor_targets = {
+        "LEFT": max(0, prompt.cursor_position - 1),
+        "RIGHT": min(len(prompt.value), prompt.cursor_position + 1),
+        "HOME": 0,
+        "END": len(prompt.value),
+    }
+    target_cursor = cursor_targets.get(event_name)
+    if target_cursor is not None:
+        prompt.cursor_position = target_cursor
+        return False
+
+    if event_name == "BACKSPACE" and prompt.cursor_position > 0:
+        prompt.value = (
+            f"{prompt.value[: prompt.cursor_position - 1]}{prompt.value[prompt.cursor_position :]}"
+        )
+        prompt.cursor_position -= 1
+        return False
+
+    if event_name == "DELETE" and prompt.cursor_position < len(prompt.value):
+        prompt.value = (
+            f"{prompt.value[: prompt.cursor_position]}{prompt.value[prompt.cursor_position + 1 :]}"
+        )
+        return False
+
+    if event_name == "TEXT":
+        prompt.value = (
+            f"{prompt.value[: prompt.cursor_position]}"
+            f"{event_text}"
+            f"{prompt.value[prompt.cursor_position :]}"
+        )
+        prompt.cursor_position += len(event_text)
+    return False
+
+
+def build_footer_prompt_text(prompt: FooterPromptState) -> Text:
+    """Build prompt text with visible cursor for footer rendering."""
+    clamped_cursor = max(0, min(prompt.cursor_position, len(prompt.value)))
+    text = Text(f"{prompt.label}: ", style="bold")
+    text.append(prompt.value[:clamped_cursor])
+    if clamped_cursor < len(prompt.value):
+        text.append(prompt.value[clamped_cursor], style="reverse")
+        text.append(prompt.value[clamped_cursor + 1 :])
+    else:
+        text.append(" ", style="reverse")
+    return text
 
 
 def detail_org_block(node: Heading) -> str:

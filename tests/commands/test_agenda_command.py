@@ -19,6 +19,7 @@ from org.commands import archive as archive_command
 from org.commands import editor as editor_command
 from org.commands.interactive_common import decode_escape_sequence, detail_org_block, local_now
 from org.commands.tasks import capture as capture_command
+from org.commands.tasks.common import duration_to_org_text, parse_clock_duration
 
 
 if TYPE_CHECKING:
@@ -581,18 +582,10 @@ def test_decode_escape_sequence_unknown_escape_is_not_exit() -> None:
 
 def test_parse_clock_duration_accepts_multiple_formats() -> None:
     """Clock duration parser should handle H:MM, minutes, and suffixed values."""
-    assert (
-        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("1:30")) == "1:30"
-    )
-    assert (
-        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("90")) == "1:30"
-    )
-    assert (
-        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("2h")) == "2:00"
-    )
-    assert (
-        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("45m")) == "0:45"
-    )
+    assert duration_to_org_text(parse_clock_duration("1:30")) == "1:30"
+    assert duration_to_org_text(parse_clock_duration("90")) == "1:30"
+    assert duration_to_org_text(parse_clock_duration("2h")) == "2:00"
+    assert duration_to_org_text(parse_clock_duration("45m")) == "0:45"
 
 
 def test_advance_timestamp_by_repeater_moves_schedule_once() -> None:
@@ -703,13 +696,11 @@ def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     start = session.selected_row_index
-    assert agenda_command._handle_interactive_key(console, session, "WHEEL-DOWN") is True
+    assert agenda_command._handle_interactive_key(session, "WHEEL-DOWN") is True
     assert session.selected_row_index == (start + 1) % len(session.row_locations)
 
-    assert agenda_command._handle_interactive_key(console, session, "WHEEL-UP") is True
+    assert agenda_command._handle_interactive_key(session, "WHEEL-UP") is True
     assert session.selected_row_index == start
 
 
@@ -729,13 +720,11 @@ def test_handle_interactive_key_refreshes_now_marker_when_minute_changes(
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     before = next(row.time_text for row in session.day_models[0].rows if row.kind == "now_marker")
     assert before == "10:00"
 
     clock["value"] = datetime(2025, 1, 15, 10, 1)
-    assert agenda_command._handle_interactive_key(console, session, "DOWN") is True
+    assert agenda_command._handle_interactive_key(session, "DOWN") is True
 
     after = next(row.time_text for row in session.day_models[0].rows if row.kind == "now_marker")
     assert after == "10:01"
@@ -785,10 +774,8 @@ def test_handle_interactive_key_unsupported_key_sets_status_and_continues() -> N
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     unsupported_key = "UNSUPPORTED-ESC:1b5b3939397e"
-    assert agenda_command._handle_interactive_key(console, session, unsupported_key) is True
+    assert agenda_command._handle_interactive_key(session, unsupported_key) is True
     assert session.status_message == f"Unsupported key: {unsupported_key}"
 
 
@@ -813,10 +800,7 @@ def test_apply_state_change_uses_current_action_time(
     )
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
-    console = Console(file=StringIO(), force_terminal=False)
-
     monkeypatch.setattr("org.commands.agenda.local_now", lambda: action_now)
-    monkeypatch.setattr(agenda_command, "_choose_state", lambda _console, _heading: "DONE")
     monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
     monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
     monkeypatch.setattr(
@@ -825,7 +809,7 @@ def test_apply_state_change_uses_current_action_time(
         lambda _session, _preserve_identity: None,
     )
 
-    agenda_command._apply_state_change(console, session)
+    agenda_command._apply_state_change_with_value(session, "DONE")
 
     assert heading.todo == "DONE"
     assert heading.repeats
@@ -855,9 +839,6 @@ def test_apply_clock_entry_uses_current_action_time(
     )
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
-    console = Console(file=StringIO(), force_terminal=False)
-
-    monkeypatch.setattr(console, "input", lambda _prompt: "30")
     monkeypatch.setattr("org.commands.agenda.local_now", lambda: action_now)
     monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
     monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
@@ -867,7 +848,7 @@ def test_apply_clock_entry_uses_current_action_time(
         lambda _session, _preserve_identity: None,
     )
 
-    agenda_command._apply_clock_entry(console, session)
+    agenda_command._apply_clock_entry_with_value(session, "30")
 
     assert heading.clock_entries
     timestamp = heading.clock_entries[-1].timestamp
@@ -878,7 +859,6 @@ def test_apply_clock_entry_uses_current_action_time(
 
 
 def test_apply_refile_rejects_same_file_with_equivalent_path(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
     """Refile should treat equivalent path spellings as same-file destinations."""
@@ -902,10 +882,7 @@ def test_apply_refile_rejects_same_file_with_equivalent_path(
     )
 
     destination_alias = os.path.join(tmp_path, ".", "agenda_refile_same.org")
-    console = Console(file=StringIO(), force_terminal=False)
-    monkeypatch.setattr(console, "input", lambda _prompt: destination_alias)
-
-    agenda_command._apply_refile(console, session)
+    agenda_command._apply_refile_with_value(session, destination_alias)
 
     assert session.status_message == "Task already in destination file"
     with open(fixture_path, encoding="utf-8") as handle:
@@ -927,8 +904,6 @@ def test_handle_interactive_key_enter_edits_selected_task(
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     task_index = next(
         index
         for index, (day_index, row_index) in enumerate(session.row_locations)
@@ -945,7 +920,7 @@ def test_handle_interactive_key_enter_edits_selected_task(
 
     monkeypatch.setattr(agenda_command, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    assert agenda_command._handle_interactive_key(console, session, "ENTER") is True
+    assert agenda_command._handle_interactive_key(session, "ENTER") is True
     assert session.status_message == "No changes."
 
 
@@ -963,8 +938,6 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     task_index = next(
         index
         for index, (day_index, row_index) in enumerate(session.row_locations)
@@ -991,7 +964,7 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
     monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
     monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
 
-    assert agenda_command._handle_interactive_key(console, session, "ENTER") is True
+    assert agenda_command._handle_interactive_key(session, "ENTER") is True
     assert session.status_message == "Task updated"
     assert saved_documents == [source_document]
 
@@ -1010,8 +983,6 @@ def test_handle_interactive_key_dollar_archives_selected_task(
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     task_index = next(
         index
         for index, (day_index, row_index) in enumerate(session.row_locations)
@@ -1044,7 +1015,7 @@ def test_handle_interactive_key_dollar_archives_selected_task(
     monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
     monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
 
-    assert agenda_command._handle_interactive_key(console, session, "$") is True
+    assert agenda_command._handle_interactive_key(session, "$") is True
     assert session.status_message == "Task archived"
 
 
@@ -1062,7 +1033,6 @@ def test_handle_interactive_key_a_captures_and_schedules_on_timed_task_row(
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
     timed_task_index = next(
         index
         for index, (day_index, row_index) in enumerate(session.row_locations)
@@ -1107,7 +1077,7 @@ def test_handle_interactive_key_a_captures_and_schedules_on_timed_task_row(
 
     monkeypatch.setattr(agenda_command, "_refresh_session", _fake_refresh)
 
-    assert agenda_command._handle_interactive_key(console, session, "a") is True
+    assert agenda_command._handle_interactive_key(session, "a") is True
     assert str(captured_node.scheduled) == expected_timestamp
     assert saved_documents == [captured_node.document]
     assert reloaded["session"] is session
@@ -1135,7 +1105,6 @@ def test_handle_interactive_key_a_uses_now_marker_time(
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
     now_index = next(
         index
         for index, (day_index, row_index) in enumerate(session.row_locations)
@@ -1157,7 +1126,7 @@ def test_handle_interactive_key_a_uses_now_marker_time(
     monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
     monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
 
-    assert agenda_command._handle_interactive_key(console, session, "a") is True
+    assert agenda_command._handle_interactive_key(session, "a") is True
     assert str(captured_node.scheduled) == "<2025-01-15 Wed 17:04>"
 
 
@@ -1173,7 +1142,6 @@ def test_handle_interactive_key_a_on_non_timetable_row_reports_blocked() -> None
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
     blocked_index = next(
         index
         for index, (day_index, row_index) in enumerate(session.row_locations)
@@ -1181,7 +1149,7 @@ def test_handle_interactive_key_a_on_non_timetable_row_reports_blocked() -> None
     )
     session.selected_row_index = blocked_index
 
-    assert agenda_command._handle_interactive_key(console, session, "a") is True
+    assert agenda_command._handle_interactive_key(session, "a") is True
     assert session.status_message == "Capture is available only on timetable time rows"
 
 
@@ -1197,8 +1165,6 @@ def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     hour_index = next(
         index
         for index, (day_index, row_index) in enumerate(session.row_locations)
@@ -1206,7 +1172,7 @@ def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:
     )
     session.selected_row_index = hour_index
 
-    assert agenda_command._handle_interactive_key(console, session, "ENTER") is True
+    assert agenda_command._handle_interactive_key(session, "ENTER") is True
     assert session.status_message == "Action available only on task rows"
 
 
@@ -1222,9 +1188,7 @@ def test_handle_interactive_key_escape_quits_interactive_loop() -> None:
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
-    assert agenda_command._handle_interactive_key(console, session, "ESC") is False
+    assert agenda_command._handle_interactive_key(session, "ESC") is False
 
 
 def test_detail_org_block_includes_selected_heading_children() -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from org.commands.interactive_common import (
     BRACKETED_PASTE_DISABLE,
@@ -15,6 +15,7 @@ from org.commands.interactive_common import (
     read_input_event,
     set_bracketed_paste,
 )
+from org.commands.tasks.common import resolve_todo_state_selection, todo_states_for_heading
 
 
 if TYPE_CHECKING:
@@ -109,3 +110,28 @@ def test_set_bracketed_paste_writes_terminal_sequences(monkeypatch: pytest.Monke
     set_bracketed_paste(False)
 
     assert fake_stdout.writes == [BRACKETED_PASTE_ENABLE, BRACKETED_PASTE_DISABLE]
+
+
+def test_resolve_todo_state_selection_supports_number_and_value() -> None:
+    """State selection should resolve numeric indexes and explicit values."""
+    states = ["TODO", "NEXT", "DONE"]
+
+    assert resolve_todo_state_selection("2", states) == "NEXT"
+    assert resolve_todo_state_selection("DONE", states) == "DONE"
+    assert resolve_todo_state_selection("", states) is None
+    assert resolve_todo_state_selection("99", states) is None
+    assert resolve_todo_state_selection("UNKNOWN", states) is None
+
+
+def test_todo_states_for_heading_returns_stable_unique_order() -> None:
+    """TODO states helper should deduplicate while preserving first appearance order."""
+
+    class _FakeDocument:
+        def __init__(self) -> None:
+            self.all_states = ["TODO", "DONE", "TODO", "WAIT"]
+
+    class _FakeHeading:
+        document = _FakeDocument()
+
+    fake_heading = cast("Any", _FakeHeading())
+    assert todo_states_for_heading(fake_heading) == ["TODO", "DONE", "WAIT"]
