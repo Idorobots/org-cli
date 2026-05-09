@@ -14,6 +14,7 @@ from org_parser.document import Heading
 from org_parser.text import CompletionCounter
 from org_parser.time import Timestamp
 
+from org import config as config_module
 from org.commands.interactive_common import FooterPromptState
 from org.query_language import (
     EvalContext,
@@ -324,6 +325,45 @@ def clock_duration_prompt_config() -> PromptActionConfig:
         cancel_status="Clock action cancelled",
         invalid_status="Invalid clock duration",
     )
+
+
+def capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:
+    """Return stable capture template name ordering for prompts."""
+    return sorted(templates)
+
+
+def configured_capture_template_names() -> list[str]:
+    """Return stable capture template names from loaded config."""
+    return capture_template_names(config_module.CONFIG_CAPTURE_TEMPLATES)
+
+
+def capture_template_prompt_label(template_names: list[str]) -> str:
+    """Return standard interactive prompt label for capture template selection."""
+    options = ", ".join(f"{index}:{name}" for index, name in enumerate(template_names, start=1))
+    return f"Capture template number (blank cancels) [{options}]"
+
+
+def capture_template_prompt_config(template_names: list[str] | None = None) -> PromptActionConfig:
+    """Return standardized prompt config for capture template selection."""
+    names = configured_capture_template_names() if template_names is None else template_names
+    return PromptActionConfig(
+        prompt=FooterPromptState(label=capture_template_prompt_label(names)),
+        cancel_status="Capture cancelled",
+        invalid_status="Invalid capture template shortcut",
+    )
+
+
+def resolve_capture_template_selection(selection: str, template_names: list[str]) -> str | None:
+    """Resolve capture template from numeric shortcut input."""
+    normalized = selection.strip()
+    if not normalized:
+        return None
+    if not normalized.isdigit():
+        return None
+    index = int(normalized) - 1
+    if 0 <= index < len(template_names):
+        return template_names[index]
+    return None
 
 
 def parse_clock_duration(value: str) -> timedelta:

@@ -6,7 +6,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 from io import StringIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import org_parser
 import pytest
@@ -14,9 +14,11 @@ import typer
 from org_parser.time import Timestamp
 from rich.console import Console
 
+from org import config as config_module
 from org.commands import agenda as agenda_command
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
+from org.commands import interactive_actions
 from org.commands.interactive_common import decode_escape_sequence, detail_org_block, local_now
 from org.commands.tasks import capture as capture_command
 from org.commands.tasks.common import duration_to_org_text, parse_clock_duration
@@ -24,6 +26,7 @@ from org.commands.tasks.common import duration_to_org_text, parse_clock_duration
 
 if TYPE_CHECKING:
     from org_parser.document import Document, Heading
+    from rich.live import Live
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -1051,6 +1054,11 @@ def test_handle_interactive_key_a_captures_and_schedules_on_timed_task_row(
     captured_node = next(iter(org_parser.loads("* TODO Captured\n")))
     saved_documents: list[Document] = []
     reloaded: dict[str, object] = {}
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
 
     monkeypatch.setattr(
         agenda_command,
@@ -1078,6 +1086,11 @@ def test_handle_interactive_key_a_captures_and_schedules_on_timed_task_row(
     monkeypatch.setattr(agenda_command, "_refresh_session", _fake_refresh)
 
     assert agenda_command._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "1"
+    submit_result = session.active_interactive_action.submit(session)
+    assert submit_result.success is True
+    assert submit_result.keep_prompt_open is False
     assert str(captured_node.scheduled) == expected_timestamp
     assert saved_documents == [captured_node.document]
     assert reloaded["session"] is session
@@ -1112,6 +1125,11 @@ def test_handle_interactive_key_a_uses_now_marker_time(
     )
     session.selected_row_index = now_index
     captured_node = next(iter(org_parser.loads("* TODO Captured\n")))
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
 
     monkeypatch.setattr(
         agenda_command,
@@ -1127,6 +1145,10 @@ def test_handle_interactive_key_a_uses_now_marker_time(
     monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
 
     assert agenda_command._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "1"
+    submit_result = session.active_interactive_action.submit(session)
+    assert submit_result.success is True
     assert str(captured_node.scheduled) == "<2025-01-15 Wed 17:04>"
 
 
@@ -1151,6 +1173,162 @@ def test_handle_interactive_key_a_on_non_timetable_row_reports_blocked() -> None
 
     assert agenda_command._handle_interactive_key(session, "a") is True
     assert session.status_message == "Capture is available only on timetable time rows"
+
+
+def test_handle_interactive_key_a_blank_template_input_cancels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should close agenda capture prompt with cancel status on blank input."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    timed_task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if (
+            session.day_models[day_index].rows[row_index].kind == "task"
+            and session.day_models[day_index].rows[row_index].source
+            in {"scheduled", "deadline_today", "repeat"}
+            and ":" in session.day_models[day_index].rows[row_index].time_text
+        )
+    )
+    session.selected_row_index = timed_task_index
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
+
+    assert agenda_command._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = ""
+    submit_result = session.active_interactive_action.submit(session)
+
+    assert submit_result.success is True
+    assert submit_result.keep_prompt_open is False
+    assert submit_result.status_message == "Capture cancelled"
+
+
+def test_handle_interactive_key_a_invalid_shortcut_keeps_prompt_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should keep agenda capture prompt open for invalid shortcuts."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    timed_task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if (
+            session.day_models[day_index].rows[row_index].kind == "task"
+            and session.day_models[day_index].rows[row_index].source
+            in {"scheduled", "deadline_today", "repeat"}
+            and ":" in session.day_models[day_index].rows[row_index].time_text
+        )
+    )
+    session.selected_row_index = timed_task_index
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
+
+    assert agenda_command._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "42"
+    submit_result = session.active_interactive_action.submit(session)
+
+    assert submit_result.success is False
+    assert submit_result.keep_prompt_open is True
+    assert submit_result.status_message == "Invalid capture template shortcut"
+
+
+def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Agenda prompt submission should pause live rendering for capture action."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    timed_task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if (
+            session.day_models[day_index].rows[row_index].kind == "task"
+            and session.day_models[day_index].rows[row_index].source
+            in {"scheduled", "deadline_today", "repeat"}
+            and ":" in session.day_models[day_index].rows[row_index].time_text
+        )
+    )
+    session.selected_row_index = timed_task_index
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
+    agenda_command._handle_interactive_key(session, "a")
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "1"
+
+    captured_node = next(iter(org_parser.loads("* TODO Captured\n")))
+    monkeypatch.setattr(
+        agenda_command,
+        "capture_task",
+        lambda _args: capture_command.TasksCaptureResult(
+            template_name="quick",
+            heading=captured_node,
+            document=captured_node.document,
+        ),
+    )
+    monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("ENTER", ""),
+    )
+
+    events: list[str] = []
+
+    class _LiveStub:
+        console = Console(file=StringIO(), force_terminal=False, width=120, height=24)
+
+        def stop(self) -> None:
+            events.append("stop")
+
+        def start(self) -> None:
+            events.append("start")
+
+        def update(self, _renderable: object, refresh: bool) -> None:
+            assert refresh is True
+            events.append("update")
+
+    consumed = agenda_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert events == ["stop", "start", "update"]
 
 
 def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:

@@ -168,6 +168,8 @@ def handle_active_interactive_action_input[SessionT: ActionHostSession](
     session: SessionT,
     *,
     refresh: Callable[[], None],
+    pause_live: Callable[[], None] | None = None,
+    resume_live: Callable[[], None] | None = None,
     timeout_seconds: float = 0.2,
 ) -> bool:
     """Handle one input event for the active interactive prompt action."""
@@ -193,7 +195,13 @@ def handle_active_interactive_action_input[SessionT: ActionHostSession](
 
     prompt = action.prompt_config.prompt
     if apply_footer_prompt_input_event(prompt, event_name, event_text):
-        result = action.submit(session)
+        if action.requires_live_pause and pause_live is not None:
+            pause_live()
+        try:
+            result = action.submit(session)
+        finally:
+            if action.requires_live_pause and resume_live is not None:
+                resume_live()
         _apply_action_result(session, result)
         if result.keep_prompt_open:
             if result.status_message is not None:

@@ -27,20 +27,25 @@ from org.commands.agenda import _advance_timestamp_by_repeater
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_action_builders import (
+    can_activate_configured_capture_templates,
     quit_view_action,
     status_external_action,
     status_noninteractive_action,
     view_action,
 )
 from org.commands.interactive_actions import (
+    ActionResult,
+    PromptInteractiveAction,
     PromptInteractiveActionContract,
     SessionAction,
     action_requires_live_pause,
     dispatch_action_key,
+    handle_active_interactive_action_input,
 )
 from org.commands.interactive_common import (
     HeadingIdentity,
     append_repeat_transition,
+    build_footer_prompt_text,
     heading_identity,
     heading_identity_matches,
     local_now,
@@ -49,7 +54,12 @@ from org.commands.interactive_common import (
     shift_priority,
 )
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
-from org.commands.tasks.common import save_document
+from org.commands.tasks.common import (
+    capture_template_prompt_config,
+    configured_capture_template_names,
+    resolve_capture_template_selection,
+    save_document,
+)
 from org.query_language import (
     CompiledQuery,
     EvalContext,
@@ -77,6 +87,7 @@ logger = logging.getLogger("org")
 _HIGHLIGHT_PANEL_STYLE = "on grey23"
 _INTERACTIVE_HEADER_HEIGHT = 2
 _INTERACTIVE_FOOTER_HEIGHT = 3
+_INTERACTIVE_FOOTER_HEIGHT_WITH_PROMPT = 4
 _INTERACTIVE_PANEL_HEIGHT = 4
 _INTERACTIVE_INPUT_TIMEOUT_SECONDS = 0.05
 
@@ -778,11 +789,11 @@ def _archive_selected_task(session: _BoardSession) -> None:
     session.status_message = "Task archived"
 
 
-def _apply_capture_task(session: _BoardSession) -> None:
+def _apply_capture_task(session: _BoardSession, template_name: str) -> None:
     """Capture a new task and reload board session."""
     session.status_message = ""
     capture_args = TasksCaptureArgs(
-        template_name=None,
+        template_name=template_name,
         config=session.args.config,
         file=None,
         parent=None,
@@ -803,6 +814,32 @@ def _apply_capture_task(session: _BoardSession) -> None:
         session.status_message = str(err)
         return
     session.status_message = "Task captured"
+
+
+def _submit_board_capture_action(
+    session: _BoardSession,
+    _target: _BoardSession,
+    raw_value: str,
+    options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted capture template selection from active board prompt."""
+    active = session.active_interactive_action
+    if active is None:
+        return ActionResult(success=False)
+
+    value = raw_value.strip()
+    template_name = resolve_capture_template_selection(value, options or [])
+    if template_name is None and not value:
+        return ActionResult(status_message=active.prompt_config.cancel_status)
+    if template_name is None:
+        return ActionResult(
+            success=False,
+            status_message=active.prompt_config.invalid_status,
+            keep_prompt_open=True,
+        )
+
+    _apply_capture_task(session, template_name)
+    return ActionResult(status_message=session.status_message)
 
 
 def _interactive_viewport_rows(console_height: int) -> int:
@@ -911,25 +948,88 @@ def _sync_scroll_for_selection(
 
 def _interactive_flow_board_renderable(console: Console, session: _BoardSession) -> RenderableType:
     """Build scrollable interactive flow board with fixed headers/footer."""
+    prompt_line = None
+    active_action = session.active_interactive_action
+    if active_action is not None:
+        prompt_line = build_footer_prompt_text(active_action.prompt_config.prompt)
+    footer_height = (
+        _INTERACTIVE_FOOTER_HEIGHT
+        if prompt_line is None
+        else _INTERACTIVE_FOOTER_HEIGHT_WITH_PROMPT
+    )
+
     panel_content_width = _estimate_panel_content_width(console.width, len(session.columns))
     body_height = max(
         1,
-        console.size.height - _INTERACTIVE_HEADER_HEIGHT - _INTERACTIVE_FOOTER_HEIGHT,
+        console.size.height - _INTERACTIVE_HEADER_HEIGHT - footer_height,
     )
 
+    header = _build_board_header(session.columns)
+    body, end_row = _build_board_body(session, panel_content_width, body_height)
+
+    controls = (
+        "Up/Down, Left/Right, Wheel move"
+        " | Enter edit"
+        " | a add"
+        " | $ archive"
+        " | Shift+Left/Right state"
+        " | Shift+Up/Down priority"
+        " | q/Esc quit"
+    )
+    selected_nodes = session.columns[session.selected_column_index].nodes
+    total_rows = max(len(selected_nodes), 1)
+    visible_end_row = min(end_row, total_rows)
+    row_text = f"Rows {visible_end_row}/{total_rows}"
+    status = " ".join((session.status_message or "").splitlines())
+    footer_style = "dim" if session.color_enabled else ""
+
+    footer_line = Table.grid(expand=True)
+    footer_line.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
+    footer_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
+    footer_line.add_row(
+        Text(row_text, style=footer_style, no_wrap=True, overflow="ellipsis"),
+        Text(controls, style=footer_style, no_wrap=True, overflow="ellipsis"),
+    )
+
+    layout = Layout(name="board")
+    layout.split_column(
+        Layout(name="header", size=_INTERACTIVE_HEADER_HEIGHT),
+        Layout(name="body"),
+        Layout(name="footer", size=footer_height),
+    )
+    layout["header"].update(Group(header, Rule(style=footer_style)))
+    layout["body"].update(body)
+    status_text = Text(status, style=footer_style, no_wrap=True, overflow="ellipsis")
+    if prompt_line is None:
+        layout["footer"].update(Group(Rule(style=footer_style), footer_line, status_text))
+    else:
+        layout["footer"].update(
+            Group(Rule(style=footer_style), footer_line, prompt_line, status_text),
+        )
+    return layout
+
+
+def _build_board_header(columns: list[_BoardColumn]) -> Table:
+    """Build interactive board header row from current columns."""
     header = Table(expand=True, box=None, show_lines=False, show_header=False, pad_edge=False)
-    for _ in session.columns:
+    for _ in columns:
         header.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
     header_cells: list[Text] = []
-    for column in session.columns:
+    for column in columns:
         title_text = _render_column_title_text(column.title)
         title_text.overflow = "ellipsis"
         title_text.no_wrap = True
-        header_cells.append(
-            title_text,
-        )
+        header_cells.append(title_text)
     header.add_row(*header_cells)
+    return header
 
+
+def _build_board_body(
+    session: _BoardSession,
+    panel_content_width: int,
+    body_height: int,
+) -> tuple[Table, int]:
+    """Build interactive board body and return visible end-row index."""
     body = Table(expand=True, box=None, show_lines=False, show_header=False, pad_edge=False)
     for _ in session.columns:
         body.add_column(ratio=1)
@@ -975,48 +1075,9 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
             panels.append(_build_task_panel(node, render, highlighted=highlighted))
 
         body_cells.append(Group(*panels) if panels else Text(""))
+
     body.add_row(*body_cells)
-
-    controls = (
-        "Up/Down, Left/Right, Wheel move"
-        " | Enter edit"
-        " | a add"
-        " | $ archive"
-        " | Shift+Left/Right state"
-        " | Shift+Up/Down priority"
-        " | q/Esc quit"
-    )
-    selected_nodes = session.columns[session.selected_column_index].nodes
-    total_rows = max(len(selected_nodes), 1)
-    visible_end_row = min(end_row, total_rows)
-    row_text = f"Rows {visible_end_row}/{total_rows}"
-    status = " ".join((session.status_message or "").splitlines())
-    footer_style = "dim" if session.color_enabled else ""
-
-    footer_line = Table.grid(expand=True)
-    footer_line.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
-    footer_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
-    footer_line.add_row(
-        Text(row_text, style=footer_style, no_wrap=True, overflow="ellipsis"),
-        Text(controls, style=footer_style, no_wrap=True, overflow="ellipsis"),
-    )
-
-    layout = Layout(name="board")
-    layout.split_column(
-        Layout(name="header", size=_INTERACTIVE_HEADER_HEIGHT),
-        Layout(name="body"),
-        Layout(name="footer", size=_INTERACTIVE_FOOTER_HEIGHT),
-    )
-    layout["header"].update(Group(header, Rule(style=footer_style)))
-    layout["body"].update(body)
-    layout["footer"].update(
-        Group(
-            Rule(style=footer_style),
-            footer_line,
-            Text(status, style=footer_style, no_wrap=True, overflow="ellipsis"),
-        ),
-    )
-    return layout
+    return body, end_row
 
 
 def _flow_board_key_bindings(
@@ -1033,7 +1094,14 @@ def _flow_board_key_bindings(
         "RIGHT": view_action(lambda _session: _move_selection_horizontal(session, 1)),
         "LEFT": view_action(lambda _session: _move_selection_horizontal(session, -1)),
         "ENTER": status_external_action(_edit_selected_task_in_external_editor),
-        "a": status_external_action(_apply_capture_task),
+        "a": PromptInteractiveAction(
+            prompt_config=capture_template_prompt_config(),
+            apply_with_input=_submit_board_capture_action,
+            resolve_target=lambda current: current,
+            options_factory=lambda _session: configured_capture_template_names(),
+            can_activate=can_activate_configured_capture_templates,
+            requires_live_pause=True,
+        ),
         "$": status_noninteractive_action(_archive_selected_task),
         "S-LEFT": status_noninteractive_action(
             lambda _session: _apply_state_move(session, direction=-1),
@@ -1073,6 +1141,9 @@ def _run_flow_board_interactive(console: Console, session: _BoardSession) -> Non
             auto_refresh=False,
         ) as live:
             while True:
+                if _handle_active_prompt_input(session, live):
+                    continue
+
                 key = read_keypress(timeout_seconds=_INTERACTIVE_INPUT_TIMEOUT_SECONDS)
                 if not key:
                     live.update(_interactive_flow_board_renderable(console, session), refresh=True)
@@ -1091,6 +1162,19 @@ def _run_flow_board_interactive(console: Console, session: _BoardSession) -> Non
                 live.update(_interactive_flow_board_renderable(console, session), refresh=True)
     finally:
         set_mouse_reporting(False)
+
+
+def _handle_active_prompt_input(session: _BoardSession, live: Live) -> bool:
+    """Handle one board prompt event and return whether input was consumed."""
+    return handle_active_interactive_action_input(
+        session,
+        pause_live=live.stop,
+        refresh=lambda: live.update(
+            _interactive_flow_board_renderable(live.console, session),
+            refresh=True,
+        ),
+        resume_live=live.start,
+    )
 
 
 def run_flow_board(args: BoardArgs) -> None:

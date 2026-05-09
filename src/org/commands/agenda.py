@@ -24,6 +24,7 @@ from org.cli_common import load_and_process_data, resolve_input_paths
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_action_builders import (
+    can_activate_configured_capture_templates,
     quit_view_action,
     status_external_action,
     status_noninteractive_action,
@@ -47,12 +48,15 @@ from org.commands.interactive_common import (
 )
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import (
+    capture_template_prompt_config,
     clock_duration_prompt_config,
+    configured_capture_template_names,
     duration_to_org_text,
     iter_descendants,
     load_document,
     parse_clock_duration,
     refile_prompt_config,
+    resolve_capture_template_selection,
     resolve_refile_destination_input,
     resolve_todo_state_selection,
     save_document,
@@ -1777,7 +1781,7 @@ def _timetable_schedule_for_selected_row(session: _AgendaSession) -> Timestamp |
     return Timestamp.from_source(f"<{row.day:%Y-%m-%d} {day_name} {hour:02d}:{minute:02d}>")
 
 
-def _apply_capture_task(session: _AgendaSession) -> None:
+def _apply_capture_task(session: _AgendaSession, template_name: str) -> None:
     """Capture a task and schedule it at selected timetable row time."""
     scheduled = _timetable_schedule_for_selected_row(session)
     if scheduled is None:
@@ -1786,7 +1790,7 @@ def _apply_capture_task(session: _AgendaSession) -> None:
 
     session.status_message = ""
     capture_args = TasksCaptureArgs(
-        template_name=None,
+        template_name=template_name,
         config=session.args.config,
         file=None,
         parent=None,
@@ -1831,6 +1835,16 @@ def _can_activate_agenda_state_prompt(session: _AgendaSession) -> ActionResult |
     return None
 
 
+def _can_activate_agenda_capture_prompt(session: _AgendaSession) -> ActionResult | None:
+    """Validate preconditions for capture template prompt activation."""
+    if _timetable_schedule_for_selected_row(session) is None:
+        return ActionResult(
+            success=False,
+            status_message="Capture is available only on timetable time rows",
+        )
+    return can_activate_configured_capture_templates(session)
+
+
 def _submit_agenda_state_action(
     session: _AgendaSession,
     _row: _AgendaRow,
@@ -1839,7 +1853,7 @@ def _submit_agenda_state_action(
 ) -> ActionResult:
     """Apply submitted TODO-state value from active agenda prompt."""
     active = session.active_interactive_action
-    if active is None or active.prompt_config is None:
+    if active is None:
         return ActionResult(success=False)
 
     value = raw_value.strip()
@@ -1858,6 +1872,32 @@ def _submit_agenda_state_action(
     return ActionResult(status_message=session.status_message)
 
 
+def _submit_agenda_capture_action(
+    session: _AgendaSession,
+    _target: _AgendaSession,
+    raw_value: str,
+    options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted capture template selection from active agenda prompt."""
+    active = session.active_interactive_action
+    if active is None:
+        return ActionResult(success=False)
+
+    value = raw_value.strip()
+    template_name = resolve_capture_template_selection(value, options or [])
+    if template_name is None and not value:
+        return ActionResult(status_message=active.prompt_config.cancel_status)
+    if template_name is None:
+        return ActionResult(
+            success=False,
+            status_message=active.prompt_config.invalid_status,
+            keep_prompt_open=True,
+        )
+
+    _apply_capture_task(session, template_name)
+    return ActionResult(status_message=session.status_message)
+
+
 def _submit_agenda_refile_action(
     session: _AgendaSession,
     _row: _AgendaRow,
@@ -1866,7 +1906,7 @@ def _submit_agenda_refile_action(
 ) -> ActionResult:
     """Apply submitted refile destination from active agenda prompt."""
     active = session.active_interactive_action
-    if active is None or active.prompt_config is None:
+    if active is None:
         return ActionResult(success=False)
 
     value = raw_value.strip()
@@ -1884,7 +1924,7 @@ def _submit_agenda_clock_action(
 ) -> ActionResult:
     """Apply submitted clock duration from active agenda prompt."""
     active = session.active_interactive_action
-    if active is None or active.prompt_config is None:
+    if active is None:
         return ActionResult(success=False)
 
     value = raw_value.strip()
@@ -1960,7 +2000,14 @@ def _agenda_actions(session: _AgendaSession) -> dict[str, SessionAction[_AgendaS
             ),
         ),
         "ENTER": status_external_action(_edit_selected_task_in_external_editor),
-        "a": status_external_action(_apply_capture_task),
+        "a": PromptInteractiveAction(
+            prompt_config=capture_template_prompt_config(),
+            apply_with_input=_submit_agenda_capture_action,
+            resolve_target=lambda current: current,
+            options_factory=lambda _session: configured_capture_template_names(),
+            can_activate=_can_activate_agenda_capture_prompt,
+            requires_live_pause=True,
+        ),
         "$": status_noninteractive_action(_archive_selected_task),
         "t": PromptInteractiveAction(
             prompt_config=state_selection_prompt_config(
@@ -2052,10 +2099,12 @@ def _handle_active_prompt_input(session: _AgendaSession, live: Live) -> bool:
     """Handle one agenda prompt event and return whether consumed."""
     return handle_active_interactive_action_input(
         session,
+        pause_live=live.stop,
         refresh=lambda: live.update(
             _interactive_agenda_renderable(live.console, session),
             refresh=True,
         ),
+        resume_live=live.start,
     )
 
 

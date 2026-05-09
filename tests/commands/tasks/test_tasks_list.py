@@ -7,15 +7,17 @@ import os
 import sys
 from contextlib import contextmanager
 from io import StringIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import click
 import pytest
 import typer
 from rich.console import Console
 
+from org import config as config_module
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
+from org.commands import interactive_actions
 from org.commands.interactive_common import heading_identity
 from org.commands.tasks import capture as capture_command
 from org.commands.tasks import list as tasks_list
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from org_parser.document import Document, Heading
+    from rich.live import Live
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
@@ -938,7 +941,7 @@ def test_handle_interactive_key_dollar_archives_selected_task(
 def test_handle_interactive_key_a_captures_task_and_reloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """a should capture a task and reload list session."""
+    """a should prompt for template then capture and reload list session."""
     nodes = node_from_org("* TODO A\n")
     args = make_list_args([])
     session = tasks_list._create_tasks_list_session(
@@ -952,6 +955,11 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     )
     captured_node = node_from_org("* TODO Captured\n")[0]
     reload_args: dict[str, object] = {}
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
 
     monkeypatch.setattr(
         tasks_list,
@@ -974,15 +982,20 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     monkeypatch.setattr(tasks_list, "_reload_session_nodes", _fake_reload)
 
     assert tasks_list._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "1"
+    submit_result = session.active_interactive_action.submit(session)
+    assert submit_result.success is True
+    assert submit_result.keep_prompt_open is False
     assert reload_args["session"] is session
     assert reload_args["identity"] == heading_identity(captured_node)
     assert session.status_message == "Task captured"
 
 
-def test_handle_interactive_key_a_capture_cancelled_sets_status(
+def test_handle_interactive_key_a_capture_blank_input_cancels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """a should report cancellation when capture is interrupted."""
+    """a should close prompt with cancel status on blank template input."""
     nodes = node_from_org("* TODO A\n")
     args = make_list_args([])
     session = tasks_list._create_tasks_list_session(
@@ -994,16 +1007,134 @@ def test_handle_interactive_key_a_capture_cancelled_sets_status(
             color_enabled=False,
         ),
     )
-
-    def _raise_interrupt(
-        _args: capture_command.TasksCaptureArgs,
-    ) -> capture_command.TasksCaptureResult:
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(tasks_list, "capture_task", _raise_interrupt)
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
 
     assert tasks_list._handle_interactive_key(session, "a") is True
-    assert session.status_message == "Capture cancelled"
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = ""
+    submit_result = session.active_interactive_action.submit(session)
+    assert submit_result.success is True
+    assert submit_result.keep_prompt_open is False
+    assert submit_result.status_message == "Capture cancelled"
+
+
+def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should keep capture prompt open for invalid template shortcuts."""
+    nodes = node_from_org("* TODO A\n")
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
+
+    assert tasks_list._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "99"
+    submit_result = session.active_interactive_action.submit(session)
+
+    assert submit_result.success is False
+    assert submit_result.keep_prompt_open is True
+    assert submit_result.status_message == "Invalid capture template shortcut"
+
+
+def test_handle_interactive_key_a_without_templates_reports_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should report a clear status when no capture templates are configured."""
+    nodes = node_from_org("* TODO A\n")
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+    monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {})
+
+    assert tasks_list._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is None
+    assert session.status_message == "No capture templates configured"
+
+
+def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prompt submission should pause live rendering for capture action."""
+    nodes = node_from_org("* TODO A\n")
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
+    tasks_list._handle_interactive_key(session, "a")
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "1"
+
+    captured_node = node_from_org("* TODO Captured\n")[0]
+    monkeypatch.setattr(
+        tasks_list,
+        "capture_task",
+        lambda _args: capture_command.TasksCaptureResult(
+            template_name="quick",
+            heading=captured_node,
+            document=captured_node.document,
+        ),
+    )
+    monkeypatch.setattr(tasks_list, "_reload_session_nodes", lambda _session, _identity: True)
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("ENTER", ""),
+    )
+
+    events: list[str] = []
+
+    class _LiveStub:
+        console = Console(file=StringIO(), force_terminal=False, width=120, height=24)
+
+        def stop(self) -> None:
+            events.append("stop")
+
+        def start(self) -> None:
+            events.append("start")
+
+        def update(self, _renderable: object, refresh: bool) -> None:
+            assert refresh is True
+            events.append("update")
+
+    consumed = tasks_list._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert events == ["stop", "start", "update"]
 
 
 def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.MonkeyPatch) -> None:

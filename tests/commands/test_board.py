@@ -6,7 +6,7 @@ import os
 import sys
 from contextlib import contextmanager
 from io import StringIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 import typer
@@ -17,6 +17,7 @@ from org import config as config_module
 from org.commands import archive as archive_command
 from org.commands import board as board_command
 from org.commands import editor as editor_command
+from org.commands import interactive_actions
 from org.commands.interactive_common import heading_identity
 from org.commands.tasks import capture as capture_command
 from tests.conftest import node_from_org
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from org_parser.document import Document, Heading
+    from rich.live import Live
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -597,7 +599,7 @@ def test_state_shift_key_bindings_do_not_require_live_pause() -> None:
 def test_handle_interactive_key_a_captures_task_and_reloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """a should capture a task and reload board selection."""
+    """a should prompt for template then capture and reload board selection."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Existing\n")
     session = board_command._BoardSession(
@@ -618,6 +620,11 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     )
     captured_node = node_from_org("* TODO Captured\n")[0]
     reloaded: dict[str, object] = {}
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
 
     monkeypatch.setattr(
         board_command,
@@ -639,15 +646,20 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     monkeypatch.setattr(board_command, "_reload_session", _fake_reload)
 
     assert board_command._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "1"
+    submit_result = session.active_interactive_action.submit(session)
+    assert submit_result.success is True
+    assert submit_result.keep_prompt_open is False
     assert reloaded["session"] is session
     assert reloaded["identity"] == heading_identity(captured_node)
     assert session.status_message == "Task captured"
 
 
-def test_handle_interactive_key_a_capture_cancelled_sets_status(
+def test_handle_interactive_key_a_capture_blank_input_cancels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """a should report cancellation when capture is interrupted."""
+    """a should close prompt with cancel status on blank template input."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Existing\n")
     session = board_command._BoardSession(
@@ -666,16 +678,155 @@ def test_handle_interactive_key_a_capture_cancelled_sets_status(
         scroll_offset=0,
         status_message="",
     )
-
-    def _raise_interrupt(
-        _args: capture_command.TasksCaptureArgs,
-    ) -> capture_command.TasksCaptureResult:
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(board_command, "capture_task", _raise_interrupt)
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
 
     assert board_command._handle_interactive_key(session, "a") is True
-    assert session.status_message == "Capture cancelled"
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = ""
+    submit_result = session.active_interactive_action.submit(session)
+    assert submit_result.success is True
+    assert submit_result.keep_prompt_open is False
+    assert submit_result.status_message == "Capture cancelled"
+
+
+def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should keep capture prompt open for invalid template shortcuts."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Existing\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", nodes),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
+
+    assert board_command._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "99"
+    submit_result = session.active_interactive_action.submit(session)
+
+    assert submit_result.success is False
+    assert submit_result.keep_prompt_open is True
+    assert submit_result.status_message == "Invalid capture template shortcut"
+
+
+def test_handle_interactive_key_a_without_templates_reports_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should report a clear status when no capture templates are configured."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Existing\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", nodes),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+    monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {})
+
+    assert board_command._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is None
+    assert session.status_message == "No capture templates configured"
+
+
+def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board prompt submission should pause live rendering for capture action."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Existing\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[
+            board_command._BoardColumn("NOT STARTED", []),
+            board_command._BoardColumn("TODO", nodes),
+            board_command._BoardColumn("COMPLETED", []),
+        ],
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
+    board_command._handle_interactive_key(session, "a")
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "1"
+
+    captured_node = node_from_org("* TODO Captured\n")[0]
+    monkeypatch.setattr(
+        board_command,
+        "capture_task",
+        lambda _args: capture_command.TasksCaptureResult(
+            template_name="quick",
+            heading=captured_node,
+            document=captured_node.document,
+        ),
+    )
+    monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("ENTER", ""),
+    )
+
+    events: list[str] = []
+
+    class _LiveStub:
+        console = Console(file=StringIO(), force_terminal=False, width=120, height=24)
+
+        def stop(self) -> None:
+            events.append("stop")
+
+        def start(self) -> None:
+            events.append("start")
+
+        def update(self, _renderable: object, refresh: bool) -> None:
+            assert refresh is True
+            events.append("update")
+
+    consumed = board_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert events == ["stop", "start", "update"]
 
 
 def test_handle_interactive_key_enter_saves_original_document_after_changed_edit(

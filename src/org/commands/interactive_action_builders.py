@@ -10,6 +10,7 @@ from org.commands.interactive_actions import (
     NoninteractiveAction,
     ViewAction,
 )
+from org.commands.tasks.common import configured_capture_template_names
 
 
 if TYPE_CHECKING:
@@ -51,6 +52,13 @@ def status_external_action[SessionT: _StatusSession](
 ) -> ExternalInteractiveAction[SessionT]:
     """Build external interactive action that reports session status message."""
     return ExternalInteractiveAction(run=_wrap_with_status(run))
+
+
+def can_activate_configured_capture_templates[SessionT](_session: SessionT) -> ActionResult | None:
+    """Validate that at least one capture template is configured."""
+    if not configured_capture_template_names():
+        return ActionResult(success=False, status_message="No capture templates configured")
+    return None
 
 
 def _wrap_no_status[SessionT](

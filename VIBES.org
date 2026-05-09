@@ -6880,24 +6880,75 @@ Actions that require special TUI handling (edit & capture) should also be specia
 
 Interactive Actions should always be prompt driven, any actions that don't require user input past the triggering of the action should be separate (can be called =NoninteractiveAction=). On top of that there should be =ViewAction= that adjust the TUI view. The edit/capture actions should be a special-handled =InteractiveAction='s, no prompt but rather changing the TUI view temporarily.
 
-*** TODO Task capture actions should resolve the prompt within the view.
+*** DONE Task capture actions should resolve the prompt within the view.
 :PROPERTIES:
 :capture_time: [2026-05-09 Sat 14:49]
 :context: 
 :END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 15:45]
+:END:
 
 It should be an interactive prompt action that prompts the user for the selected capture template within the same view as the action is triggered in, and then proceeds to the capture view with the template pre-configured.
 
+**** DONE src/org/commands/tasks/list.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 15:45]
+:END:
+
+In file src/org/commands/tasks/list.py around line 836, near the ~def _can_activate_state_prompt(session: _TasksListSession) -> ActionResult | Non~
+
+#+begin_example
++def _can_activate_capture_prompt(_session: _TasksListSession) -> ActionResult | None:
++    """Validate preconditions for opening capture template prompt."""
++    if not configured_capture_template_names():
++        return ActionResult(success=False, status_message="No capture templates configured")
++    return None
++
+#+end_example
+
+This function seems to be duplicated in all three interactive commands. Please refactor it so that it can be reused.
 *** TODO Search action should be available in agenda and board.
 :PROPERTIES:
 :capture_time: [2026-05-09 Sat 14:48]
 :context: [[file:~/projects/software/org-cli/VIBES.org::*Board & agenda commands should omit tasks that are COMMENTs][Board & agenda commands should omit tasks that are COMMENTs]]
 :END:
-*** Board & agenda commands should omit tasks that are COMMENTs
-*** Board command should only show recently completed tasks
+
+When search is enabled in agenda, the currently visible tasks should be filtered down to just the ones matching the search criteria.
+
+When search is enabled in the board, the currently visibla tasks for each column should be filtered down to just the ones matching the search criteria.
+*** CANCELLED Board & agenda commands should omit tasks that are COMMENTs
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-05-09 Sat 14:55] \\
+  Can be done with custom filters and board views.
+:END:
+*** TODO Board command should only show recently completed tasks
 Tasks older than 7 days should be omitted, the timeout should be configurable with =--days=.
-*** Help modal under =?= in interactive commands
-Have commands display a modal outlining all available key bindings when run with =?=. The same description should be added to the help strings for each of the interactive commands.
+*** TODO Help modal under =?= in interactive commands                                    :Docs:Help:
+Have commands display a modal outlining all available key bindings when run with =?=.
+
+The footer bar should now only display =Type ? for help= right-aligned instead of the key bindings.
+When =?= is pressed, the view should temporarily change and instead a listing of all available key bindings together with their descriptions wrapped in a panel should be displayed. It should be visually similar to the arguments/options breakdown in the command help string:
+
+#+begin_example
+╭─ Key bindings ─────────────────────────────────────────────────────────╮
+│   Esc/q     exit the view                                              │
+│   left      move the highlight left                                    │
+│   right     move the highlight right                                   │
+│   S-left    move the selection lef                                     │
+│   ...                                                                  │
+╰────────────────────────────────────────────────────────────────────────╯
+#+end_example
+
+Use the current key-binding help strings as a basis, but elaborate on the function of each action a bit.
+
+In the help-modal view, any key press should exit the view and go back to the previous view.
+
+The same description should be added to the help strings for each of the available commands when the user displays the help with =--help=.
+
 *** Input is very jittery                                                                      :Bug:
 When holding an arrow key down to scroll a longer list the TUI gets jittery and sometimes the key escape sequence is displayed at the very bottom.
 I'm guessing the polling for input is too slow to catch key repeats and sometimes the native input handling kick is, hence printing the key escape sequence.

@@ -22,6 +22,7 @@ from org.cli_common import load_and_process_data
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_action_builders import (
+    can_activate_configured_capture_templates,
     quit_view_action,
     status_external_action,
     status_noninteractive_action,
@@ -53,10 +54,13 @@ from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import (
     PlanningTimestampField,
     PromptActionConfig,
+    capture_template_prompt_config,
+    configured_capture_template_names,
     planning_field_label,
     planning_prompt_config,
     replace_heading_tags_from_csv,
     replace_planning_timestamp_from_raw,
+    resolve_capture_template_selection,
     resolve_todo_state_selection,
     save_document,
     state_selection_prompt_config,
@@ -676,11 +680,11 @@ def _archive_selected_task(session: _TasksListSession) -> None:
         session.status_message = "Task archived"
 
 
-def _apply_capture_task(session: _TasksListSession) -> None:
+def _apply_capture_task(session: _TasksListSession, template_name: str) -> None:
     """Capture a new task and reload list session."""
     session.status_message = ""
     capture_args = TasksCaptureArgs(
-        template_name=None,
+        template_name=template_name,
         config=session.args.config,
         file=None,
         parent=None,
@@ -848,7 +852,7 @@ def _submit_state_action(
 ) -> ActionResult:
     """Apply submitted TODO-state selection."""
     active = session.active_interactive_action
-    if active is None or active.prompt_config is None:
+    if active is None:
         return ActionResult(success=False)
 
     value = raw_value.strip()
@@ -864,6 +868,32 @@ def _submit_state_action(
         )
 
     _apply_state_change_with_value(session, selected_state)
+    return ActionResult(status_message=session.status_message)
+
+
+def _submit_capture_action(
+    session: _TasksListSession,
+    _target: _TasksListSession,
+    raw_value: str,
+    options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted capture template selection from active prompt."""
+    active = session.active_interactive_action
+    if active is None:
+        return ActionResult(success=False)
+
+    value = raw_value.strip()
+    template_name = resolve_capture_template_selection(value, options or [])
+    if template_name is None and not value:
+        return ActionResult(status_message=active.prompt_config.cancel_status)
+    if template_name is None:
+        return ActionResult(
+            success=False,
+            status_message=active.prompt_config.invalid_status,
+            keep_prompt_open=True,
+        )
+
+    _apply_capture_task(session, template_name)
     return ActionResult(status_message=session.status_message)
 
 
@@ -909,7 +939,14 @@ def _tasks_list_actions(session: _TasksListSession) -> dict[str, SessionAction[_
         "UP": view_action(lambda _session: _move_selection(session, -1)),
         "WHEEL-UP": view_action(lambda _session: _move_selection(session, -1)),
         "ENTER": status_external_action(_edit_selected_task_in_external_editor),
-        "a": status_external_action(_apply_capture_task),
+        "a": PromptInteractiveAction(
+            prompt_config=capture_template_prompt_config(),
+            apply_with_input=_submit_capture_action,
+            resolve_target=lambda current: current,
+            options_factory=lambda _session: configured_capture_template_names(),
+            can_activate=can_activate_configured_capture_templates,
+            requires_live_pause=True,
+        ),
         "$": status_noninteractive_action(_archive_selected_task),
         "/": PromptInteractiveAction(
             prompt_config=PromptActionConfig(
@@ -1040,10 +1077,12 @@ def _handle_active_prompt_input(session: _TasksListSession, live: Live) -> bool:
     """Handle one prompt event and return whether input was consumed."""
     return handle_active_interactive_action_input(
         session,
+        pause_live=live.stop,
         refresh=lambda: live.update(
             _interactive_tasks_list_renderable(live.console, session),
             refresh=True,
         ),
+        resume_live=live.start,
     )
 
 
