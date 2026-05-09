@@ -76,6 +76,13 @@ def make_board_args(files: list[str], **overrides: object) -> board_command.Boar
     return args
 
 
+def _visible_board_titles_by_column(
+    session: board_command._BoardSession,
+) -> dict[str, list[str]]:
+    """Return visible task titles grouped by board column title."""
+    return {column.title: [node.title_text for node in column.nodes] for column in session.columns}
+
+
 def test_filter_recent_completed_nodes_uses_latest_timestamp_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -582,6 +589,108 @@ def test_interactive_renderable_footer_status_is_single_line() -> None:
     assert lines[-1].strip() == "line one line two line three"
 
 
+def test_handle_interactive_key_slash_activates_search_prompt() -> None:
+    """Slash should activate board search prompt."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Task\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[board_command._BoardColumn("TODO", nodes)],
+        color_enabled=False,
+        selected_column_index=0,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+        all_columns=[board_command._BoardColumn("TODO", nodes)],
+    )
+
+    assert board_command._handle_interactive_key(session, "/") is True
+    assert session.active_interactive_action is not None
+    assert (
+        session.active_interactive_action.prompt_config.prompt.label == "Search text (blank clears)"
+    )
+
+
+def test_board_search_filters_each_column_and_clear_restores_columns() -> None:
+    """Interactive search should filter each column's visible tasks and clear should restore."""
+    args = make_board_args([])
+    alpha, beta, beta_done = node_from_org(
+        "* TODO Alpha\n* TODO Beta\n* DONE Beta done\n",
+    )
+    all_columns = [
+        board_command._BoardColumn("Backlog", []),
+        board_command._BoardColumn("TODO", [alpha, beta]),
+        board_command._BoardColumn("DONE", [beta_done]),
+    ]
+    session = board_command._BoardSession(
+        args=args,
+        nodes=[alpha, beta, beta_done],
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=all_columns,
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+        all_columns=all_columns,
+    )
+
+    assert board_command._handle_interactive_key(session, "/") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "beta"
+    submit_result = session.active_interactive_action.submit(session)
+
+    assert submit_result.success is True
+    assert submit_result.status_message == "2 matches"
+    assert _visible_board_titles_by_column(session) == {
+        "Backlog": [],
+        "TODO": ["Beta"],
+        "DONE": ["Beta done"],
+    }
+    assert session.search_text == "beta"
+
+    assert board_command._handle_interactive_key(session, "x") is True
+    assert session.status_message == "Search cleared"
+    assert session.search_text == ""
+    assert _visible_board_titles_by_column(session) == {
+        "Backlog": [],
+        "TODO": ["Alpha", "Beta"],
+        "DONE": ["Beta done"],
+    }
+
+
+def test_interactive_renderable_footer_shows_active_search_text() -> None:
+    """Board footer should include currently active interactive search text."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Task\n")
+    column = board_command._BoardColumn("TODO", nodes)
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[column],
+        color_enabled=False,
+        selected_column_index=0,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+        all_columns=[column],
+        search_text="task",
+    )
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=120, height=24)
+
+    console.print(board_command._interactive_flow_board_renderable(console, session))
+    output = buffer.getvalue()
+
+    assert "Search: task" in output
+
+
 def test_handle_interactive_key_question_toggles_help_modal() -> None:
     """Question mark should open help modal and next key should close it."""
     args = make_board_args([])
@@ -920,6 +1029,82 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
 
     assert consumed is True
     assert events == ["stop", "start", "update"]
+
+
+def test_search_prompt_live_updates_and_escape_reverts_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Board search prompt should live-update columns and ESC should restore prior filter."""
+    args = make_board_args([])
+    alpha, beta, done = node_from_org("* TODO Alpha\n* TODO Beta\n* DONE Finished\n")
+    all_columns = [
+        board_command._BoardColumn("Backlog", []),
+        board_command._BoardColumn("TODO", [alpha, beta]),
+        board_command._BoardColumn("DONE", [done]),
+    ]
+    session = board_command._BoardSession(
+        args=args,
+        nodes=[alpha, beta, done],
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=all_columns,
+        color_enabled=False,
+        selected_column_index=1,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+        all_columns=all_columns,
+    )
+    assert board_command._handle_interactive_key(session, "/") is True
+    assert session.active_interactive_action is not None
+
+    events: list[str] = []
+
+    class _LiveStub:
+        console = Console(file=StringIO(), force_terminal=False, width=120, height=24)
+
+        def stop(self) -> None:
+            events.append("stop")
+
+        def start(self) -> None:
+            events.append("start")
+
+        def update(self, _renderable: object, refresh: bool) -> None:
+            assert refresh is True
+            events.append("update")
+
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("TEXT", "b"),
+    )
+    consumed = board_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert _visible_board_titles_by_column(session) == {
+        "Backlog": [],
+        "TODO": ["Beta"],
+        "DONE": [],
+    }
+    assert session.search_text == "b"
+    assert session.status_message == "1 matches"
+
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("ESC", ""),
+    )
+    consumed = board_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert _visible_board_titles_by_column(session) == {
+        "Backlog": [],
+        "TODO": ["Alpha", "Beta"],
+        "DONE": ["Finished"],
+    }
+    assert session.search_text == ""
+    assert session.status_message == "Search cancelled"
+    assert events == ["update", "update"]
 
 
 def test_handle_interactive_key_enter_saves_original_document_after_changed_edit(

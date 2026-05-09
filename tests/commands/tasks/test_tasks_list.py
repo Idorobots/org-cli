@@ -1184,6 +1184,65 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
     assert events == ["stop", "start", "update"]
 
 
+def test_search_prompt_live_updates_and_escape_reverts_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Search prompt should live-update results and ESC should restore prior filter."""
+    nodes = node_from_org("* TODO Alpha\n* TODO Beta\n")
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+    assert tasks_list._handle_interactive_key(session, "/") is True
+    assert session.active_interactive_action is not None
+
+    events: list[str] = []
+
+    class _LiveStub:
+        console = Console(file=StringIO(), force_terminal=False, width=120, height=24)
+
+        def stop(self) -> None:
+            events.append("stop")
+
+        def start(self) -> None:
+            events.append("start")
+
+        def update(self, _renderable: object, refresh: bool) -> None:
+            assert refresh is True
+            events.append("update")
+
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("TEXT", "b"),
+    )
+    consumed = tasks_list._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert [node.title_text for node in session.visible_nodes] == ["Beta"]
+    assert session.search_text == "b"
+    assert session.status_message == "1 matches"
+
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("ESC", ""),
+    )
+    consumed = tasks_list._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert [node.title_text for node in session.visible_nodes] == ["Alpha", "Beta"]
+    assert session.search_text == ""
+    assert session.status_message == "Search cancelled"
+    assert events == ["update", "update"]
+
+
 def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.MonkeyPatch) -> None:
     """State change action should append one repeat/log transition entry."""
     nodes = node_from_org("* TODO A\n")

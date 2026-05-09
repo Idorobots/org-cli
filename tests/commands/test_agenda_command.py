@@ -76,6 +76,18 @@ def _make_args(files: list[str], **overrides: object) -> agenda_command.AgendaAr
     return args
 
 
+def _visible_agenda_task_titles(session: agenda_command._AgendaSession) -> list[str]:
+    """Return visible task titles from current interactive agenda rows."""
+    titles: list[str] = []
+    for day_model in session.day_models:
+        titles.extend(
+            row.node.title_text.strip()
+            for row in day_model.rows
+            if row.kind == "task" and row.node is not None
+        )
+    return titles
+
+
 def test_run_agenda_renders_expected_sections(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -782,6 +794,82 @@ def test_handle_interactive_key_unsupported_key_sets_status_and_continues() -> N
     assert session.status_message == f"Unsupported key: {unsupported_key}"
 
 
+def test_handle_interactive_key_slash_activates_search_prompt() -> None:
+    """Slash should activate agenda search prompt."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+
+    assert agenda_command._handle_interactive_key(session, "/") is True
+    assert session.active_interactive_action is not None
+    assert (
+        session.active_interactive_action.prompt_config.prompt.label == "Search text (blank clears)"
+    )
+
+
+def test_agenda_search_filters_rows_and_clear_restores_rows() -> None:
+    """Interactive search should filter visible rows and clear should restore all rows."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    all_titles = _visible_agenda_task_titles(session)
+
+    assert "Timed agenda task" in all_titles
+    assert "Untimed agenda task" in all_titles
+
+    assert agenda_command._handle_interactive_key(session, "/") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "focus"
+    submit_result = session.active_interactive_action.submit(session)
+
+    assert submit_result.success is True
+    assert submit_result.status_message == "1 matches"
+    assert _visible_agenda_task_titles(session) == ["Timed agenda task"]
+    assert session.search_text == "focus"
+
+    assert agenda_command._handle_interactive_key(session, "x") is True
+    assert session.status_message == "Search cleared"
+    assert session.search_text == ""
+    assert _visible_agenda_task_titles(session) == all_titles
+
+
+def test_interactive_renderable_footer_shows_active_search_text() -> None:
+    """Agenda footer should include currently active interactive search text."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    session.search_text = "focus"
+    agenda_command._refresh_visible_nodes(session, None)
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=220, height=24)
+
+    console.print(agenda_command._interactive_agenda_renderable(console, session))
+    output = buffer.getvalue()
+
+    assert "Search: focus" in output
+
+
 def test_apply_state_change_uses_current_action_time(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1329,6 +1417,68 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
 
     assert consumed is True
     assert events == ["stop", "start", "update"]
+
+
+def test_search_prompt_live_updates_and_escape_reverts_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Agenda search prompt should live-update rows and ESC should restore prior filter."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    assert agenda_command._handle_interactive_key(session, "/") is True
+    assert session.active_interactive_action is not None
+
+    events: list[str] = []
+
+    class _LiveStub:
+        console = Console(file=StringIO(), force_terminal=False, width=120, height=24)
+
+        def stop(self) -> None:
+            events.append("stop")
+
+        def start(self) -> None:
+            events.append("start")
+
+        def update(self, _renderable: object, refresh: bool) -> None:
+            assert refresh is True
+            events.append("update")
+
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("TEXT", "focus"),
+    )
+    consumed = agenda_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert _visible_agenda_task_titles(session) == ["Timed agenda task"]
+    assert session.search_text == "focus"
+    assert session.status_message == "1 matches"
+
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("ESC", ""),
+    )
+    consumed = agenda_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert _visible_agenda_task_titles(session) == [
+        "Timed agenda task",
+        "Completed one-off task",
+        "Untimed agenda task",
+    ]
+    assert session.search_text == ""
+    assert session.status_message == "Search cancelled"
+    assert events == ["update", "update"]
 
 
 def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:

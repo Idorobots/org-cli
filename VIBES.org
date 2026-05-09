@@ -6986,15 +6986,26 @@ It's OK to show partially obscured task panels, so it should be possible to scro
 When holding an arrow key down to scroll a longer list the TUI gets jittery and sometimes the key escape sequence is displayed at the very bottom.
 I'm guessing the polling for input is too slow to catch key repeats and sometimes the native input handling kick is, hence printing the key escape sequence.
 *** High CPU usage when browsing the board                                                     :Bug:
-*** TODO Search action should be available in agenda and board.
+*** REWORKED Search action should be available in agenda and board.
 :PROPERTIES:
 :capture_time: [2026-05-09 Sat 14:48]
 :context: [[file:~/projects/software/org-cli/VIBES.org::*Board & agenda commands should omit tasks that are COMMENTs][Board & agenda commands should omit tasks that are COMMENTs]]
+:END:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-09 Sat 20:59] \\
+  Codex having major trouble running tools.
 :END:
 
 When search is enabled in agenda, the currently visible tasks should be filtered down to just the ones matching the search criteria.
 
 When search is enabled in the board, the currently visibla tasks for each column should be filtered down to just the ones matching the search criteria.
+**** DONE Live update search results
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 20:58]
+:END:
+It would be really nice if the search results could be updated live, whenever any input is entered into the search prompt.
+Update all interactive commands that permit search to live-update during search input prompting.
+
 *** All interactive commands should support the =--width= CLI switch
 *** Agenda non-interactive output format
 - Should be adjusted to "look and feel" just like the interactive one.

@@ -36,6 +36,10 @@ class PromptInteractiveAction[SessionT, TargetT]:
     resolve_target: Callable[[SessionT], TargetT | None] | None = None
     options_factory: Callable[[SessionT], list[str] | None] | None = None
     can_activate: Callable[[SessionT], ActionResult | None] | None = None
+    preview_with_input: (
+        Callable[[SessionT, TargetT, str, list[str] | None], ActionResult] | None
+    ) = None
+    cancel_with_target: Callable[[SessionT, TargetT], ActionResult] | None = None
     unavailable_status: str = "Action available only on task rows"
     requires_live_pause: bool = False
 
@@ -68,6 +72,29 @@ class PromptInteractiveAction[SessionT, TargetT]:
 
         options = None if self.options_factory is None else self.options_factory(session)
         return self.apply_with_input(session, target, self.prompt_config.prompt.value, options)
+
+    def preview(self, session: SessionT) -> ActionResult | None:
+        """Apply live-preview updates while prompt input is being edited."""
+        if self.preview_with_input is None or self.resolve_target is None:
+            return None
+
+        target = self.resolve_target(session)
+        if target is None:
+            return ActionResult(success=False, status_message=self.unavailable_status)
+
+        options = None if self.options_factory is None else self.options_factory(session)
+        return self.preview_with_input(session, target, self.prompt_config.prompt.value, options)
+
+    def cancel(self, session: SessionT) -> ActionResult | None:
+        """Cancel active prompt and optionally restore prior session state."""
+        if self.cancel_with_target is None or self.resolve_target is None:
+            return None
+
+        target = self.resolve_target(session)
+        if target is None:
+            return ActionResult(success=False, status_message=self.unavailable_status)
+
+        return self.cancel_with_target(session, target)
 
 
 @dataclass(frozen=True)
@@ -107,6 +134,14 @@ class PromptInteractiveActionContract[SessionT](Protocol):
 
     def submit(self, session: SessionT) -> ActionResult:
         """Submit active prompt input for this action."""
+        ...
+
+    def preview(self, session: SessionT) -> ActionResult | None:
+        """Preview active prompt input updates without submitting action."""
+        ...
+
+    def cancel(self, session: SessionT) -> ActionResult | None:
+        """Cancel active prompt input and restore any captured state."""
         ...
 
 
@@ -184,8 +219,7 @@ def handle_active_interactive_action_input[SessionT: ActionHostSession](
 
     event_name, event_text = event
     if event_name == "ESC":
-        session.active_interactive_action = None
-        session.status_message = "Input cancelled"
+        _handle_prompt_escape(session, action)
         refresh()
         return True
 
@@ -194,20 +228,22 @@ def handle_active_interactive_action_input[SessionT: ActionHostSession](
         return True
 
     prompt = action.prompt_config.prompt
-    if apply_footer_prompt_input_event(prompt, event_name, event_text):
-        if action.requires_live_pause and pause_live is not None:
-            pause_live()
-        try:
-            result = action.submit(session)
-        finally:
-            if action.requires_live_pause and resume_live is not None:
-                resume_live()
-        _apply_action_result(session, result)
-        if result.keep_prompt_open:
-            if result.status_message is not None:
-                prompt.error_message = result.status_message
-        else:
-            session.active_interactive_action = None
+    prompt_value_before = prompt.value
+    is_submit = apply_footer_prompt_input_event(prompt, event_name, event_text)
+    if is_submit:
+        _execute_prompt_submit(
+            session,
+            action,
+            pause_live=pause_live,
+            resume_live=resume_live,
+        )
+        refresh()
+        return True
+
+    if prompt.value != prompt_value_before:
+        preview_result = action.preview(session)
+        if preview_result is not None:
+            _apply_action_result(session, preview_result)
 
     refresh()
     return True
@@ -228,3 +264,40 @@ def _apply_action_result(session: ActionHostSession, result: ActionResult) -> No
     """Apply one action result to session state."""
     if result.status_message is not None:
         session.status_message = result.status_message
+
+
+def _handle_prompt_escape[SessionT: ActionHostSession](
+    session: SessionT,
+    action: PromptInteractiveActionContract[SessionT],
+) -> None:
+    """Cancel one active prompt action and update session status."""
+    cancel_result = action.cancel(session)
+    session.active_interactive_action = None
+    if cancel_result is not None:
+        _apply_action_result(session, cancel_result)
+        return
+    session.status_message = "Input cancelled"
+
+
+def _execute_prompt_submit[SessionT: ActionHostSession](
+    session: SessionT,
+    action: PromptInteractiveActionContract[SessionT],
+    *,
+    pause_live: Callable[[], None] | None,
+    resume_live: Callable[[], None] | None,
+) -> None:
+    """Submit one prompt action and apply resulting session state."""
+    if action.requires_live_pause and pause_live is not None:
+        pause_live()
+    try:
+        result = action.submit(session)
+    finally:
+        if action.requires_live_pause and resume_live is not None:
+            resume_live()
+
+    _apply_action_result(session, result)
+    if result.keep_prompt_open:
+        if result.status_message is not None:
+            action.prompt_config.prompt.error_message = result.status_message
+        return
+    session.active_interactive_action = None

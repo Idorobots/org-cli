@@ -55,6 +55,7 @@ from org.commands.interactive_common import (
     set_mouse_reporting,
     shift_priority,
 )
+from org.commands.search_common import filter_nodes_by_search
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import (
     PlanningTimestampField,
@@ -188,6 +189,7 @@ class _TasksListSession:
     scroll_offset: int
     status_message: str
     search_text: str
+    search_prompt_previous_text: str | None = None
     show_help_modal: bool = False
     active_interactive_action: PromptInteractiveActionContract[_TasksListSession] | None = None
 
@@ -493,40 +495,9 @@ def _selected_node(session: _TasksListSession) -> Heading | None:
     return session.visible_nodes[session.selected_index]
 
 
-def _node_search_text(node: Heading) -> str:
-    """Build search text from one node without including child subtrees."""
-    parts: list[str] = [
-        str(node.title_text),
-        str(node.body_text),
-        str(node.todo or ""),
-        str(node.priority or ""),
-        str(node.id or ""),
-    ]
-
-    parts.extend(str(tag) for tag in node.tags)
-    parts.extend(str(tag) for tag in node.heading_tags)
-
-    for key, value in node.properties.items():
-        parts.append(str(key))
-        parts.append(str(value))
-
-    parts.extend(
-        str(timestamp)
-        for timestamp in (node.scheduled, node.deadline, node.closed)
-        if timestamp is not None
-    )
-
-    parts.extend(str(repeat) for repeat in node.repeats)
-    return "\n".join(parts)
-
-
 def _filter_nodes_by_search(nodes: list[Heading], search_text: str) -> list[Heading]:
     """Filter nodes by case-insensitive substring match over one node's own text."""
-    normalized_search = search_text.strip().casefold()
-    if not normalized_search:
-        return list(nodes)
-
-    return [node for node in nodes if normalized_search in _node_search_text(node).casefold()]
+    return filter_nodes_by_search(nodes, search_text)
 
 
 def _refresh_visible_nodes(
@@ -882,12 +853,43 @@ def _submit_search_action(
     _options: list[str] | None,
 ) -> ActionResult:
     """Apply submitted interactive search value."""
-    value = raw_value.strip()
+    return _apply_search_text(session, raw_value.strip())
+
+
+def _preview_search_action(
+    session: _TasksListSession,
+    _target: _TasksListSession,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Live-update search results while editing interactive search prompt."""
+    return _apply_search_text(session, raw_value.strip())
+
+
+def _cancel_search_action(
+    session: _TasksListSession,
+    _target: _TasksListSession,
+) -> ActionResult:
+    """Cancel search prompt and restore previously active search filter."""
+    previous_text = session.search_prompt_previous_text or ""
+    session.search_prompt_previous_text = None
+    _apply_search_text(session, previous_text)
+    return ActionResult(status_message="Search cancelled")
+
+
+def _capture_search_prompt_state(session: _TasksListSession) -> ActionResult | None:
+    """Capture current search filter before activating search prompt."""
+    session.search_prompt_previous_text = session.search_text
+    return None
+
+
+def _apply_search_text(session: _TasksListSession, search_text: str) -> ActionResult:
+    """Apply search text to visible tasks and return match status."""
     selected = _selected_node(session)
     preserve_identity = heading_identity(selected) if selected is not None else None
-    session.search_text = value
+    session.search_text = search_text
     _refresh_visible_nodes(session, preserve_identity)
-    status = "Search cleared" if not value else f"{len(session.visible_nodes)} matches"
+    status = "Search cleared" if not search_text else f"{len(session.visible_nodes)} matches"
     return ActionResult(status_message=status)
 
 
@@ -1002,7 +1004,10 @@ def _tasks_list_actions(session: _TasksListSession) -> dict[str, SessionAction[_
                 invalid_status="Invalid search input",
             ),
             apply_with_input=_submit_search_action,
+            preview_with_input=_preview_search_action,
+            cancel_with_target=_cancel_search_action,
             resolve_target=lambda current: current,
+            can_activate=_capture_search_prompt_state,
         ),
         "x": status_view_action(_clear_search),
         "t": PromptInteractiveAction(

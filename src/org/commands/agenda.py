@@ -28,6 +28,7 @@ from org.commands.interactive_action_builders import (
     quit_view_action,
     status_external_action,
     status_noninteractive_action,
+    status_view_action,
     view_action,
 )
 from org.commands.interactive_actions import (
@@ -41,6 +42,7 @@ from org.commands.interactive_actions import (
 )
 from org.commands.interactive_common import (
     INTERACTIVE_HELP_FOOTER_HINT,
+    FooterPromptState,
     InteractiveHelpEntry,
     append_repeat_transition,
     apply_help_modal_key,
@@ -51,8 +53,10 @@ from org.commands.interactive_common import (
     render_interactive_help_modal,
     set_mouse_reporting,
 )
+from org.commands.search_common import filter_nodes_by_search
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import (
+    PromptActionConfig,
     capture_template_prompt_config,
     clock_duration_prompt_config,
     configured_capture_template_names,
@@ -240,6 +244,7 @@ class _AgendaSession:
     """Interactive agenda session state."""
 
     args: AgendaArgs
+    all_nodes: list[Heading]
     nodes: list[Heading]
     render: _RenderContext
     start_date: date
@@ -250,6 +255,8 @@ class _AgendaSession:
     selected_row_index: int
     scroll_offset: int
     status_message: str
+    search_text: str
+    search_prompt_previous_text: str | None = None
     show_help_modal: bool = False
     active_interactive_action: PromptInteractiveActionContract[_AgendaSession] | None = None
 
@@ -275,6 +282,14 @@ _AGENDA_HELP_ENTRIES = [
     InteractiveHelpEntry(
         "$",
         "Archive the selected task subtree using standard archive rules.",
+    ),
+    InteractiveHelpEntry(
+        "/",
+        "Open search prompt and filter visible tasks by task text.",
+    ),
+    InteractiveHelpEntry(
+        "x",
+        "Clear active search filter and restore full agenda.",
     ),
     InteractiveHelpEntry(
         "t",
@@ -858,6 +873,15 @@ def _refresh_session(
     session.selected_row_index = max(session.selected_row_index, 0)
 
 
+def _refresh_visible_nodes(
+    session: _AgendaSession,
+    preserve_identity: tuple[str, str, str, int | None] | None,
+) -> None:
+    """Refresh visible agenda nodes and restore selected task identity when possible."""
+    session.nodes = filter_nodes_by_search(session.all_nodes, session.search_text)
+    _refresh_session(session, preserve_identity)
+
+
 def _selected_row_location(session: _AgendaSession) -> tuple[int, int] | None:
     """Return selected day/row indexes or None when no rows exist."""
     if not session.row_locations:
@@ -1056,7 +1080,8 @@ def _save_document_changes(document: Document) -> None:
 def _reload_session_nodes(session: _AgendaSession) -> None:
     """Reload nodes through standard processing pipeline after mutations."""
     nodes, _, _ = load_and_process_data(session.args)
-    session.nodes = nodes
+    session.all_nodes = nodes
+    session.nodes = filter_nodes_by_search(nodes, session.search_text)
 
 
 def _add_section_row(table: Table, label: str, *, color_enabled: bool, style: str = "") -> int:
@@ -1450,7 +1475,8 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
 
     end_line = min(session.scroll_offset + viewport_height, len(rows))
     total_lines = max(len(rows), 1)
-    scroll_text = f"Lines {end_line}/{total_lines}"
+    search_text = session.search_text or "-"
+    scroll_text = f"Lines {end_line}/{total_lines} | Search: {search_text}"
     prompt_line = None
     active_action = session.active_interactive_action
     if active_action is not None:
@@ -1801,6 +1827,21 @@ def _apply_clock_entry_with_value(session: _AgendaSession, duration_input: str) 
     session.status_message = f"Added clock entry ({duration_text})"
 
 
+def _clear_search(session: _AgendaSession) -> None:
+    """Clear active interactive search and restore full agenda rows."""
+    if not session.search_text:
+        session.status_message = "Search already clear"
+        return
+
+    selected_row = _selected_task_row(session)
+    preserve_identity: tuple[str, str, str, int | None] | None = None
+    if selected_row is not None and selected_row.node is not None:
+        preserve_identity = _heading_identity(selected_row.node)
+    session.search_text = ""
+    _refresh_visible_nodes(session, preserve_identity)
+    session.status_message = "Search cleared"
+
+
 def _selected_row(session: _AgendaSession) -> _AgendaRow | None:
     """Return currently selected agenda row for interactive actions."""
     location = _selected_row_location(session)
@@ -1950,6 +1991,55 @@ def _submit_agenda_capture_action(
     return ActionResult(status_message=session.status_message)
 
 
+def _submit_agenda_search_action(
+    session: _AgendaSession,
+    _target: _AgendaSession,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted interactive search value."""
+    return _apply_search_text(session, raw_value.strip())
+
+
+def _preview_agenda_search_action(
+    session: _AgendaSession,
+    _target: _AgendaSession,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Live-update agenda rows while editing interactive search prompt."""
+    return _apply_search_text(session, raw_value.strip())
+
+
+def _cancel_agenda_search_action(
+    session: _AgendaSession,
+    _target: _AgendaSession,
+) -> ActionResult:
+    """Cancel search prompt and restore previous agenda search filter."""
+    previous_text = session.search_prompt_previous_text or ""
+    session.search_prompt_previous_text = None
+    _apply_search_text(session, previous_text)
+    return ActionResult(status_message="Search cancelled")
+
+
+def _capture_agenda_search_prompt_state(session: _AgendaSession) -> ActionResult | None:
+    """Capture current agenda search filter before opening search prompt."""
+    session.search_prompt_previous_text = session.search_text
+    return None
+
+
+def _apply_search_text(session: _AgendaSession, search_text: str) -> ActionResult:
+    """Apply search text to agenda rows and return match status."""
+    selected_row = _selected_task_row(session)
+    preserve_identity: tuple[str, str, str, int | None] | None = None
+    if selected_row is not None and selected_row.node is not None:
+        preserve_identity = _heading_identity(selected_row.node)
+    session.search_text = search_text
+    _refresh_visible_nodes(session, preserve_identity)
+    status = "Search cleared" if not search_text else f"{len(session.nodes)} matches"
+    return ActionResult(status_message=status)
+
+
 def _submit_agenda_refile_action(
     session: _AgendaSession,
     _row: _AgendaRow,
@@ -1996,6 +2086,7 @@ def _create_agenda_session(
     """Create interactive session state for agenda."""
     session = _AgendaSession(
         args=args,
+        all_nodes=list(nodes),
         nodes=nodes,
         render=_RenderContext(
             color_enabled=color_enabled,
@@ -2010,6 +2101,7 @@ def _create_agenda_session(
         selected_row_index=0,
         scroll_offset=0,
         status_message="",
+        search_text="",
         show_help_modal=False,
         active_interactive_action=None,
     )
@@ -2062,6 +2154,19 @@ def _agenda_actions(session: _AgendaSession) -> dict[str, SessionAction[_AgendaS
             requires_live_pause=True,
         ),
         "$": status_noninteractive_action(_archive_selected_task),
+        "/": PromptInteractiveAction(
+            prompt_config=PromptActionConfig(
+                prompt=FooterPromptState(label="Search text (blank clears)"),
+                cancel_status="Search cancelled",
+                invalid_status="Invalid search input",
+            ),
+            apply_with_input=_submit_agenda_search_action,
+            preview_with_input=_preview_agenda_search_action,
+            cancel_with_target=_cancel_agenda_search_action,
+            resolve_target=lambda current: current,
+            can_activate=_capture_agenda_search_prompt_state,
+        ),
+        "x": status_view_action(_clear_search),
         "t": PromptInteractiveAction(
             prompt_config=state_selection_prompt_config(
                 _state_choices_for_selected_row(session),

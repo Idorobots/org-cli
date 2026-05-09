@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
 
@@ -32,6 +32,7 @@ from org.commands.interactive_action_builders import (
     quit_view_action,
     status_external_action,
     status_noninteractive_action,
+    status_view_action,
     view_action,
 )
 from org.commands.interactive_actions import (
@@ -45,6 +46,7 @@ from org.commands.interactive_actions import (
 )
 from org.commands.interactive_common import (
     INTERACTIVE_HELP_FOOTER_HINT,
+    FooterPromptState,
     HeadingIdentity,
     InteractiveHelpEntry,
     append_repeat_transition,
@@ -59,8 +61,10 @@ from org.commands.interactive_common import (
     set_mouse_reporting,
     shift_priority,
 )
+from org.commands.search_common import filter_nodes_by_search
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import (
+    PromptActionConfig,
     capture_template_prompt_config,
     configured_capture_template_names,
     resolve_capture_template_selection,
@@ -178,6 +182,9 @@ class _BoardSession:
     selected_row_index: int
     scroll_offset: int
     status_message: str
+    all_columns: list[_BoardColumn] = field(default_factory=list)
+    search_text: str = ""
+    search_prompt_previous_text: str | None = None
     show_help_modal: bool = False
     active_interactive_action: PromptInteractiveActionContract[_BoardSession] | None = None
 
@@ -215,6 +222,14 @@ _BOARD_HELP_ENTRIES = [
     InteractiveHelpEntry(
         "$",
         "Archive the selected task subtree using standard archive rules.",
+    ),
+    InteractiveHelpEntry(
+        "/",
+        "Open search prompt and filter visible tasks in every column.",
+    ),
+    InteractiveHelpEntry(
+        "x",
+        "Clear active search filter and restore full board.",
     ),
     InteractiveHelpEntry(
         "S-Left/S-Right",
@@ -605,6 +620,22 @@ def _max_column_nodes(columns: list[_BoardColumn]) -> int:
     return max((len(column.nodes) for column in columns), default=0)
 
 
+def _column_with_filtered_nodes(column: _BoardColumn, search_text: str) -> _BoardColumn:
+    """Return one board column with nodes filtered by search text."""
+    filtered_nodes = filter_nodes_by_search(column.nodes, search_text)
+    return _BoardColumn(title=column.title, nodes=filtered_nodes)
+
+
+def _filter_columns_by_search(columns: list[_BoardColumn], search_text: str) -> list[_BoardColumn]:
+    """Filter nodes in each column by interactive search text."""
+    return [_column_with_filtered_nodes(column, search_text) for column in columns]
+
+
+def _visible_task_count(columns: list[_BoardColumn]) -> int:
+    """Return total number of visible tasks across all board columns."""
+    return sum(len(column.nodes) for column in columns)
+
+
 def _ensure_selection_bounds(session: _BoardSession) -> None:
     """Clamp current selection to available columns and rows."""
     if not session.columns:
@@ -621,6 +652,26 @@ def _ensure_selection_bounds(session: _BoardSession) -> None:
         session.selected_row_index = 0
         return
     session.selected_row_index = min(max(session.selected_row_index, 0), len(selected_nodes) - 1)
+
+
+def _refresh_visible_columns(
+    session: _BoardSession,
+    preserve_identity: _BoardHeadingIdentity | None,
+) -> None:
+    """Refresh visible board columns and restore selected task when possible."""
+    source_columns = session.all_columns or session.columns
+    session.columns = _filter_columns_by_search(source_columns, session.search_text)
+
+    if preserve_identity is not None:
+        for column_index, column in enumerate(session.columns):
+            for row_index, node in enumerate(column.nodes):
+                if heading_identity_matches(node, preserve_identity):
+                    session.selected_column_index = column_index
+                    session.selected_row_index = row_index
+                    _ensure_selection_bounds(session)
+                    return
+
+    _ensure_selection_bounds(session)
 
 
 def _selected_node(session: _BoardSession) -> Heading | None:
@@ -652,21 +703,11 @@ def _reload_session(
     session.nodes = filtered_nodes
     session.todo_states = todo_states
     session.done_states = done_states
-    session.columns = _build_selector_board_columns(
+    session.all_columns = _build_selector_board_columns(
         filtered_nodes,
         _resolve_column_specs(session.args),
     )
-
-    if preserve_identity is not None:
-        for column_index, column in enumerate(session.columns):
-            for row_index, node in enumerate(column.nodes):
-                if heading_identity_matches(node, preserve_identity):
-                    session.selected_column_index = column_index
-                    session.selected_row_index = row_index
-                    _ensure_selection_bounds(session)
-                    return
-
-    _ensure_selection_bounds(session)
+    _refresh_visible_columns(session, preserve_identity)
 
 
 def _create_flow_board_session(
@@ -689,12 +730,14 @@ def _create_flow_board_session(
         nodes=nodes,
         todo_states=todo_states,
         done_states=done_states,
+        all_columns=columns,
         columns=columns,
         color_enabled=color_enabled,
         selected_column_index=selected_column_index,
         selected_row_index=0,
         scroll_offset=0,
         status_message="",
+        search_text="",
         show_help_modal=False,
         active_interactive_action=None,
     )
@@ -919,6 +962,68 @@ def _submit_board_capture_action(
     return ActionResult(status_message=session.status_message)
 
 
+def _clear_search(session: _BoardSession) -> None:
+    """Clear active interactive search and restore full board columns."""
+    if not session.search_text:
+        session.status_message = "Search already clear"
+        return
+
+    selected = _selected_node(session)
+    preserve_identity = heading_identity(selected) if selected is not None else None
+    session.search_text = ""
+    _refresh_visible_columns(session, preserve_identity)
+    session.status_message = "Search cleared"
+
+
+def _submit_board_search_action(
+    session: _BoardSession,
+    _target: _BoardSession,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted interactive search value."""
+    return _apply_search_text(session, raw_value.strip())
+
+
+def _preview_board_search_action(
+    session: _BoardSession,
+    _target: _BoardSession,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Live-update board columns while editing interactive search prompt."""
+    return _apply_search_text(session, raw_value.strip())
+
+
+def _cancel_board_search_action(
+    session: _BoardSession,
+    _target: _BoardSession,
+) -> ActionResult:
+    """Cancel search prompt and restore previous board search filter."""
+    previous_text = session.search_prompt_previous_text or ""
+    session.search_prompt_previous_text = None
+    _apply_search_text(session, previous_text)
+    return ActionResult(status_message="Search cancelled")
+
+
+def _capture_board_search_prompt_state(session: _BoardSession) -> ActionResult | None:
+    """Capture current board search filter before opening search prompt."""
+    session.search_prompt_previous_text = session.search_text
+    return None
+
+
+def _apply_search_text(session: _BoardSession, search_text: str) -> ActionResult:
+    """Apply search text to board columns and return match status."""
+    selected = _selected_node(session)
+    preserve_identity = heading_identity(selected) if selected is not None else None
+    session.search_text = search_text
+    _refresh_visible_columns(session, preserve_identity)
+    status = (
+        "Search cleared" if not search_text else f"{_visible_task_count(session.columns)} matches"
+    )
+    return ActionResult(status_message=status)
+
+
 def _interactive_viewport_rows(console_height: int) -> int:
     """Return number of visible task rows in interactive mode."""
     available_space = console_height - _INTERACTIVE_HEADER_HEIGHT - _INTERACTIVE_FOOTER_HEIGHT
@@ -1053,7 +1158,8 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
     selected_nodes = session.columns[session.selected_column_index].nodes
     total_rows = max(len(selected_nodes), 1)
     visible_end_row = min(end_row, total_rows)
-    row_text = f"Rows {visible_end_row}/{total_rows}"
+    search_text = session.search_text or "-"
+    row_text = f"Rows {visible_end_row}/{total_rows} | Search: {search_text}"
     status = " ".join((session.status_message or "").splitlines())
     footer_style = "dim" if session.color_enabled else ""
 
@@ -1182,6 +1288,19 @@ def _flow_board_key_bindings(
             requires_live_pause=True,
         ),
         "$": status_noninteractive_action(_archive_selected_task),
+        "/": PromptInteractiveAction(
+            prompt_config=PromptActionConfig(
+                prompt=FooterPromptState(label="Search text (blank clears)"),
+                cancel_status="Search cancelled",
+                invalid_status="Invalid search input",
+            ),
+            apply_with_input=_submit_board_search_action,
+            preview_with_input=_preview_board_search_action,
+            cancel_with_target=_cancel_board_search_action,
+            resolve_target=lambda current: current,
+            can_activate=_capture_board_search_prompt_state,
+        ),
+        "x": status_view_action(_clear_search),
         "S-LEFT": status_noninteractive_action(
             lambda _session: _apply_state_move(session, direction=-1),
         ),
