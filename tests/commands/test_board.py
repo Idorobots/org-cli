@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from io import StringIO
 from typing import TYPE_CHECKING, cast
 
@@ -61,6 +62,7 @@ def make_board_args(files: list[str], **overrides: object) -> board_command.Boar
         width=120,
         max_results=None,
         offset=0,
+        days=7,
         order_by_level=False,
         order_by_file_order=False,
         order_by_file_order_reversed=False,
@@ -72,6 +74,45 @@ def make_board_args(files: list[str], **overrides: object) -> board_command.Boar
     for key, value in overrides.items():
         setattr(args, key, value)
     return args
+
+
+def test_filter_recent_completed_nodes_uses_latest_timestamp_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Completed tasks should be filtered by latest_timestamp recency."""
+    now = datetime(2026, 5, 9, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr(board_command, "local_now", lambda: now)
+
+    nodes = node_from_org(
+        "* TODO Active task\n"
+        "* DONE Recent done\n"
+        "CLOSED: [2026-05-08 Fri 09:00]\n"
+        "* DONE Old done\n"
+        "CLOSED: [2026-04-01 Wed 09:00]\n",
+    )
+
+    filtered = board_command._filter_recent_completed_nodes(nodes, days=7)
+
+    assert [node.title_text for node in filtered] == ["Active task", "Recent done"]
+
+
+def test_filter_recent_completed_nodes_respects_days_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Days override should widen completed-task retention window."""
+    now = datetime(2026, 5, 9, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr(board_command, "local_now", lambda: now)
+
+    nodes = node_from_org(
+        "* DONE Mid-age done\nCLOSED: [2026-04-25 Sat 09:00]\n",
+    )
+
+    assert board_command._filter_recent_completed_nodes(nodes, days=7) == []
+    assert [
+        node.title_text for node in board_command._filter_recent_completed_nodes(nodes, days=30)
+    ] == [
+        "Mid-age done",
+    ]
 
 
 def test_run_flow_board_renders_expected_columns(
@@ -156,6 +197,7 @@ def test_run_flow_board_preserves_order_in_column_when_priorities_equal(
         [fixture_path],
         width=120,
         order_by_file_order=True,
+        days=100000,
     )
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--order-by-file-order"])
@@ -985,7 +1027,7 @@ def test_run_flow_board_offset_applies_before_grouping(
 ) -> None:
     """Board should respect --offset when selecting processed tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_board_args([fixture_path], max_results=1, offset=1)
+    args = make_board_args([fixture_path], max_results=1, offset=1, days=100000)
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--offset", "1", "--limit", "1"])
     board_command.run_flow_board(args)
@@ -1387,7 +1429,7 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """State changes should reload and move task to new selector column."""
-    args = make_board_args([], view="kanban")
+    args = make_board_args([], view="kanban", days=100000)
     source_node = node_from_org("#+TODO: TODO | DONE\n* TODO Task\n")[0]
     original_views = dict(config_module.CONFIG_BOARD_VIEWS)
     config_module.CONFIG_BOARD_VIEWS.clear()
@@ -1424,7 +1466,13 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
         _args: board_command.BoardArgs,
     ) -> tuple[list[Heading], list[str], list[str]]:
         if source_node.todo == "DONE":
-            return (node_from_org("#+TODO: TODO | DONE\n* DONE Task\n"), ["TODO"], ["DONE"])
+            return (
+                node_from_org(
+                    "#+TODO: TODO | DONE\n* DONE Task\nCLOSED: [2026-05-08 Fri 09:00]\n",
+                ),
+                ["TODO"],
+                ["DONE"],
+            )
         return ([source_node], ["TODO"], ["DONE"])
 
     monkeypatch.setattr(board_command, "_save_document_changes", _capture_save)

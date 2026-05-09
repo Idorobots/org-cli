@@ -6,6 +6,7 @@ import logging
 import math
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
 
 import typer
@@ -121,6 +122,7 @@ class BoardArgs:
     width: int | None
     max_results: int | None
     offset: int
+    days: int
     order_by_level: bool
     order_by_file_order: bool
     order_by_file_order_reversed: bool
@@ -405,6 +407,36 @@ def _resolve_tasks_limit(max_results: int | None) -> int:
     return max_results
 
 
+def _coerce_latest_timestamp_start(node: Heading) -> datetime | None:
+    """Return node latest timestamp start value when available."""
+    latest_timestamp = node.latest_timestamp
+    if latest_timestamp is None:
+        return None
+    return latest_timestamp.start
+
+
+def _filter_recent_completed_nodes(nodes: list[Heading], days: int) -> list[Heading]:
+    """Keep completed tasks only when latest_timestamp is within days window."""
+    now = local_now()
+    cutoff = now - timedelta(days=days)
+
+    filtered: list[Heading] = []
+    for node in nodes:
+        if not node.is_completed:
+            filtered.append(node)
+            continue
+
+        latest_start = _coerce_latest_timestamp_start(node)
+        if latest_start is None:
+            continue
+        if latest_start.tzinfo is None:
+            latest_start = latest_start.replace(tzinfo=now.tzinfo)
+        if latest_start >= cutoff:
+            filtered.append(node)
+
+    return filtered
+
+
 def _task_panel_height(node: Heading, width: int) -> int:
     """Estimate panel height for one task card."""
     heading_width = cell_len(heading_title_to_text(node).plain)
@@ -576,10 +608,15 @@ def _reload_session(
         discovered_done_states,
     )
 
-    session.nodes = nodes
+    filtered_nodes = _filter_recent_completed_nodes(nodes, session.args.days)
+
+    session.nodes = filtered_nodes
     session.todo_states = todo_states
     session.done_states = done_states
-    session.columns = _build_selector_board_columns(nodes, _resolve_column_specs(session.args))
+    session.columns = _build_selector_board_columns(
+        filtered_nodes,
+        _resolve_column_specs(session.args),
+    )
 
     if preserve_identity is not None:
         for column_index, column in enumerate(session.columns):
@@ -1187,10 +1224,13 @@ def run_flow_board(args: BoardArgs) -> None:
         raise typer.BadParameter("--offset must be non-negative")
     if args.max_results is not None and args.max_results < 0:
         raise typer.BadParameter("--limit must be non-negative")
+    if args.days < 0:
+        raise typer.BadParameter("--days must be non-negative")
     args.max_results = _resolve_tasks_limit(args.max_results)
 
     with processing_status(console, color_enabled):
         nodes, discovered_todo_states, discovered_done_states = load_and_process_data(args)
+        nodes = _filter_recent_completed_nodes(nodes, args.days)
         todo_states, done_states = _resolved_states(
             args,
             discovered_todo_states,
@@ -1381,6 +1421,12 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Number of results to skip before displaying",
         ),
+        days: int = typer.Option(
+            7,
+            "--days",
+            metavar="N",
+            help="Show completed tasks modified in last N days",
+        ),
         order_by_level: bool = typer.Option(
             False,
             "--order-by-level",
@@ -1444,6 +1490,7 @@ def register(app: typer.Typer) -> None:
             width=width,
             max_results=max_results,
             offset=offset,
+            days=days,
             order_by_level=order_by_level,
             order_by_file_order=order_by_file_order,
             order_by_file_order_reversed=order_by_file_order_reversed,

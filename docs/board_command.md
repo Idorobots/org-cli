@@ -76,6 +76,7 @@ Every interactive edit is saved immediately and logged through the standard `org
 - `--order-by-timestamp-desc` - Sort by task timestamp descending (repeatable).
 - `--limit`, `-n` - Maximum number of results to display (defaults to all results).
 - `--offset` - Skip first N results.
+- `--days N` - Show completed tasks only when `.latest_timestamp` is within last `N` days (default: `7`).
 - `--width` - Override console width (minimum: `80`).
 
 View selection behavior:

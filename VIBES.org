@@ -6925,7 +6925,10 @@ When search is enabled in the board, the currently visibla tasks for each column
 - State "CANCELLED"  from              [2026-05-09 Sat 14:55] \\
   Can be done with custom filters and board views.
 :END:
-*** TODO Board command should only show recently completed tasks
+*** DONE Board command should only show recently completed tasks
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 16:09]
+:END:
 Tasks older than 7 days should be omitted, the timeout should be configurable with =--days=.
 *** TODO Help modal under =?= in interactive commands                                    :Docs:Help:
 Have commands display a modal outlining all available key bindings when run with =?=.
