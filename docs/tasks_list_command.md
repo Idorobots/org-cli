@@ -12,6 +12,8 @@ poetry run org tasks list [OPTIONS] [FILE ...]
 
 When both stdin and stdout are TTYs, `org tasks list` runs in interactive backlog mode.
 If `--details` or `--out` is explicitly passed, it stays in non-interactive static mode.
+The footer shows row/search context on the left and `Type ? for help` on the right.
+Press `?` to open a key-bindings modal panel; press any key to close it and return.
 
 Interactive keys:
 

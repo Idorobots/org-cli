@@ -6729,9 +6729,9 @@ Redo all the filters & orderings in terms of the query language
 :END:
 Use IDs for headings. Support the "usual" =org-attach= file directories for attachments.
 ** Usability improvements                                                                       :UX:
-*** DONE User input prompts should be resolved in the active TUI view
+*** REWORKED User input prompts should be resolved in the active TUI view
 :LOGBOOK:
-- State "DONE"       from "TODO"       [2026-05-09 Sat 14:51]
+- State "REWORKED"       from "TODO"       [2026-05-09 Sat 14:51]
 :END:
 Currently, when an interactive action requires user input, the TUI view is exited and instead the user is presented with a text prompt.
 I'd like to improve that so that the prompt is displayed within the footer of the TUI view that is active at the moment, identically to how it is done in the =org tasks capture= command.
@@ -6880,13 +6880,13 @@ Actions that require special TUI handling (edit & capture) should also be specia
 
 Interactive Actions should always be prompt driven, any actions that don't require user input past the triggering of the action should be separate (can be called =NoninteractiveAction=). On top of that there should be =ViewAction= that adjust the TUI view. The edit/capture actions should be a special-handled =InteractiveAction='s, no prompt but rather changing the TUI view temporarily.
 
-*** DONE Task capture actions should resolve the prompt within the view.
+*** REWORKED Task capture actions should resolve the prompt within the view.
 :PROPERTIES:
 :capture_time: [2026-05-09 Sat 14:49]
 :context: 
 :END:
 :LOGBOOK:
-- State "DONE"       from "TODO"       [2026-05-09 Sat 15:45]
+- State "REWORKED"       from "TODO"       [2026-05-09 Sat 15:45]
 :END:
 
 It should be an interactive prompt action that prompts the user for the selected capture template within the same view as the action is triggered in, and then proceeds to the capture view with the template pre-configured.
@@ -6911,15 +6911,6 @@ In file src/org/commands/tasks/list.py around line 836, near the ~def _can_activ
 #+end_example
 
 This function seems to be duplicated in all three interactive commands. Please refactor it so that it can be reused.
-*** TODO Search action should be available in agenda and board.
-:PROPERTIES:
-:capture_time: [2026-05-09 Sat 14:48]
-:context: [[file:~/projects/software/org-cli/VIBES.org::*Board & agenda commands should omit tasks that are COMMENTs][Board & agenda commands should omit tasks that are COMMENTs]]
-:END:
-
-When search is enabled in agenda, the currently visible tasks should be filtered down to just the ones matching the search criteria.
-
-When search is enabled in the board, the currently visibla tasks for each column should be filtered down to just the ones matching the search criteria.
 *** CANCELLED Board & agenda commands should omit tasks that are COMMENTs
 :LOGBOOK:
 - State "CANCELLED"  from              [2026-05-09 Sat 14:55] \\
@@ -6930,7 +6921,11 @@ When search is enabled in the board, the currently visibla tasks for each column
 - State "DONE"       from "TODO"       [2026-05-09 Sat 16:09]
 :END:
 Tasks older than 7 days should be omitted, the timeout should be configurable with =--days=.
-*** TODO Help modal under =?= in interactive commands                                    :Docs:Help:
+*** REWORKED Help modal under =?= in interactive commands                                :Docs:Help:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-09 Sat 17:39] \\
+  Needed reprompting.
+:END:
 Have commands display a modal outlining all available key bindings when run with =?=.
 
 The footer bar should now only display =Type ? for help= right-aligned instead of the key bindings.
@@ -6952,9 +6947,32 @@ In the help-modal view, any key press should exit the view and go back to the pr
 
 The same description should be added to the help strings for each of the available commands when the user displays the help with =--help=.
 
-*** Input is very jittery                                                                      :Bug:
-When holding an arrow key down to scroll a longer list the TUI gets jittery and sometimes the key escape sequence is displayed at the very bottom.
-I'm guessing the polling for input is too slow to catch key repeats and sometimes the native input handling kick is, hence printing the key escape sequence.
+**** DONE Help modal should not have a header/footer.
+:PROPERTIES:
+:capture_time: [2026-05-09 Sat 16:50]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Board footer sometimes is 3 or more lines tall][Board footer sometimes is 3 or more lines tall]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 16:59]
+:END:
+
+Display just the modal, no need for the footer to be present.
+**** DONE Help modal should not truncate the key bindings ever
+:PROPERTIES:
+:capture_time: [2026-05-09 Sat 16:50]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Board footer sometimes is 3 or more lines tall][Board footer sometimes is 3 or more lines tall]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 17:08]
+:END:
+**** DONE Key bindings should be available in =--help= command description.
+:PROPERTIES:
+:capture_time: [2026-05-09 Sat 16:51]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Board footer sometimes is 3 or more lines tall][Board footer sometimes is 3 or more lines tall]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 17:29]
+:END:
 *** DONE Board footer sometimes is 3 or more lines tall
 :LOGBOOK:
 - State "DONE"       from              [2026-05-02 Sat 22:55]
@@ -6964,6 +6982,19 @@ It's OK to show partially obscured task panels, so it should be possible to scro
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-05-03 Sun 00:29]
 :END:
+*** Input is very jittery                                                                      :Bug:
+When holding an arrow key down to scroll a longer list the TUI gets jittery and sometimes the key escape sequence is displayed at the very bottom.
+I'm guessing the polling for input is too slow to catch key repeats and sometimes the native input handling kick is, hence printing the key escape sequence.
+*** High CPU usage when browsing the board                                                     :Bug:
+*** TODO Search action should be available in agenda and board.
+:PROPERTIES:
+:capture_time: [2026-05-09 Sat 14:48]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Board & agenda commands should omit tasks that are COMMENTs][Board & agenda commands should omit tasks that are COMMENTs]]
+:END:
+
+When search is enabled in agenda, the currently visible tasks should be filtered down to just the ones matching the search criteria.
+
+When search is enabled in the board, the currently visibla tasks for each column should be filtered down to just the ones matching the search criteria.
 *** All interactive commands should support the =--width= CLI switch
 *** Agenda non-interactive output format
 - Should be adjusted to "look and feel" just like the interactive one.
@@ -6973,7 +7004,7 @@ Show a task frequency plot in the agenda header and highlight the bucket that co
 The tasks IDs of newly created tasks should default to ={{document_category}}-{{count_of_headings_in_file + 1}}=
 Show the task ID (when present) in the board task panels as well as agenda and task list. In all cases, it should preceed the TODO state.
 *** Bulk actions
-It should be possible to mark multiple items in agenda, board & backlog and apply an action to them in bulk
+It should be possible to mark multiple items in agenda, board & task list and apply an action to them in bulk
 *** Check if file was modified outside of org-cli before saving it.
 *** File watching for interactive commands and updated display
 *** Do not add =#+TODO:= line to file contents, but rather modify done_states.

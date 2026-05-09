@@ -39,14 +39,19 @@ from org.commands.interactive_actions import (
     handle_active_interactive_action_input,
 )
 from org.commands.interactive_common import (
+    INTERACTIVE_HELP_FOOTER_HINT,
     FooterPromptState,
     HeadingIdentity,
+    InteractiveHelpEntry,
     append_repeat_transition,
+    apply_help_modal_key,
     build_footer_prompt_text,
     heading_identity,
     heading_identity_matches,
+    interactive_help_command_text,
     local_now,
     read_keypress,
+    render_interactive_help_modal,
     set_mouse_reporting,
     shift_priority,
 )
@@ -183,7 +188,50 @@ class _TasksListSession:
     scroll_offset: int
     status_message: str
     search_text: str
+    show_help_modal: bool = False
     active_interactive_action: PromptInteractiveActionContract[_TasksListSession] | None = None
+
+
+_TASKS_LIST_HELP_ENTRIES = [
+    InteractiveHelpEntry("Esc/q", "Exit the task list and return to the shell."),
+    InteractiveHelpEntry(
+        "Up/Down, n/p, Wheel",
+        "Move selection through visible tasks while keeping the selected row in view.",
+    ),
+    InteractiveHelpEntry(
+        "/",
+        "Open search prompt; filter visible tasks by heading/body/properties text.",
+    ),
+    InteractiveHelpEntry("x", "Clear the active search filter and restore full results."),
+    InteractiveHelpEntry(
+        "Enter",
+        "Open the selected task subtree in the external editor workflow.",
+    ),
+    InteractiveHelpEntry(
+        "a",
+        "Capture a new task from configured templates, then reload the list.",
+    ),
+    InteractiveHelpEntry(
+        "$",
+        "Archive the selected task subtree using standard archive rules.",
+    ),
+    InteractiveHelpEntry(
+        "t",
+        "Prompt for and apply a TODO state transition on the selected task.",
+    ),
+    InteractiveHelpEntry(
+        "S-Up/S-Down",
+        "Increase or decrease priority across A/B/C/none for the selected task.",
+    ),
+    InteractiveHelpEntry(
+        "g",
+        "Prompt for CSV tags and replace selected task tags (blank clears).",
+    ),
+    InteractiveHelpEntry(
+        "s / d / c",
+        "Prompt and set or clear scheduled, deadline, or closed timestamps.",
+    ),
+]
 
 
 class TasksListOutputFormatter(Protocol):
@@ -582,38 +630,32 @@ def _sync_scroll(session: _TasksListSession, viewport_height: int) -> None:
 
 def _interactive_tasks_list_renderable(console: Console, session: _TasksListSession) -> Group:
     """Build scrollable interactive tasks list renderable."""
+    if session.show_help_modal:
+        return Group(
+            render_interactive_help_modal(
+                _TASKS_LIST_HELP_ENTRIES,
+                color_enabled=session.color_enabled,
+            ),
+        )
+
     viewport_height = max(5, console.size.height - 3)
     _ensure_selection_bounds(session)
     _sync_scroll(session, viewport_height)
 
     window = session.visible_nodes[session.scroll_offset : session.scroll_offset + viewport_height]
-    table = Table.grid(expand=True)
-    table.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
+    viewport_table = Table.grid(expand=True)
+    viewport_table.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
     for index, node in enumerate(window, start=session.scroll_offset):
         row_style = _HIGHLIGHT_ROW_STYLE if index == session.selected_index else ""
-        table.add_row(
+        viewport_table.add_row(
             _build_task_row_text(node, session, line_width=console.size.width),
             style=row_style,
         )
 
     for _ in range(viewport_height - len(window)):
-        table.add_row(Text(""))
+        viewport_table.add_row(Text(""))
+    table = viewport_table
 
-    controls = (
-        "Up/Down, n/p, Wheel move"
-        " | / search"
-        " | x clear"
-        " | Enter edit"
-        " | a add"
-        " | $ archive"
-        " | t state"
-        " | Shift+Up/Down priority"
-        " | g tags"
-        " | s scheduled"
-        " | d deadline"
-        " | c closed"
-        " | q/Esc quit"
-    )
     selected_row = session.selected_index + 1 if session.visible_nodes else 0
     total_rows = len(session.visible_nodes)
     search_text = session.search_text or "-"
@@ -630,7 +672,12 @@ def _interactive_tasks_list_renderable(console: Console, session: _TasksListSess
     footer_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
     footer_line.add_row(
         Text(row_text, style=footer_style, no_wrap=True, overflow="ellipsis"),
-        Text(controls, style=footer_style, no_wrap=True, overflow="ellipsis"),
+        Text(
+            INTERACTIVE_HELP_FOOTER_HINT,
+            style=footer_style,
+            no_wrap=True,
+            overflow="ellipsis",
+        ),
     )
 
     status_text = Text(status, style=footer_style, no_wrap=True, overflow="ellipsis")
@@ -1001,6 +1048,14 @@ def _tasks_list_actions(session: _TasksListSession) -> dict[str, SessionAction[_
 
 def _handle_interactive_key(session: _TasksListSession, key: str) -> bool:
     """Handle one interactive keypress and return whether to continue."""
+    consumed, next_help_modal = apply_help_modal_key(
+        key,
+        show_help_modal=session.show_help_modal,
+    )
+    session.show_help_modal = next_help_modal
+    if consumed:
+        return True
+
     result = dispatch_action_key(key, session, _tasks_list_actions(session))
     if result.handled:
         return result.continue_loop
@@ -1023,6 +1078,7 @@ def _create_tasks_list_session(args: ListArgs, data: _TasksListSessionData) -> _
         scroll_offset=0,
         status_message="",
         search_text="",
+        show_help_modal=False,
         active_interactive_action=None,
     )
     _ensure_selection_bounds(session)
@@ -1075,6 +1131,8 @@ def _run_tasks_list_interactive(
 
 def _handle_active_prompt_input(session: _TasksListSession, live: Live) -> bool:
     """Handle one prompt event and return whether input was consumed."""
+    if session.show_help_modal:
+        return False
     return handle_active_interactive_action_input(
         session,
         pause_live=live.stop,
@@ -1134,6 +1192,10 @@ def register(app: typer.Typer) -> None:
     @app.command(
         "list",
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+        help=interactive_help_command_text(
+            "List tasks matching filters.",
+            _TASKS_LIST_HELP_ENTRIES,
+        ),
     )
     def tasks_list(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008

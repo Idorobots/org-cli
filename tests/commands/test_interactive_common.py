@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+from io import StringIO
 from typing import TYPE_CHECKING, Any, cast
+
+from rich.console import Console
 
 from org.commands.interactive_common import (
     BRACKETED_PASTE_DISABLE,
     BRACKETED_PASTE_ENABLE,
+    InteractiveHelpEntry,
     KeyBinding,
     dispatch_key_binding,
     extract_bracketed_paste_text,
     key_binding_for_action,
     key_binding_requires_live_pause,
     read_input_event,
+    render_interactive_help_modal,
+    render_interactive_help_panel_text,
     set_bracketed_paste,
 )
 from org.commands.tasks.common import resolve_todo_state_selection, todo_states_for_heading
@@ -135,3 +141,35 @@ def test_todo_states_for_heading_returns_stable_unique_order() -> None:
 
     fake_heading = cast("Any", _FakeHeading())
     assert todo_states_for_heading(fake_heading) == ["TODO", "DONE", "WAIT"]
+
+
+def test_render_interactive_help_modal_keeps_key_column_wide_without_ellipsis() -> None:
+    """Help modal should avoid key ellipsis and keep long key text visible."""
+    entries = [
+        InteractiveHelpEntry(
+            "CTRL-SHIFT-SUPER-LEFT",
+            "Very long description text that should wrap instead of being cut with ellipsis.",
+        ),
+    ]
+    renderable = render_interactive_help_modal(entries, color_enabled=False)
+    output_stream = StringIO()
+    output_console = Console(file=output_stream, width=40, force_terminal=False, no_color=True)
+    output_console.print(renderable)
+    output = output_stream.getvalue()
+
+    assert "..." not in output
+    assert "CTRL-SHIFT-SUPER-LEFT" in output
+
+
+def test_render_interactive_help_panel_text_includes_title_and_rows() -> None:
+    """Rendered help text should include key-bindings title and entries."""
+    entries = [
+        InteractiveHelpEntry("Esc/q", "Exit the view and return to the shell."),
+        InteractiveHelpEntry("?", "Open the key bindings modal."),
+    ]
+
+    output = render_interactive_help_panel_text(entries)
+
+    assert "Key bindings:" in output
+    assert "Esc/q" in output
+    assert "Exit the view and return to the shell." in output

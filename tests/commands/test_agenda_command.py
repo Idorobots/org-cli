@@ -1402,8 +1402,7 @@ def test_interactive_renderable_footer_is_two_lines_without_status() -> None:
 
     assert len(lines) == 24
     assert lines[-2].startswith("Lines ")
-    assert "$ archive" in lines[-2]
-    assert "q/Esc quit" in lines[-2]
+    assert "Type ? for help" in lines[-2]
     assert lines[-1] == ""
 
 
@@ -1428,7 +1427,51 @@ def test_interactive_renderable_footer_is_two_lines_with_status_on_narrow_width(
 
     assert len(lines) == 24
     assert lines[-2].startswith("Lines ")
+    assert "Type ? for help" in lines[-2]
     assert lines[-1] == "Unsupported key: x"
+
+
+def test_handle_interactive_key_question_toggles_help_modal() -> None:
+    """Question mark should open help modal and next key should close it."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+
+    assert agenda_command._handle_interactive_key(session, "?") is True
+    assert session.show_help_modal is True
+
+    assert agenda_command._handle_interactive_key(session, "ENTER") is True
+    assert session.show_help_modal is False
+
+
+def test_interactive_renderable_shows_help_panel() -> None:
+    """Help modal should render key bindings panel for agenda."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    session.show_help_modal = True
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=120, height=24)
+
+    console.print(agenda_command._interactive_agenda_renderable(console, session))
+    output = buffer.getvalue()
+
+    assert "Key bindings" in output
+    assert "Type ? for help" not in output
 
 
 def test_shift_planning_time_for_row_shifts_timed_scheduled_by_one_hour() -> None:

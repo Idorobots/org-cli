@@ -54,7 +54,8 @@ to non-interactive rendering.
 Interactive keys:
 
 - Board content is rendered in a scrollable viewport with fixed headers and footer.
-- Footer shows `Rows X/Y`, keybindings, and status messages.
+- Footer shows `Rows X/Y` on the left, `Type ? for help` on the right, and status messages below.
+- Press `?` to open a key-bindings modal panel; press any key to close it and return.
 - `Up` / `Down` or mouse wheel - Move highlighted task within selected column.
 - `Left` / `Right` - Move highlight between columns (visual navigation only).
 - `Enter` - Open full selected task subtree in syntax-highlighted pager.

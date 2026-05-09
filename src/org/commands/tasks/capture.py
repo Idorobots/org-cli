@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import typer
 from org_parser.document import Document, Heading
-from rich.console import Console, Group
+from rich.console import Console, Group, RenderableType
 from rich.layout import Layout
 from rich.live import Live
 from rich.rule import Rule
@@ -23,7 +23,15 @@ from rich.text import Text
 from typer.rich_utils import _get_rich_console
 
 from org import config as config_module
-from org.commands.interactive_common import read_input_event, set_bracketed_paste
+from org.commands.interactive_common import (
+    INTERACTIVE_HELP_FOOTER_HINT,
+    InteractiveHelpEntry,
+    apply_help_modal_key,
+    interactive_help_command_text,
+    read_input_event,
+    render_interactive_help_modal,
+    set_bracketed_paste,
+)
 from org.commands.tasks.common import load_document, resolve_parent_heading, save_document
 from org.output_format import DEFAULT_OUTPUT_THEME
 from org.query_language import (
@@ -37,11 +45,32 @@ from org.query_language import (
 
 _PLACEHOLDER_RE = re.compile(r"{{\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*}}")
 _ORG_WEEKDAY_ABBR = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-_FOOTER_CONTROLS = (
-    "Enter confirm | Left/Right move cursor | Backspace delete left "
-    "| Delete delete right | Ctrl-C cancel"
-)
 logger = logging.getLogger("org")
+
+
+_CAPTURE_HELP_ENTRIES = [
+    InteractiveHelpEntry(
+        "Enter",
+        "Confirm current placeholder value and move to the next unresolved field.",
+    ),
+    InteractiveHelpEntry(
+        "Left/Right",
+        "Move the input cursor inside the current placeholder value.",
+    ),
+    InteractiveHelpEntry("Home/End", "Jump the cursor to the start or end of the input value."),
+    InteractiveHelpEntry(
+        "Backspace/Delete",
+        "Delete one character left/right of cursor in the current input.",
+    ),
+    InteractiveHelpEntry(
+        "Type text / Paste",
+        "Insert typed or pasted text at cursor position in the current placeholder value.",
+    ),
+    InteractiveHelpEntry(
+        "Esc or Ctrl-C",
+        "Cancel capture without applying the currently active interactive input flow.",
+    ),
+]
 
 
 @dataclass
@@ -144,6 +173,7 @@ class _FooterState:
     cursor_position: int
     current_field_index: int | None
     total_fields: int
+    show_help_modal: bool = False
 
 
 @dataclass(frozen=True)
@@ -260,7 +290,7 @@ def _build_footer_status_line(footer_state: _FooterState) -> Table:
     status_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
     status_line.add_row(
         Text(_value_progress_marker(footer_state), style="dim", no_wrap=True, overflow="ellipsis"),
-        Text(_FOOTER_CONTROLS, style="dim", no_wrap=True, overflow="ellipsis"),
+        Text(INTERACTIVE_HELP_FOOTER_HINT, style="dim", no_wrap=True, overflow="ellipsis"),
     )
     return status_line
 
@@ -292,8 +322,14 @@ def _build_fullscreen_capture_renderable(
     values: dict[str, str],
     footer_state: _FooterState,
     console_width: int,
-) -> Layout:
+) -> RenderableType:
     """Build full-screen capture renderable with template body and footer prompt."""
+    if footer_state.show_help_modal:
+        return render_interactive_help_modal(
+            _CAPTURE_HELP_ENTRIES,
+            color_enabled=True,
+        )
+
     footer_prompt = _build_footer_prompt(footer_state)
     footer_prompt_height = _count_wrapped_prompt_lines(footer_prompt, console_width=console_width)
     footer_height = max(2, 1 + footer_prompt_height)
@@ -387,6 +423,7 @@ def _read_live_placeholder_value(
     """Read one placeholder value from raw keyboard events in live mode."""
     current_value = ""
     cursor_position = 0
+    show_help_modal = False
     fd = sys.stdin.fileno()
     previous_mode = termios.tcgetattr(fd)
     try:
@@ -402,12 +439,20 @@ def _read_live_placeholder_value(
                         cursor_position=cursor_position,
                         current_field_index=active_field.field_index,
                         total_fields=active_field.total_fields,
+                        show_help_modal=show_help_modal,
                     ),
                     console_width=live.console.size.width,
                 ),
                 refresh=True,
             )
             event_name, event_text = read_input_event(fd, ctrl_p_as_paste=True)
+            help_key = event_text if event_name == "TEXT" else event_name
+            consumed, show_help_modal = apply_help_modal_key(
+                help_key,
+                show_help_modal=show_help_modal,
+            )
+            if consumed:
+                continue
             if event_name == "ESC":
                 raise KeyboardInterrupt
             current_value, cursor_position, done = _apply_input_event(
@@ -446,6 +491,7 @@ def _prompt_with_live_preview(
                 cursor_position=0,
                 current_field_index=1,
                 total_fields=total_fields,
+                show_help_modal=False,
             ),
             console_width=_resolve_terminal_width(),
         ),
@@ -478,6 +524,7 @@ def _prompt_with_live_preview(
                         cursor_position=0,
                         current_field_index=None,
                         total_fields=total_fields,
+                        show_help_modal=False,
                     ),
                     console_width=live.console.size.width,
                 ),
@@ -735,7 +782,13 @@ def run_tasks_capture(args: TasksCaptureArgs) -> None:
 def register(app: typer.Typer) -> None:
     """Register the tasks capture command."""
 
-    @app.command("capture")
+    @app.command(
+        "capture",
+        help=interactive_help_command_text(
+            "Create a task from a configured capture template.",
+            _CAPTURE_HELP_ENTRIES,
+        ),
+    )
     def capture(
         template_name: str | None = typer.Argument(
             None,

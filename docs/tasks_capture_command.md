@@ -63,7 +63,8 @@ capture:
 - When capture resolves a parent heading (via template `parent` or CLI `--parent`), parent placeholders are available: `{{parent_category}}`, `{{parent_title}}`, `{{parent_todo}}`, `{{parent_id}}`.
 - Any other placeholder prompts once and reuses the entered value for repeats.
 - In interactive terminals, capture runs as a full-screen live editor: the template is the main body and the footer is pinned to the two bottom-most terminal lines.
-- The footer is split into two lines: top line shows a left-aligned progress marker (`Value 2/5`) and right-aligned key bindings; second line shows the current value prompt.
+- The footer is split into two lines: top line shows a left-aligned progress marker (`Value 2/5`) and right-aligned `Type ? for help`; second line shows the current value prompt.
+- Press `?` to open a key-bindings modal panel; press any key to close it and return.
 - The footer is separated from the template body by a horizontal rule.
 - Long value prompts wrap onto additional lines as needed, and the footer grows beyond two lines to keep the full input visible.
 - The prompt accepts pasted input from bracketed paste (for example middle-click paste in supporting terminals) and Ctrl+P style paste mappings.

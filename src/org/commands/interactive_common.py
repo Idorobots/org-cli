@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING, Protocol
 
 from org_parser.element import Repeat
 from org_parser.time import Timestamp
+from rich.console import Console, Group, RenderableType
+from rich.markup import escape
+from rich.panel import Panel
 from rich.syntax import Syntax
+from rich.table import Table
 from rich.text import Text
 
 from org.output_format import DEFAULT_OUTPUT_THEME
@@ -23,7 +27,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from org_parser.document import Heading
-    from rich.console import Console
 
 
 class _KeyHandler(Protocol):
@@ -39,6 +42,19 @@ BRACKETED_PASTE_ENABLE = "\x1b[?2004h"
 BRACKETED_PASTE_DISABLE = "\x1b[?2004l"
 BRACKETED_PASTE_START = b"\x1b[200~"
 BRACKETED_PASTE_END = b"\x1b[201~"
+INTERACTIVE_HELP_FOOTER_HINT = "Type ? for help"
+INTERACTIVE_HELP_CLOSE_HINT = "Press any key to return"
+INTERACTIVE_HELP_CLI_NOTE = (
+    "In interactive mode, press ? to open key bindings help (press any key to close)."
+)
+
+
+@dataclass(frozen=True)
+class InteractiveHelpEntry:
+    """One key binding entry for interactive help rendering."""
+
+    key: str
+    description: str
 
 
 @dataclass(frozen=True)
@@ -79,6 +95,70 @@ class FooterPromptState:
     value: str = ""
     cursor_position: int = 0
     error_message: str = ""
+
+
+def render_interactive_help_panel_text(entries: list[InteractiveHelpEntry]) -> str:
+    """Render key bindings as plain help text lines."""
+    key_width = max(12, max((len(entry.key) for entry in entries), default=0) + 1)
+    lines = ["[white not dim]Key bindings:[/]"]
+    for entry in entries:
+        key_text = escape(f"{entry.key:<{key_width}}")
+        description_text = escape(entry.description)
+        lines.append(f"  [bold white not dim]{key_text}[/][white not dim]{description_text}[/]")
+    return "\n".join(lines)
+
+
+def interactive_help_command_text(base_text: str, entries: list[InteractiveHelpEntry]) -> str:
+    """Append shared interactive-help note and key-bindings panel to help text."""
+    normalized = " ".join(base_text.split())
+    panel_text = render_interactive_help_panel_text(entries)
+    return f"{normalized} {INTERACTIVE_HELP_CLI_NOTE}\n\n{panel_text}"
+
+
+def apply_help_modal_key(
+    key: str,
+    *,
+    show_help_modal: bool,
+) -> tuple[bool, bool]:
+    """Apply one key to help-modal state and return (consumed, next_state)."""
+    if show_help_modal:
+        return True, False
+    if key == "?":
+        return True, True
+    return False, show_help_modal
+
+
+def render_interactive_help_modal(
+    entries: list[InteractiveHelpEntry],
+    *,
+    color_enabled: bool,
+    title: str = "Key bindings",
+    close_hint: str = INTERACTIVE_HELP_CLOSE_HINT,
+) -> RenderableType:
+    """Render a generic interactive key bindings modal panel."""
+    key_column_width = max(18, max((len(entry.key) for entry in entries), default=0) + 1)
+    content = Table.grid(expand=True, padding=(0, 2))
+    content.add_column(width=key_column_width, no_wrap=True, overflow="fold")
+    content.add_column(ratio=1, no_wrap=False, overflow="fold")
+    for entry in entries:
+        content.add_row(
+            Text(entry.key, style="bold", no_wrap=True),
+            Text(entry.description),
+        )
+
+    border_style = "grey50" if color_enabled else ""
+    panel_content: RenderableType = content
+    if close_hint:
+        panel_content = Group(content, Text(close_hint, style="dim"))
+
+    return Panel(
+        panel_content,
+        title=title,
+        title_align="left",
+        border_style=border_style,
+        padding=(0, 1),
+        expand=True,
+    )
 
 
 def key_binding_for_action(

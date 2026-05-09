@@ -758,12 +758,59 @@ def test_interactive_rows_counter_tracks_selected_row_while_scrolling() -> None:
     )
     down_console.print(tasks_list._interactive_tasks_list_renderable(down_console, session))
     assert f"Rows 2/{total_rows}" in down_capture.getvalue()
+    assert "Type ? for help" in down_capture.getvalue()
 
     session.selected_index = 0
     up_capture = StringIO()
     up_console = Console(file=up_capture, force_terminal=False, width=80, height=8, no_color=True)
     up_console.print(tasks_list._interactive_tasks_list_renderable(up_console, session))
     assert f"Rows 1/{total_rows}" in up_capture.getvalue()
+    assert "Type ? for help" in up_capture.getvalue()
+
+
+def test_handle_interactive_key_question_toggles_help_modal() -> None:
+    """Question mark should open help modal and next key should close it."""
+    nodes = node_from_org("* TODO A\n")
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+
+    assert tasks_list._handle_interactive_key(session, "?") is True
+    assert session.show_help_modal is True
+
+    assert tasks_list._handle_interactive_key(session, "ENTER") is True
+    assert session.show_help_modal is False
+
+
+def test_interactive_renderable_shows_help_panel() -> None:
+    """Help modal should render key bindings panel in task list."""
+    nodes = node_from_org("* TODO A\n")
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+    session.show_help_modal = True
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=100, height=12, no_color=True)
+
+    console.print(tasks_list._interactive_tasks_list_renderable(console, session))
+    output = buffer.getvalue()
+
+    assert "Key bindings" in output
+    assert "Type ? for help" not in output
 
 
 def test_interactive_task_row_reuses_static_line_format_with_level_prefix_and_tag_alignment() -> (

@@ -40,10 +40,15 @@ from org.commands.interactive_actions import (
     handle_active_interactive_action_input,
 )
 from org.commands.interactive_common import (
+    INTERACTIVE_HELP_FOOTER_HINT,
+    InteractiveHelpEntry,
     append_repeat_transition,
+    apply_help_modal_key,
     build_footer_prompt_text,
+    interactive_help_command_text,
     local_now,
     read_keypress,
+    render_interactive_help_modal,
     set_mouse_reporting,
 )
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
@@ -245,7 +250,53 @@ class _AgendaSession:
     selected_row_index: int
     scroll_offset: int
     status_message: str
+    show_help_modal: bool = False
     active_interactive_action: PromptInteractiveActionContract[_AgendaSession] | None = None
+
+
+_AGENDA_HELP_ENTRIES = [
+    InteractiveHelpEntry("Esc/q", "Exit the agenda view and return to the shell."),
+    InteractiveHelpEntry(
+        "n/p, Up/Down, Wheel",
+        "Move selection across visible agenda rows, including non-task rows.",
+    ),
+    InteractiveHelpEntry(
+        "f/b, Left/Right",
+        "Move the agenda window forward or backward by the current --days span.",
+    ),
+    InteractiveHelpEntry(
+        "Enter",
+        "Open the selected task subtree in the external editor workflow.",
+    ),
+    InteractiveHelpEntry(
+        "a",
+        "Capture a task from templates, prefilled for the selected timed row when available.",
+    ),
+    InteractiveHelpEntry(
+        "$",
+        "Archive the selected task subtree using standard archive rules.",
+    ),
+    InteractiveHelpEntry(
+        "t",
+        "Prompt for a TODO state and apply it to the selected task with repeat transition logging.",
+    ),
+    InteractiveHelpEntry(
+        "S-Left/S-Right",
+        "Shift selected task planning date backward or forward by one day.",
+    ),
+    InteractiveHelpEntry(
+        "S-Up/S-Down",
+        "Shift selected timed scheduled/deadline rows by one hour.",
+    ),
+    InteractiveHelpEntry(
+        "r",
+        "Refile the selected task to another loaded file destination.",
+    ),
+    InteractiveHelpEntry(
+        "c",
+        "Add a clock entry ending now using a prompted duration.",
+    ),
+]
 
 
 @dataclass(frozen=True)
@@ -1364,6 +1415,14 @@ def _render_viewport_row(
 
 def _interactive_agenda_renderable(console: Console, session: _AgendaSession) -> Group:
     """Build scrollable interactive agenda renderable with fixed footer controls."""
+    if session.show_help_modal:
+        return Group(
+            render_interactive_help_modal(
+                _AGENDA_HELP_ENTRIES,
+                color_enabled=session.render.color_enabled,
+            ),
+        )
+
     _refresh_session_if_minute_changed(session)
     rows = _build_interactive_rows(session)
     viewport_height = max(5, console.size.height - 3)
@@ -1380,27 +1439,15 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
         session.scroll_offset = min(max(session.scroll_offset, 0), max_offset)
 
     window = rows[session.scroll_offset : session.scroll_offset + viewport_height]
-    table = _build_interactive_viewport_table()
     selected_location = _selected_row_location(session)
+    viewport_table = _build_interactive_viewport_table()
     for row in window:
-        _render_viewport_row(table, row, session, selected_location)
+        _render_viewport_row(viewport_table, row, session, selected_location)
 
     for _ in range(viewport_height - len(window)):
-        table.add_row(Text(""), Text(""), Text(""), Text(""))
+        viewport_table.add_row(Text(""), Text(""), Text(""), Text(""))
+    table = viewport_table
 
-    controls = (
-        "n/p, Up/Down, Wheel select"
-        " | Enter edit"
-        " | a add"
-        " | $ archive"
-        " | f/b, Left/Right span"
-        " | t state"
-        " | Shift+Left/Right day"
-        " | Shift+Up/Down hour"
-        " | r refile"
-        " | c clock"
-        " | q/Esc quit"
-    )
     end_line = min(session.scroll_offset + viewport_height, len(rows))
     total_lines = max(len(rows), 1)
     scroll_text = f"Lines {end_line}/{total_lines}"
@@ -1415,7 +1462,12 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
     footer_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
     footer_line.add_row(
         Text(scroll_text, style=footer_style, no_wrap=True, overflow="ellipsis"),
-        Text(controls, style=footer_style, no_wrap=True, overflow="ellipsis"),
+        Text(
+            INTERACTIVE_HELP_FOOTER_HINT,
+            style=footer_style,
+            no_wrap=True,
+            overflow="ellipsis",
+        ),
     )
     status_text = Text(status, style=footer_style, no_wrap=True, overflow="ellipsis")
     if prompt_line is None:
@@ -1958,6 +2010,7 @@ def _create_agenda_session(
         selected_row_index=0,
         scroll_offset=0,
         status_message="",
+        show_help_modal=False,
         active_interactive_action=None,
     )
     _refresh_session(session, None)
@@ -2053,6 +2106,14 @@ def _handle_interactive_key(session: _AgendaSession, key: str) -> bool:
     """Handle one interactive keypress and return whether to continue."""
     _refresh_session_if_minute_changed(session)
 
+    consumed, next_help_modal = apply_help_modal_key(
+        key,
+        show_help_modal=session.show_help_modal,
+    )
+    session.show_help_modal = next_help_modal
+    if consumed:
+        return True
+
     result = dispatch_action_key(key, session, _agenda_actions(session))
     if result.handled:
         return result.continue_loop
@@ -2097,6 +2158,8 @@ def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
 
 def _handle_active_prompt_input(session: _AgendaSession, live: Live) -> bool:
     """Handle one agenda prompt event and return whether consumed."""
+    if session.show_help_modal:
+        return False
     return handle_active_interactive_action_input(
         session,
         pause_live=live.stop,
@@ -2199,6 +2262,10 @@ def register(app: typer.Typer) -> None:
     @app.command(
         "agenda",
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+        help=interactive_help_command_text(
+            "Show agenda for one day or a date range.",
+            _AGENDA_HELP_ENTRIES,
+        ),
     )
     def agenda(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008

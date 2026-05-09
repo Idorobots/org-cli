@@ -123,6 +123,46 @@ def test_cli_help_stats_commands_are_ordered() -> None:
     assert all_idx < groups_idx < summary_idx < tags_idx
 
 
+def test_cli_help_mentions_interactive_help_for_key_commands() -> None:
+    """Interactive commands should mention '?' key bindings help in --help."""
+    runner = CliRunner()
+
+    command_vectors = [
+        ["board", "--help"],
+        ["agenda", "--help"],
+        ["tasks", "list", "--help"],
+        ["tasks", "capture", "--help"],
+    ]
+
+    for argv in command_vectors:
+        result = runner.invoke(app, argv)
+        assert result.exit_code == 0
+        output = clean_combined_output(result)
+        lowered = output.lower()
+        assert re.search(r"press\s+\?\s+to\s+open\s+key\s+bindings\s+help", lowered) is not None
+        assert "key bindings" in lowered
+        assert "arguments" in lowered
+        assert "options" in lowered
+
+
+def test_cli_help_lists_specific_key_bindings_for_interactive_commands() -> None:
+    """Interactive command help should include representative key-binding rows."""
+    runner = CliRunner()
+    expectations = [
+        (["board", "--help"], ["Esc/q", "S-Left/S-Right", "S-Up/S-Down"]),
+        (["agenda", "--help"], ["Esc/q", "f/b, Left/Right", "r"]),
+        (["tasks", "list", "--help"], ["Esc/q", "/", "s / d / c"]),
+        (["tasks", "capture", "--help"], ["Enter", "Left/Right", "Esc or Ctrl-C"]),
+    ]
+
+    for argv, snippets in expectations:
+        result = runner.invoke(app, argv)
+        assert result.exit_code == 0
+        output = clean_combined_output(result)
+        for snippet in snippets:
+            assert snippet in output
+
+
 def test_cli_runner_tags_tag() -> None:
     """CLI should filter tags with --tag."""
     runner = CliRunner()

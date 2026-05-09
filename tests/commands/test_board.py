@@ -546,8 +546,7 @@ def test_interactive_renderable_keeps_footer_at_bottom() -> None:
 
     assert len(lines) == 24
     assert lines[-2].startswith("Rows ")
-    assert "Enter edit" in lines[-2]
-    assert "$ archive" in lines[-2]
+    assert "Type ? for help" in lines[-2]
     assert lines[-1].strip() == "Ready"
 
 
@@ -579,7 +578,59 @@ def test_interactive_renderable_footer_status_is_single_line() -> None:
 
     assert len(lines) == 24
     assert lines[-2].startswith("Rows ")
+    assert "Type ? for help" in lines[-2]
     assert lines[-1].strip() == "line one line two line three"
+
+
+def test_handle_interactive_key_question_toggles_help_modal() -> None:
+    """Question mark should open help modal and next key should close it."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Task\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[board_command._BoardColumn("TODO", nodes)],
+        color_enabled=False,
+        selected_column_index=0,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+    )
+
+    assert board_command._handle_interactive_key(session, "?") is True
+    assert session.show_help_modal is True
+
+    assert board_command._handle_interactive_key(session, "ENTER") is True
+    assert session.show_help_modal is False
+
+
+def test_interactive_renderable_shows_help_panel() -> None:
+    """Help modal should render key bindings panel in body area."""
+    args = make_board_args([])
+    nodes = node_from_org("* TODO Task\n")
+    session = board_command._BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=[board_command._BoardColumn("TODO", nodes)],
+        color_enabled=False,
+        selected_column_index=0,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+        show_help_modal=True,
+    )
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=120, height=24)
+
+    console.print(board_command._interactive_flow_board_renderable(console, session))
+    output = buffer.getvalue()
+
+    assert "Key bindings" in output
+    assert "Type ? for help" not in output
 
 
 def test_handle_interactive_key_enter_edits_selected_task(

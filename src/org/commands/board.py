@@ -44,13 +44,18 @@ from org.commands.interactive_actions import (
     handle_active_interactive_action_input,
 )
 from org.commands.interactive_common import (
+    INTERACTIVE_HELP_FOOTER_HINT,
     HeadingIdentity,
+    InteractiveHelpEntry,
     append_repeat_transition,
+    apply_help_modal_key,
     build_footer_prompt_text,
     heading_identity,
     heading_identity_matches,
+    interactive_help_command_text,
     local_now,
     read_keypress,
+    render_interactive_help_modal,
     set_mouse_reporting,
     shift_priority,
 )
@@ -173,6 +178,7 @@ class _BoardSession:
     selected_row_index: int
     scroll_offset: int
     status_message: str
+    show_help_modal: bool = False
     active_interactive_action: PromptInteractiveActionContract[_BoardSession] | None = None
 
 
@@ -186,6 +192,39 @@ class _BoardStaticRenderInput:
 
 
 _BoardHeadingIdentity = HeadingIdentity
+
+
+_BOARD_HELP_ENTRIES = [
+    InteractiveHelpEntry("Esc/q", "Exit the board and return to the shell."),
+    InteractiveHelpEntry(
+        "Up/Down, Wheel",
+        "Move the highlighted task up or down within the selected column.",
+    ),
+    InteractiveHelpEntry(
+        "Left/Right",
+        "Move focus across columns without changing task data.",
+    ),
+    InteractiveHelpEntry(
+        "Enter",
+        "Open the selected task subtree in the external editor workflow.",
+    ),
+    InteractiveHelpEntry(
+        "a",
+        "Capture a new task from configured templates and reload the board.",
+    ),
+    InteractiveHelpEntry(
+        "$",
+        "Archive the selected task subtree using standard archive rules.",
+    ),
+    InteractiveHelpEntry(
+        "S-Left/S-Right",
+        "Step TODO state backward or forward using document state order.",
+    ),
+    InteractiveHelpEntry(
+        "S-Up/S-Down",
+        "Increase or decrease priority across A/B/C/none.",
+    ),
+]
 
 
 def _priority_rank(priority: str | None) -> int:
@@ -656,6 +695,7 @@ def _create_flow_board_session(
         selected_row_index=0,
         scroll_offset=0,
         status_message="",
+        show_help_modal=False,
         active_interactive_action=None,
     )
     _ensure_selection_bounds(session)
@@ -985,6 +1025,12 @@ def _sync_scroll_for_selection(
 
 def _interactive_flow_board_renderable(console: Console, session: _BoardSession) -> RenderableType:
     """Build scrollable interactive flow board with fixed headers/footer."""
+    if session.show_help_modal:
+        return render_interactive_help_modal(
+            _BOARD_HELP_ENTRIES,
+            color_enabled=session.color_enabled,
+        )
+
     prompt_line = None
     active_action = session.active_interactive_action
     if active_action is not None:
@@ -1004,15 +1050,6 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
     header = _build_board_header(session.columns)
     body, end_row = _build_board_body(session, panel_content_width, body_height)
 
-    controls = (
-        "Up/Down, Left/Right, Wheel move"
-        " | Enter edit"
-        " | a add"
-        " | $ archive"
-        " | Shift+Left/Right state"
-        " | Shift+Up/Down priority"
-        " | q/Esc quit"
-    )
     selected_nodes = session.columns[session.selected_column_index].nodes
     total_rows = max(len(selected_nodes), 1)
     visible_end_row = min(end_row, total_rows)
@@ -1025,7 +1062,12 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
     footer_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
     footer_line.add_row(
         Text(row_text, style=footer_style, no_wrap=True, overflow="ellipsis"),
-        Text(controls, style=footer_style, no_wrap=True, overflow="ellipsis"),
+        Text(
+            INTERACTIVE_HELP_FOOTER_HINT,
+            style=footer_style,
+            no_wrap=True,
+            overflow="ellipsis",
+        ),
     )
 
     layout = Layout(name="board")
@@ -1157,6 +1199,14 @@ def _flow_board_key_bindings(
 
 def _handle_interactive_key(session: _BoardSession, key: str) -> bool:
     """Handle one interactive keypress and return whether to continue."""
+    consumed, next_help_modal = apply_help_modal_key(
+        key,
+        show_help_modal=session.show_help_modal,
+    )
+    session.show_help_modal = next_help_modal
+    if consumed:
+        return True
+
     result = dispatch_action_key(key, session, _flow_board_key_bindings(session))
     if result.handled:
         return result.continue_loop
@@ -1203,6 +1253,8 @@ def _run_flow_board_interactive(console: Console, session: _BoardSession) -> Non
 
 def _handle_active_prompt_input(session: _BoardSession, live: Live) -> bool:
     """Handle one board prompt event and return whether input was consumed."""
+    if session.show_help_modal:
+        return False
     return handle_active_interactive_action_input(
         session,
         pause_live=live.stop,
@@ -1272,6 +1324,10 @@ def register(app: typer.Typer) -> None:
     @app.command(
         "board",
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+        help=interactive_help_command_text(
+            "Display tasks as an interactive flow board.",
+            _BOARD_HELP_ENTRIES,
+        ),
     )
     def flow_board(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008

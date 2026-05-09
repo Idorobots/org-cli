@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
+from io import StringIO
 from typing import TYPE_CHECKING, Any, cast
 
 import org_parser
 import pytest
 import typer
+from rich.console import Console
 
 from org import config
 from org.commands import interactive_common
@@ -491,6 +493,44 @@ def test_build_footer_status_line_displays_marker_and_controls() -> None:
     status_line = capture._build_footer_status_line(footer_state)
     assert status_line.columns[1].justify == "right"
     assert capture._value_progress_marker(footer_state) == "Value 2/5"
+
+
+def test_capture_help_modal_key_toggle_helper() -> None:
+    """Question mark should open help modal and any key should close it."""
+    consumed, show = interactive_common.apply_help_modal_key("?", show_help_modal=False)
+    assert consumed is True
+    assert show is True
+
+    consumed_close, show_close = interactive_common.apply_help_modal_key(
+        "ENTER",
+        show_help_modal=True,
+    )
+    assert consumed_close is True
+    assert show_close is False
+
+
+def test_build_fullscreen_capture_renderable_shows_help_panel() -> None:
+    """Help modal should render key bindings panel in capture fullscreen view."""
+    renderable = capture._build_fullscreen_capture_renderable(
+        "* TODO {{title}}",
+        {},
+        capture._FooterState(
+            current_placeholder="title",
+            current_input_value="",
+            cursor_position=0,
+            current_field_index=1,
+            total_fields=1,
+            show_help_modal=True,
+        ),
+        console_width=100,
+    )
+    output_buffer = StringIO()
+    console = Console(file=output_buffer, force_terminal=False)
+    console.print(renderable)
+    output = output_buffer.getvalue()
+
+    assert "Key bindings" in output
+    assert "Type ? for help" not in output
 
 
 def test_count_wrapped_prompt_lines_expands_with_long_input() -> None:
