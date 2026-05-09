@@ -6,51 +6,6 @@ This document provides essential information for AI coding agents working in the
 
 **org-cli** is a Python CLI for Org-mode archives. It supports query-style data extraction, task listing, and statistical analysis.
 
-Top-level commands:
-
-- `org tasks query`
-- `org stats all`
-- `org stats summary`
-- `org stats tags`
-- `org stats groups`
-- `org tasks list`
-
-**Project Toolchain:**
-
-- Python `>=3.12,<4.0` (configured in `pyproject.toml`)
-- Poetry for dependency management and packaging
-- Runtime dependencies: `orgparse`, `typer`, `rich`, `parsy`
-- Dev dependencies: `pytest`, `pytest-cov`, `ruff`, `mypy`, `pyright`, `taskipy`
-
-**Project Structure:**
-
-```
-org-cli/
-├── src/
-│   └── org/
-│       ├── cli.py
-│       ├── config.py
-│       ├── cli_common.py
-│       ├── analyze.py
-│       ├── filters.py
-│       ├── tui.py
-│       ├── query_language/
-│       └── commands/
-│           ├── query.py
-│           ├── stats/
-│           │   ├── all.py
-│           │   ├── tasks.py
-│           │   ├── tags.py
-│           │   └── groups.py
-│           └── tasks/
-│               └── list.py
-├── tests/
-├── examples/
-├── docs/
-├── pyproject.toml
-└── poetry.lock
-```
-
 ## Documentation
 
 - Entry point: `docs/index.md`
@@ -105,13 +60,8 @@ Command options evolve; use the generated help for exact flags:
 ```bash
 poetry run org --help
 poetry run org tasks query --help
-poetry run org stats --help
-poetry run org stats all --help
-poetry run org stats summary --help
-poetry run org stats tags --help
-poetry run org stats groups --help
-poetry run org tasks --help
 poetry run org tasks list --help
+...
 ```
 
 ## Build/Lint/Test Commands
@@ -233,7 +183,7 @@ from org.cli import main
 - Use triple double-quotes for docstrings: `"""This is a docstring."""`
 
 ### Type Hints
-**Recommended** for new code:
+**Mandatory*** for new code:
 ```python
 def normalize(tags: set[str]) -> set[str]:
     """Normalize and map tags to canonical forms."""
@@ -364,8 +314,4 @@ poetry run task check
 - Do not summarize work done unless explicitly asked to do that.
 - When a file requires multiple changes, apply them all to the file in a single tool call instead of performing each edit separately.
 - Never add "backward-compatible" wrappers solely to satisfy tests; update tests to target the real production code paths instead.
-
----
-
-**Last Updated:** 2026-02-26
-**Maintained By:** AI Coding Agents (sometimes)
+- Never use `getattr` or `setattr` to select object field values; use explicit attribute access.
