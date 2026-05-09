@@ -6,7 +6,7 @@ import json
 import logging
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 import click
 import typer
@@ -21,20 +21,30 @@ from org import config as config_module
 from org.cli_common import load_and_process_data
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
+from org.commands.interactive_action_builders import (
+    quit_view_action,
+    status_external_action,
+    status_noninteractive_action,
+    status_view_action,
+    view_action,
+)
+from org.commands.interactive_actions import (
+    ActionResult,
+    PromptInteractiveAction,
+    PromptInteractiveActionContract,
+    SessionAction,
+    action_requires_live_pause,
+    dispatch_action_key,
+    handle_active_interactive_action_input,
+)
 from org.commands.interactive_common import (
     FooterPromptState,
     HeadingIdentity,
-    KeyBinding,
     append_repeat_transition,
-    apply_footer_prompt_input_event,
     build_footer_prompt_text,
-    dispatch_key_binding,
     heading_identity,
     heading_identity_matches,
-    key_binding_for_action,
-    key_binding_requires_live_pause,
     local_now,
-    read_input_event_with_timeout,
     read_keypress,
     set_mouse_reporting,
     shift_priority,
@@ -169,16 +179,7 @@ class _TasksListSession:
     scroll_offset: int
     status_message: str
     search_text: str
-    active_prompt: _TasksListPrompt | None
-
-
-@dataclass
-class _TasksListPrompt:
-    """One active footer input prompt in tasks list."""
-
-    kind: str
-    config: PromptActionConfig
-    choices: list[str] | None = None
+    active_interactive_action: PromptInteractiveActionContract[_TasksListSession] | None = None
 
 
 class TasksListOutputFormatter(Protocol):
@@ -614,8 +615,9 @@ def _interactive_tasks_list_renderable(console: Console, session: _TasksListSess
     search_text = session.search_text or "-"
     row_text = f"Rows {selected_row}/{total_rows} | Search: {search_text}"
     prompt_line = None
-    if session.active_prompt is not None:
-        prompt_line = build_footer_prompt_text(session.active_prompt.config.prompt)
+    active_action = session.active_interactive_action
+    if active_action is not None:
+        prompt_line = build_footer_prompt_text(active_action.prompt_config.prompt)
     status = session.status_message or ""
     footer_style = "dim" if session.color_enabled else ""
 
@@ -700,19 +702,6 @@ def _apply_capture_task(session: _TasksListSession) -> None:
         session.status_message = str(err)
 
 
-def _start_prompt_search(session: _TasksListSession) -> None:
-    """Start footer prompt for interactive full-text search."""
-    config = PromptActionConfig(
-        prompt=FooterPromptState(label="Search text (blank clears)"),
-        cancel_status="Search cancelled",
-        invalid_status="Invalid search input",
-    )
-    session.active_prompt = _TasksListPrompt(
-        kind="search",
-        config=config,
-    )
-
-
 def _clear_search(session: _TasksListSession) -> None:
     """Clear active interactive search and restore full visible list."""
     if not session.search_text:
@@ -724,26 +713,6 @@ def _clear_search(session: _TasksListSession) -> None:
     session.search_text = ""
     _refresh_visible_nodes(session, preserve_identity)
     session.status_message = "Search cleared"
-
-
-def _start_prompt_state_change(session: _TasksListSession) -> None:
-    """Start prompt for TODO state transition on selected task."""
-    node = _selected_node(session)
-    if node is None:
-        session.status_message = "Action available only on task rows"
-        return
-
-    states = todo_states_for_heading(node)
-    if not states:
-        session.status_message = "No TODO states defined"
-        return
-
-    config = state_selection_prompt_config(states)
-    session.active_prompt = _TasksListPrompt(
-        kind="state",
-        config=config,
-        choices=states,
-    )
 
 
 def _apply_state_change_with_value(session: _TasksListSession, new_state: str) -> None:
@@ -785,20 +754,6 @@ def _apply_priority_shift(session: _TasksListSession, *, increase: bool) -> None
         session,
         node,
         f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}",
-    )
-
-
-def _start_prompt_tags_edit(session: _TasksListSession) -> None:
-    """Prompt and replace tags on selected task."""
-    node = _selected_node(session)
-    if node is None:
-        session.status_message = "Action available only on task rows"
-        return
-
-    config = tags_prompt_config()
-    session.active_prompt = _TasksListPrompt(
-        kind="tags",
-        config=config,
     )
 
 
@@ -852,128 +807,87 @@ def _apply_planning_timestamp_edit(
     _persist_and_reload_selected(session, node, f"{prompt_label} updated")
 
 
-def _start_prompt_scheduled_edit(session: _TasksListSession) -> None:
-    """Start prompt to update scheduled timestamp on selected task."""
-    config = planning_prompt_config("scheduled")
-    session.active_prompt = _TasksListPrompt(
-        kind="scheduled",
-        config=config,
-    )
+def _state_choices_for_selected_node(session: _TasksListSession) -> list[str]:
+    """Return TODO-state choices for selected task."""
+    node = _selected_node(session)
+    if node is None:
+        return []
+    return todo_states_for_heading(node)
 
 
-def _start_prompt_deadline_edit(session: _TasksListSession) -> None:
-    """Start prompt to update deadline timestamp on selected task."""
-    config = planning_prompt_config("deadline")
-    session.active_prompt = _TasksListPrompt(
-        kind="deadline",
-        config=config,
-    )
+def _can_activate_state_prompt(session: _TasksListSession) -> ActionResult | None:
+    """Validate preconditions for opening state prompt."""
+    if _selected_node(session) is None:
+        return ActionResult(success=False, status_message="Action available only on task rows")
+    if not _state_choices_for_selected_node(session):
+        return ActionResult(success=False, status_message="No TODO states defined")
+    return None
 
 
-def _start_prompt_closed_edit(session: _TasksListSession) -> None:
-    """Start prompt to update closed timestamp on selected task."""
-    config = planning_prompt_config("closed")
-    session.active_prompt = _TasksListPrompt(
-        kind="closed",
-        config=config,
-    )
-
-
-def _submit_active_prompt(session: _TasksListSession) -> str | None:
-    """Submit active footer prompt; return error message when invalid."""
-    active = session.active_prompt
-    if active is None:
-        return None
-
-    value = active.config.prompt.value.strip()
-    handlers = {
-        "search": lambda: _submit_search_prompt(session, value),
-        "state": lambda: _submit_state_prompt(session, active, value, active.choices or []),
-        "tags": lambda: _submit_tags_prompt(session, active, active.config.prompt.value),
-        "scheduled": lambda: _submit_planning_prompt(
-            session,
-            active,
-            "scheduled",
-            active.config.prompt.value,
-        ),
-        "deadline": lambda: _submit_planning_prompt(
-            session,
-            active,
-            "deadline",
-            active.config.prompt.value,
-        ),
-        "closed": lambda: _submit_planning_prompt(
-            session,
-            active,
-            "closed",
-            active.config.prompt.value,
-        ),
-    }
-    handler = handlers.get(active.kind)
-    if handler is None:
-        session.active_prompt = None
-        return None
-    return handler()
-
-
-def _submit_search_prompt(session: _TasksListSession, value: str) -> str | None:
-    """Apply submitted search value."""
+def _submit_search_action(
+    session: _TasksListSession,
+    _target: _TasksListSession,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted interactive search value."""
+    value = raw_value.strip()
     selected = _selected_node(session)
     preserve_identity = heading_identity(selected) if selected is not None else None
     session.search_text = value
     _refresh_visible_nodes(session, preserve_identity)
-    session.status_message = (
-        "Search cleared" if not value else f"{len(session.visible_nodes)} matches"
-    )
-    session.active_prompt = None
-    return None
+    status = "Search cleared" if not value else f"{len(session.visible_nodes)} matches"
+    return ActionResult(status_message=status)
 
 
-def _submit_state_prompt(
+def _submit_state_action(
     session: _TasksListSession,
-    prompt: _TasksListPrompt,
-    value: str,
-    states: list[str],
-) -> str | None:
-    """Apply submitted TODO state value."""
-    cancel_message = prompt.config.cancel_status
-    invalid_message = prompt.config.invalid_status
+    _node: Heading,
+    raw_value: str,
+    options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted TODO-state selection."""
+    active = session.active_interactive_action
+    if active is None or active.prompt_config is None:
+        return ActionResult(success=False)
 
+    value = raw_value.strip()
+    states = options or []
     selected_state = resolve_todo_state_selection(value, states)
     if selected_state is None and not value:
-        session.status_message = cancel_message
-        session.active_prompt = None
-        return None
-    if selected_state is not None:
-        _apply_state_change_with_value(session, selected_state)
-        session.active_prompt = None
-        return None
-    return invalid_message
+        return ActionResult(status_message=active.prompt_config.cancel_status)
+    if selected_state is None:
+        return ActionResult(
+            success=False,
+            status_message=active.prompt_config.invalid_status,
+            keep_prompt_open=True,
+        )
+
+    _apply_state_change_with_value(session, selected_state)
+    return ActionResult(status_message=session.status_message)
 
 
-def _submit_tags_prompt(
+def _submit_tags_action(
     session: _TasksListSession,
-    prompt: _TasksListPrompt,
-    raw_tags: str,
-) -> str | None:
-    """Apply submitted tags value."""
-    del prompt
-    _apply_tags_edit(session, raw_tags)
-    session.active_prompt = None
-    return None
+    _node: Heading,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted tag-edit value."""
+    _apply_tags_edit(session, raw_value)
+    return ActionResult(status_message=session.status_message)
 
 
-def _submit_planning_prompt(
+def _submit_planning_action(
     session: _TasksListSession,
-    prompt: _TasksListPrompt,
-    field: PlanningTimestampField,
-    raw_timestamp: str,
-) -> str | None:
-    """Apply submitted planning timestamp value."""
-    del prompt
-    _apply_planning_timestamp_edit(session, field=field, raw_timestamp=raw_timestamp)
-    session.active_prompt = None
-    return None
+    _node: Heading,
+    raw_value: str,
+    options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted planning timestamp edit value."""
+    field = cast("PlanningTimestampField", (options or ["scheduled"])[0])
+    _apply_planning_timestamp_edit(session, field=field, raw_timestamp=raw_value)
+    return ActionResult(status_message=session.status_message)
 
 
 def _move_selection(session: _TasksListSession, step: int) -> None:
@@ -983,53 +897,74 @@ def _move_selection(session: _TasksListSession, step: int) -> None:
     session.selected_index = (session.selected_index + step) % len(session.visible_nodes)
 
 
-def _tasks_list_key_bindings(session: _TasksListSession) -> dict[str, KeyBinding]:
-    """Build interactive key bindings for tasks list session."""
+def _tasks_list_actions(session: _TasksListSession) -> dict[str, SessionAction[_TasksListSession]]:
+    """Build interactive/noninteractive/view actions for tasks list session."""
     return {
-        "q": KeyBinding(lambda: False),
-        "ESC": KeyBinding(lambda: False),
-        "n": key_binding_for_action(lambda: _move_selection(session, 1)),
-        "DOWN": key_binding_for_action(lambda: _move_selection(session, 1)),
-        "WHEEL-DOWN": key_binding_for_action(lambda: _move_selection(session, 1)),
-        "p": key_binding_for_action(lambda: _move_selection(session, -1)),
-        "UP": key_binding_for_action(lambda: _move_selection(session, -1)),
-        "WHEEL-UP": key_binding_for_action(lambda: _move_selection(session, -1)),
-        "ENTER": key_binding_for_action(
-            lambda: _edit_selected_task_in_external_editor(session),
-            requires_live_pause=True,
+        "q": quit_view_action(),
+        "ESC": quit_view_action(),
+        "n": view_action(lambda _session: _move_selection(session, 1)),
+        "DOWN": view_action(lambda _session: _move_selection(session, 1)),
+        "WHEEL-DOWN": view_action(lambda _session: _move_selection(session, 1)),
+        "p": view_action(lambda _session: _move_selection(session, -1)),
+        "UP": view_action(lambda _session: _move_selection(session, -1)),
+        "WHEEL-UP": view_action(lambda _session: _move_selection(session, -1)),
+        "ENTER": status_external_action(_edit_selected_task_in_external_editor),
+        "a": status_external_action(_apply_capture_task),
+        "$": status_noninteractive_action(_archive_selected_task),
+        "/": PromptInteractiveAction(
+            prompt_config=PromptActionConfig(
+                prompt=FooterPromptState(label="Search text (blank clears)"),
+                cancel_status="Search cancelled",
+                invalid_status="Invalid search input",
+            ),
+            apply_with_input=_submit_search_action,
+            resolve_target=lambda current: current,
         ),
-        "a": key_binding_for_action(
-            lambda: _apply_capture_task(session),
-            requires_live_pause=True,
+        "x": status_view_action(_clear_search),
+        "t": PromptInteractiveAction(
+            prompt_config=state_selection_prompt_config(
+                _state_choices_for_selected_node(session),
+            ),
+            apply_with_input=_submit_state_action,
+            resolve_target=_selected_node,
+            options_factory=_state_choices_for_selected_node,
+            can_activate=_can_activate_state_prompt,
         ),
-        "$": key_binding_for_action(lambda: _archive_selected_task(session)),
-        "/": key_binding_for_action(
-            lambda: _start_prompt_search(session),
+        "S-UP": status_noninteractive_action(
+            lambda _session: _apply_priority_shift(session, increase=True),
         ),
-        "x": key_binding_for_action(lambda: _clear_search(session)),
-        "t": key_binding_for_action(
-            lambda: _start_prompt_state_change(session),
+        "S-DOWN": status_noninteractive_action(
+            lambda _session: _apply_priority_shift(session, increase=False),
         ),
-        "S-UP": key_binding_for_action(lambda: _apply_priority_shift(session, increase=True)),
-        "S-DOWN": key_binding_for_action(lambda: _apply_priority_shift(session, increase=False)),
-        "g": key_binding_for_action(
-            lambda: _start_prompt_tags_edit(session),
+        "g": PromptInteractiveAction(
+            prompt_config=tags_prompt_config(),
+            apply_with_input=_submit_tags_action,
+            resolve_target=_selected_node,
         ),
-        "s": key_binding_for_action(
-            lambda: _start_prompt_scheduled_edit(session),
+        "s": PromptInteractiveAction(
+            prompt_config=planning_prompt_config("scheduled"),
+            apply_with_input=_submit_planning_action,
+            resolve_target=_selected_node,
+            options_factory=lambda _session: ["scheduled"],
         ),
-        "d": key_binding_for_action(
-            lambda: _start_prompt_deadline_edit(session),
+        "d": PromptInteractiveAction(
+            prompt_config=planning_prompt_config("deadline"),
+            apply_with_input=_submit_planning_action,
+            resolve_target=_selected_node,
+            options_factory=lambda _session: ["deadline"],
         ),
-        "c": key_binding_for_action(
-            lambda: _start_prompt_closed_edit(session),
+        "c": PromptInteractiveAction(
+            prompt_config=planning_prompt_config("closed"),
+            apply_with_input=_submit_planning_action,
+            resolve_target=_selected_node,
+            options_factory=lambda _session: ["closed"],
         ),
     }
 
 
 def _handle_interactive_key(session: _TasksListSession, key: str) -> bool:
     """Handle one interactive keypress and return whether to continue."""
-    result = dispatch_key_binding(key, _tasks_list_key_bindings(session))
+    result = dispatch_action_key(key, session, _tasks_list_actions(session))
     if result.handled:
         return result.continue_loop
 
@@ -1051,7 +986,7 @@ def _create_tasks_list_session(args: ListArgs, data: _TasksListSessionData) -> _
         scroll_offset=0,
         status_message="",
         search_text="",
-        active_prompt=None,
+        active_interactive_action=None,
     )
     _ensure_selection_bounds(session)
     return session
@@ -1086,7 +1021,8 @@ def _run_tasks_list_interactive(
                     live.update(_interactive_tasks_list_renderable(console, session), refresh=True)
                     continue
 
-                if key_binding_requires_live_pause(key, _tasks_list_key_bindings(session)):
+                actions = _tasks_list_actions(session)
+                if action_requires_live_pause(key, actions):
                     live.stop()
                     should_continue = _handle_interactive_key(session, key)
                     live.start()
@@ -1102,29 +1038,13 @@ def _run_tasks_list_interactive(
 
 def _handle_active_prompt_input(session: _TasksListSession, live: Live) -> bool:
     """Handle one prompt event and return whether input was consumed."""
-    if session.active_prompt is None:
-        return False
-
-    event = read_input_event_with_timeout(0.2, ctrl_p_as_paste=True)
-    if event is None:
-        live.update(_interactive_tasks_list_renderable(live.console, session), refresh=True)
-        return True
-
-    event_name, event_text = event
-    if event_name == "ESC":
-        session.active_prompt = None
-        session.status_message = "Input cancelled"
-    elif event_name != "IGNORE":
-        prompt = session.active_prompt.config.prompt
-        submitted = apply_footer_prompt_input_event(prompt, event_name, event_text)
-        if submitted:
-            error_message = _submit_active_prompt(session)
-            if error_message is not None and session.active_prompt is not None:
-                session.active_prompt.config.prompt.error_message = error_message
-                session.status_message = error_message
-
-    live.update(_interactive_tasks_list_renderable(live.console, session), refresh=True)
-    return True
+    return handle_active_interactive_action_input(
+        session,
+        refresh=lambda: live.update(
+            _interactive_tasks_list_renderable(live.console, session),
+            refresh=True,
+        ),
+    )
 
 
 def _is_cli_option_present(argv: list[str], option: str) -> bool:

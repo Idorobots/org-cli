@@ -6729,7 +6729,10 @@ Redo all the filters & orderings in terms of the query language
 :END:
 Use IDs for headings. Support the "usual" =org-attach= file directories for attachments.
 ** Usability improvements                                                                       :UX:
-*** TODO User input prompts should be resolved in the active TUI view
+*** DONE User input prompts should be resolved in the active TUI view
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 14:51]
+:END:
 Currently, when an interactive action requires user input, the TUI view is exited and instead the user is presented with a text prompt.
 I'd like to improve that so that the prompt is displayed within the footer of the TUI view that is active at the moment, identically to how it is done in the =org tasks capture= command.
 
@@ -6850,12 +6853,14 @@ In file src/org/commands/agenda.py around line 1964, near the ~def _submit_clock
 #+end_example
 
 Remove all such "backward-compatible" input handlers, the tests should always test the primary code paths. There's never a need for backwards-compatibility, in fact in this case it makes the code much, much worse.
-**** TODO Refactor the interactive actions execution logic.                                :Cleanup:
+**** DONE Refactor the interactive actions execution logic.                                :Cleanup:
 :PROPERTIES:
 :capture_time: [2026-05-09 Sat 13:31]
 :context: [[file:~/projects/software/org-cli/VIBES.org::*Backward-compatibility for tests slop.][Backward-compatibility for tests slop.]]
 :END:
-
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-09 Sat 14:47]
+:END:
 We extracted the action prompts, but the logic for executing the actions is still separate for all the commands. In actuality, the actions are performed mostly the same way, so they can be extracted into a common module.
 
 I'd like the outcome to be a single =InteractiveAction= data class that conveys the prompt, any selection options and the action function to be applied once the user input is provided. The action function should take a task that the action is applied on and mutate it according to the actions semantics. The action function should return a result indicating if the action was successful or not.
@@ -6873,6 +6878,21 @@ Actions should be extracted to a common module so that they can be re-used in di
 
 Actions that require special TUI handling (edit & capture) should also be special cased as interactive actions.
 
+Interactive Actions should always be prompt driven, any actions that don't require user input past the triggering of the action should be separate (can be called =NoninteractiveAction=). On top of that there should be =ViewAction= that adjust the TUI view. The edit/capture actions should be a special-handled =InteractiveAction='s, no prompt but rather changing the TUI view temporarily.
+
+*** TODO Task capture actions should resolve the prompt within the view.
+:PROPERTIES:
+:capture_time: [2026-05-09 Sat 14:49]
+:context: 
+:END:
+
+It should be an interactive prompt action that prompts the user for the selected capture template within the same view as the action is triggered in, and then proceeds to the capture view with the template pre-configured.
+
+*** TODO Search action should be available in agenda and board.
+:PROPERTIES:
+:capture_time: [2026-05-09 Sat 14:48]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Board & agenda commands should omit tasks that are COMMENTs][Board & agenda commands should omit tasks that are COMMENTs]]
+:END:
 *** Board & agenda commands should omit tasks that are COMMENTs
 *** Board command should only show recently completed tasks
 Tasks older than 7 days should be omitted, the timeout should be configurable with =--days=.

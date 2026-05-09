@@ -26,15 +26,23 @@ from org.color import get_state_color
 from org.commands.agenda import _advance_timestamp_by_repeater
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
+from org.commands.interactive_action_builders import (
+    quit_view_action,
+    status_external_action,
+    status_noninteractive_action,
+    view_action,
+)
+from org.commands.interactive_actions import (
+    PromptInteractiveActionContract,
+    SessionAction,
+    action_requires_live_pause,
+    dispatch_action_key,
+)
 from org.commands.interactive_common import (
     HeadingIdentity,
-    KeyBinding,
     append_repeat_transition,
-    dispatch_key_binding,
     heading_identity,
     heading_identity_matches,
-    key_binding_for_action,
-    key_binding_requires_live_pause,
     local_now,
     read_keypress,
     set_mouse_reporting,
@@ -152,6 +160,7 @@ class _BoardSession:
     selected_row_index: int
     scroll_offset: int
     status_message: str
+    active_interactive_action: PromptInteractiveActionContract[_BoardSession] | None = None
 
 
 @dataclass(frozen=True)
@@ -599,6 +608,7 @@ def _create_flow_board_session(
         selected_row_index=0,
         scroll_offset=0,
         status_message="",
+        active_interactive_action=None,
     )
     _ensure_selection_bounds(session)
     return session
@@ -1011,40 +1021,38 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
 
 def _flow_board_key_bindings(
     session: _BoardSession,
-) -> dict[str, KeyBinding]:
+) -> dict[str, SessionAction[_BoardSession]]:
     """Build interactive key bindings for flow board session."""
     return {
-        "q": KeyBinding(lambda: False),
-        "ESC": KeyBinding(lambda: False),
-        "DOWN": key_binding_for_action(lambda: _move_selection_vertical(session, 1)),
-        "WHEEL-DOWN": key_binding_for_action(lambda: _move_selection_vertical(session, 1)),
-        "UP": key_binding_for_action(lambda: _move_selection_vertical(session, -1)),
-        "WHEEL-UP": key_binding_for_action(lambda: _move_selection_vertical(session, -1)),
-        "RIGHT": key_binding_for_action(lambda: _move_selection_horizontal(session, 1)),
-        "LEFT": key_binding_for_action(lambda: _move_selection_horizontal(session, -1)),
-        "ENTER": key_binding_for_action(
-            lambda: _edit_selected_task_in_external_editor(session),
-            requires_live_pause=True,
+        "q": quit_view_action(),
+        "ESC": quit_view_action(),
+        "DOWN": view_action(lambda _session: _move_selection_vertical(session, 1)),
+        "WHEEL-DOWN": view_action(lambda _session: _move_selection_vertical(session, 1)),
+        "UP": view_action(lambda _session: _move_selection_vertical(session, -1)),
+        "WHEEL-UP": view_action(lambda _session: _move_selection_vertical(session, -1)),
+        "RIGHT": view_action(lambda _session: _move_selection_horizontal(session, 1)),
+        "LEFT": view_action(lambda _session: _move_selection_horizontal(session, -1)),
+        "ENTER": status_external_action(_edit_selected_task_in_external_editor),
+        "a": status_external_action(_apply_capture_task),
+        "$": status_noninteractive_action(_archive_selected_task),
+        "S-LEFT": status_noninteractive_action(
+            lambda _session: _apply_state_move(session, direction=-1),
         ),
-        "a": key_binding_for_action(
-            lambda: _apply_capture_task(session),
-            requires_live_pause=True,
+        "S-RIGHT": status_noninteractive_action(
+            lambda _session: _apply_state_move(session, direction=1),
         ),
-        "$": key_binding_for_action(lambda: _archive_selected_task(session)),
-        "S-LEFT": key_binding_for_action(
-            lambda: _apply_state_move(session, direction=-1),
+        "S-UP": status_noninteractive_action(
+            lambda _session: _apply_priority_shift(session, increase=True),
         ),
-        "S-RIGHT": key_binding_for_action(
-            lambda: _apply_state_move(session, direction=1),
+        "S-DOWN": status_noninteractive_action(
+            lambda _session: _apply_priority_shift(session, increase=False),
         ),
-        "S-UP": key_binding_for_action(lambda: _apply_priority_shift(session, increase=True)),
-        "S-DOWN": key_binding_for_action(lambda: _apply_priority_shift(session, increase=False)),
     }
 
 
 def _handle_interactive_key(session: _BoardSession, key: str) -> bool:
     """Handle one interactive keypress and return whether to continue."""
-    result = dispatch_key_binding(key, _flow_board_key_bindings(session))
+    result = dispatch_action_key(key, session, _flow_board_key_bindings(session))
     if result.handled:
         return result.continue_loop
 
@@ -1070,7 +1078,8 @@ def _run_flow_board_interactive(console: Console, session: _BoardSession) -> Non
                     live.update(_interactive_flow_board_renderable(console, session), refresh=True)
                     continue
 
-                if key_binding_requires_live_pause(key, _flow_board_key_bindings(session)):
+                bindings = _flow_board_key_bindings(session)
+                if action_requires_live_pause(key, bindings):
                     live.stop()
                     should_continue = _handle_interactive_key(session, key)
                     live.start()
