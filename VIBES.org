@@ -6652,69 +6652,283 @@ In file src/org/commands/board.py around line 282, near the ~def _render_column_
 #+end_example
 
 Rename =filter_text= to just =filter= and =order_by_selector= to just =order_by=.
-*** Workflow configuration
-- Defines stages a task can be in and their requirements
-- Defines state transitions
-- Defines agent personas responsible for a given stage
+*** TODO Tasks find command
+Find tasks by title/id/full text search/regex search:
+- =--query-title= - select tasks by title (same as the other commands),
+- =--query-id= - select tasks by ID (same as the other commands),
+- =--query= - select tasks by a generic query (same as the other commands),
+- =--search-text= - select tasks by full-text-match (see recently added interactive search, use a similar approach but refactor the code to rely on the query language - =--search-text "foo"= should be equivalent to =select("foo" in str(.))=).
+- =--search-pattern= - selects tasks by a Regular Expression pattern (should work on the full text of a task, but perform regex matching instead of text match - =--search-pattern "foo"= should be equivalent to =select(str(.) matches "foo")= ).
 
-*** Tasks find
-Find tasks by title/id/rag.
+When multiple search criteria options are specified, leave only tasks that match them all.
 
-- =--out org-with-context= - Tasks should be presented together with the parent chain tasks for context.
-- =--out prompt= - show the task as an AI consumable prompt
+Additionaly, it should support =--include-context N= switch that will include the parent chain in the output up to N levels deep, i.e. with =N= equal to 2, the output should contain the node, its =node.parent= and also its =node.parent.parent=. If the node's level is lower than =N=, clamp it at the document boundary - include everything including the document body. By default, the =N= parameter should be 0 (no extra context included).
+
+When multiple tasks match the search criteria, include all matching tasks in the output while respecting the =--include-context= semantics - including the context for each task, but not duplicate it when it overlaps.
+
+The command should also support the =--out= and related switches for manipulating the output format.
+
+*** Workflow engine & configuration
+Defines stages a task can be in, their requirements and actions to be taken for tasks in a given state.
+Stages can override the parallelism of execution (useful for manual verification steps).
+
+#+begin_src yaml
+flow:
+  workflows:
+    - name: Development
+      steps:
+        - name: Init
+          filter: .todo == "TODO"
+          action: '.id = .category + "-" + str([.document.all_headigns[] | select(.id != null)] | length) and .todo = "REFINE"'
+
+        - name: Refinement
+          filter: .todo == "REFINE"
+          preconditions:
+            - condition: '.id != null'
+              description: Task must have an identifier.
+          runner: bash
+          runner-args: '[.id]'
+          action: |
+            devcontainer exec opencode run \
+              --attach "http://localhost:4069" \
+              --model "openai/gpt-5.3-codex" \
+              --agent build \
+              --title "$1 refinement" \
+              --print-log \
+              /org-refine $1
+            org tasks update --query-id "$1" --todo "AI_REVIEW"
+          # action: |
+          #   .todo = "AI_REVIEW";
+          #   exec(["devcontainer", "exec", "opencode", "run",
+          #         "--attach", "http://localhost:4069",
+          #         "--model", "openai/gpt-5.3-codex",
+          #         "--agent", "build",
+          #         "--title", .id + " refinement",
+          #         "--print-logs",
+          #         "/org-refine " + .id])
+          postconditions:
+            - condition: .todo in ["REFINE", "AI_REVIEW", "REVIEW"]
+              description: Refined task must be in REFINE or AI_REVIEW state.
+
+        - name: Refinement AI review
+          filter: .todo == "AI_REVIEW"
+          action: |
+            .todo = "REVIEW";
+            exec(["devcontainer", "exec", "opencode", "run",
+                  "--attach", "http://localhost:4069",
+                  "--model", "openai/gpt-5.3-codex",
+                  "--agent", "build",
+                  "--title", .id + " design review",
+                  "--print-logs",
+                  "/org-review " + .id])
+
+        - name: Notify refinement human review
+          filter: .todo == "NOTIFY_REVIEW"
+          action: |
+            exec(["notify-send", "-a", "org-cli", "-w",
+                  "Task ready for review",
+                  "Task '" + .title.text.trimmed + "' is ready for review!"]);
+            .todo = "REVIEW"
+
+        - name: Refinement human review
+          filter: .todo == "REVIEW"
+          parallelism: 0
+
+        - name: Planning
+          filter: .todo == "PLAN"
+          action: |
+            .todo = "NOTIFY_ACCEPT";
+            .properties.ORDERED = "t";
+            exec(["devcontainer", "exec", "opencode", "run",
+                  "--attach", "http://localhost:4069",
+                  "--model", "openai/gpt-5.3-codex",
+                  "--agent", "build",
+                  "--title", .id + " planning",
+                  "--print-logs",
+                  "/org-plan " + .id])
+          postconditions:
+            - condition: .todo in ["PLAN", "NOTIFY_ACCEPT"]
+              description: Planned task must be in REFINE or AI_REVIEW state.
+
+        - name: Notify confirm plan
+          filter: .todo == "NOTIFY_ACCEPT"
+          preconditions:
+            - condition: '.properties.plan != null'
+              info: A plan file must be attached.
+          action: |
+            .todo = "ACCEPT";
+            exec(["notify-send", "-a", "org-cli", "-w",
+                  "Task ready for review",
+                  "Task '" + .title.text.trimmed + "' is ready for review!"])
+
+        - name: Confirm plan
+          filter: .todo == "ACCEPT"
+          preconditions:
+            - condition: '.properties.plan != null'
+              info: A plan file must be attached.
+          parallelism: 0
+
+        - name: Implementation
+          filter: .todo == "IMPLEMENT"
+          preconditions:
+            - condition: '.properties.branch != null'
+              info: Implementation branch must be specified.
+            - condition: 'not(.is_blocked)'
+              info: All dependencies must be done.
+          action: |
+            .todo = "AI_VERIFY";
+            exec(["devcontainer", "exec", "git", "worktree", "add", "-b", .properties.branch, "../" + .properties.branch, "main"]);
+            exec(["devcontainer", "exec", "git", "checkout", .properties.branch]);
+            exec(["devcontainer", "exec", "opencode", "run",
+                  "--attach", "http://localhost:4069",
+                  "--model", "openai/gpt-5.3-codex",
+                  "--agent", "build",
+                  "--title", .id + " implementation",
+                  "--print-logs",
+                  "--file", .properties.plan,
+                  "/org-implement " + .id])
+          postconditions:
+            - condition: .todo in ["IMPLEMENT", "AI_VERIFY"]
+              description: Planned task must be in IMPLENT or AI_VERIFY state.
+
+        - name: Implementation AI verification
+          filter: .todo == "AI_VERIFY"
+          action: |
+            .todo = "NOTIFY_VERIFY"
+            exec(["devcontainer", "exec", "git", "checkout", .properties.branch]);
+            exec(["devcontainer", "exec", "opencode", "run",
+                  "--attach", "http://localhost:4069",
+                  "--model", "openai/gpt-5.3-codex",
+                  "--agent", "build",
+                  "--title", .id + " code review",
+                  "--print-logs",
+                  "--file", .properties.plan,
+                  "/org-review " + .id])
+
+        - name: Implementation human verification
+          filter: .todo == "NOTIFY_VERIFY"
+          action: |
+            exec(["notify-send", "-a", "org-cli", "-w",
+                  "Implementation ready for code review",
+                  "Task '" + .title.text.trimmed + "' was implemented and is ready for code review!"]);
+            .todo = "VERIFY"
+        - name: Implementation human verification
+          filter: .todo == "VERIFY"
+          parallelism: 0
+#+end_src
+
+*** Flow check command
+By default, check if all tasks are well-formed (i.e. have an ID), run configured precondition checks against all tasks.
+Should accept =--query-id=, =--query-title= and =--query= to select just a subset of tasks for checks.
+Should accept =--workflow= to specify which configured workflow to use.
+
+*** Task availability indicators
+The task board should have a way to indicate that a task is blocked or doesn't fulfill its workflow requirements.
+To convey that, the tasks panel should be grayed out
+
+When hovering a task panel, if it is blocked in =.is_blocked= sense a suitable status message should be displayed in the status bar. Similarly, if the task doesn't fulfill its workflow requirements, a suitable message should be displayed in the status bar. Use the =info= property of the requirement or a generic =Task is blocked= string.
+
+The agenda list should have a way to indicate that a task is blocked or doesn't fulfill its workflow requirements.
+To convey that, the task line should be grayed out in the agenda time-breakdown (other sections should not be affected).
+
+When hovering a task line in the time-breakdown section of the agenda, if the task is blocked in the =.is_blocked= sense, or some of its workflow requirements aren't met, a suitable message should be displayed in the status bar. Use the =info= property of the requirement or a generic =Task is blocked= string.
+
+*** Flow list command
+Show tasks elligible in the current workflow. For each of the workflow steps, list the tasks in that step with a clear indication of whether their preconditions are met.
+
+It should accept =--workflow WORKFLOW= to specify which configured workflow to use.
+It should accept =--step STEP= to specify which step to list
 
 *** Flow find command
-- Find tasks that are ready to be started (based on relative position in the file & inter-dependencies & state)
-- Claim tasks as actively worked on.
-- Assigns a task to a specified assignee
+- Find tasks that are ready to be worked on (based on relative position in the file, dependencies, scheduling state, )
+- Compute sets of tasks that can be executed in parallel (top-sort then SCC)
+Should accept =--workflow= to specify which configured workflow to use.
 
-*** Flow refine command
+*** Flow step command
+Transition task states based on configured workflow rules & validations.
+
+Flow:
+- group tasks by their workflow steps
+- check preconditions for each step, filtering out unavailable tasks
+- select lexicographically first task in the lexicographically first step
+- trigger state transition
+- execute associated action
+- if action fails, restore the task to its original shape
+- if action succeeds, execute postcondition check
+- if check fails, restore the task to its original shape
+- if check succeeds, done
+
+An action can change the task state outside of the current context, so the workflow engine must reload the document and locate the now-potentially-modified task in the new version. If the task has an =.id= property set, use that to locate the updated version. Otherwise, attempt to look for the task by =.title=. If that fails, try to follow the parent chain up to the document root, and then re-trace that same parent chain backwards in the new version of the document. If the document or task is not found, that should be reported as an unrecoverable workflow execution failure.
+
+If the task is found after the action execution, but its postconditions don't pass, the new version of the document should be updated with the original tasks contents (effectively restoring just the failed step's task to it's original value).
+
+Parameters:
+- =--query-id= - find a task by ID
+- =--query-title= - find a task by title
+- =--query= - find a task by generic query
+- =--dry-run= - log task & workflow execution steps, don't execute any actions
+- =--log= - file to log the transitions into
+- =--workflow= to specify which configured workflow to use.
+=--parallelism N= run N tasks in parallel if possible.
+
+Steps can override the parallelism with =parallelism= property. Parallelism of 0 should effectively prevent =org flow= from running these steps (must be done manually).
+
+*** Flow run command
+Perform steps in a loop while there are any tasks available for stepping.
+=--watch= for file changes and reexecute if something becomes available.
+=--parallelism N= run N tasks in parallel if possible.
+- =--log= - file to log the transitions into
+- =--workflow= to specify which configured workflow to use.
+
+*** CANCELLED Flow refine command
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-05-05 Tue 18:47] \\
+  Can be done via tasks update command.
+:END:
 - Add a property with additional information via a file
 - Add a specified task as a blocker or otherwise link tasks.
 
-*** Flow move command
-- Transition task states based on configured workflow rules & validations.
-- =--to STATE= optional, used if more than one transition existis
-- =--comment= for additional information on the transition
+*** CANCELLED Flow accept/reject
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-05-10 Sun 13:10] \\
+  Can be done manually by the other means.
+:END:
+- Accept a task that requires manual validation (moves to the next state with an addnotation).
+- Reject a task (push back to the previous state with an addnotation).
+
 *** CANCELLED Flow subtask command
 :LOGBOOK:
 - State "CANCELLED"  from              [2026-05-04 Mon 13:38] \\
   Can be done with org tasks capture.
 :END:
 - Like capture, but specifically for adding subtasks
-*** Extra filters
-- ~--id-property NAME~ - names the property serving as the task ID
-- ~--dependencies-property NAME~ - names the property used for dependencies between tasks
+*** Extra filters/orderings
 
-- ~--filter-children ID_OR_HEADING~ - returns tasks that are children of a node
-- ~--filter-sibling ID_OR_HEADING~ - returns tasks that are siblings of a node (same parent, same level)
-- ~--filter-parent ID_OR_HEADING~ - returns task that is a parent of the specified node
+- ~--filter-priority P~ - ~select(.priority == P)~
+- =--filter-todo STATE= - ~select(.todo == STATE)~
+
+- ~--filter-blocked~ - ~select(.is_blocked)~
+- ~--filter-not-blocked~ - ~select(not(.is_blocked))~
+
+- ~--filter-children ID~ - ~select(.title == ID or .id == ID) | .children~
+- ~--filter-sibling ID~ - ~select(.title == ID or .id == ID) | .siblings~
+- ~--filter-parent ID~ - ~select(.title == ID or .id == ID) | .parent~
+- ~--filter-dependencies ID~ - ~select(.title == ID or .id == ID) | .dependencies~
+- ~--filter-dependants ID~ - ~select(.dependencies | map(.title == ID or .id == ID) | any)~
+
+- ~--order-by-priority~ - ~sort_by(.priority)~
+- =--order-by-todo= - ~sort_by(.todo)~
+
+- ~--with-ordered-dependencies~ - sets the =ORDERED= property on all nodes that have children
+
 - ~--filter-dependencies ID_OR_HEADING~ - returns tasks that are dependencies of a task
 - ~--filter-dependants ID_OR_HEADING~ - returns tasks that are depending on a task
 
-- ~--with-implicit-siblings-dependencies~ - siblings preceeding a node are added to its dependencies
 
 - ~--filter-not-blocked~ - in TODO state, all dependencies completed
 - ~--filter-blocked~ - in TODO state, not all dependencies completed
 
 - order by node relations (preserves tree order, but allows using the other stable sorting) (could replace the level ordering)
-
-*** More query language filters/ordering
-
-Redo all the filters & orderings in terms of the query language
-
-- ~--filter-priority P~ - 'select(.priority == P)'
-
-- ~--filter-children ID~ - 'select(.heading == ID, .properties[$id] == ID) | .children'
-- ~--filter-sibling ID~ - 'select(.heading == ID, .properties[$id] == ID) | .siblings'
-- ~--filter-parent ID~ - 'select(.heading == ID, .properties[$id] == ID) | .parent'
-- ~--filter-dependencies ID~ - 'select(.heading == ID, .properties[$id] == ID) | .dependencies'
-- ~--filter-dependants ID~ - 'select(.heading == ID, .properties[$id] == ID) | .dependants'
-
-- ~--filter-not-blocked~ - 'select(.todo in $todo_keys) | select(.heading == ID, .properties[$id] == ID) | select((.depndencies[] | length) == 0)'
-- ~--filter-blocked~ - 'select(.todo in $todo_keys) | select(.heading == ID, .properties[$id] == ID) | select((.depndencies[] | length) != 0)'
-
-- ~--order-by priority~ - 'sortby(.priority)'
 
 *** Gantt chart
 - Show a gantt chart of tasks and their dependencies

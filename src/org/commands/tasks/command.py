@@ -6,6 +6,7 @@ from org.commands.tasks import add as tasks_add
 from org.commands.tasks import archive as tasks_archive
 from org.commands.tasks import capture as tasks_capture
 from org.commands.tasks import edit as tasks_edit
+from org.commands.tasks import find as tasks_find
 from org.commands.tasks import list as tasks_list
 from org.commands.tasks import query as tasks_query
 from org.commands.tasks import remove as tasks_remove
@@ -22,6 +23,7 @@ def register(app: typer.Typer) -> None:
     tasks_archive.register(tasks_app)
     tasks_capture.register(tasks_app)
     tasks_edit.register(tasks_app)
+    tasks_find.register(tasks_app)
     tasks_list.register(tasks_app)
     tasks_query.register(tasks_app)
     tasks_remove.register(tasks_app)
