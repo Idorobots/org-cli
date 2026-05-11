@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
@@ -16,6 +17,12 @@ if TYPE_CHECKING:
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _clean_output(text: str) -> str:
+    """Return output text without ANSI escape sequences."""
+    return ANSI_ESCAPE_RE.sub("", text)
 
 
 def test_tasks_find_query_title_matches_exact_title() -> None:
@@ -143,9 +150,10 @@ def test_tasks_find_invalid_regex_errors() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = runner.invoke(app, ["tasks", "find", "--search-pattern", "(", fixture_path])
+    output = _clean_output(result.output)
 
     assert result.exit_code != 0
-    assert "Invalid regex for --search-pattern" in result.output
+    assert "Invalid regex for --search-pattern" in output
 
 
 def test_tasks_find_negative_include_context_errors() -> None:
@@ -154,6 +162,7 @@ def test_tasks_find_negative_include_context_errors() -> None:
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
 
     result = runner.invoke(app, ["tasks", "find", "--include-context", "-1", fixture_path])
+    output = _clean_output(result.output)
 
     assert result.exit_code != 0
-    assert "--include-context must be non-negative" in result.output
+    assert "--include-context must be non-negative" in output
