@@ -70,6 +70,7 @@ def _make_args(files: list[str], **overrides: object) -> agenda_command.AgendaAr
         no_completed=False,
         no_overdue=False,
         no_upcoming=False,
+        future_repeats=True,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -165,6 +166,66 @@ def test_run_agenda_no_upcoming_hides_upcoming_section(
 
     assert "Upcoming deadlines (30d)" not in output
     assert "Upcoming deadline task" not in output
+
+
+def test_run_agenda_shows_future_repeated_scheduled_by_default(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Future agenda day should include repeated scheduled tasks by default."""
+    fixture_path = os.path.join(tmp_path, "agenda_future_repeat_scheduled.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write("* TODO Repeat scheduled\nSCHEDULED: <2025-01-15 Wed 09:30 +2d>\n")
+
+    args = _make_args([fixture_path], date="2025-01-17")
+    monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-17", fixture_path])
+    agenda_command.run_agenda(args)
+    output = capsys.readouterr().out
+
+    assert "Repeat scheduled" in output
+    assert "09:30" in output
+
+
+def test_run_agenda_shows_future_repeated_deadline_by_default(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Future agenda day should include repeated deadline tasks by default."""
+    fixture_path = os.path.join(tmp_path, "agenda_future_repeat_deadline.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write("* TODO Repeat deadline\nDEADLINE: <2025-01-15 Wed 13:15 +2d>\n")
+
+    args = _make_args([fixture_path], date="2025-01-17")
+    monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-17", fixture_path])
+    agenda_command.run_agenda(args)
+    output = capsys.readouterr().out
+
+    assert "Repeat deadline" in output
+    assert "13:15" in output
+
+
+def test_run_agenda_no_future_repeats_hides_projected_repeats(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Projected repeated planning entries should be hidden with --no-future-repeats."""
+    fixture_path = os.path.join(tmp_path, "agenda_no_future_repeats.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write("* TODO Repeat scheduled\nSCHEDULED: <2025-01-15 Wed 09:30 +1d>\n")
+
+    args = _make_args([fixture_path], date="2025-01-16", future_repeats=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "agenda", "--date", "2025-01-16", "--no-future-repeats", fixture_path],
+    )
+    agenda_command.run_agenda(args)
+    output = capsys.readouterr().out
+
+    assert "Repeat scheduled" not in output
 
 
 def test_run_agenda_relative_sections_show_only_today(
@@ -290,7 +351,7 @@ def test_run_agenda_repeat_row_uses_repeat_after_state(
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
             "* TODO Reopened repeat task\n"
-            "SCHEDULED: <2025-01-01 Wed 11:00 +1d>\n"
+            "SCHEDULED: <2025-01-01 Wed 11:00 +10d>\n"
             ":LOGBOOK:\n"
             '- State "DONE"       from "TODO"       [2025-01-15 Wed 11:15]\n'
             '- State "TODO"       from "DONE"       [2025-01-16 Thu 11:15]\n'
@@ -1473,6 +1534,7 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
     assert consumed is True
     assert _visible_agenda_task_titles(session) == [
         "Timed agenda task",
+        "Repeated completion on day",
         "Completed one-off task",
         "Untimed agenda task",
     ]

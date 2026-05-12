@@ -7225,6 +7225,16 @@ Update all interactive commands that permit search to live-update during search 
 - Should be adjusted to "look and feel" just like the interactive one.
 *** Agenda frequency plot
 Show a task frequency plot in the agenda header and highlight the bucket that corresponds to the selected range.
+*** DONE Agenda should show tasks that repeat on future dates
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-13 Wed 00:32]
+:END:
+When computing task lists for a given date, take "potential future dates" into account:
+
+Tasks that are scheduled with a repeat should show up on "potential future dates" - if the task were to be completed and rescheduled for the next period, they should be shown on that date, and any further repeated periods.
+The same should be true for tasks that have a repeating deadline.
+
+There should be a CLI switch for enabling/disabling showing these "future repeats": =--future-repeats/--no-future-repeats=. By default these should be shown.
 *** Task IDs
 The tasks IDs of newly created tasks should default to ={{document_category}}-{{count_of_headings_in_file + 1}}=
 Show the task ID (when present) in the board task panels as well as agenda and task list. In all cases, it should preceed the TODO state.

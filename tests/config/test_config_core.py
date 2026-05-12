@@ -757,6 +757,7 @@ def test_build_default_map_includes_agenda_defaults() -> None:
             "no_completed": True,
             "no_overdue": True,
             "no_upcoming": True,
+            "future_repeats": False,
             "max_results": 5,
             "offset": 2,
             "order_by_level": True,
@@ -772,6 +773,7 @@ def test_build_default_map_includes_agenda_defaults() -> None:
     assert agenda_defaults["no_completed"] is True
     assert agenda_defaults["no_overdue"] is True
     assert agenda_defaults["no_upcoming"] is True
+    assert agenda_defaults["future_repeats"] is False
     assert agenda_defaults["max_results"] == 5
     assert agenda_defaults["offset"] == 2
     assert agenda_defaults["order_by_level"] is True

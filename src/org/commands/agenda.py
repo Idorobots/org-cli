@@ -133,6 +133,7 @@ class AgendaArgs:
     no_completed: bool
     no_overdue: bool
     no_upcoming: bool
+    future_repeats: bool
 
 
 @dataclass(frozen=True)
@@ -424,6 +425,102 @@ def _scheduled_for_day(node: Heading, day: date) -> bool:
     )
 
 
+def _planning_matches_day(timestamp: Timestamp, day: date, *, future_repeats: bool) -> bool:
+    """Return whether a planning timestamp should appear on the target day."""
+    if not _is_active_planning_timestamp(timestamp):
+        return False
+
+    start = timestamp.start
+    start_day = start.date()
+    if start_day == day:
+        return True
+
+    repeat_value, repeat_unit = _repeater_for_future_match(timestamp)
+    should_expand = _should_expand_future_repeats(
+        future_repeats=future_repeats,
+        repeat_value=repeat_value,
+        day=day,
+        start_day=start_day,
+    )
+    if not should_expand:
+        return False
+
+    matches = False
+    if repeat_unit == "h":
+        matches = _hourly_repeater_matches_day(start, day, repeat_value)
+    elif repeat_unit in {"d", "w"}:
+        matches = _daily_or_weekly_repeater_matches_day(start_day, day, repeat_value, repeat_unit)
+    elif repeat_unit in {"m", "y"}:
+        matches = _monthly_or_yearly_repeater_matches_day(start, day, repeat_value, repeat_unit)
+    return matches
+
+
+def _repeater_for_future_match(timestamp: Timestamp) -> tuple[int, str | None]:
+    """Extract repeat value and unit for potential future repeat matching."""
+    if timestamp.repeater is None:
+        return 0, None
+    return timestamp.repeater.value, timestamp.repeater.unit
+
+
+def _should_expand_future_repeats(
+    *,
+    future_repeats: bool,
+    repeat_value: int,
+    day: date,
+    start_day: date,
+) -> bool:
+    """Check whether potential future repeat expansion should be attempted."""
+    return future_repeats and repeat_value > 0 and day >= start_day
+
+
+def _hourly_repeater_matches_day(start: datetime, day: date, repeat_value: int) -> bool:
+    """Return whether an hourly repeater has an occurrence on the target day."""
+    day_start = datetime.combine(day, datetime.min.time())
+    day_end = day_start + timedelta(days=1) - timedelta(microseconds=1)
+    step = timedelta(hours=repeat_value)
+    min_delta = day_start - start
+    max_delta = day_end - start
+    min_step = int(min_delta // step)
+    max_step = int(max_delta // step)
+    first_step = max(min_step, 0)
+    return first_step <= max_step and (start + step * first_step).date() == day
+
+
+def _daily_or_weekly_repeater_matches_day(
+    start_day: date,
+    day: date,
+    repeat_value: int,
+    repeat_unit: str,
+) -> bool:
+    """Return whether a daily or weekly repeater lands on the target day."""
+    repeat_days = repeat_value if repeat_unit == "d" else repeat_value * 7
+    return (day - start_day).days % repeat_days == 0
+
+
+def _monthly_or_yearly_repeater_matches_day(
+    start: datetime,
+    day: date,
+    repeat_value: int,
+    repeat_unit: str,
+) -> bool:
+    """Return whether a monthly/yearly repeater lands on the target day."""
+    next_start = start
+    for _ in range(20000):
+        shifted_start, _ = _shift_datetimes_by_unit(
+            next_start,
+            None,
+            value=repeat_value,
+            unit=repeat_unit,
+        )
+        shifted_day = shifted_start.date()
+        if shifted_day == day:
+            return True
+        if shifted_day > day:
+            return False
+        next_start = shifted_start
+    return False
+
+
 def _collect_repeat_timed_entries(
     node: Heading,
     day: date,
@@ -452,11 +549,20 @@ def _collect_repeat_timed_entries(
     return timed
 
 
-def _collect_scheduled_entries(node: Heading, day: date) -> tuple[list[_TimedEntry], list[Heading]]:
+def _collect_scheduled_entries(
+    node: Heading,
+    day: date,
+    *,
+    future_repeats: bool,
+) -> tuple[list[_TimedEntry], list[Heading]]:
     """Collect scheduled entries on one day."""
     timed: list[_TimedEntry] = []
     untimed: list[Heading] = []
-    if not _scheduled_for_day(node, day) or node.scheduled is None:
+    if node.scheduled is None or not _planning_matches_day(
+        node.scheduled,
+        day,
+        future_repeats=future_repeats,
+    ):
         return timed, untimed
 
     if _has_specific_time(node.scheduled):
@@ -471,13 +577,14 @@ def _collect_deadline_entries(
     day: date,
     *,
     completed: bool,
+    future_repeats: bool,
 ) -> tuple[list[_TimedEntry], list[Heading]]:
     """Collect deadline entries on one day for incomplete tasks."""
     timed: list[_TimedEntry] = []
     untimed: list[Heading] = []
     if completed or not _is_active_planning_timestamp(node.deadline) or node.deadline is None:
         return timed, untimed
-    if node.deadline.start.date() != day:
+    if not _planning_matches_day(node.deadline, day, future_repeats=future_repeats):
         return timed, untimed
 
     if _has_specific_time(node.deadline):
@@ -565,7 +672,11 @@ def _collect_day_entries(
         if args.no_completed and completed:
             continue
 
-        scheduled_timed, scheduled_day_untimed = _collect_scheduled_entries(node, day)
+        scheduled_timed, scheduled_day_untimed = _collect_scheduled_entries(
+            node,
+            day,
+            future_repeats=args.future_repeats,
+        )
         timed.extend(scheduled_timed)
         if not completed:
             scheduled_untimed.extend(scheduled_day_untimed)
@@ -574,6 +685,7 @@ def _collect_day_entries(
             node,
             day,
             completed=completed,
+            future_repeats=args.future_repeats,
         )
         timed.extend(deadline_timed)
         for deadline_node in deadline_day_untimed:
@@ -2573,6 +2685,11 @@ def register(app: typer.Typer) -> None:
             "--no-upcoming",
             help="Omit upcoming deadlines",
         ),
+        future_repeats: bool = typer.Option(
+            True,
+            "--future-repeats/--no-future-repeats",
+            help="Include potential future planning repeats in agenda days",
+        ),
     ) -> None:
         """Show agenda for one day or a date range."""
         args = AgendaArgs(
@@ -2612,6 +2729,7 @@ def register(app: typer.Typer) -> None:
             no_completed=no_completed,
             no_overdue=no_overdue,
             no_upcoming=no_upcoming,
+            future_repeats=future_repeats,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "agenda")
