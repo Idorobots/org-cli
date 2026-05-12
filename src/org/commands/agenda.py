@@ -1013,16 +1013,12 @@ def _now_aligned_for_datetime(start: datetime, now: datetime) -> datetime:
 
 def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
     """Advance timestamp once by its repeater marker, when present."""
-    if (
-        timestamp.repeater_mark is None
-        or timestamp.repeater_value is None
-        or timestamp.repeater_unit is None
-    ):
+    if timestamp.repeater is None:
         return False
 
-    mark = timestamp.repeater_mark
-    value = timestamp.repeater_value
-    unit = timestamp.repeater_unit
+    mark = timestamp.repeater.mark
+    value = timestamp.repeater.value
+    unit = timestamp.repeater.unit
     if value <= 0:
         return False
 

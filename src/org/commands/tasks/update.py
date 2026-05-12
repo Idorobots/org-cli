@@ -6,9 +6,9 @@ import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
-from org_parser.document import Document, Heading
 from org_parser.element import ListItem, Repeat
 from org_parser.time import Clock
 from rich.console import Console
@@ -18,7 +18,6 @@ from org import config as config_module
 from org.cli_common import resolve_input_paths
 from org.color import should_use_color
 from org.commands.tasks.common import (
-    apply_subtree_level,
     iter_descendants,
     load_document,
     normalize_optional_value,
@@ -33,6 +32,10 @@ from org.commands.tasks.common import (
     resolve_task_selector_query,
     save_document,
 )
+
+
+if TYPE_CHECKING:
+    from org_parser.document import Document, Heading
 
 
 logger = logging.getLogger("org")
@@ -205,19 +208,10 @@ def _move_heading(
         descendant.document = target_document
 
 
-def _validate_level(level: int, parent_level: int) -> None:
-    """Validate requested level against parent level rules."""
+def _validate_level(level: int) -> None:
+    """Validate requested level option."""
     if level < 1:
         raise typer.BadParameter("--level must be greater than or equal to 1")
-    if parent_level > 0 and level <= parent_level:
-        raise typer.BadParameter("--level must be greater than parent level")
-
-
-def _heading_parent_level(heading: Heading) -> int:
-    """Return parent level for heading, using 0 for document root."""
-    if isinstance(heading.parent, Heading):
-        return heading.parent.level
-    return 0
 
 
 def _resolve_target_parent(document: Document, parent_value: str) -> Heading | None:
@@ -243,20 +237,19 @@ def _apply_parent_and_level_updates(args: UpdateArgs, heading: Heading) -> None:
         return
 
     if parent_value is not None:
-        parent_level = target_parent.level if target_parent is not None else 0
         if args.level is None:
-            target_level = parent_level + 1 if parent_level > 0 else 1
-        else:
-            _validate_level(args.level, parent_level)
-            target_level = args.level
+            if target_parent is None:
+                heading.level = 1
+            return
+        _validate_level(args.level)
+        target_level = args.level
     else:
-        parent_level = _heading_parent_level(heading)
         if args.level is None:
             return
-        _validate_level(args.level, parent_level)
+        _validate_level(args.level)
         target_level = args.level
 
-    apply_subtree_level(heading, target_level)
+    heading.level = target_level
 
 
 def _apply_heading_metadata_updates(args: UpdateArgs, heading: Heading) -> None:
