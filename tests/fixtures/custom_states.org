@@ -2,6 +2,9 @@
 * WAITING Custom todo state :Tag2:
 * IN-PROGRESS Another custom todo state :Tag3:
 * DONE Completed task :Tag4:
+CLOSED: [2026-05-08 Fri 09:00]
 * CANCELLED Custom done state :Tag5:
+CLOSED: [2026-05-07 Thu 09:00]
 * ARCHIVED Another done state :Tag6:
+CLOSED: [2026-05-06 Wed 09:00]
 * Task without any state :Tag7:

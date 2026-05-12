@@ -14,7 +14,7 @@ This installs the `org` command.
 
 ## Configuration
 
-`org-cli` loads `.org-cli.json` from the current directory by default.
+`org-cli` loads `.org-cli.yaml` from the current directory by default.
 
 Top-level config sections:
 
@@ -28,37 +28,31 @@ Custom switch argument handling:
 - If a custom query contains `$arg`, the generated CLI switch requires exactly one argument.
 - If `$arg` is not present, the generated switch does not require an argument.
 
-```json
-{
-  "defaults": {
-    "--done-states": "DONE,CANCELLED,DELEGATED",
-    "--buckets": 80,
-    "--filter-priority": "A",
-    "--mapping": "examples/mapping_example.json",
-    "--exclude": "examples/exclude_example.txt"
-  },
-  "filter": {
-    "level-above": "select(.level > $arg)",
-    "has-todo": "select(.todo != none)"
-  },
-  "order-by": {
-    "recent-first": "sort_by(.repeats + .deadline + .closed + .scheduled | max)"
-  },
-  "with": {
-    "priority-value": ".properties.priority_value = .priority"
-  }
-}
+```yaml
+defaults:
+  --done-states: DONE,CANCELLED,DELEGATED
+  --buckets: 80
+  --filter-priority: A
+  --mapping: examples/mapping_example.json
+  --exclude: examples/exclude_example.txt
+filter:
+  level-above: select(.level > $arg)
+  has-todo: select(.todo != none)
+order-by:
+  recent-first: sort_by(.repeats + .deadline + .closed + .scheduled | max)
+with:
+  priority-value: .properties.priority_value = .priority
 ```
 
 ## Commands
 
-### `org query`
+### `org tasks query`
 
 Run jq-style queries over your Org Mode tasks.
 
 ```bash
 # Expand all nodes, select completed tasks, extract heading, return a page of results
-poetry run org query '[ .[][] | select(.todo in $done_states) | .title_text ][$offset: $offset + $limit]' \
+poetry run org tasks query '[ .[][] | select(.todo in $done_states) | .title_text ][$offset: $offset + $limit]' \
   --done-states DONE,CANCELLED \
   --max-results 10 \
   --offset 10 \
@@ -162,12 +156,12 @@ examples/ARCHIVE_small: * DONE Reorganize tickets on the CHAT project board.:Jir
 ...
 ```
 
-### `org tasks board`
+### `org board`
 
 Display matching tasks as a workflow-style board with one column per todo state plus `COMPLETED`.
 
 ```bash
-poetry run org tasks board \
+poetry run org board \
   --todo-states TODO,WAITING,INPROGRESS \
   --done-states DONE,CANCELLED \
   examples/ARCHIVE_small

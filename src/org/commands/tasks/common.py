@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from datetime import timedelta
+from typing import TYPE_CHECKING, Literal
 
 import org_parser
 import typer
@@ -12,6 +14,8 @@ from org_parser.document import Heading
 from org_parser.text import CompletionCounter
 from org_parser.time import Timestamp
 
+from org import config as config_module
+from org.commands.interactive_common import FooterPromptState
 from org.query_language import (
     EvalContext,
     QueryParseError,
@@ -26,6 +30,16 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("org")
+PlanningTimestampField = Literal["scheduled", "deadline", "closed"]
+
+
+@dataclass(frozen=True)
+class PromptActionConfig:
+    """Standardized interactive prompt texts for one user-input action."""
+
+    prompt: FooterPromptState
+    cancel_status: str
+    invalid_status: str
 
 
 def parse_comment_flag(value: str) -> bool:
@@ -198,6 +212,270 @@ def parse_tags_csv(value: str) -> list[str]:
     if not tags or any(not tag for tag in tags):
         raise typer.BadParameter("--tags must be a comma-separated list of non-empty tags")
     return tags
+
+
+def todo_states_for_heading(heading: Heading) -> list[str]:
+    """Return document TODO states in stable first-seen order."""
+    return list(dict.fromkeys(heading.document.all_states))
+
+
+def resolve_todo_state_selection(selection: str, states: list[str]) -> str | None:
+    """Resolve TODO state from numeric shortcut or explicit value."""
+    normalized = selection.strip()
+    if not normalized:
+        return None
+    if normalized.isdigit():
+        index = int(normalized) - 1
+        if 0 <= index < len(states):
+            return states[index]
+        return None
+    if normalized in states:
+        return normalized
+    return None
+
+
+def state_selection_prompt_label(states: list[str]) -> str:
+    """Return standard interactive prompt label for TODO state selection."""
+    options = ", ".join(f"{index}:{state}" for index, state in enumerate(states, start=1))
+    return f"State number or value ({options})"
+
+
+def state_selection_prompt_config(states: list[str]) -> PromptActionConfig:
+    """Return standardized prompt config for TODO state selection."""
+    return PromptActionConfig(
+        prompt=FooterPromptState(label=state_selection_prompt_label(states)),
+        cancel_status="State change cancelled",
+        invalid_status="Invalid TODO state selection",
+    )
+
+
+def tags_prompt_label() -> str:
+    """Return standard interactive prompt label for tags editing."""
+    return "Tags CSV (blank clears)"
+
+
+def tags_prompt_config() -> PromptActionConfig:
+    """Return standardized prompt config for tags editing."""
+    return PromptActionConfig(
+        prompt=FooterPromptState(label=tags_prompt_label()),
+        cancel_status="Tags edit cancelled",
+        invalid_status="Invalid tags input",
+    )
+
+
+def planning_prompt_label(field: PlanningTimestampField) -> str:
+    """Return standard interactive prompt label for planning timestamp editing."""
+    labels: dict[PlanningTimestampField, str] = {
+        "scheduled": "Scheduled",
+        "deadline": "Deadline",
+        "closed": "Closed",
+    }
+    return f"{labels[field]} (blank clears)"
+
+
+def planning_prompt_config(field: PlanningTimestampField) -> PromptActionConfig:
+    """Return standardized prompt config for planning timestamp editing."""
+    return PromptActionConfig(
+        prompt=FooterPromptState(label=planning_prompt_label(field)),
+        cancel_status="Planning timestamp edit cancelled",
+        invalid_status="Invalid planning timestamp",
+    )
+
+
+def refile_prompt_label(paths: list[str]) -> str:
+    """Return standard interactive prompt label for refile destination."""
+    options = ", ".join(f"{index}:{filename}" for index, filename in enumerate(paths, start=1))
+    return f"Destination file (# or path, blank cancels) [{options}]"
+
+
+def refile_prompt_config(paths: list[str]) -> PromptActionConfig:
+    """Return standardized prompt config for task refile destination."""
+    return PromptActionConfig(
+        prompt=FooterPromptState(label=refile_prompt_label(paths)),
+        cancel_status="Refile cancelled",
+        invalid_status="Invalid destination shortcut",
+    )
+
+
+def resolve_refile_destination_input(
+    destination_input: str,
+    paths: list[str],
+) -> tuple[str | None, str | None]:
+    """Resolve refile destination path or return a validation error message."""
+    normalized = destination_input.strip()
+    if not normalized:
+        return None, None
+    if normalized.isdigit():
+        index = int(normalized) - 1
+        if 0 <= index < len(paths):
+            return paths[index], None
+        return None, "Invalid destination shortcut"
+    return normalized, None
+
+
+def clock_duration_prompt_label() -> str:
+    """Return standard interactive prompt label for clock duration input."""
+    return "Clock duration (H:MM, Xm, Xh, minutes; blank cancels)"
+
+
+def clock_duration_prompt_config() -> PromptActionConfig:
+    """Return standardized prompt config for clock duration input."""
+    return PromptActionConfig(
+        prompt=FooterPromptState(label=clock_duration_prompt_label()),
+        cancel_status="Clock action cancelled",
+        invalid_status="Invalid clock duration",
+    )
+
+
+def capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:
+    """Return stable capture template name ordering for prompts."""
+    return sorted(templates)
+
+
+def configured_capture_template_names() -> list[str]:
+    """Return stable capture template names from loaded config."""
+    return capture_template_names(config_module.CONFIG_CAPTURE_TEMPLATES)
+
+
+def capture_template_prompt_label(template_names: list[str]) -> str:
+    """Return standard interactive prompt label for capture template selection."""
+    options = ", ".join(f"{index}:{name}" for index, name in enumerate(template_names, start=1))
+    return f"Capture template number (blank cancels) [{options}]"
+
+
+def capture_template_prompt_config(template_names: list[str] | None = None) -> PromptActionConfig:
+    """Return standardized prompt config for capture template selection."""
+    names = configured_capture_template_names() if template_names is None else template_names
+    return PromptActionConfig(
+        prompt=FooterPromptState(label=capture_template_prompt_label(names)),
+        cancel_status="Capture cancelled",
+        invalid_status="Invalid capture template shortcut",
+    )
+
+
+def resolve_capture_template_selection(selection: str, template_names: list[str]) -> str | None:
+    """Resolve capture template from numeric shortcut input."""
+    normalized = selection.strip()
+    if not normalized:
+        return None
+    if not normalized.isdigit():
+        return None
+    index = int(normalized) - 1
+    if 0 <= index < len(template_names):
+        return template_names[index]
+    return None
+
+
+def parse_clock_duration(value: str) -> timedelta:
+    """Parse user-entered clock duration text."""
+    normalized = value.strip().lower()
+    if not normalized:
+        raise ValueError("Duration cannot be empty")
+
+    if ":" in normalized:
+        parts = normalized.split(":", 1)
+        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+            raise ValueError("Duration must be H:MM")
+        hours = int(parts[0])
+        minutes = int(parts[1])
+        if minutes >= 60:
+            raise ValueError("Minutes must be below 60")
+        delta = timedelta(hours=hours, minutes=minutes)
+    elif normalized.endswith("m") and normalized[:-1].isdigit():
+        delta = timedelta(minutes=int(normalized[:-1]))
+    elif normalized.endswith("h") and normalized[:-1].isdigit():
+        delta = timedelta(hours=int(normalized[:-1]))
+    elif normalized.isdigit():
+        delta = timedelta(minutes=int(normalized))
+    else:
+        raise ValueError("Duration must be H:MM, Xm, Xh, or minutes")
+
+    if delta <= timedelta(0):
+        raise ValueError("Duration must be positive")
+    return delta
+
+
+def duration_to_org_text(duration: timedelta) -> str:
+    """Format duration as Org clock text H:MM."""
+    total_minutes = int(duration.total_seconds() // 60)
+    hours, minutes = divmod(total_minutes, 60)
+    return f"{hours}:{minutes:02d}"
+
+
+def replace_heading_tags_from_csv(
+    heading: Heading,
+    raw_tags: str,
+) -> tuple[list[str], list[str], bool]:
+    """Replace heading tags from CSV input and return change metadata."""
+    parsed_tags = parse_tags_csv(raw_tags)
+    current_tags = list(heading.heading_tags)
+    if current_tags == parsed_tags:
+        return current_tags, parsed_tags, False
+
+    heading.heading_tags = parsed_tags
+    return current_tags, parsed_tags, True
+
+
+def planning_field_option_name(field: PlanningTimestampField) -> str:
+    """Return CLI option name used for timestamp validation errors."""
+    if field == "scheduled":
+        return "--scheduled"
+    if field == "deadline":
+        return "--deadline"
+    return "--closed"
+
+
+def planning_field_label(field: PlanningTimestampField) -> str:
+    """Return human-friendly label for one planning timestamp field."""
+    if field == "scheduled":
+        return "Scheduled timestamp"
+    if field == "deadline":
+        return "Deadline timestamp"
+    return "Closed timestamp"
+
+
+def planning_field_timestamp(heading: Heading, field: PlanningTimestampField) -> Timestamp | None:
+    """Return one planning timestamp field value from heading."""
+    if field == "scheduled":
+        return heading.scheduled
+    if field == "deadline":
+        return heading.deadline
+    return heading.closed
+
+
+def set_planning_field_timestamp(
+    heading: Heading,
+    field: PlanningTimestampField,
+    timestamp: Timestamp | None,
+) -> None:
+    """Set one planning timestamp field value on heading."""
+    if field == "scheduled":
+        heading.scheduled = timestamp
+        return
+    if field == "deadline":
+        heading.deadline = timestamp
+        return
+    heading.closed = timestamp
+
+
+def parse_planning_timestamp(value: str, field: PlanningTimestampField) -> Timestamp | None:
+    """Parse raw timestamp input for one planning field."""
+    return parse_timestamp(value, planning_field_option_name(field))
+
+
+def replace_planning_timestamp_from_raw(
+    heading: Heading,
+    field: PlanningTimestampField,
+    raw_timestamp: str,
+) -> tuple[Timestamp | None, Timestamp | None, bool]:
+    """Replace planning timestamp from raw input and return change metadata."""
+    parsed_timestamp = parse_planning_timestamp(raw_timestamp, field)
+    current_timestamp = planning_field_timestamp(heading, field)
+    if str(current_timestamp) == str(parsed_timestamp):
+        return current_timestamp, parsed_timestamp, False
+
+    set_planning_field_timestamp(heading, field, parsed_timestamp)
+    return current_timestamp, parsed_timestamp, True
 
 
 def parse_properties_json(value: str) -> dict[str, str]:

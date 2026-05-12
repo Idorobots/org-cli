@@ -13,10 +13,11 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.dependencies]
-org-parser = "^0.26.2"
+org-parser = "^0.28.0"
 typer = "^0.24.1"
 rich = "^14.3.3"
 parsy = "^2.2"
+pyyaml = "^6.0.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"
@@ -25,18 +26,21 @@ ruff = "^0.15.0"
 mypy = "^1.18.1"
 taskipy = "^1.14.1"
 pyright = "^1.1.408"
+types-pyyaml = "^6.0.12.20260408"
 
 [tool.poetry.scripts]
 org = "org.cli:main"
 
 [tool.taskipy.tasks]
-test = "pytest --cov=src/org/ --cov-report=term-missing"
-lint = "ruff check src/ tests/"
+test = "pytest -q"
+test-cov = "pytest -q --cov=src/org/ --cov-report=term-missing"
+lint = "ruff check -q src/ tests/"
 lint-fix = "ruff check --fix src/ tests/"
-format-check = "ruff format --check src/ tests/"
+format-check = "ruff format -q --check src/ tests/"
 format = "ruff format src/ tests/"
 type = "mypy src/org tests"
 check = "task format-check && task lint && task type && task test"
+check-cov = "task format-check && task lint && task type && task test-cov"
 
 [tool.ruff]
 # Line length matching AGENTS.md guidelines

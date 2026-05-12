@@ -1,6 +1,6 @@
 # Query Language Reference
 
-This document is the reference manual for the `org query` language.
+This document is the reference manual for the `org tasks query` language.
 
 ## 1) Mental model: stream processing
 
@@ -13,7 +13,7 @@ A query evaluates over a **stream of values**. Each stage receives a stream and 
 At the CLI, the initial stream contains one value: the loaded roots collection.
 
 ```bash
-poetry run org query '.[] | .children | length' examples/ARCHIVE_small
+poetry run org tasks query '.[] | .children | length' examples/ARCHIVE_small
 ```
 
 ## 2) What a query is made of

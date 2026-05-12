@@ -19,7 +19,7 @@ def make_remove_args(files: list[str], **overrides: object) -> tasks_remove.Remo
     """Build RemoveArgs with defaults and overrides."""
     args = tasks_remove.RemoveArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         query_title=None,
         query_id=None,
         query=None,

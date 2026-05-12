@@ -13,7 +13,6 @@ from org_parser.document import Document, Heading
 from org import config as config_module
 from org.cli_common import resolve_input_paths
 from org.commands.tasks.common import (
-    apply_subtree_level,
     load_document,
     normalize_optional_value,
     normalize_selector,
@@ -117,19 +116,12 @@ def _resolve_target_file(file_option: str | None, files: list[str] | None) -> st
     return resolved_files[0]
 
 
-def _resolve_level(level: int | None, parent_level: int | None) -> int:
-    """Resolve effective heading level from CLI options and parent context."""
+def _resolve_level(level: int | None) -> int:
+    """Resolve effective heading level from CLI options."""
     if level is not None:
         if level < 1:
             raise typer.BadParameter("--level must be greater than or equal to 1")
-        if parent_level is not None and level <= parent_level:
-            raise typer.BadParameter(
-                "--level must be greater than parent level when --parent is used",
-            )
         return level
-
-    if parent_level is not None:
-        return parent_level + 1
     return 1
 
 
@@ -225,9 +217,9 @@ def _body_block(body: str | None) -> str:
     return f"{body}\n"
 
 
-def _build_task_source(args: AddArgs, parent_level: int | None) -> str:
+def _build_task_source(args: AddArgs) -> str:
     """Build task source from CLI options and hardcoded template."""
-    level = _resolve_level(args.level, parent_level)
+    level = _resolve_level(args.level)
     heading_line = _resolve_heading_line(args, level)
     planning = _planning_line(args)
     properties = _properties_block(args)
@@ -248,13 +240,11 @@ def _validate_task_source(task_source: str) -> Heading:
         raise typer.BadParameter(f"Invalid task template: {err}") from err
 
 
-def _apply_stdin_level_edit(args: AddArgs, parent_level: int | None, heading: Heading) -> None:
-    """Apply effective level edits to stdin-provided heading."""
-    if args.level is not None:
-        target_level = _resolve_level(args.level, parent_level)
-    else:
-        target_level = _resolve_level(heading.level, parent_level)
-    apply_subtree_level(heading, target_level)
+def _validate_requested_level(level: int | None) -> None:
+    """Validate explicit level option when provided."""
+    if level is None:
+        return
+    _resolve_level(level)
 
 
 def _apply_stdin_heading_metadata_edits(args: AddArgs, heading: Heading) -> None:
@@ -293,9 +283,9 @@ def _apply_stdin_property_edits(args: AddArgs, heading: Heading) -> None:
         heading.id = str(uuid4())
 
 
-def _apply_stdin_task_edits(args: AddArgs, parent_level: int | None, heading: Heading) -> None:
+def _apply_stdin_task_edits(args: AddArgs, heading: Heading) -> None:
     """Apply non-source add switches as edits on stdin heading."""
-    _apply_stdin_level_edit(args, parent_level, heading)
+    _validate_requested_level(args.level)
     _apply_stdin_heading_metadata_edits(args, heading)
     _apply_stdin_planning_edits(args, heading)
     _apply_stdin_property_edits(args, heading)
@@ -304,20 +294,12 @@ def _apply_stdin_task_edits(args: AddArgs, parent_level: int | None, heading: He
         heading.body = args.body
 
 
-def _build_heading_from_stdin(args: AddArgs, parent_level: int | None) -> Heading:
+def _build_heading_from_stdin(args: AddArgs) -> Heading:
     """Read task heading source from stdin and apply edit switches."""
     task_source = _read_task_source_from_stdin()
     heading = _validate_task_source(task_source)
-    _apply_stdin_task_edits(args, parent_level, heading)
+    _apply_stdin_task_edits(args, heading)
     return heading
-
-
-def _validate_parent_level(parent_level: int | None, heading: Heading) -> None:
-    """Ensure explicit --heading level is valid when attached to a parent."""
-    if parent_level is None:
-        return
-    if heading.level <= parent_level:
-        raise typer.BadParameter("Heading level must be greater than parent level")
 
 
 def _attach_heading(document: Document, parent_heading: Heading | None, heading: Heading) -> None:
@@ -339,15 +321,15 @@ def run_tasks_add(args: AddArgs) -> None:
     if args.parent is not None:
         parent_heading = resolve_parent_heading(document, args.parent)
 
-    parent_level = parent_heading.level if parent_heading is not None else None
     if read_from_stdin:
-        heading = _build_heading_from_stdin(args, parent_level)
+        heading = _build_heading_from_stdin(args)
     else:
-        task_source = _build_task_source(args, parent_level)
+        task_source = _build_task_source(args)
         heading = _validate_task_source(task_source)
-        _validate_parent_level(parent_level, heading)
 
     _attach_heading(document, parent_heading, heading)
+    if args.level is not None:
+        heading.level = args.level
     save_document(document)
 
 
@@ -362,7 +344,7 @@ def register(app: typer.Typer) -> None:
             help="Org-mode archive files or directories used to resolve default target file",
         ),
         config: str = typer.Option(
-            ".org-cli.json",
+            ".org-cli.yaml",
             "--config",
             metavar="FILE",
             help="Config file name to load from current directory",

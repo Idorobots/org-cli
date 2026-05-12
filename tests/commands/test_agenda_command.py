@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import os
 import sys
-from contextlib import contextmanager
 from datetime import datetime, timedelta
 from io import StringIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import org_parser
 import pytest
@@ -15,11 +14,19 @@ import typer
 from org_parser.time import Timestamp
 from rich.console import Console
 
+from org import config as config_module
 from org.commands import agenda as agenda_command
+from org.commands import archive as archive_command
+from org.commands import editor as editor_command
+from org.commands import interactive_actions
+from org.commands.interactive_common import decode_escape_sequence, detail_org_block, local_now
+from org.commands.tasks import capture as capture_command
+from org.commands.tasks.common import duration_to_org_text, parse_clock_duration
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from org_parser.document import Document, Heading
+    from rich.live import Live
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -28,7 +35,7 @@ FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 def _make_args(files: list[str], **overrides: object) -> agenda_command.AgendaArgs:
     args = agenda_command.AgendaArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         exclude=None,
         mapping=None,
         mapping_inline=None,
@@ -63,10 +70,23 @@ def _make_args(files: list[str], **overrides: object) -> agenda_command.AgendaAr
         no_completed=False,
         no_overdue=False,
         no_upcoming=False,
+        future_repeats=True,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
     return args
+
+
+def _visible_agenda_task_titles(session: agenda_command._AgendaSession) -> list[str]:
+    """Return visible task titles from current interactive agenda rows."""
+    titles: list[str] = []
+    for day_model in session.day_models:
+        titles.extend(
+            row.node.title_text.strip()
+            for row in day_model.rows
+            if row.kind == "task" and row.node is not None
+        )
+    return titles
 
 
 def test_run_agenda_renders_expected_sections(
@@ -148,13 +168,73 @@ def test_run_agenda_no_upcoming_hides_upcoming_section(
     assert "Upcoming deadline task" not in output
 
 
+def test_run_agenda_shows_future_repeated_scheduled_by_default(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Future agenda day should include repeated scheduled tasks by default."""
+    fixture_path = os.path.join(tmp_path, "agenda_future_repeat_scheduled.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write("* TODO Repeat scheduled\nSCHEDULED: <2025-01-15 Wed 09:30 +2d>\n")
+
+    args = _make_args([fixture_path], date="2025-01-17")
+    monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-17", fixture_path])
+    agenda_command.run_agenda(args)
+    output = capsys.readouterr().out
+
+    assert "Repeat scheduled" in output
+    assert "09:30" in output
+
+
+def test_run_agenda_shows_future_repeated_deadline_by_default(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Future agenda day should include repeated deadline tasks by default."""
+    fixture_path = os.path.join(tmp_path, "agenda_future_repeat_deadline.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write("* TODO Repeat deadline\nDEADLINE: <2025-01-15 Wed 13:15 +2d>\n")
+
+    args = _make_args([fixture_path], date="2025-01-17")
+    monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-17", fixture_path])
+    agenda_command.run_agenda(args)
+    output = capsys.readouterr().out
+
+    assert "Repeat deadline" in output
+    assert "13:15" in output
+
+
+def test_run_agenda_no_future_repeats_hides_projected_repeats(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Projected repeated planning entries should be hidden with --no-future-repeats."""
+    fixture_path = os.path.join(tmp_path, "agenda_no_future_repeats.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write("* TODO Repeat scheduled\nSCHEDULED: <2025-01-15 Wed 09:30 +1d>\n")
+
+    args = _make_args([fixture_path], date="2025-01-16", future_repeats=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "agenda", "--date", "2025-01-16", "--no-future-repeats", fixture_path],
+    )
+    agenda_command.run_agenda(args)
+    output = capsys.readouterr().out
+
+    assert "Repeat scheduled" not in output
+
+
 def test_run_agenda_relative_sections_show_only_today(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
     """Overdue/upcoming sections should render only for current-day agenda panes."""
-    today_date = agenda_command._local_now().date()
+    today_date = local_now().date()
     fixture_path = os.path.join(tmp_path, "agenda_today_relative.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -201,7 +281,7 @@ def test_run_agenda_multi_day_shows_relative_sections_only_for_today(
     tmp_path: os.PathLike[str],
 ) -> None:
     """Multi-day agenda should include overdue/upcoming only on today's day pane."""
-    today = agenda_command._local_now().date()
+    today = local_now().date()
     fixture_path = os.path.join(tmp_path, "agenda_multiday_relative.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -213,7 +293,7 @@ def test_run_agenda_multi_day_shows_relative_sections_only_for_today(
             f"DEADLINE: <{(today + timedelta(days=5)).isoformat()} Fri>\n",
         )
 
-    today = agenda_command._local_now().date()
+    today = local_now().date()
     start = (today - timedelta(days=1)).isoformat()
     args = _make_args([fixture_path], date=start, days=3)
 
@@ -271,7 +351,7 @@ def test_run_agenda_repeat_row_uses_repeat_after_state(
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
             "* TODO Reopened repeat task\n"
-            "SCHEDULED: <2025-01-01 Wed 11:00 +1d>\n"
+            "SCHEDULED: <2025-01-01 Wed 11:00 +10d>\n"
             ":LOGBOOK:\n"
             '- State "DONE"       from "TODO"       [2025-01-15 Wed 11:15]\n'
             '- State "TODO"       from "DONE"       [2025-01-16 Thu 11:15]\n'
@@ -389,7 +469,7 @@ def test_run_agenda_overdue_deadlines_precede_overdue_scheduled(
     tmp_path: os.PathLike[str],
 ) -> None:
     """Overdue deadlines section should appear before overdue scheduled section."""
-    today = agenda_command._local_now().date()
+    today = local_now().date()
     fixture_path = os.path.join(tmp_path, "agenda_overdue_section_order.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -413,7 +493,7 @@ def test_run_agenda_orders_overdue_and_upcoming_by_age(
     tmp_path: os.PathLike[str],
 ) -> None:
     """Overdue should be oldest-first and upcoming should be soonest-first."""
-    today = agenda_command._local_now().date()
+    today = local_now().date()
     fixture_path = os.path.join(tmp_path, "agenda_ordering.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -442,7 +522,7 @@ def test_run_agenda_omits_inactive_planning_timestamps(
     tmp_path: os.PathLike[str],
 ) -> None:
     """Inactive scheduled/deadline timestamps should be ignored."""
-    today = agenda_command._local_now().date()
+    today = local_now().date()
     fixture_path = os.path.join(tmp_path, "agenda_inactive.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -485,10 +565,10 @@ def test_run_agenda_now_marker_renders_after_same_time_tasks(
         )
 
     args = _make_args([fixture_path], date="2025-01-15")
-    local_tz = agenda_command._local_now().tzinfo
+    local_tz = local_now().tzinfo
     monkeypatch.setattr(
         agenda_command,
-        "_local_now",
+        "local_now",
         lambda: datetime(2025, 1, 15, 17, 4, 0, tzinfo=local_tz),
     )
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15"])
@@ -556,40 +636,32 @@ def test_run_agenda_invalid_date_raises_bad_parameter(monkeypatch: pytest.Monkey
 
 def test_decode_escape_sequence_supports_arrows() -> None:
     """Escape-sequence decoder should map plain and shifted arrow keys."""
-    assert agenda_command._decode_escape_sequence(b"\x1b") == "ESC"
-    assert agenda_command._decode_escape_sequence(b"\x1b[A") == "UP"
-    assert agenda_command._decode_escape_sequence(b"\x1b[B") == "DOWN"
-    assert agenda_command._decode_escape_sequence(b"\x1b[C") == "RIGHT"
-    assert agenda_command._decode_escape_sequence(b"\x1b[D") == "LEFT"
-    assert agenda_command._decode_escape_sequence(b"\x1b[1;2A") == "S-UP"
-    assert agenda_command._decode_escape_sequence(b"\x1b[1;2B") == "S-DOWN"
-    assert agenda_command._decode_escape_sequence(b"\x1b[1;2C") == "S-RIGHT"
-    assert agenda_command._decode_escape_sequence(b"\x1b[1;2D") == "S-LEFT"
-    assert agenda_command._decode_escape_sequence(b"\x1b[<64;40;10M") == "WHEEL-UP"
-    assert agenda_command._decode_escape_sequence(b"\x1b[<65;40;11M") == "WHEEL-DOWN"
+    assert decode_escape_sequence(b"\x1b") == "ESC"
+    assert decode_escape_sequence(b"\x1b[A") == "UP"
+    assert decode_escape_sequence(b"\x1b[B") == "DOWN"
+    assert decode_escape_sequence(b"\x1b[C") == "RIGHT"
+    assert decode_escape_sequence(b"\x1b[D") == "LEFT"
+    assert decode_escape_sequence(b"\x1b[1;2A") == "S-UP"
+    assert decode_escape_sequence(b"\x1b[1;2B") == "S-DOWN"
+    assert decode_escape_sequence(b"\x1b[1;2C") == "S-RIGHT"
+    assert decode_escape_sequence(b"\x1b[1;2D") == "S-LEFT"
+    assert decode_escape_sequence(b"\x1b[<64;40;10M") == "WHEEL-UP"
+    assert decode_escape_sequence(b"\x1b[<65;40;11M") == "WHEEL-DOWN"
 
 
 def test_decode_escape_sequence_unknown_escape_is_not_exit() -> None:
     """Unknown escape sequences should not decode to ESC quit token."""
-    key_name = agenda_command._decode_escape_sequence(b"\x1b[999~")
+    key_name = decode_escape_sequence(b"\x1b[999~")
     assert key_name != "ESC"
     assert key_name.startswith("UNSUPPORTED-ESC:")
 
 
 def test_parse_clock_duration_accepts_multiple_formats() -> None:
     """Clock duration parser should handle H:MM, minutes, and suffixed values."""
-    assert (
-        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("1:30")) == "1:30"
-    )
-    assert (
-        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("90")) == "1:30"
-    )
-    assert (
-        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("2h")) == "2:00"
-    )
-    assert (
-        agenda_command._duration_to_org_text(agenda_command._parse_clock_duration("45m")) == "0:45"
-    )
+    assert duration_to_org_text(parse_clock_duration("1:30")) == "1:30"
+    assert duration_to_org_text(parse_clock_duration("90")) == "1:30"
+    assert duration_to_org_text(parse_clock_duration("2h")) == "2:00"
+    assert duration_to_org_text(parse_clock_duration("45m")) == "0:45"
 
 
 def test_advance_timestamp_by_repeater_moves_schedule_once() -> None:
@@ -607,7 +679,11 @@ def test_advance_timestamp_by_repeater_double_plus_advances_until_future(
 ) -> None:
     """'++' repeater should advance repeatedly until timestamp is in the future."""
     timestamp = Timestamp.from_source("<2025-01-10 Fri ++1d>")
-    monkeypatch.setattr(agenda_command, "_local_now", lambda: datetime(2025, 1, 15, 12, 0))
+    monkeypatch.setattr(
+        agenda_command,
+        "local_now",
+        lambda: datetime(2025, 1, 15, 12, 0),
+    )
 
     assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
     assert str(timestamp).startswith("<2025-01-16")
@@ -618,7 +694,11 @@ def test_advance_timestamp_by_repeater_double_plus_hourly_uses_datetime(
 ) -> None:
     """'++' with hour unit should advance until datetime is after current time."""
     timestamp = Timestamp.from_source("<2025-01-15 Wed 09:00 ++1h>")
-    monkeypatch.setattr(agenda_command, "_local_now", lambda: datetime(2025, 1, 15, 10, 30))
+    monkeypatch.setattr(
+        agenda_command,
+        "local_now",
+        lambda: datetime(2025, 1, 15, 10, 30),
+    )
 
     assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
     assert str(timestamp).startswith("<2025-01-15 Wed 11:00")
@@ -629,7 +709,11 @@ def test_advance_timestamp_by_repeater_double_plus_always_shifts_at_least_once(
 ) -> None:
     """'++' should still shift once when timestamp is already in the future."""
     timestamp = Timestamp.from_source("<2025-01-15 Wed 23:00 ++1d>")
-    monkeypatch.setattr(agenda_command, "_local_now", lambda: datetime(2025, 1, 15, 10, 0))
+    monkeypatch.setattr(
+        agenda_command,
+        "local_now",
+        lambda: datetime(2025, 1, 15, 10, 0),
+    )
 
     assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
     assert str(timestamp).startswith("<2025-01-16 Thu 23:00")
@@ -640,7 +724,11 @@ def test_advance_timestamp_by_repeater_dot_plus_uses_current_day(
 ) -> None:
     """'.+' repeater should anchor at current day and then shift once by unit."""
     timestamp = Timestamp.from_source("<2025-01-10 Fri 09:30 .+2d>")
-    monkeypatch.setattr(agenda_command, "_local_now", lambda: datetime(2025, 1, 15, 18, 45))
+    monkeypatch.setattr(
+        agenda_command,
+        "local_now",
+        lambda: datetime(2025, 1, 15, 18, 45),
+    )
 
     assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
     assert str(timestamp).startswith("<2025-01-17 Fri 09:30")
@@ -684,13 +772,11 @@ def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     start = session.selected_row_index
-    assert agenda_command._handle_interactive_key(console, session, "WHEEL-DOWN") is True
+    assert agenda_command._handle_interactive_key(session, "WHEEL-DOWN") is True
     assert session.selected_row_index == (start + 1) % len(session.row_locations)
 
-    assert agenda_command._handle_interactive_key(console, session, "WHEEL-UP") is True
+    assert agenda_command._handle_interactive_key(session, "WHEEL-UP") is True
     assert session.selected_row_index == start
 
 
@@ -701,7 +787,7 @@ def test_handle_interactive_key_refreshes_now_marker_when_minute_changes(
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
     clock = {"value": datetime(2025, 1, 15, 10, 0)}
-    monkeypatch.setattr(agenda_command, "_local_now", lambda: clock["value"])
+    monkeypatch.setattr("org.commands.agenda.local_now", lambda: clock["value"])
     root = org_parser.load(fixture_path)
     session = agenda_command._create_agenda_session(
         args,
@@ -710,13 +796,11 @@ def test_handle_interactive_key_refreshes_now_marker_when_minute_changes(
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     before = next(row.time_text for row in session.day_models[0].rows if row.kind == "now_marker")
     assert before == "10:00"
 
     clock["value"] = datetime(2025, 1, 15, 10, 1)
-    assert agenda_command._handle_interactive_key(console, session, "DOWN") is True
+    assert agenda_command._handle_interactive_key(session, "DOWN") is True
 
     after = next(row.time_text for row in session.day_models[0].rows if row.kind == "now_marker")
     assert after == "10:01"
@@ -729,7 +813,7 @@ def test_interactive_renderable_refreshes_now_marker_without_keypress(
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
     clock = {"value": datetime(2025, 1, 15, 10, 0)}
-    monkeypatch.setattr(agenda_command, "_local_now", lambda: clock["value"])
+    monkeypatch.setattr("org.commands.agenda.local_now", lambda: clock["value"])
     root = org_parser.load(fixture_path)
     session = agenda_command._create_agenda_session(
         args,
@@ -766,11 +850,85 @@ def test_handle_interactive_key_unsupported_key_sets_status_and_continues() -> N
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     unsupported_key = "UNSUPPORTED-ESC:1b5b3939397e"
-    assert agenda_command._handle_interactive_key(console, session, unsupported_key) is True
+    assert agenda_command._handle_interactive_key(session, unsupported_key) is True
     assert session.status_message == f"Unsupported key: {unsupported_key}"
+
+
+def test_handle_interactive_key_slash_activates_search_prompt() -> None:
+    """Slash should activate agenda search prompt."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+
+    assert agenda_command._handle_interactive_key(session, "/") is True
+    assert session.active_interactive_action is not None
+    assert (
+        session.active_interactive_action.prompt_config.prompt.label == "Search text (blank clears)"
+    )
+
+
+def test_agenda_search_filters_rows_and_clear_restores_rows() -> None:
+    """Interactive search should filter visible rows and clear should restore all rows."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    all_titles = _visible_agenda_task_titles(session)
+
+    assert "Timed agenda task" in all_titles
+    assert "Untimed agenda task" in all_titles
+
+    assert agenda_command._handle_interactive_key(session, "/") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "focus"
+    submit_result = session.active_interactive_action.submit(session)
+
+    assert submit_result.success is True
+    assert submit_result.status_message == "1 matches"
+    assert _visible_agenda_task_titles(session) == ["Timed agenda task"]
+    assert session.search_text == "focus"
+
+    assert agenda_command._handle_interactive_key(session, "x") is True
+    assert session.status_message == "Search cleared"
+    assert session.search_text == ""
+    assert _visible_agenda_task_titles(session) == all_titles
+
+
+def test_interactive_renderable_footer_shows_active_search_text() -> None:
+    """Agenda footer should include currently active interactive search text."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    session.search_text = "focus"
+    agenda_command._refresh_visible_nodes(session, None)
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=220, height=24)
+
+    console.print(agenda_command._interactive_agenda_renderable(console, session))
+    output = buffer.getvalue()
+
+    assert "Search: focus" in output
 
 
 def test_apply_state_change_uses_current_action_time(
@@ -794,10 +952,7 @@ def test_apply_state_change_uses_current_action_time(
     )
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
-    console = Console(file=StringIO(), force_terminal=False)
-
-    monkeypatch.setattr(agenda_command, "_local_now", lambda: action_now)
-    monkeypatch.setattr(agenda_command, "_choose_state", lambda _console, _heading: "DONE")
+    monkeypatch.setattr("org.commands.agenda.local_now", lambda: action_now)
     monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
     monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
     monkeypatch.setattr(
@@ -806,7 +961,7 @@ def test_apply_state_change_uses_current_action_time(
         lambda _session, _preserve_identity: None,
     )
 
-    agenda_command._apply_state_change(console, session)
+    agenda_command._apply_state_change_with_value(session, "DONE")
 
     assert heading.todo == "DONE"
     assert heading.repeats
@@ -836,10 +991,7 @@ def test_apply_clock_entry_uses_current_action_time(
     )
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
-    console = Console(file=StringIO(), force_terminal=False)
-
-    monkeypatch.setattr(console, "input", lambda _prompt: "30")
-    monkeypatch.setattr(agenda_command, "_local_now", lambda: action_now)
+    monkeypatch.setattr("org.commands.agenda.local_now", lambda: action_now)
     monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
     monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
     monkeypatch.setattr(
@@ -848,7 +1000,7 @@ def test_apply_clock_entry_uses_current_action_time(
         lambda _session, _preserve_identity: None,
     )
 
-    agenda_command._apply_clock_entry(console, session)
+    agenda_command._apply_clock_entry_with_value(session, "30")
 
     assert heading.clock_entries
     timestamp = heading.clock_entries[-1].timestamp
@@ -859,7 +1011,6 @@ def test_apply_clock_entry_uses_current_action_time(
 
 
 def test_apply_refile_rejects_same_file_with_equivalent_path(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
     """Refile should treat equivalent path spellings as same-file destinations."""
@@ -883,10 +1034,7 @@ def test_apply_refile_rejects_same_file_with_equivalent_path(
     )
 
     destination_alias = os.path.join(tmp_path, ".", "agenda_refile_same.org")
-    console = Console(file=StringIO(), force_terminal=False)
-    monkeypatch.setattr(console, "input", lambda _prompt: destination_alias)
-
-    agenda_command._apply_refile(console, session)
+    agenda_command._apply_refile_with_value(session, destination_alias)
 
     assert session.status_message == "Task already in destination file"
     with open(fixture_path, encoding="utf-8") as handle:
@@ -894,10 +1042,10 @@ def test_apply_refile_rejects_same_file_with_equivalent_path(
     assert content.count("Refile me") == 1
 
 
-def test_handle_interactive_key_enter_opens_detail_for_selected_task(
+def test_handle_interactive_key_enter_edits_selected_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Enter should open selected task details in pager."""
+    """Enter should trigger external-editor editing on selected task row."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
     root = org_parser.load(fixture_path)
@@ -908,8 +1056,6 @@ def test_handle_interactive_key_enter_opens_detail_for_selected_task(
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     task_index = next(
         index
         for index, (day_index, row_index) in enumerate(session.row_locations)
@@ -917,28 +1063,484 @@ def test_handle_interactive_key_enter_opens_detail_for_selected_task(
     )
     session.selected_row_index = task_index
 
-    pager_called = {"value": False}
-    mouse_reporting_events: list[bool] = []
+    row = agenda_command._selected_task_row(session)
+    assert row is not None
+    assert row.node is not None
 
-    @contextmanager
-    def _fake_pager(*args: object, **kwargs: object) -> Iterator[None]:
-        del args, kwargs
-        pager_called["value"] = True
-        yield
+    def _fake_edit(heading: Heading) -> editor_command.HeadingEditResult:
+        return editor_command.HeadingEditResult(heading=heading, changed=False)
 
-    def _record_mouse_reporting(enabled: bool) -> None:
-        mouse_reporting_events.append(enabled)
+    monkeypatch.setattr(agenda_command, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    monkeypatch.setattr(console, "pager", _fake_pager)
+    assert agenda_command._handle_interactive_key(session, "ENTER") is True
+    assert session.status_message == "No changes."
+
+
+def test_handle_interactive_key_enter_saves_original_document_after_changed_edit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changed edit should save the selected task's original document."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "task"
+    )
+    session.selected_row_index = task_index
+
+    row = agenda_command._selected_task_row(session)
+    assert row is not None
+    assert row.node is not None
+    source_document = row.node.document
+    detached_heading = next(iter(org_parser.loads("* TODO Updated\n")))
+
+    def _fake_edit(_heading: Heading) -> editor_command.HeadingEditResult:
+        return editor_command.HeadingEditResult(heading=detached_heading, changed=True)
+
+    saved_documents: list[Document] = []
+
+    def _capture_save(document: Document) -> None:
+        saved_documents.append(document)
+
+    monkeypatch.setattr(agenda_command, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(agenda_command, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+
+    assert agenda_command._handle_interactive_key(session, "ENTER") is True
+    assert session.status_message == "Task updated"
+    assert saved_documents == [source_document]
+
+
+def test_handle_interactive_key_dollar_archives_selected_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """$ should archive highlighted agenda task using shared archive helper."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "task"
+    )
+    session.selected_row_index = task_index
+
+    def _fake_archive(
+        heading: Heading,
+        _cache: dict[str, Document],
+    ) -> archive_command.ArchiveMoveResult:
+        location = archive_command.ArchiveLocation(
+            raw_spec="%s_archive::",
+            file_path="tasks.org_archive",
+            parent_title=None,
+        )
+        target = archive_command.ArchiveTarget(
+            location=location,
+            document=heading.document,
+            parent_heading=None,
+        )
+        return archive_command.ArchiveMoveResult(
+            heading=heading,
+            target=target,
+            source_document=heading.document,
+            destination_document=heading.document,
+        )
+
+    monkeypatch.setattr(agenda_command, "archive_heading_subtree_and_save", _fake_archive)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+
+    assert agenda_command._handle_interactive_key(session, "$") is True
+    assert session.status_message == "Task archived"
+
+
+def test_handle_interactive_key_a_captures_and_schedules_on_timed_task_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a on timed task row should capture and schedule with row-specific time."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    timed_task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if (
+            session.day_models[day_index].rows[row_index].kind == "task"
+            and session.day_models[day_index].rows[row_index].source
+            in {"scheduled", "deadline_today", "repeat"}
+            and ":" in session.day_models[day_index].rows[row_index].time_text
+        )
+    )
+    session.selected_row_index = timed_task_index
+    selected_row = agenda_command._selected_row(session)
+    assert selected_row is not None
+    expected_time = selected_row.time_text
+    expected_timestamp = f"<2025-01-15 Wed {expected_time}>"
+    captured_node = next(iter(org_parser.loads("* TODO Captured\n")))
+    saved_documents: list[Document] = []
+    reloaded: dict[str, object] = {}
     monkeypatch.setattr(
-        agenda_command,
-        "_set_mouse_reporting",
-        _record_mouse_reporting,
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert agenda_command._handle_interactive_key(console, session, "ENTER") is True
-    assert pager_called["value"]
-    assert mouse_reporting_events == [False, True]
+    monkeypatch.setattr(
+        agenda_command,
+        "capture_task",
+        lambda _args: capture_command.TasksCaptureResult(
+            template_name="quick",
+            heading=captured_node,
+            document=captured_node.document,
+        ),
+    )
+
+    def _capture_save(document: Document) -> None:
+        saved_documents.append(document)
+
+    monkeypatch.setattr(agenda_command, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+
+    def _fake_refresh(
+        current_session: agenda_command._AgendaSession,
+        preserve_identity: tuple[str, str, str, int | None] | None,
+    ) -> None:
+        reloaded["session"] = current_session
+        reloaded["identity"] = preserve_identity
+
+    monkeypatch.setattr(agenda_command, "_refresh_session", _fake_refresh)
+
+    assert agenda_command._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "1"
+    submit_result = session.active_interactive_action.submit(session)
+    assert submit_result.success is True
+    assert submit_result.keep_prompt_open is False
+    assert str(captured_node.scheduled) == expected_timestamp
+    assert saved_documents == [captured_node.document]
+    assert reloaded["session"] is session
+    assert reloaded["identity"] == agenda_command._heading_identity(captured_node)
+    assert session.status_message == f"Task captured and scheduled for {expected_timestamp}"
+
+
+def test_handle_interactive_key_a_uses_now_marker_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a on NOW marker row should capture and schedule using NOW row minute."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    local_tz = local_now().tzinfo
+    monkeypatch.setattr(
+        agenda_command,
+        "local_now",
+        lambda: datetime(2025, 1, 15, 17, 4, 0, tzinfo=local_tz),
+    )
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    now_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "now_marker"
+    )
+    session.selected_row_index = now_index
+    captured_node = next(iter(org_parser.loads("* TODO Captured\n")))
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
+
+    monkeypatch.setattr(
+        agenda_command,
+        "capture_task",
+        lambda _args: capture_command.TasksCaptureResult(
+            template_name="quick",
+            heading=captured_node,
+            document=captured_node.document,
+        ),
+    )
+    monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+
+    assert agenda_command._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "1"
+    submit_result = session.active_interactive_action.submit(session)
+    assert submit_result.success is True
+    assert str(captured_node.scheduled) == "<2025-01-15 Wed 17:04>"
+
+
+def test_handle_interactive_key_a_on_non_timetable_row_reports_blocked() -> None:
+    """a outside timetable rows should be blocked with a status message."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    blocked_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if session.day_models[day_index].rows[row_index].kind == "section"
+    )
+    session.selected_row_index = blocked_index
+
+    assert agenda_command._handle_interactive_key(session, "a") is True
+    assert session.status_message == "Capture is available only on timetable time rows"
+
+
+def test_handle_interactive_key_a_blank_template_input_cancels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should close agenda capture prompt with cancel status on blank input."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    timed_task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if (
+            session.day_models[day_index].rows[row_index].kind == "task"
+            and session.day_models[day_index].rows[row_index].source
+            in {"scheduled", "deadline_today", "repeat"}
+            and ":" in session.day_models[day_index].rows[row_index].time_text
+        )
+    )
+    session.selected_row_index = timed_task_index
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
+
+    assert agenda_command._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = ""
+    submit_result = session.active_interactive_action.submit(session)
+
+    assert submit_result.success is True
+    assert submit_result.keep_prompt_open is False
+    assert submit_result.status_message == "Capture cancelled"
+
+
+def test_handle_interactive_key_a_invalid_shortcut_keeps_prompt_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """a should keep agenda capture prompt open for invalid shortcuts."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    timed_task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if (
+            session.day_models[day_index].rows[row_index].kind == "task"
+            and session.day_models[day_index].rows[row_index].source
+            in {"scheduled", "deadline_today", "repeat"}
+            and ":" in session.day_models[day_index].rows[row_index].time_text
+        )
+    )
+    session.selected_row_index = timed_task_index
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
+
+    assert agenda_command._handle_interactive_key(session, "a") is True
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "42"
+    submit_result = session.active_interactive_action.submit(session)
+
+    assert submit_result.success is False
+    assert submit_result.keep_prompt_open is True
+    assert submit_result.status_message == "Invalid capture template shortcut"
+
+
+def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Agenda prompt submission should pause live rendering for capture action."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    timed_task_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if (
+            session.day_models[day_index].rows[row_index].kind == "task"
+            and session.day_models[day_index].rows[row_index].source
+            in {"scheduled", "deadline_today", "repeat"}
+            and ":" in session.day_models[day_index].rows[row_index].time_text
+        )
+    )
+    session.selected_row_index = timed_task_index
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_CAPTURE_TEMPLATES",
+        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
+    )
+    agenda_command._handle_interactive_key(session, "a")
+    assert session.active_interactive_action is not None
+    session.active_interactive_action.prompt_config.prompt.value = "1"
+
+    captured_node = next(iter(org_parser.loads("* TODO Captured\n")))
+    monkeypatch.setattr(
+        agenda_command,
+        "capture_task",
+        lambda _args: capture_command.TasksCaptureResult(
+            template_name="quick",
+            heading=captured_node,
+            document=captured_node.document,
+        ),
+    )
+    monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("ENTER", ""),
+    )
+
+    events: list[str] = []
+
+    class _LiveStub:
+        console = Console(file=StringIO(), force_terminal=False, width=120, height=24)
+
+        def stop(self) -> None:
+            events.append("stop")
+
+        def start(self) -> None:
+            events.append("start")
+
+        def update(self, _renderable: object, refresh: bool) -> None:
+            assert refresh is True
+            events.append("update")
+
+    consumed = agenda_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert events == ["stop", "start", "update"]
+
+
+def test_search_prompt_live_updates_and_escape_reverts_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Agenda search prompt should live-update rows and ESC should restore prior filter."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    assert agenda_command._handle_interactive_key(session, "/") is True
+    assert session.active_interactive_action is not None
+
+    events: list[str] = []
+
+    class _LiveStub:
+        console = Console(file=StringIO(), force_terminal=False, width=120, height=24)
+
+        def stop(self) -> None:
+            events.append("stop")
+
+        def start(self) -> None:
+            events.append("start")
+
+        def update(self, _renderable: object, refresh: bool) -> None:
+            assert refresh is True
+            events.append("update")
+
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("TEXT", "focus"),
+    )
+    consumed = agenda_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert _visible_agenda_task_titles(session) == ["Timed agenda task"]
+    assert session.search_text == "focus"
+    assert session.status_message == "1 matches"
+
+    monkeypatch.setattr(
+        interactive_actions,
+        "read_input_event_with_timeout",
+        lambda _timeout, **_kwargs: ("ESC", ""),
+    )
+    consumed = agenda_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+
+    assert consumed is True
+    assert _visible_agenda_task_titles(session) == [
+        "Timed agenda task",
+        "Repeated completion on day",
+        "Completed one-off task",
+        "Untimed agenda task",
+    ]
+    assert session.search_text == ""
+    assert session.status_message == "Search cancelled"
+    assert events == ["update", "update"]
 
 
 def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:
@@ -953,8 +1555,6 @@ def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
     hour_index = next(
         index
         for index, (day_index, row_index) in enumerate(session.row_locations)
@@ -962,7 +1562,7 @@ def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:
     )
     session.selected_row_index = hour_index
 
-    assert agenda_command._handle_interactive_key(console, session, "ENTER") is True
+    assert agenda_command._handle_interactive_key(session, "ENTER") is True
     assert session.status_message == "Action available only on task rows"
 
 
@@ -978,9 +1578,7 @@ def test_handle_interactive_key_escape_quits_interactive_loop() -> None:
         ["TODO"],
         False,
     )
-    console = Console(file=StringIO(), force_terminal=False)
-
-    assert agenda_command._handle_interactive_key(console, session, "ESC") is False
+    assert agenda_command._handle_interactive_key(session, "ESC") is False
 
 
 def test_detail_org_block_includes_selected_heading_children() -> None:
@@ -989,7 +1587,7 @@ def test_detail_org_block_includes_selected_heading_children() -> None:
         "* TODO Parent task\nParent body\n** TODO Child task\nChild body\n",
     )
     heading = next(iter(root))
-    output = agenda_command._detail_org_block(heading)
+    output = detail_org_block(heading)
 
     assert "* TODO Parent task" in output
     assert "** TODO Child task" in output
@@ -1016,7 +1614,7 @@ def test_interactive_renderable_footer_is_two_lines_without_status() -> None:
 
     assert len(lines) == 24
     assert lines[-2].startswith("Lines ")
-    assert "q/Esc quit" in lines[-2]
+    assert "Type ? for help" in lines[-2]
     assert lines[-1] == ""
 
 
@@ -1041,7 +1639,51 @@ def test_interactive_renderable_footer_is_two_lines_with_status_on_narrow_width(
 
     assert len(lines) == 24
     assert lines[-2].startswith("Lines ")
+    assert "Type ? for help" in lines[-2]
     assert lines[-1] == "Unsupported key: x"
+
+
+def test_handle_interactive_key_question_toggles_help_modal() -> None:
+    """Question mark should open help modal and next key should close it."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+
+    assert agenda_command._handle_interactive_key(session, "?") is True
+    assert session.show_help_modal is True
+
+    assert agenda_command._handle_interactive_key(session, "ENTER") is True
+    assert session.show_help_modal is False
+
+
+def test_interactive_renderable_shows_help_panel() -> None:
+    """Help modal should render key bindings panel for agenda."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    session.show_help_modal = True
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=120, height=24)
+
+    console.print(agenda_command._interactive_agenda_renderable(console, session))
+    output = buffer.getvalue()
+
+    assert "Key bindings" in output
+    assert "Type ? for help" not in output
 
 
 def test_shift_planning_time_for_row_shifts_timed_scheduled_by_one_hour() -> None:

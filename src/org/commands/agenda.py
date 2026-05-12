@@ -4,31 +4,74 @@ from __future__ import annotations
 
 import calendar
 import logging
-import os
-import select
 import sys
-import termios
-import tty
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
-from org_parser.element import Repeat
 from org_parser.time import Clock, Timestamp
 from rich import box
 from rich.console import Group
 from rich.live import Live
 from rich.rule import Rule
-from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data, resolve_input_paths
-from org.commands.tasks.common import iter_descendants, load_document, save_document
-from org.output_format import DEFAULT_OUTPUT_THEME
+from org.commands.archive import archive_heading_subtree_and_save
+from org.commands.editor import edit_heading_subtree_in_external_editor
+from org.commands.interactive_action_builders import (
+    can_activate_configured_capture_templates,
+    quit_view_action,
+    status_external_action,
+    status_noninteractive_action,
+    status_view_action,
+    view_action,
+)
+from org.commands.interactive_actions import (
+    ActionResult,
+    PromptInteractiveAction,
+    PromptInteractiveActionContract,
+    SessionAction,
+    action_requires_live_pause,
+    dispatch_action_key,
+    handle_active_interactive_action_input,
+)
+from org.commands.interactive_common import (
+    INTERACTIVE_HELP_FOOTER_HINT,
+    FooterPromptState,
+    InteractiveHelpEntry,
+    append_repeat_transition,
+    apply_help_modal_key,
+    build_footer_prompt_text,
+    interactive_help_command_text,
+    local_now,
+    read_keypress,
+    render_interactive_help_modal,
+    set_mouse_reporting,
+)
+from org.commands.search_common import filter_nodes_by_search
+from org.commands.tasks.capture import TasksCaptureArgs, capture_task
+from org.commands.tasks.common import (
+    PromptActionConfig,
+    capture_template_prompt_config,
+    clock_duration_prompt_config,
+    configured_capture_template_names,
+    duration_to_org_text,
+    iter_descendants,
+    load_document,
+    parse_clock_duration,
+    refile_prompt_config,
+    resolve_capture_template_selection,
+    resolve_refile_destination_input,
+    resolve_todo_state_selection,
+    save_document,
+    state_selection_prompt_config,
+    todo_states_for_heading,
+)
 from org.tui import (
     build_console,
     heading_title_to_text,
@@ -48,8 +91,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("org")
 _HIGHLIGHT_ROW_STYLE = "on grey23"
-_MOUSE_REPORTING_ENABLE = "\x1b[?1000h\x1b[?1006h"
-_MOUSE_REPORTING_DISABLE = "\x1b[?1000l\x1b[?1006l"
 
 
 @dataclass
@@ -92,6 +133,7 @@ class AgendaArgs:
     no_completed: bool
     no_overdue: bool
     no_upcoming: bool
+    future_repeats: bool
 
 
 @dataclass(frozen=True)
@@ -203,6 +245,7 @@ class _AgendaSession:
     """Interactive agenda session state."""
 
     args: AgendaArgs
+    all_nodes: list[Heading]
     nodes: list[Heading]
     render: _RenderContext
     start_date: date
@@ -213,6 +256,63 @@ class _AgendaSession:
     selected_row_index: int
     scroll_offset: int
     status_message: str
+    search_text: str
+    search_prompt_previous_text: str | None = None
+    show_help_modal: bool = False
+    active_interactive_action: PromptInteractiveActionContract[_AgendaSession] | None = None
+
+
+_AGENDA_HELP_ENTRIES = [
+    InteractiveHelpEntry("Esc/q", "Exit the agenda view and return to the shell."),
+    InteractiveHelpEntry(
+        "n/p, Up/Down, Wheel",
+        "Move selection across visible agenda rows, including non-task rows.",
+    ),
+    InteractiveHelpEntry(
+        "f/b, Left/Right",
+        "Move the agenda window forward or backward by the current --days span.",
+    ),
+    InteractiveHelpEntry(
+        "Enter",
+        "Open the selected task subtree in the external editor workflow.",
+    ),
+    InteractiveHelpEntry(
+        "a",
+        "Capture a task from templates, prefilled for the selected timed row when available.",
+    ),
+    InteractiveHelpEntry(
+        "$",
+        "Archive the selected task subtree using standard archive rules.",
+    ),
+    InteractiveHelpEntry(
+        "/",
+        "Open search prompt and filter visible tasks by task text.",
+    ),
+    InteractiveHelpEntry(
+        "x",
+        "Clear active search filter and restore full agenda.",
+    ),
+    InteractiveHelpEntry(
+        "t",
+        "Prompt for a TODO state and apply it to the selected task with repeat transition logging.",
+    ),
+    InteractiveHelpEntry(
+        "S-Left/S-Right",
+        "Shift selected task planning date backward or forward by one day.",
+    ),
+    InteractiveHelpEntry(
+        "S-Up/S-Down",
+        "Shift selected timed scheduled/deadline rows by one hour.",
+    ),
+    InteractiveHelpEntry(
+        "r",
+        "Refile the selected task to another loaded file destination.",
+    ),
+    InteractiveHelpEntry(
+        "c",
+        "Add a clock entry ending now using a prompted duration.",
+    ),
+]
 
 
 @dataclass(frozen=True)
@@ -250,13 +350,8 @@ def _is_active_planning_timestamp(timestamp: Timestamp | None) -> bool:
 def _resolve_agenda_start_date(raw_date: str | None) -> date:
     """Resolve agenda start date from --date or today's date."""
     if raw_date is None:
-        return _local_now().date()
+        return local_now().date()
     return parse_date_argument(raw_date, "--date").date()
-
-
-def _local_now() -> datetime:
-    """Return local timezone-aware current datetime."""
-    return datetime.now(tz=UTC).astimezone()
 
 
 def _resolve_tasks_limit(max_results: int | None) -> int:
@@ -330,10 +425,105 @@ def _scheduled_for_day(node: Heading, day: date) -> bool:
     )
 
 
+def _planning_matches_day(timestamp: Timestamp, day: date, *, future_repeats: bool) -> bool:
+    """Return whether a planning timestamp should appear on the target day."""
+    if not _is_active_planning_timestamp(timestamp):
+        return False
+
+    start = timestamp.start
+    start_day = start.date()
+    if start_day == day:
+        return True
+
+    repeat_value, repeat_unit = _repeater_for_future_match(timestamp)
+    should_expand = _should_expand_future_repeats(
+        future_repeats=future_repeats,
+        repeat_value=repeat_value,
+        day=day,
+        start_day=start_day,
+    )
+    if not should_expand:
+        return False
+
+    matches = False
+    if repeat_unit == "h":
+        matches = _hourly_repeater_matches_day(start, day, repeat_value)
+    elif repeat_unit in {"d", "w"}:
+        matches = _daily_or_weekly_repeater_matches_day(start_day, day, repeat_value, repeat_unit)
+    elif repeat_unit in {"m", "y"}:
+        matches = _monthly_or_yearly_repeater_matches_day(start, day, repeat_value, repeat_unit)
+    return matches
+
+
+def _repeater_for_future_match(timestamp: Timestamp) -> tuple[int, str | None]:
+    """Extract repeat value and unit for potential future repeat matching."""
+    if timestamp.repeater is None:
+        return 0, None
+    return timestamp.repeater.value, timestamp.repeater.unit
+
+
+def _should_expand_future_repeats(
+    *,
+    future_repeats: bool,
+    repeat_value: int,
+    day: date,
+    start_day: date,
+) -> bool:
+    """Check whether potential future repeat expansion should be attempted."""
+    return future_repeats and repeat_value > 0 and day >= start_day
+
+
+def _hourly_repeater_matches_day(start: datetime, day: date, repeat_value: int) -> bool:
+    """Return whether an hourly repeater has an occurrence on the target day."""
+    day_start = datetime.combine(day, datetime.min.time())
+    day_end = day_start + timedelta(days=1) - timedelta(microseconds=1)
+    step = timedelta(hours=repeat_value)
+    min_delta = day_start - start
+    max_delta = day_end - start
+    min_step = int(min_delta // step)
+    max_step = int(max_delta // step)
+    first_step = max(min_step, 0)
+    return first_step <= max_step and (start + step * first_step).date() == day
+
+
+def _daily_or_weekly_repeater_matches_day(
+    start_day: date,
+    day: date,
+    repeat_value: int,
+    repeat_unit: str,
+) -> bool:
+    """Return whether a daily or weekly repeater lands on the target day."""
+    repeat_days = repeat_value if repeat_unit == "d" else repeat_value * 7
+    return (day - start_day).days % repeat_days == 0
+
+
+def _monthly_or_yearly_repeater_matches_day(
+    start: datetime,
+    day: date,
+    repeat_value: int,
+    repeat_unit: str,
+) -> bool:
+    """Return whether a monthly/yearly repeater lands on the target day."""
+    next_start = start
+    for _ in range(20000):
+        shifted_start, _ = _shift_datetimes_by_unit(
+            next_start,
+            None,
+            value=repeat_value,
+            unit=repeat_unit,
+        )
+        shifted_day = shifted_start.date()
+        if shifted_day == day:
+            return True
+        if shifted_day > day:
+            return False
+        next_start = shifted_start
+    return False
+
+
 def _collect_repeat_timed_entries(
     node: Heading,
     day: date,
-    done_states: list[str],
     *,
     no_completed: bool,
 ) -> list[_TimedEntry]:
@@ -342,7 +532,7 @@ def _collect_repeat_timed_entries(
     if no_completed:
         return timed
 
-    repeats: list[Repeat] = [repeat for repeat in node.repeats if repeat.after in done_states]
+    repeats = [repeat for repeat in node.repeats if repeat.is_completed]
     for repeat in repeats:
         repeat_day = repeat.timestamp.start.date()
         if repeat_day != day:
@@ -359,11 +549,20 @@ def _collect_repeat_timed_entries(
     return timed
 
 
-def _collect_scheduled_entries(node: Heading, day: date) -> tuple[list[_TimedEntry], list[Heading]]:
+def _collect_scheduled_entries(
+    node: Heading,
+    day: date,
+    *,
+    future_repeats: bool,
+) -> tuple[list[_TimedEntry], list[Heading]]:
     """Collect scheduled entries on one day."""
     timed: list[_TimedEntry] = []
     untimed: list[Heading] = []
-    if not _scheduled_for_day(node, day) or node.scheduled is None:
+    if node.scheduled is None or not _planning_matches_day(
+        node.scheduled,
+        day,
+        future_repeats=future_repeats,
+    ):
         return timed, untimed
 
     if _has_specific_time(node.scheduled):
@@ -378,13 +577,14 @@ def _collect_deadline_entries(
     day: date,
     *,
     completed: bool,
+    future_repeats: bool,
 ) -> tuple[list[_TimedEntry], list[Heading]]:
     """Collect deadline entries on one day for incomplete tasks."""
     timed: list[_TimedEntry] = []
     untimed: list[Heading] = []
     if completed or not _is_active_planning_timestamp(node.deadline) or node.deadline is None:
         return timed, untimed
-    if node.deadline.start.date() != day:
+    if not _planning_matches_day(node.deadline, day, future_repeats=future_repeats):
         return timed, untimed
 
     if _has_specific_time(node.deadline):
@@ -452,7 +652,6 @@ def _upcoming_deadline_entry(
 def _collect_day_entries(
     nodes: list[Heading],
     day: date,
-    done_states: list[str],
     args: AgendaArgs,
     *,
     include_relative_sections: bool,
@@ -473,7 +672,11 @@ def _collect_day_entries(
         if args.no_completed and completed:
             continue
 
-        scheduled_timed, scheduled_day_untimed = _collect_scheduled_entries(node, day)
+        scheduled_timed, scheduled_day_untimed = _collect_scheduled_entries(
+            node,
+            day,
+            future_repeats=args.future_repeats,
+        )
         timed.extend(scheduled_timed)
         if not completed:
             scheduled_untimed.extend(scheduled_day_untimed)
@@ -482,6 +685,7 @@ def _collect_day_entries(
             node,
             day,
             completed=completed,
+            future_repeats=args.future_repeats,
         )
         timed.extend(deadline_timed)
         for deadline_node in deadline_day_untimed:
@@ -497,7 +701,6 @@ def _collect_day_entries(
         repeat_timed = _collect_repeat_timed_entries(
             node,
             day,
-            done_states,
             no_completed=args.no_completed,
         )
         timed.extend(repeat_timed)
@@ -742,7 +945,7 @@ def _refresh_session(
     preserve_identity: tuple[str, str, str, int | None] | None,
 ) -> None:
     """Recompute day row models and restore selection when possible."""
-    session.now = _local_now()
+    session.now = local_now()
     day_models: list[_DayRowModel] = []
     row_locations: list[tuple[int, int]] = []
 
@@ -751,7 +954,6 @@ def _refresh_session(
         entries = _collect_day_entries(
             session.nodes,
             day,
-            session.render.done_states,
             session.args,
             include_relative_sections=(day == session.now.date()),
         )
@@ -783,6 +985,15 @@ def _refresh_session(
     session.selected_row_index = max(session.selected_row_index, 0)
 
 
+def _refresh_visible_nodes(
+    session: _AgendaSession,
+    preserve_identity: tuple[str, str, str, int | None] | None,
+) -> None:
+    """Refresh visible agenda nodes and restore selected task identity when possible."""
+    session.nodes = filter_nodes_by_search(session.all_nodes, session.search_text)
+    _refresh_session(session, preserve_identity)
+
+
 def _selected_row_location(session: _AgendaSession) -> tuple[int, int] | None:
     """Return selected day/row indexes or None when no rows exist."""
     if not session.row_locations:
@@ -804,7 +1015,7 @@ def _selected_task_row(session: _AgendaSession) -> _AgendaRow | None:
 
 def _refresh_session_if_minute_changed(session: _AgendaSession) -> None:
     """Refresh agenda rows when local wall-clock minute changes."""
-    current_now = _local_now().replace(second=0, microsecond=0)
+    current_now = local_now().replace(second=0, microsecond=0)
     session_now = session.now.replace(second=0, microsecond=0)
     if current_now == session_now:
         return
@@ -832,121 +1043,6 @@ def _move_selection(session: _AgendaSession, step: int) -> None:
     if not session.row_locations:
         return
     session.selected_row_index = (session.selected_row_index + step) % len(session.row_locations)
-
-
-def _decode_mouse_sequence(sequence: bytes) -> str | None:
-    """Decode xterm SGR mouse sequence into agenda key token."""
-    if not sequence.startswith(b"\x1b[<"):
-        return None
-    if sequence[-1:] not in {b"M", b"m"}:
-        return None
-
-    try:
-        body = sequence[3:-1].decode("ascii")
-        cb_text, _col_text, _row_text = body.split(";", 2)
-        cb = int(cb_text)
-    except UnicodeDecodeError, ValueError:
-        return "UNSUPPORTED-MOUSE"
-
-    if cb & 64 == 0:
-        result = "UNSUPPORTED-MOUSE"
-    elif cb & 4:
-        result = "UNSUPPORTED-SHIFT-WHEEL"
-    else:
-        button = cb & 0b11
-        result = {0: "WHEEL-UP", 1: "WHEEL-DOWN"}.get(button, "UNSUPPORTED-MOUSE")
-
-    return result
-
-
-def _decode_escape_sequence(sequence: bytes) -> str:
-    """Decode terminal escape sequence into one key token."""
-    mapping = {
-        b"\x1b[A": "UP",
-        b"\x1b[B": "DOWN",
-        b"\x1b[1;2A": "S-UP",
-        b"\x1b[1;2B": "S-DOWN",
-        b"\x1b[1;2C": "S-RIGHT",
-        b"\x1b[1;2D": "S-LEFT",
-        b"\x1b[;2A": "S-UP",
-        b"\x1b[;2B": "S-DOWN",
-        b"\x1b[;2C": "S-RIGHT",
-        b"\x1b[;2D": "S-LEFT",
-        b"\x1b[C": "RIGHT",
-        b"\x1b[D": "LEFT",
-    }
-    mapped = mapping.get(sequence)
-    if mapped is not None:
-        return mapped
-
-    if sequence == b"\x1b":
-        return "ESC"
-
-    mouse_token = _decode_mouse_sequence(sequence)
-    if mouse_token is not None:
-        return mouse_token
-
-    return f"UNSUPPORTED-ESC:{sequence.hex()}"
-
-
-def _set_mouse_reporting(enabled: bool) -> None:
-    """Enable or disable terminal mouse reporting for interactive agenda."""
-    if not sys.stdout.isatty():
-        return
-
-    sequence = _MOUSE_REPORTING_ENABLE if enabled else _MOUSE_REPORTING_DISABLE
-    try:
-        sys.stdout.write(sequence)
-        sys.stdout.flush()
-    except OSError:
-        return
-
-
-def _read_keypress(timeout_seconds: float | None = None) -> str:
-    """Read one keypress and normalize to a command token."""
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        if timeout_seconds is not None:
-            ready, _, _ = select.select([fd], [], [], timeout_seconds)
-            if not ready:
-                return ""
-        first = os.read(fd, 1)
-        if first == b"\x03":
-            return "q"
-        if first in {b"\r", b"\n"}:
-            return "ENTER"
-        if first == b"\x1b":
-            payload = bytearray(first)
-            while True:
-                ready, _, _ = select.select([fd], [], [], 0.01)
-                if not ready:
-                    break
-                payload.extend(os.read(fd, 1))
-            return _decode_escape_sequence(bytes(payload))
-        try:
-            return first.decode("utf-8").lower()
-        except UnicodeDecodeError:
-            return ""
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
-
-
-def _append_repeat_transition(
-    heading: Heading,
-    before: str | None,
-    after: str,
-    now: datetime,
-) -> None:
-    """Append one repeat transition entry at current time."""
-    transition_time = now.replace(second=0, microsecond=0)
-    repeat = Repeat(
-        before=before,
-        after=after,
-        timestamp=Timestamp.from_datetime(transition_time, is_active=False),
-    )
-    heading.repeats.append(repeat)
 
 
 def _set_timestamp_fields(timestamp: Timestamp, start: datetime, end: datetime | None) -> None:
@@ -1029,16 +1125,12 @@ def _now_aligned_for_datetime(start: datetime, now: datetime) -> datetime:
 
 def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
     """Advance timestamp once by its repeater marker, when present."""
-    if (
-        timestamp.repeater_mark is None
-        or timestamp.repeater_value is None
-        or timestamp.repeater_unit is None
-    ):
+    if timestamp.repeater is None:
         return False
 
-    mark = timestamp.repeater_mark
-    value = timestamp.repeater_value
-    unit = timestamp.repeater_unit
+    mark = timestamp.repeater.mark
+    value = timestamp.repeater.value
+    unit = timestamp.repeater.unit
     if value <= 0:
         return False
 
@@ -1054,7 +1146,7 @@ def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
                 unit=unit,
             )
         elif mark == "++":
-            now = _now_aligned_for_datetime(start, _local_now())
+            now = _now_aligned_for_datetime(start, local_now())
             shifted_start, shifted_end = _shift_datetimes_by_unit(
                 start,
                 end,
@@ -1069,7 +1161,7 @@ def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
                     unit=unit,
                 )
         elif mark == ".+":
-            now = _now_aligned_for_datetime(start, _local_now())
+            now = _now_aligned_for_datetime(start, local_now())
             base_start = start.replace(year=now.year, month=now.month, day=now.day)
             base_end = None if end is None else base_start + (end - start)
             shifted_start, shifted_end = _shift_datetimes_by_unit(
@@ -1090,50 +1182,14 @@ def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
 def _save_document_changes(document: Document) -> None:
     """Persist one mutated document to disk."""
     logger.info("Saving agenda edit file: %s", document.filename)
-    document.sync_heading_id_index()
     save_document(document)
-
-
-def _parse_clock_duration(value: str) -> timedelta:
-    """Parse user-entered clock duration text."""
-    normalized = value.strip().lower()
-    if not normalized:
-        raise ValueError("Duration cannot be empty")
-
-    if ":" in normalized:
-        parts = normalized.split(":", 1)
-        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
-            raise ValueError("Duration must be H:MM")
-        hours = int(parts[0])
-        minutes = int(parts[1])
-        if minutes >= 60:
-            raise ValueError("Minutes must be below 60")
-        delta = timedelta(hours=hours, minutes=minutes)
-    elif normalized.endswith("m") and normalized[:-1].isdigit():
-        delta = timedelta(minutes=int(normalized[:-1]))
-    elif normalized.endswith("h") and normalized[:-1].isdigit():
-        delta = timedelta(hours=int(normalized[:-1]))
-    elif normalized.isdigit():
-        delta = timedelta(minutes=int(normalized))
-    else:
-        raise ValueError("Duration must be H:MM, Xm, Xh, or minutes")
-
-    if delta <= timedelta(0):
-        raise ValueError("Duration must be positive")
-    return delta
-
-
-def _duration_to_org_text(duration: timedelta) -> str:
-    """Format duration as Org clock text H:MM."""
-    total_minutes = int(duration.total_seconds() // 60)
-    hours, minutes = divmod(total_minutes, 60)
-    return f"{hours}:{minutes:02d}"
 
 
 def _reload_session_nodes(session: _AgendaSession) -> None:
     """Reload nodes through standard processing pipeline after mutations."""
     nodes, _, _ = load_and_process_data(session.args)
-    session.nodes = nodes
+    session.all_nodes = nodes
+    session.nodes = filter_nodes_by_search(nodes, session.search_text)
 
 
 def _add_section_row(table: Table, label: str, *, color_enabled: bool, style: str = "") -> int:
@@ -1492,6 +1548,14 @@ def _render_viewport_row(
 
 def _interactive_agenda_renderable(console: Console, session: _AgendaSession) -> Group:
     """Build scrollable interactive agenda renderable with fixed footer controls."""
+    if session.show_help_modal:
+        return Group(
+            render_interactive_help_modal(
+                _AGENDA_HELP_ENTRIES,
+                color_enabled=session.render.color_enabled,
+            ),
+        )
+
     _refresh_session_if_minute_changed(session)
     rows = _build_interactive_rows(session)
     viewport_height = max(5, console.size.height - 3)
@@ -1508,28 +1572,23 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
         session.scroll_offset = min(max(session.scroll_offset, 0), max_offset)
 
     window = rows[session.scroll_offset : session.scroll_offset + viewport_height]
-    table = _build_interactive_viewport_table()
     selected_location = _selected_row_location(session)
+    viewport_table = _build_interactive_viewport_table()
     for row in window:
-        _render_viewport_row(table, row, session, selected_location)
+        _render_viewport_row(viewport_table, row, session, selected_location)
 
     for _ in range(viewport_height - len(window)):
-        table.add_row(Text(""), Text(""), Text(""), Text(""))
+        viewport_table.add_row(Text(""), Text(""), Text(""), Text(""))
+    table = viewport_table
 
-    controls = (
-        "n/p, Up/Down, Wheel select"
-        " | Enter view"
-        " | f/b, Left/Right span"
-        " | t state"
-        " | Shift+Left/Right day"
-        " | Shift+Up/Down hour"
-        " | r refile"
-        " | c clock"
-        " | q/Esc quit"
-    )
     end_line = min(session.scroll_offset + viewport_height, len(rows))
     total_lines = max(len(rows), 1)
-    scroll_text = f"Lines {end_line}/{total_lines}"
+    search_text = session.search_text or "-"
+    scroll_text = f"Lines {end_line}/{total_lines} | Search: {search_text}"
+    prompt_line = None
+    active_action = session.active_interactive_action
+    if active_action is not None:
+        prompt_line = build_footer_prompt_text(active_action.prompt_config.prompt)
     status = session.status_message or ""
     footer_style = "dim" if session.render.color_enabled else ""
     footer_line = Table.grid(expand=True)
@@ -1537,44 +1596,63 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
     footer_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
     footer_line.add_row(
         Text(scroll_text, style=footer_style, no_wrap=True, overflow="ellipsis"),
-        Text(controls, style=footer_style, no_wrap=True, overflow="ellipsis"),
+        Text(
+            INTERACTIVE_HELP_FOOTER_HINT,
+            style=footer_style,
+            no_wrap=True,
+            overflow="ellipsis",
+        ),
     )
-    return Group(
-        table,
-        Rule(style=footer_style),
-        footer_line,
-        Text(status, style=footer_style, no_wrap=True, overflow="ellipsis"),
-    )
+    status_text = Text(status, style=footer_style, no_wrap=True, overflow="ellipsis")
+    if prompt_line is None:
+        return Group(table, Rule(style=footer_style), footer_line, status_text)
+    return Group(table, Rule(style=footer_style), footer_line, prompt_line, status_text)
 
 
-def _detail_org_block(node: Heading) -> str:
-    """Build detailed org block text for one heading subtree."""
-    filename = node.document.filename or "unknown"
-    node_text = node.render().rstrip()
-    return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
-
-
-def _open_selected_task_detail(console: Console, session: _AgendaSession) -> None:
-    """Open selected task detail in pager for scrolling and selection."""
+def _edit_selected_task_in_external_editor(session: _AgendaSession) -> None:
+    """Edit selected task subtree in configured external editor."""
     row = _selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
 
-    detail = Syntax(
-        _detail_org_block(row.node),
-        "org",
-        theme=DEFAULT_OUTPUT_THEME,
-        line_numbers=False,
-        word_wrap=True,
-    )
+    source_document = row.node.document
     session.status_message = ""
-    _set_mouse_reporting(False)
     try:
-        with console.pager(styles=session.render.color_enabled):
-            console.print(detail)
-    finally:
-        _set_mouse_reporting(True)
+        edit_result = edit_heading_subtree_in_external_editor(row.node)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    if not edit_result.changed:
+        session.status_message = "No changes."
+        return
+
+    _save_document_changes(source_document)
+    preserve_identity = _heading_identity(edit_result.heading)
+    _reload_session_nodes(session)
+    _refresh_session(session, preserve_identity)
+    session.status_message = "Task updated"
+
+
+def _archive_selected_task(session: _AgendaSession) -> None:
+    """Archive selected task subtree using shared archive-location rules."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    session.status_message = ""
+    try:
+        archive_result = archive_heading_subtree_and_save(row.node, {})
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    preserve_identity = _heading_identity(archive_result.heading)
+    _reload_session_nodes(session)
+    _refresh_session(session, preserve_identity)
+    session.status_message = "Task archived"
 
 
 def _shift_planning_for_row(row: _AgendaRow, *, day_delta: int) -> tuple[Timestamp | None, str]:
@@ -1653,32 +1731,7 @@ def _shift_planning_time_for_row(
     return timestamp, f"Shifted {field_name} {direction} by {abs(hour_delta)} hour"
 
 
-def _choose_state(console: Console, heading: Heading) -> str | None:
-    """Prompt for a new TODO state from document states."""
-    states = list(dict.fromkeys(heading.document.all_states))
-    if not states:
-        return None
-
-    console.print("Choose new TODO state:")
-    for idx, state in enumerate(states, start=1):
-        console.print(f"{idx}) {state}")
-
-    selection = console.input("State number or value (blank cancels): ").strip()
-    if not selection:
-        return None
-
-    if selection.isdigit():
-        index = int(selection) - 1
-        if 0 <= index < len(states):
-            return states[index]
-        return None
-
-    if selection in states:
-        return selection
-    return None
-
-
-def _apply_state_change(console: Console, session: _AgendaSession) -> None:
+def _apply_state_change_with_value(session: _AgendaSession, new_state: str) -> None:
     """Apply interactive TODO-state transition on selected task."""
     row = _selected_task_row(session)
     if row is None or row.node is None:
@@ -1686,19 +1739,14 @@ def _apply_state_change(console: Console, session: _AgendaSession) -> None:
         return
 
     heading = row.node
-    new_state = _choose_state(console, heading)
-    if new_state is None:
-        session.status_message = "State change cancelled"
-        return
-
     old_state = heading.todo
     if old_state == new_state:
         session.status_message = "State unchanged"
         return
 
-    action_now = _local_now()
+    action_now = local_now()
     heading.todo = new_state
-    _append_repeat_transition(heading, old_state, new_state, action_now)
+    append_repeat_transition(heading, old_state, new_state, action_now)
 
     if heading.scheduled is not None and _advance_timestamp_by_repeater(heading.scheduled):
         logger.info(
@@ -1784,7 +1832,7 @@ def _move_heading_to_document(heading: Heading, destination: Document) -> None:
         descendant.document = destination
 
 
-def _apply_refile(console: Console, session: _AgendaSession) -> None:
+def _apply_refile_with_value(session: _AgendaSession, destination_input: str) -> None:
     """Prompt and refile selected task into another file."""
     row = _selected_task_row(session)
     if row is None or row.node is None:
@@ -1792,22 +1840,19 @@ def _apply_refile(console: Console, session: _AgendaSession) -> None:
         return
 
     current_files = resolve_input_paths(session.args.files)
-    console.print("Refile destination:")
-    for index, filename in enumerate(current_files, start=1):
-        console.print(f"{index}) {filename}")
-    destination_input = console.input("Destination file (# or path, blank cancels): ").strip()
-    if not destination_input:
+    destination_path, validation_error = resolve_refile_destination_input(
+        destination_input,
+        current_files,
+    )
+    if destination_path is None and validation_error is None:
         session.status_message = "Refile cancelled"
         return
-
-    if destination_input.isdigit():
-        index = int(destination_input) - 1
-        if not (0 <= index < len(current_files)):
-            session.status_message = "Invalid destination shortcut"
-            return
-        destination_path = current_files[index]
-    else:
-        destination_path = destination_input
+    if validation_error is not None:
+        session.status_message = validation_error
+        return
+    if destination_path is None:
+        session.status_message = "Refile cancelled"
+        return
 
     try:
         destination_document = load_document(destination_path)
@@ -1844,33 +1889,31 @@ def _apply_refile(console: Console, session: _AgendaSession) -> None:
     session.status_message = f"Refiled task to {destination_doc_path}"
 
 
-def _apply_clock_entry(console: Console, session: _AgendaSession) -> None:
+def _apply_clock_entry_with_value(session: _AgendaSession, duration_input: str) -> None:
     """Prompt and append one clock entry ending now to selected task."""
     row = _selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
 
-    duration_input = console.input(
-        "Clock duration (H:MM, Xm, Xh, minutes; blank cancels): ",
-    ).strip()
+    duration_input = duration_input.strip()
     if not duration_input:
         session.status_message = "Clock action cancelled"
         return
 
     try:
-        duration = _parse_clock_duration(duration_input)
+        duration = parse_clock_duration(duration_input)
     except ValueError as err:
         session.status_message = str(err)
         return
 
-    action_now = _local_now()
+    action_now = local_now()
     end_time = action_now.replace(second=0, microsecond=0)
     start_time = end_time - duration
     timestamp = Timestamp.from_source(
         f"[{start_time:%Y-%m-%d %a %H:%M}]--[{end_time:%Y-%m-%d %a %H:%M}]",
     )
-    duration_text = _duration_to_org_text(duration)
+    duration_text = duration_to_org_text(duration)
     clock_entry = Clock(timestamp=timestamp, duration=duration_text)
 
     heading = row.node
@@ -1892,6 +1935,255 @@ def _apply_clock_entry(console: Console, session: _AgendaSession) -> None:
     session.status_message = f"Added clock entry ({duration_text})"
 
 
+def _clear_search(session: _AgendaSession) -> None:
+    """Clear active interactive search and restore full agenda rows."""
+    if not session.search_text:
+        session.status_message = "Search already clear"
+        return
+
+    selected_row = _selected_task_row(session)
+    preserve_identity: tuple[str, str, str, int | None] | None = None
+    if selected_row is not None and selected_row.node is not None:
+        preserve_identity = _heading_identity(selected_row.node)
+    session.search_text = ""
+    _refresh_visible_nodes(session, preserve_identity)
+    session.status_message = "Search cleared"
+
+
+def _selected_row(session: _AgendaSession) -> _AgendaRow | None:
+    """Return currently selected agenda row for interactive actions."""
+    location = _selected_row_location(session)
+    if location is None:
+        return None
+    day_index, row_index = location
+    return session.day_models[day_index].rows[row_index]
+
+
+def _timetable_schedule_for_selected_row(session: _AgendaSession) -> Timestamp | None:
+    """Return schedule timestamp from selected timetable row, or None when unavailable."""
+    row = _selected_row(session)
+    if row is None:
+        return None
+
+    if row.kind == "task" and row.source not in {"scheduled", "deadline_today", "repeat"}:
+        return None
+    if row.kind not in {"task", "hour_marker", "now_marker"}:
+        return None
+
+    time_parts = row.time_text.split(":", 1)
+    if len(time_parts) != 2 or not all(part.isdigit() for part in time_parts):
+        return None
+    hour = int(time_parts[0])
+    minute = int(time_parts[1])
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        return None
+
+    day_name = row.day.strftime("%a")
+    return Timestamp.from_source(f"<{row.day:%Y-%m-%d} {day_name} {hour:02d}:{minute:02d}>")
+
+
+def _apply_capture_task(session: _AgendaSession, template_name: str) -> None:
+    """Capture a task and schedule it at selected timetable row time."""
+    scheduled = _timetable_schedule_for_selected_row(session)
+    if scheduled is None:
+        session.status_message = "Capture is available only on timetable time rows"
+        return
+
+    session.status_message = ""
+    capture_args = TasksCaptureArgs(
+        template_name=template_name,
+        config=session.args.config,
+        file=None,
+        parent=None,
+        set_values=None,
+    )
+
+    try:
+        capture_result = capture_task(capture_args)
+    except KeyboardInterrupt:
+        session.status_message = "Capture cancelled"
+        return
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    capture_result.heading.scheduled = scheduled
+    try:
+        _save_document_changes(capture_result.document)
+        _reload_session_nodes(session)
+        _refresh_session(session, _heading_identity(capture_result.heading))
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+    session.status_message = f"Task captured and scheduled for {scheduled}"
+
+
+def _state_choices_for_selected_row(session: _AgendaSession) -> list[str]:
+    """Return TODO-state choices for selected agenda task row."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        return []
+    return todo_states_for_heading(row.node)
+
+
+def _can_activate_agenda_state_prompt(session: _AgendaSession) -> ActionResult | None:
+    """Validate preconditions for state prompt activation."""
+    row = _selected_task_row(session)
+    if row is None or row.node is None:
+        return ActionResult(success=False, status_message="Action available only on task rows")
+    if not _state_choices_for_selected_row(session):
+        return ActionResult(success=False, status_message="No TODO states defined")
+    return None
+
+
+def _can_activate_agenda_capture_prompt(session: _AgendaSession) -> ActionResult | None:
+    """Validate preconditions for capture template prompt activation."""
+    if _timetable_schedule_for_selected_row(session) is None:
+        return ActionResult(
+            success=False,
+            status_message="Capture is available only on timetable time rows",
+        )
+    return can_activate_configured_capture_templates(session)
+
+
+def _submit_agenda_state_action(
+    session: _AgendaSession,
+    _row: _AgendaRow,
+    raw_value: str,
+    options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted TODO-state value from active agenda prompt."""
+    active = session.active_interactive_action
+    if active is None:
+        return ActionResult(success=False)
+
+    value = raw_value.strip()
+    states = options or []
+    selected_state = resolve_todo_state_selection(value, states)
+    if selected_state is None and not value:
+        return ActionResult(status_message=active.prompt_config.cancel_status)
+    if selected_state is None:
+        return ActionResult(
+            success=False,
+            status_message=active.prompt_config.invalid_status,
+            keep_prompt_open=True,
+        )
+
+    _apply_state_change_with_value(session, selected_state)
+    return ActionResult(status_message=session.status_message)
+
+
+def _submit_agenda_capture_action(
+    session: _AgendaSession,
+    _target: _AgendaSession,
+    raw_value: str,
+    options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted capture template selection from active agenda prompt."""
+    active = session.active_interactive_action
+    if active is None:
+        return ActionResult(success=False)
+
+    value = raw_value.strip()
+    template_name = resolve_capture_template_selection(value, options or [])
+    if template_name is None and not value:
+        return ActionResult(status_message=active.prompt_config.cancel_status)
+    if template_name is None:
+        return ActionResult(
+            success=False,
+            status_message=active.prompt_config.invalid_status,
+            keep_prompt_open=True,
+        )
+
+    _apply_capture_task(session, template_name)
+    return ActionResult(status_message=session.status_message)
+
+
+def _submit_agenda_search_action(
+    session: _AgendaSession,
+    _target: _AgendaSession,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted interactive search value."""
+    return _apply_search_text(session, raw_value.strip())
+
+
+def _preview_agenda_search_action(
+    session: _AgendaSession,
+    _target: _AgendaSession,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Live-update agenda rows while editing interactive search prompt."""
+    return _apply_search_text(session, raw_value.strip())
+
+
+def _cancel_agenda_search_action(
+    session: _AgendaSession,
+    _target: _AgendaSession,
+) -> ActionResult:
+    """Cancel search prompt and restore previous agenda search filter."""
+    previous_text = session.search_prompt_previous_text or ""
+    session.search_prompt_previous_text = None
+    _apply_search_text(session, previous_text)
+    return ActionResult(status_message="Search cancelled")
+
+
+def _capture_agenda_search_prompt_state(session: _AgendaSession) -> ActionResult | None:
+    """Capture current agenda search filter before opening search prompt."""
+    session.search_prompt_previous_text = session.search_text
+    return None
+
+
+def _apply_search_text(session: _AgendaSession, search_text: str) -> ActionResult:
+    """Apply search text to agenda rows and return match status."""
+    selected_row = _selected_task_row(session)
+    preserve_identity: tuple[str, str, str, int | None] | None = None
+    if selected_row is not None and selected_row.node is not None:
+        preserve_identity = _heading_identity(selected_row.node)
+    session.search_text = search_text
+    _refresh_visible_nodes(session, preserve_identity)
+    status = "Search cleared" if not search_text else f"{len(session.nodes)} matches"
+    return ActionResult(status_message=status)
+
+
+def _submit_agenda_refile_action(
+    session: _AgendaSession,
+    _row: _AgendaRow,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted refile destination from active agenda prompt."""
+    active = session.active_interactive_action
+    if active is None:
+        return ActionResult(success=False)
+
+    value = raw_value.strip()
+    if not value:
+        return ActionResult(status_message=active.prompt_config.cancel_status)
+    _apply_refile_with_value(session, value)
+    return ActionResult(status_message=session.status_message)
+
+
+def _submit_agenda_clock_action(
+    session: _AgendaSession,
+    _row: _AgendaRow,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted clock duration from active agenda prompt."""
+    active = session.active_interactive_action
+    if active is None:
+        return ActionResult(success=False)
+
+    value = raw_value.strip()
+    if not value:
+        return ActionResult(status_message=active.prompt_config.cancel_status)
+    _apply_clock_entry_with_value(session, value)
+    return ActionResult(status_message=session.status_message)
+
+
 def _create_agenda_session(
     args: AgendaArgs,
     nodes: list[Heading],
@@ -1902,6 +2194,7 @@ def _create_agenda_session(
     """Create interactive session state for agenda."""
     session = _AgendaSession(
         args=args,
+        all_nodes=list(nodes),
         nodes=nodes,
         render=_RenderContext(
             color_enabled=color_enabled,
@@ -1910,77 +2203,142 @@ def _create_agenda_session(
         ),
         start_date=_resolve_agenda_start_date(args.date),
         days=args.days,
-        now=_local_now(),
+        now=local_now(),
         day_models=[],
         row_locations=[],
         selected_row_index=0,
         scroll_offset=0,
         status_message="",
+        search_text="",
+        show_help_modal=False,
+        active_interactive_action=None,
     )
     _refresh_session(session, None)
     return session
 
 
-def _handle_agenda_navigation_key(session: _AgendaSession, key: str) -> bool:
-    """Handle one keypress for agenda navigation actions."""
-    if key in {"n", "DOWN", "WHEEL-DOWN"}:
-        _move_selection(session, 1)
-        return True
-    if key in {"p", "UP", "WHEEL-UP"}:
-        _move_selection(session, -1)
-        return True
-    if key in {"f", "RIGHT"}:
-        session.start_date = session.start_date + timedelta(days=session.days)
-        _refresh_session(session, None)
-        return True
-    if key in {"b", "LEFT"}:
-        session.start_date = session.start_date - timedelta(days=session.days)
-        _refresh_session(session, None)
-        return True
-    return False
-
-
-def _handle_agenda_action_key(console: Console, session: _AgendaSession, key: str) -> None:
-    """Handle one keypress for agenda task actions."""
-    handlers = {
-        "ENTER": lambda: _open_selected_task_detail(console, session),
-        "t": lambda: _apply_state_change(console, session),
-        "S-LEFT": lambda: _apply_shift_date(session, day_delta=-1),
-        "S-RIGHT": lambda: _apply_shift_date(session, day_delta=1),
-        "S-UP": lambda: _apply_shift_time(session, hour_delta=-1),
-        "S-DOWN": lambda: _apply_shift_time(session, hour_delta=1),
-        "r": lambda: _apply_refile(console, session),
-        "c": lambda: _apply_clock_entry(console, session),
+def _agenda_actions(session: _AgendaSession) -> dict[str, SessionAction[_AgendaSession]]:
+    """Build interactive/noninteractive/view actions for agenda session."""
+    return {
+        "q": quit_view_action(),
+        "ESC": quit_view_action(),
+        "n": view_action(lambda _session: _move_selection(session, 1)),
+        "DOWN": view_action(lambda _session: _move_selection(session, 1)),
+        "WHEEL-DOWN": view_action(lambda _session: _move_selection(session, 1)),
+        "p": view_action(lambda _session: _move_selection(session, -1)),
+        "UP": view_action(lambda _session: _move_selection(session, -1)),
+        "WHEEL-UP": view_action(lambda _session: _move_selection(session, -1)),
+        "f": view_action(
+            lambda _session: _set_start_date_relative(
+                session,
+                day_delta=session.days,
+            ),
+        ),
+        "RIGHT": view_action(
+            lambda _session: _set_start_date_relative(
+                session,
+                day_delta=session.days,
+            ),
+        ),
+        "b": view_action(
+            lambda _session: _set_start_date_relative(
+                session,
+                day_delta=-session.days,
+            ),
+        ),
+        "LEFT": view_action(
+            lambda _session: _set_start_date_relative(
+                session,
+                day_delta=-session.days,
+            ),
+        ),
+        "ENTER": status_external_action(_edit_selected_task_in_external_editor),
+        "a": PromptInteractiveAction(
+            prompt_config=capture_template_prompt_config(),
+            apply_with_input=_submit_agenda_capture_action,
+            resolve_target=lambda current: current,
+            options_factory=lambda _session: configured_capture_template_names(),
+            can_activate=_can_activate_agenda_capture_prompt,
+            requires_live_pause=True,
+        ),
+        "$": status_noninteractive_action(_archive_selected_task),
+        "/": PromptInteractiveAction(
+            prompt_config=PromptActionConfig(
+                prompt=FooterPromptState(label="Search text (blank clears)"),
+                cancel_status="Search cancelled",
+                invalid_status="Invalid search input",
+            ),
+            apply_with_input=_submit_agenda_search_action,
+            preview_with_input=_preview_agenda_search_action,
+            cancel_with_target=_cancel_agenda_search_action,
+            resolve_target=lambda current: current,
+            can_activate=_capture_agenda_search_prompt_state,
+        ),
+        "x": status_view_action(_clear_search),
+        "t": PromptInteractiveAction(
+            prompt_config=state_selection_prompt_config(
+                _state_choices_for_selected_row(session),
+            ),
+            apply_with_input=_submit_agenda_state_action,
+            resolve_target=_selected_task_row,
+            options_factory=_state_choices_for_selected_row,
+            can_activate=_can_activate_agenda_state_prompt,
+        ),
+        "S-LEFT": status_noninteractive_action(
+            lambda _session: _apply_shift_date(session, day_delta=-1),
+        ),
+        "S-RIGHT": status_noninteractive_action(
+            lambda _session: _apply_shift_date(session, day_delta=1),
+        ),
+        "S-UP": status_noninteractive_action(
+            lambda _session: _apply_shift_time(session, hour_delta=-1),
+        ),
+        "S-DOWN": status_noninteractive_action(
+            lambda _session: _apply_shift_time(session, hour_delta=1),
+        ),
+        "r": PromptInteractiveAction(
+            prompt_config=refile_prompt_config(resolve_input_paths(session.args.files)),
+            apply_with_input=_submit_agenda_refile_action,
+            resolve_target=_selected_task_row,
+        ),
+        "c": PromptInteractiveAction(
+            prompt_config=clock_duration_prompt_config(),
+            apply_with_input=_submit_agenda_clock_action,
+            resolve_target=_selected_task_row,
+        ),
     }
-    handler = handlers.get(key)
-    if handler is None:
-        if key:
-            session.status_message = f"Unsupported key: {key}"
-        return
-    handler()
 
 
-def _handle_interactive_key(console: Console, session: _AgendaSession, key: str) -> bool:
+def _set_start_date_relative(session: _AgendaSession, *, day_delta: int) -> None:
+    """Shift agenda start date by one relative day delta and refresh."""
+    session.start_date += timedelta(days=day_delta)
+    _refresh_session(session, None)
+
+
+def _handle_interactive_key(session: _AgendaSession, key: str) -> bool:
     """Handle one interactive keypress and return whether to continue."""
-    if key == "q":
-        return False
-
-    if key == "ESC":
-        return False
-
     _refresh_session_if_minute_changed(session)
 
-    if _handle_agenda_navigation_key(session, key):
+    consumed, next_help_modal = apply_help_modal_key(
+        key,
+        show_help_modal=session.show_help_modal,
+    )
+    session.show_help_modal = next_help_modal
+    if consumed:
         return True
 
-    _handle_agenda_action_key(console, session, key)
+    result = dispatch_action_key(key, session, _agenda_actions(session))
+    if result.handled:
+        return result.continue_loop
+
+    if key:
+        session.status_message = f"Unsupported key: {key}"
     return True
 
 
 def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
     """Run interactive agenda event loop."""
-    prompt_keys = {"t", "r", "c", "ENTER"}
-    _set_mouse_reporting(True)
+    set_mouse_reporting(True)
     try:
         with Live(
             _interactive_agenda_renderable(console, session),
@@ -1990,21 +2348,40 @@ def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
             auto_refresh=False,
         ) as live:
             while True:
-                key = _read_keypress(timeout_seconds=0.2)
+                if _handle_active_prompt_input(session, live):
+                    continue
+
+                key = read_keypress(timeout_seconds=0.2)
                 if not key:
                     live.update(_interactive_agenda_renderable(console, session), refresh=True)
                     continue
-                if key in prompt_keys:
+                actions = _agenda_actions(session)
+                if action_requires_live_pause(key, actions):
                     live.stop()
-                    should_continue = _handle_interactive_key(console, session, key)
+                    should_continue = _handle_interactive_key(session, key)
                     live.start()
                 else:
-                    should_continue = _handle_interactive_key(console, session, key)
+                    should_continue = _handle_interactive_key(session, key)
                 if not should_continue:
                     break
                 live.update(_interactive_agenda_renderable(console, session), refresh=True)
     finally:
-        _set_mouse_reporting(False)
+        set_mouse_reporting(False)
+
+
+def _handle_active_prompt_input(session: _AgendaSession, live: Live) -> bool:
+    """Handle one agenda prompt event and return whether consumed."""
+    if session.show_help_modal:
+        return False
+    return handle_active_interactive_action_input(
+        session,
+        pause_live=live.stop,
+        refresh=lambda: live.update(
+            _interactive_agenda_renderable(live.console, session),
+            refresh=True,
+        ),
+        resume_live=live.start,
+    )
 
 
 def _render_agenda(console: Console, render_input: _AgendaRenderInput) -> None:
@@ -2018,7 +2395,6 @@ def _render_agenda(console: Console, render_input: _AgendaRenderInput) -> None:
         entries = _collect_day_entries(
             render_input.nodes,
             day,
-            render_input.render.done_states,
             render_input.args,
             include_relative_sections=(day == render_input.now.date()),
         )
@@ -2083,7 +2459,7 @@ def run_agenda(args: AgendaArgs) -> None:
         _AgendaRenderInput(
             args=args,
             nodes=nodes,
-            now=_local_now(),
+            now=local_now(),
             render=_RenderContext(
                 color_enabled=color_enabled,
                 done_states=done_states,
@@ -2099,6 +2475,10 @@ def register(app: typer.Typer) -> None:
     @app.command(
         "agenda",
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+        help=interactive_help_command_text(
+            "Show agenda for one day or a date range.",
+            _AGENDA_HELP_ENTRIES,
+        ),
     )
     def agenda(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
@@ -2107,7 +2487,7 @@ def register(app: typer.Typer) -> None:
             help="Org-mode archive files or directories to analyze",
         ),
         config: str = typer.Option(
-            ".org-cli.json",
+            ".org-cli.yaml",
             "--config",
             metavar="FILE",
             help="Config file name to load from current directory",
@@ -2305,6 +2685,11 @@ def register(app: typer.Typer) -> None:
             "--no-upcoming",
             help="Omit upcoming deadlines",
         ),
+        future_repeats: bool = typer.Option(
+            True,
+            "--future-repeats/--no-future-repeats",
+            help="Include potential future planning repeats in agenda days",
+        ),
     ) -> None:
         """Show agenda for one day or a date range."""
         args = AgendaArgs(
@@ -2344,6 +2729,7 @@ def register(app: typer.Typer) -> None:
             no_completed=no_completed,
             no_overdue=no_overdue,
             no_upcoming=no_upcoming,
+            future_repeats=future_repeats,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "agenda")

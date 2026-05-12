@@ -23,7 +23,7 @@ def make_stats_all_args(files: list[str], **overrides: object) -> stats_all_comm
     """Build StatsAllArgs with defaults and overrides."""
     args = stats_all_command.StatsAllArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         exclude=None,
         mapping=None,
         mapping_inline=None,
@@ -61,7 +61,7 @@ def make_tags_args(files: list[str], **overrides: object) -> stats_tags.TagsArgs
     """Build TagsArgs with defaults and overrides."""
     args = stats_tags.TagsArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         exclude=None,
         mapping=None,
         mapping_inline=None,
@@ -100,7 +100,7 @@ def make_groups_args(files: list[str], **overrides: object) -> stats_groups.Grou
     """Build GroupsArgs with defaults and overrides."""
     args = stats_groups.GroupsArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         exclude=None,
         mapping=None,
         mapping_inline=None,
@@ -139,7 +139,7 @@ def make_summary_args(files: list[str], **overrides: object) -> stats_summary_co
     """Build SummaryArgs with defaults and overrides."""
     args = stats_summary_command.SummaryArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         exclude=None,
         mapping=None,
         mapping_inline=None,
