@@ -1,7 +1,11 @@
 #+TITLE: Good Vibes
 #+CATEGORY: Vibes
-#+TODO: RESEARCH(e!) REFINE(r!) TODO(t!) PLAN(p!) REVIEW(w!) IMPLEMENT(i!) VERIFY(v!) | DONE(d!) CANCELLED(c@/!)
-#+TODO: | REWORKED(r@/!)
+#+TODO: TODO | DONE(d!) CANCELLED(c@/!) REWORKED(r@/!)
+
+# #+TODO: RESEARCH(e!) REFINE(r!) TODO(t!)
+# #+TODO: PLAN(p!) AI_REVIEW(W!) REVIEW(w!)
+# #+TODO: IMPLEMENT(i!) AI_VERIFY(V!) VERIFY(v!)
+# #+TODO: | DONE(d!) CANCELLED(c@/!) REWORKED(r@/!)
 
 * COMMENT Goals
 
@@ -16,6 +20,39 @@ Whenever clarifying questions were asked I provided answers (not included). Each
 The Quota on the Pro plan was quick to run out due to a myriad of individual tool calls when making edits and repeated, duplicate command runs (e.g ~pytest~ followed by ~pytest --cov~), a set of helpers was introduced manually to try to contain the AI's thirst for spinning in circles.
 
 Eventually, the project evolved into a more full-featured Org-Mode CLI tool that can be used for agentic AI workflow tracking. I also started using different models. I think there's a speed up, but not 10x for sure.
+
+** Use cases to handle
+*** Daily agenda/planner
+A quick and friction-less way to plan a day _before_ starting it.
+
+- Add tasks quickly
+- Schedule tasks at specified times, estimate effort and assign priority.
+- Show focused agenda view - just tasks planned for that day.
+- Manipulate tasks individually - add notes, reschedule, refile, etc.
+- Manipulate tasks in bulk
+
+*** GTD manager
+Capture ad-hoc & emergent tasks, organize and execute them quickly with focus on _execution_.
+
+- Capture tasks & notes quickly for later
+- Refile tasks to different lists/views
+- View tasks that can be done immediately
+- Iterate through the list quickly
+- Review the lists periodically, closing/rescheduling tasks as needed individually.
+
+*** Project planner
+Set up a project board
+
+- Define workflow and tools to stick to it.
+- Visualize current work streams
+- Plan task execution, dependencies etc.
+- Estimate effort
+- Schedule tasks
+
+*** Task database & query language
+- Compute stats based on past tasks
+- Export values for further processing
+
 
 * Features built with AI
 Here's what the states mean:
@@ -6652,7 +6689,10 @@ In file src/org/commands/board.py around line 282, near the ~def _render_column_
 #+end_example
 
 Rename =filter_text= to just =filter= and =order_by_selector= to just =order_by=.
-*** TODO Tasks find command
+*** DONE Tasks find command
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-10 Sun 18:56]
+:END:
 Find tasks by title/id/full text search/regex search:
 - =--query-title= - select tasks by title (same as the other commands),
 - =--query-id= - select tasks by ID (same as the other commands),
@@ -6678,6 +6718,38 @@ flow:
     - name: Development
       steps:
         - name: Init
+          filter: .todo == null
+          action: '.id = .category + "-" + str([.document.all_headigns[] | select(.id != null)] | length) and .todo = "TODO"'
+
+        - name: Ready
+          filter: .todo == "TODO"
+          preconditions:
+            - info: Task must have a valid ID
+              condition: .id != null
+          runner: bash
+          runner-args: '[.id]'
+          action: |
+            notify-send -a "org-cli" -w "Task $1 is ready!"
+            org tasks update --query-id $1 --todo "IN_PROGRESS"
+
+        - name: Doing
+          filter: .todo == "IN_PROGRESS"
+          preconditions:
+            - info: Task must have a valid ID
+              condition: .id != null
+          runner: bash
+          runner-args: '[.id]'
+          action: |
+            org tasks edit --query-id $1
+
+,#+end_example
+
+,#+begin_src yaml
+flow:
+  workflows:
+    - name: Development
+      steps:
+        - name: Init
           filter: .todo == "TODO"
           action: '.id = .category + "-" + str([.document.all_headigns[] | select(.id != null)] | length) and .todo = "REFINE"'
 
@@ -6697,15 +6769,6 @@ flow:
               --print-log \
               /org-refine $1
             org tasks update --query-id "$1" --todo "AI_REVIEW"
-          # action: |
-          #   .todo = "AI_REVIEW";
-          #   exec(["devcontainer", "exec", "opencode", "run",
-          #         "--attach", "http://localhost:4069",
-          #         "--model", "openai/gpt-5.3-codex",
-          #         "--agent", "build",
-          #         "--title", .id + " refinement",
-          #         "--print-logs",
-          #         "/org-refine " + .id])
           postconditions:
             - condition: .todo in ["REFINE", "AI_REVIEW", "REVIEW"]
               description: Refined task must be in REFINE or AI_REVIEW state.
@@ -6822,17 +6885,6 @@ By default, check if all tasks are well-formed (i.e. have an ID), run configured
 Should accept =--query-id=, =--query-title= and =--query= to select just a subset of tasks for checks.
 Should accept =--workflow= to specify which configured workflow to use.
 
-*** Task availability indicators
-The task board should have a way to indicate that a task is blocked or doesn't fulfill its workflow requirements.
-To convey that, the tasks panel should be grayed out
-
-When hovering a task panel, if it is blocked in =.is_blocked= sense a suitable status message should be displayed in the status bar. Similarly, if the task doesn't fulfill its workflow requirements, a suitable message should be displayed in the status bar. Use the =info= property of the requirement or a generic =Task is blocked= string.
-
-The agenda list should have a way to indicate that a task is blocked or doesn't fulfill its workflow requirements.
-To convey that, the task line should be grayed out in the agenda time-breakdown (other sections should not be affected).
-
-When hovering a task line in the time-breakdown section of the agenda, if the task is blocked in the =.is_blocked= sense, or some of its workflow requirements aren't met, a suitable message should be displayed in the status bar. Use the =info= property of the requirement or a generic =Task is blocked= string.
-
 *** Flow list command
 Show tasks elligible in the current workflow. For each of the workflow steps, list the tasks in that step with a clear indication of whether their preconditions are met.
 
@@ -6902,40 +6954,6 @@ Perform steps in a loop while there are any tasks available for stepping.
   Can be done with org tasks capture.
 :END:
 - Like capture, but specifically for adding subtasks
-*** Extra filters/orderings
-
-- ~--filter-priority P~ - ~select(.priority == P)~
-- =--filter-todo STATE= - ~select(.todo == STATE)~
-
-- ~--filter-blocked~ - ~select(.is_blocked)~
-- ~--filter-not-blocked~ - ~select(not(.is_blocked))~
-
-- ~--filter-children ID~ - ~select(.title == ID or .id == ID) | .children~
-- ~--filter-sibling ID~ - ~select(.title == ID or .id == ID) | .siblings~
-- ~--filter-parent ID~ - ~select(.title == ID or .id == ID) | .parent~
-- ~--filter-dependencies ID~ - ~select(.title == ID or .id == ID) | .dependencies~
-- ~--filter-dependants ID~ - ~select(.dependencies | map(.title == ID or .id == ID) | any)~
-
-- ~--order-by-priority~ - ~sort_by(.priority)~
-- =--order-by-todo= - ~sort_by(.todo)~
-
-- ~--with-ordered-dependencies~ - sets the =ORDERED= property on all nodes that have children
-
-- ~--filter-dependencies ID_OR_HEADING~ - returns tasks that are dependencies of a task
-- ~--filter-dependants ID_OR_HEADING~ - returns tasks that are depending on a task
-
-
-- ~--filter-not-blocked~ - in TODO state, all dependencies completed
-- ~--filter-blocked~ - in TODO state, not all dependencies completed
-
-- order by node relations (preserves tree order, but allows using the other stable sorting) (could replace the level ordering)
-
-*** Gantt chart
-- Show a gantt chart of tasks and their dependencies
-*** Progress view
-- List all tasks that have subtasks
-- Have a completeness bar chart visually showing how done these are.
-- List to be oredered by tree order (top-level tasks followed by their children)
 *** CANCELLED Org Attach support
 :LOGBOOK:
 - State "CANCELLED"  from              [2026-04-26 Sun 16:55] \\
@@ -7199,7 +7217,6 @@ It's OK to show partially obscured task panels, so it should be possible to scro
 *** Input is very jittery                                                                      :Bug:
 When holding an arrow key down to scroll a longer list the TUI gets jittery and sometimes the key escape sequence is displayed at the very bottom.
 I'm guessing the polling for input is too slow to catch key repeats and sometimes the native input handling kick is, hence printing the key escape sequence.
-*** High CPU usage when browsing the board                                                     :Bug:
 *** REWORKED Search action should be available in agenda and board.
 :PROPERTIES:
 :capture_time: [2026-05-09 Sat 14:48]
@@ -7221,6 +7238,71 @@ It would be really nice if the search results could be updated live, whenever an
 Update all interactive commands that permit search to live-update during search input prompting.
 
 *** All interactive commands should support the =--width= CLI switch
+*** Task IDs
+The tasks IDs of newly created tasks should default to ={{document_category}}-{{count_of_headings_in_file + 1}}=
+Show the task ID (when present) in the board task panels as well as agenda and task list. In all cases, it should preceed the TODO state.
+*** Bulk actions
+It should be possible to mark multiple items in agenda, board & task list and apply an action to them in bulk
+*** Task availability indicators
+The agenda and board commands should accept a =--workflow NAME= CLI switch that adds the following task availability indicators:
+
+The task board should have a way to indicate that a task is blocked or doesn't fulfill its workflow requirements.
+To convey that, the tasks panel should be grayed out. When hovering a task panel, if it is blocked in =.is_blocked= sense a suitable status message should be displayed in the status bar. Similarly, if the task doesn't fulfill its workflow requirements, a suitable message should be displayed in the status bar. Use the =info= property of the requirement or a generic =Task is blocked= string.
+
+The agenda list should have a way to indicate that a task is blocked or doesn't fulfill its workflow requirements.
+To convey that, the task line should be grayed out in the agenda time-breakdown (other sections should not be affected). When hovering a task line in the time-breakdown section of the agenda, if the task is blocked in the =.is_blocked= sense, or some of its workflow requirements aren't met, a suitable message should be displayed in the status bar. Use the =info= property of the requirement or a generic =Task is blocked= string.
+
+*** Do not add =#+TODO:= line to file contents, but rather modify done_states.
+
+*** Better heading & body parsing
+Use stripped =RichText= for body/heading tags.
+*** Parallelize document processing
+*** Fuller logbook
+Add additional logbook entries on various actions, for instance:
+- =- Priority "B" from "A" [timestamp]=
+- =- Property "foo" added [timestamp]=
+- =- Tag "bar" added [timestamp]=
+- =- Scheduled on "timestamp" [timestamp]=
+- =- Deadline on "timestamp" [timestamp]=
+- =- Closed on "timestamp" [timestamp]=
+- =- Comment added [timestamp]=
+- =- Child added [timestamp]=
+
+*** Check if file was modified outside of org-cli before saving it.
+*** File watching for interactive commands and updated display
+*** TODO Editor should open the original file at the task line
+Ideally, the original file containing the task would be then edited. This should apply to all commands that allow editing tasks.
+
+Use the following invocation. It appears to be a more-or-less standarized way of opening files at a given line that works well with `vim`, `nano`, `emacs` and even `gedit`.
+
+#+begin_example
+$EDITOR +{node.line} {document.filename}
+#+end_example
+
+If the document doesn't have a file name assciated with it, fall back to the temporary file editing. Similarly, if the above invocation returns a non-zero value, fall back to the temporary file editing.
+In either case, when a fallback is needed, prompt the user if they want to edit the temporary file with a message suitable for the different fallback scenarios.
+
+The fallback invocation is the same as current behaviour:
+
+#+begin_example
+$EDITOR {document.filename}
+#+end_example
+
+*** Ability to switch views in-command
+=v= to select view from the list of configured views.
+
+** Codebase improvements
+*** Extract the =stats= command wrapper into a separate module
+*** Refactor the task CRUD utils into a separate module re-used by all the commands
+*** Refactor config handling so that no global state is mutated
+*** Avoid using =getattr= and =setattr= like the plague
+Refactor all places that currently use either of these functions so that the concrete type is known and concrete field is accessed.
+Introduce linter rules that make sure these function cannot be used.
+*** Avoid monkey patching in tests
+*** Use Textual for better TUI organization
+- Selection for prompts
+- Sparkline for freequency plots
+** Agenda usability improvements                                                                :UX:
 *** Agenda non-interactive output format
 - Should be adjusted to "look and feel" just like the interactive one.
 *** Agenda frequency plot
@@ -7235,56 +7317,185 @@ Tasks that are scheduled with a repeat should show up on "potential future dates
 The same should be true for tasks that have a repeating deadline.
 
 There should be a CLI switch for enabling/disabling showing these "future repeats": =--future-repeats/--no-future-repeats=. By default these should be shown.
-*** Task IDs
-The tasks IDs of newly created tasks should default to ={{document_category}}-{{count_of_headings_in_file + 1}}=
-Show the task ID (when present) in the board task panels as well as agenda and task list. In all cases, it should preceed the TODO state.
-*** Bulk actions
-It should be possible to mark multiple items in agenda, board & task list and apply an action to them in bulk
-*** Check if file was modified outside of org-cli before saving it.
-*** File watching for interactive commands and updated display
-*** Do not add =#+TODO:= line to file contents, but rather modify done_states.
 
-*** Better heading & body parsing
-Use stripped =RichText= for body/heading tags.
-*** Parallelize document processing
+*** Customizable agenda views
+- Similar to board, allow ordering sections.
+- Similar to the superagenda thingie for Emacs
+
+#+begin_src yaml
+agenda:
+  views:
+    - name: default
+      columns:
+        - name: Category
+          data: .category
+        - name: Time
+          data: if (. | is_overdue) then (. | timediff(now())) else (.scheduled or .deadline or .closed)
+        - name: State
+          data: |
+            if .todo == "CANCELLED"
+            then ("[bold red]" + .todo + "[/]]")
+            elif .is_completed
+            then ("[bold green]" + .todo + "[/]]")
+            else ("[bold dim white]" + .todo + "[/]]")
+        - name: Task
+          data: .title.stripped
+        - name: Tags
+          data: .tags
+          justify: right
+      sections:
+        - name: Overdue deadlines
+          filter: .deadline != null and (.deadline < $date)
+          style: "[bold red]"
+          timeline: false
+        - name: Overdue scheduled
+          filter: .scheduled != null and (.deadline < $date)
+          style: "[bold dim yellow]"
+          timeline: false
+        - name: Deadlines for today
+          filter: .deadline.date == $date
+          style: "[bold white]"
+        - name: Scheduled for today
+          filter: .scheduled.date == $date
+          style: "[white]"
+        - name: Upcoming deadlines (30d)
+          filter: .deadline != null and not(. | is_overdue)
+          style: "[white]"
+#+end_src
+
+*** Agenda review/standalone review command
+A command that shows a summary of work completed over a period of time. Should provide an easy way to archive these tasks in bulk.
+Could be just a view of the agenda itself =org agenda --view review=
+*** Agenda notifications
+=--notify= and =agenda.notify-command= setting to send reminders about scheduled tasks that are about to start.
+*** Tasks that span multiple hours should be shown as a block in the agenda view.
+
+*** Agenda plan subcommand
+Interactively ask what needs to be done today, use a configurable scenario:
+
+#+begin_src yaml
+agenda:
+  scenarios:
+    - name: Default
+      steps:
+        - question: What must be done today?
+          template: high-prio-todo
+        - question: What should be done soon?
+          template: medium-prio-todo
+        - question: What would you like to do today?
+          template: low-prio-todo
+        - question: What fun time activity would you like to do today?
+          template: fun-time-activity
+#+end_src
+
+The command will prompt the user for each step multiple times (empty response moves to the next step). Each proper input will be added to a growing list of tasks. Once done (final step with empty response) the user will see a summary of generated tasks with an option to either accept it, drop it or make edits. Upon accepting, the tasks will be added to their respective documents and the documents will be saved.
+
+When typing, the command should propose existing tasks that are reccurent (either scheduled or deadline with a repeater) by title. When a newly added task matches an existing recurrent task by title it should be "reused" instead of creating a duplicate (reuse as in, scheduled/deadline set to the current day while preserving the repeater).
+
+** Query language extensions
 *** Query language improvements
 - Uniform function calling: =foo | not= is the same as =not(foo)=
 - Field assignment should return the mutated object: =foo.title = "bar"= evaluates to =foo= after the change.
 - =#id= selector syntax for id matching
-** Use Textual for better TUI organization
-- Selection for prompts
-- Sparkline for freequency plots
-** Capture command
-- Allows creating tasks interactively based on templates.
-** JavaScript visualization
+*** Extra filters/orderings
 
-*** D3 visualization - tag cloud
+- ~--filter-priority P~ - ~select(.priority == P)~
+- =--filter-todo STATE= - ~select(.todo == STATE)~
 
-*** D3 visualization - relations graph
-Node size is how many tasks are related to a tag. Closeness is how related these are.
+- ~--filter-blocked~ - ~select(.is_blocked)~
+- ~--filter-not-blocked~ - ~select(not(.is_blocked))~
 
-*** D3 visualization - tag charts over time
-Allow selecting specific tags or top tags.
+- ~--filter-children ID~ - ~select(.title == ID or .id == ID) | .children~
+- ~--filter-sibling ID~ - ~select(.title == ID or .id == ID) | .siblings~
+- ~--filter-parent ID~ - ~select(.title == ID or .id == ID) | .parent~
+- ~--filter-dependencies ID~ - ~select(.title == ID or .id == ID) | .dependencies~
+- ~--filter-dependants ID~ - ~select(.dependencies | map(.title == ID or .id == ID) | any)~
 
-** File watching and updated display
+- ~--order-by-priority~ - ~sort_by(.priority)~
+- =--order-by-todo= - ~sort_by(.todo)~
+
+- ~--with-ordered-dependencies~ - ~if .children | length > 0 then .property.ORDERED = "t" else null; .~ sets the =ORDERED= property on all nodes that have children.
+
+- order by node relations (preserves tree order, but allows using the other stable sorting) (could replace the level ordering)
+
+*** Query language widget visualization
+Introduce wrappers for the analysis results functions that can be visualized automatically when detected in the output:
+- =frequency()= - just an number representing frequency,
+- =timerange()= - timerange frequency plot,
+- =histogram()= - histogram plot
+- =progress()= - progress plot
+
+** Board command improvements                                                                   :UX:
+*** Board plan command
+Shows long term plan including completeness of tasks that have children and gannt-style chart for execution.
+*** Gantt chart
+- Show a gantt chart of tasks and their dependencies
+*** Progress view
+- List all tasks that have subtasks
+- Have a completeness bar chart visually showing how done these are.
+- List to be oredered by tree order (top-level tasks followed by their children)
+*** High CPU usage when browsing the board                                                     :Bug:
+
+** Stats command improvements
+*** =--days= switch for =stats= commands
+- Same as =--filter-date-from= with date X days ago.
+*** Extra stats
+- Distribution of task durations - for tasks that have a =capture_time= property and are completed, a time the task was "up" can be computed and put on a chart (needs special handling for recurrent tasks)
+- Effort distribution - for tasks that have an =effort= property, convert that to minutes and show on chart
+- Gamify exp progression on various skills
+** Per-project config
+- Use =.org= directory to store the config file and any other useful bits such as indeces.
+
+*** Init command
+- Initializes the config file with some defaults.
+- =--capture= adds a default capture template,
+- =--agenda= adds a default agenda view,
+- =--board= adds a default board view,
+- =--workflow= adds a default workflow.
+
+*** Project-wide cache
+- Store the task counter for task IDs
+- Store index for the RAG retrieval
+
+*** File configuration
+- Instead of having to pass files into the commands use a config
+- Support for file roles (one for projects board, one for archive, one for refile, etc)
+
+*** Config command
+- Edit the YAML configuration in-TUI
+- Validate the config before saving.
+
+*** File command
+- Create new org documents
+- Set workflow states, etc automatically.
+- Lint/Format files
+**** Check for file errors and log them
+** Dashboard command
+- Reads a dashboard config and shows a visualization on a server.
+- Tabbed views for the agenda, board, backlog and stats
+- Live updating.
 *** --watch support
 Add a new CLI parameter =--watch= that will watch the =FILES= for changes and rerun the selected command to update the display.
 It should apply to each of the available commands. This parameter should be made optional. When not provided the command should exit after printing the output.
-
-*** Agenda notifications
-- =--watch= and =--notify= to send reminders about tasks that are due.
-** Dashboard command
-- Reads a dashboard config and shows a visualization on a server.
-- Live updating.
 
 *** --watch & --serve switches
 --watch for file watching and updating live on changes
 --serve to start a server showing a visualization of the data
 
-** Lint/Format command
-Like linting and formatting.
-*** Check for file errors and log them
-*** LSP server
+*** Agenda notifications
+- =--watch= and =--notify= to send reminders about tasks that are due.
+*** Agent notifications
+** Documentation                                                                              :Docs:
+
+- Document the CLI
+- Document the config format
+- Update the help strings in the CLI commands to better match the usage
+
+** Website for org-cli
+- Publish the package
+- Add a static site for org-cli.idorobots.org on github pages.
+- Documentation with mkDocs
+** LSP server
 - Error checks
 - Value auto-complete
 
@@ -7301,9 +7512,51 @@ query_engine = index.as_retriever()
 query_engine.retrieve("How to fetch a list of tasks completed last year?")
 #+end_example
 
-** Documentation
-- Document the CLI
-- Document the config format
-** Website for org-cli
-- Publish the package
-- Add a static site for org-cli.idorobots.org on github pages.
+Extend =org tasks find= with =--search-rag=.
+** CANCELLED JavaScript stats visualization
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-05-20 Wed 13:07] \\
+  This is better served with data export & a separate script.
+:END:
+To be done as a separate script that get's the analysis result JSON.
+*** D3 visualization - tag cloud
+
+*** D3 visualization - relations graph
+Node size is how many tasks are related to a tag. Closeness is how related these are.
+
+*** D3 visualization - tag charts over time
+Allow selecting specific tags or top tags.
+
+** CANCELLED Agents command
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-05-20 Wed 13:09] \\
+  This is better served by third-party harnesses, for instance OpenCode server with WebUI.
+:END:
+Spawn agents based on workflow config, all tasks that can be done in parallel, should be worked on in parallel.
+Should be able to daemonize and hook up to a running daemon.
+Show spawned agents, their status, what they are working on, etc.
+
+*** Agents command: multi-session screen UI
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-05 Tue 09:24>
+:ID: Vibes-425
+:END:
+Implement an Agents command UI that supports running multiple agent harness sessions in the background and browsing them in a split-screen TUI. Add a left sidebar listing open sessions with current task and a clear indicator for sessions waiting for human input (for example permissions). Show the active session view on the right. Initial focus should be on the sidebar; moving focus right should enter session interaction mode; provide a keybinding to detach and return focus to the session list; sessions must remain attachable at any time while continuing to run in the background.
+*** Agents command: workflow loop daemon run (--deamon)
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-05 Tue 11:45>
+:ID: Vibes-427
+:END:
+Add org agents run --deamon to run the workflow loop using separate agent sessions for each available task until completion or human input is required. Loop: pick a task in the earliest available state, assign the specified agent, create a git worktree and a branch for the task, spawn a session, let the agent do its job, and use skills to push tasks along.
+*** Agents command: notify only on human intervention required
+:PROPERTIES:
+:CAPTURE_TIME: <2026-05-05 Tue 11:45>
+:ID: Vibes-428
+:END:
+Add a notification command integration (for instance notify-send) when human intervention is required, such as permission approval. Notifications should be sent only when the agent requires human intervention, and not for normal progress updates.
+** CANCELLED Spec command
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-05-20 Wed 13:07] \\
+  Should be handled by workflow configuration, no need for a dedicated command.
+:END:
+Similar to flow, but for full specifications, easy extension, replacement, validation etc.
