@@ -1271,6 +1271,32 @@ def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.Monkey
     assert node.repeats[-1].after == "DONE"
 
 
+def test_apply_state_change_advances_repeater_timestamp(monkeypatch: pytest.MonkeyPatch) -> None:
+    """State change action should advance repeated planning timestamps."""
+    nodes = node_from_org("* TODO A\nSCHEDULED: <2025-01-15 Wed +1w>\n")
+    node = nodes[0]
+    args = make_list_args([])
+    session = tasks_list._create_tasks_list_session(
+        args,
+        tasks_list._TasksListSessionData(
+            nodes=nodes,
+            todo_states=["TODO"],
+            done_states=["DONE"],
+            color_enabled=False,
+        ),
+    )
+    monkeypatch.setattr(
+        tasks_list,
+        "_persist_and_reload_selected",
+        lambda _session, _node, _status: None,
+    )
+
+    tasks_list._apply_state_change_with_value(session, "DONE")
+
+    assert node.scheduled is not None
+    assert str(node.scheduled).startswith("<2025-01-22")
+
+
 def test_apply_scheduled_edit_updates_scheduled(monkeypatch: pytest.MonkeyPatch) -> None:
     """Scheduling edit action should update selected task scheduled timestamp."""
     nodes = node_from_org("* TODO A\n")

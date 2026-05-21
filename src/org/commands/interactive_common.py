@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import calendar
 import os
 import select
 import sys
 import termios
 import tty
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Protocol
 
 from org_parser.element import Repeat
@@ -264,6 +265,126 @@ def append_repeat_transition(
         timestamp=Timestamp.from_datetime(transition_time, is_active=False),
     )
     heading.repeats.append(repeat)
+
+
+def set_timestamp_fields(timestamp: Timestamp, start: datetime, end: datetime | None) -> None:
+    """Set timestamp date/time fields while preserving active/repeater metadata."""
+    timestamp.start_year = start.year
+    timestamp.start_month = start.month
+    timestamp.start_day = start.day
+    timestamp.start_dayname = start.strftime("%a")
+    if timestamp.start_hour is not None:
+        timestamp.start_hour = start.hour
+        timestamp.start_minute = start.minute
+
+    if end is None or timestamp.end is None:
+        return
+
+    timestamp.end_year = end.year
+    timestamp.end_month = end.month
+    timestamp.end_day = end.day
+    timestamp.end_dayname = end.strftime("%a")
+    if timestamp.end_hour is not None:
+        timestamp.end_hour = end.hour
+        timestamp.end_minute = end.minute
+
+
+def add_months(value: datetime, months: int) -> datetime:
+    """Add months to a datetime while clamping day to month length."""
+    year = value.year + (value.month - 1 + months) // 12
+    month = (value.month - 1 + months) % 12 + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day)
+
+
+def shift_datetimes_by_unit(
+    start: datetime,
+    end: datetime | None,
+    *,
+    value: int,
+    unit: str,
+) -> tuple[datetime, datetime | None]:
+    """Shift start/end datetimes by one repeater unit."""
+    if unit == "d":
+        delta = timedelta(days=value)
+        return start + delta, None if end is None else end + delta
+    if unit == "w":
+        delta = timedelta(weeks=value)
+        return start + delta, None if end is None else end + delta
+    if unit == "h":
+        delta = timedelta(hours=value)
+        return start + delta, None if end is None else end + delta
+    if unit == "m":
+        return add_months(start, value), None if end is None else add_months(end, value)
+    if unit == "y":
+        months = value * 12
+        return add_months(start, months), None if end is None else add_months(end, months)
+    raise ValueError(f"Unsupported repeater unit: {unit}")
+
+
+def now_aligned_for_datetime(start: datetime, now: datetime) -> datetime:
+    """Normalize current datetime to match timezone-awareness of start."""
+    if start.tzinfo is None:
+        return now.replace(tzinfo=None)
+    if now.tzinfo is None:
+        return now.replace(tzinfo=start.tzinfo)
+    return now.astimezone(start.tzinfo)
+
+
+def advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
+    """Advance timestamp once by its repeater marker, when present."""
+    if timestamp.repeater is None:
+        return False
+
+    mark = timestamp.repeater.mark
+    value = timestamp.repeater.value
+    unit = timestamp.repeater.unit
+    if value <= 0:
+        return False
+
+    start = timestamp.start
+    end = timestamp.end
+
+    try:
+        if mark == "+":
+            shifted_start, shifted_end = shift_datetimes_by_unit(
+                start,
+                end,
+                value=value,
+                unit=unit,
+            )
+        elif mark == "++":
+            now = now_aligned_for_datetime(start, local_now())
+            shifted_start, shifted_end = shift_datetimes_by_unit(
+                start,
+                end,
+                value=value,
+                unit=unit,
+            )
+            while shifted_start <= now:
+                shifted_start, shifted_end = shift_datetimes_by_unit(
+                    shifted_start,
+                    shifted_end,
+                    value=value,
+                    unit=unit,
+                )
+        elif mark == ".+":
+            now = now_aligned_for_datetime(start, local_now())
+            base_start = start.replace(year=now.year, month=now.month, day=now.day)
+            base_end = None if end is None else base_start + (end - start)
+            shifted_start, shifted_end = shift_datetimes_by_unit(
+                base_start,
+                base_end,
+                value=value,
+                unit=unit,
+            )
+        else:
+            return False
+    except ValueError:
+        return False
+
+    set_timestamp_fields(timestamp, shifted_start, shifted_end)
+    return True
 
 
 def decode_mouse_sequence(sequence: bytes) -> str | None:

@@ -7291,6 +7291,9 @@ $EDITOR {document.filename}
 *** Ability to switch views in-command
 =v= to select view from the list of configured views.
 
+*** Mark as completed should repect repeaters
+The timestamp advancement should only be used if the new state is a completed state. In such a case, the state should be updated to the first TODO state defined for the document, a logbook repeat should be added to the task (`State {node.todo} to {new_state}`) and the repeaters should be advanced according to its rules.
+
 ** Codebase improvements
 *** Extract the =stats= command wrapper into a separate module
 *** Refactor the task CRUD utils into a separate module re-used by all the commands
@@ -7302,6 +7305,14 @@ Introduce linter rules that make sure these function cannot be used.
 *** Use Textual for better TUI organization
 - Selection for prompts
 - Sparkline for freequency plots
+*** Config handling is too generic
+Split config handling to be per-command and have the config file reflect that.
+*** Refactor to be more MVC-ish
+Currently, commands mix some logic and rendering, and a lot of that logic and rendering is shared in different "common" modules such as =cli_common=, =interactive_common= and =tui=. Ideally, this would be reorganized for better separation between views and controller logic.
+A domain should be defined with all common utils reorganized as domain specific functions.
+For command output rendering, a common toolkit of widgets and widget-adjacent rendering tools should be extracted.
+Lastly, some common logic should be extracted that allows performing actions generically. Views should only trigger those actions and actions should modify the domain.
+
 ** Agenda usability improvements                                                                :UX:
 *** Agenda non-interactive output format
 - Should be adjusted to "look and feel" just like the interactive one.

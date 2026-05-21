@@ -43,6 +43,7 @@ from org.commands.interactive_common import (
     FooterPromptState,
     HeadingIdentity,
     InteractiveHelpEntry,
+    advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
     build_footer_prompt_text,
@@ -751,6 +752,10 @@ def _apply_state_change_with_value(session: _TasksListSession, new_state: str) -
 
     node.todo = new_state
     append_repeat_transition(node, old_state, new_state, local_now())
+    if node.scheduled is not None:
+        advance_timestamp_by_repeater(node.scheduled)
+    if node.deadline is not None:
+        advance_timestamp_by_repeater(node.deadline)
     _persist_and_reload_selected(
         session,
         node,

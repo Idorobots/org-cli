@@ -24,7 +24,6 @@ from rich.text import Text
 from org import config as config_module
 from org.cli_common import load_and_process_data
 from org.color import get_state_color
-from org.commands.agenda import _advance_timestamp_by_repeater
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_action_builders import (
@@ -49,6 +48,7 @@ from org.commands.interactive_common import (
     FooterPromptState,
     HeadingIdentity,
     InteractiveHelpEntry,
+    advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
     build_footer_prompt_text,
@@ -789,7 +789,7 @@ def _apply_state_move(session: _BoardSession, *, direction: int) -> None:
     heading.todo = new_state
     append_repeat_transition(heading, old_state, new_state, action_now)
 
-    if heading.scheduled is not None and _advance_timestamp_by_repeater(heading.scheduled):
+    if heading.scheduled is not None and advance_timestamp_by_repeater(heading.scheduled):
         logger.info(
             "Flow board repeater advance: file=%s title=%s id=%s field=scheduled value=%s",
             heading.document.filename,
@@ -797,7 +797,7 @@ def _apply_state_move(session: _BoardSession, *, direction: int) -> None:
             heading.id,
             heading.scheduled,
         )
-    if heading.deadline is not None and _advance_timestamp_by_repeater(heading.deadline):
+    if heading.deadline is not None and advance_timestamp_by_repeater(heading.deadline):
         logger.info(
             "Flow board repeater advance: file=%s title=%s id=%s field=deadline value=%s",
             heading.document.filename,

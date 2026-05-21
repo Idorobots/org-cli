@@ -19,7 +19,12 @@ from org.commands import agenda as agenda_command
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
 from org.commands import interactive_actions
-from org.commands.interactive_common import decode_escape_sequence, detail_org_block, local_now
+from org.commands.interactive_common import (
+    advance_timestamp_by_repeater,
+    decode_escape_sequence,
+    detail_org_block,
+    local_now,
+)
 from org.commands.tasks import capture as capture_command
 from org.commands.tasks.common import duration_to_org_text, parse_clock_duration
 
@@ -681,7 +686,7 @@ def test_advance_timestamp_by_repeater_moves_schedule_once() -> None:
     heading = next(iter(root))
     scheduled = heading.scheduled
     assert scheduled is not None
-    assert agenda_command._advance_timestamp_by_repeater(scheduled) is True
+    assert advance_timestamp_by_repeater(scheduled) is True
     assert str(scheduled).startswith("<2025-01-22")
 
 
@@ -691,12 +696,11 @@ def test_advance_timestamp_by_repeater_double_plus_advances_until_future(
     """'++' repeater should advance repeatedly until timestamp is in the future."""
     timestamp = Timestamp.from_source("<2025-01-10 Fri ++1d>")
     monkeypatch.setattr(
-        agenda_command,
-        "local_now",
+        "org.commands.interactive_common.local_now",
         lambda: datetime(2025, 1, 15, 12, 0),
     )
 
-    assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
+    assert advance_timestamp_by_repeater(timestamp) is True
     assert str(timestamp).startswith("<2025-01-16")
 
 
@@ -706,12 +710,11 @@ def test_advance_timestamp_by_repeater_double_plus_hourly_uses_datetime(
     """'++' with hour unit should advance until datetime is after current time."""
     timestamp = Timestamp.from_source("<2025-01-15 Wed 09:00 ++1h>")
     monkeypatch.setattr(
-        agenda_command,
-        "local_now",
+        "org.commands.interactive_common.local_now",
         lambda: datetime(2025, 1, 15, 10, 30),
     )
 
-    assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
+    assert advance_timestamp_by_repeater(timestamp) is True
     assert str(timestamp).startswith("<2025-01-15 Wed 11:00")
 
 
@@ -721,12 +724,11 @@ def test_advance_timestamp_by_repeater_double_plus_always_shifts_at_least_once(
     """'++' should still shift once when timestamp is already in the future."""
     timestamp = Timestamp.from_source("<2025-01-15 Wed 23:00 ++1d>")
     monkeypatch.setattr(
-        agenda_command,
-        "local_now",
+        "org.commands.interactive_common.local_now",
         lambda: datetime(2025, 1, 15, 10, 0),
     )
 
-    assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
+    assert advance_timestamp_by_repeater(timestamp) is True
     assert str(timestamp).startswith("<2025-01-16 Thu 23:00")
 
 
@@ -736,12 +738,11 @@ def test_advance_timestamp_by_repeater_dot_plus_uses_current_day(
     """'.+' repeater should anchor at current day and then shift once by unit."""
     timestamp = Timestamp.from_source("<2025-01-10 Fri 09:30 .+2d>")
     monkeypatch.setattr(
-        agenda_command,
-        "local_now",
+        "org.commands.interactive_common.local_now",
         lambda: datetime(2025, 1, 15, 18, 45),
     )
 
-    assert agenda_command._advance_timestamp_by_repeater(timestamp) is True
+    assert advance_timestamp_by_repeater(timestamp) is True
     assert str(timestamp).startswith("<2025-01-17 Fri 09:30")
 
 

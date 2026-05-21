@@ -203,7 +203,7 @@ class ConfigOptions:
     """Config option mapping metadata."""
 
     int_options: dict[str, tuple[str, int | None]]
-    bool_options: dict[str, str]
+    bool_options: dict[str, tuple[str, bool | None]]
     str_options: dict[str, str]
     list_options: dict[str, str]
 
@@ -263,6 +263,7 @@ class TasksDefaultMap(TypedDict):
     """Default map values for tasks subcommands."""
 
     list: dict[str, object]
+    query: dict[str, object]
 
 
 class CliDefaultMap(TypedDict):
@@ -354,24 +355,12 @@ def is_string_dict(value: object) -> TypeGuard[dict[str, str]]:
 def parse_color_defaults(config: dict[str, object]) -> tuple[dict[str, object], bool]:
     """Parse color-related config defaults."""
     defaults: dict[str, object] = {}
-    color_value = config.get("--color")
-    no_color_value = config.get("--no-color")
-
-    if "--color" in config and not isinstance(color_value, bool):
-        return ({}, False)
-    if "--no-color" in config and not isinstance(no_color_value, bool):
-        return ({}, False)
-    if (
-        isinstance(color_value, bool)
-        and isinstance(no_color_value, bool)
-        and color_value
-        and no_color_value
-    ):
+    if "--color" in config and "--no-color" in config:
         return ({}, False)
 
-    if color_value is True:
+    if "--color" in config:
         defaults["color_flag"] = True
-    if no_color_value is True:
+    if "--no-color" in config:
         defaults["color_flag"] = False
 
     return (defaults, True)
@@ -475,11 +464,17 @@ def apply_int_option(
     return True
 
 
-def apply_bool_option(value: object, dest: str, defaults: dict[str, object]) -> bool:
+def apply_bool_option(
+    value: object,
+    dest: str,
+    configured_value: bool | None,
+    defaults: dict[str, object],
+) -> bool:
     """Apply boolean config option."""
-    if not isinstance(value, bool):
+    if configured_value is None and not isinstance(value, bool):
         return False
-    defaults[dest] = value
+
+    defaults[dest] = value if configured_value is None else configured_value
     return True
 
 
@@ -523,7 +518,8 @@ def apply_config_entry_by_options(
         dest, min_value = options.int_options[key]
         return apply_int_option(value, dest, min_value, defaults)
     if key in options.bool_options:
-        return apply_bool_option(value, options.bool_options[key], defaults)
+        dest, configured_value = options.bool_options[key]
+        return apply_bool_option(value, dest, configured_value, defaults)
     if key in options.str_options:
         return apply_str_option(key, value, options.str_options[key], defaults)
     if key in options.list_options:
@@ -821,26 +817,26 @@ def build_config_defaults(
         "--width": ("width", 50),
     }
 
-    stats_bool_options: dict[str, str] = {
-        "--with-tags-as-category": "with_tags_as_category",
+    stats_bool_options: dict[str, tuple[str, bool | None]] = {
+        "--with-tags-as-category": ("with_tags_as_category", None),
     }
 
-    global_bool_options: dict[str, str] = {
-        "--details": "details",
-        "--filter-completed": "filter_completed",
-        "--filter-not-completed": "filter_not_completed",
-        "--no-completed": "no_completed",
-        "--no-overdue": "no_overdue",
-        "--no-upcoming": "no_upcoming",
-        "--future-repeats": "future_repeats",
-        "--no-future-repeats": "future_repeats",
-        "--order-by-file-order": "order_by_file_order",
-        "--order-by-file-order-reversed": "order_by_file_order_reversed",
-        "--order-by-level": "order_by_level",
-        "--order-by-priority": "order_by_priority",
-        "--order-by-timestamp-asc": "order_by_timestamp_asc",
-        "--order-by-timestamp-desc": "order_by_timestamp_desc",
-        "--verbose": "verbose",
+    global_bool_options: dict[str, tuple[str, bool | None]] = {
+        "--details": ("details", None),
+        "--filter-completed": ("filter_completed", None),
+        "--filter-not-completed": ("filter_not_completed", None),
+        "--no-completed": ("no_completed", None),
+        "--no-overdue": ("no_overdue", None),
+        "--no-upcoming": ("no_upcoming", None),
+        "--future-repeats": ("future_repeats", True),
+        "--no-future-repeats": ("future_repeats", False),
+        "--order-by-file-order": ("order_by_file_order", None),
+        "--order-by-file-order-reversed": ("order_by_file_order_reversed", None),
+        "--order-by-level": ("order_by_level", None),
+        "--order-by-priority": ("order_by_priority", None),
+        "--order-by-timestamp-asc": ("order_by_timestamp_asc", None),
+        "--order-by-timestamp-desc": ("order_by_timestamp_desc", None),
+        "--verbose": ("verbose", None),
     }
 
     stats_str_options: dict[str, str] = {"--use": "use"}
@@ -984,6 +980,9 @@ def build_default_map(defaults: dict[str, object]) -> CliDefaultMap:
     tasks_list_defaults = {
         key: value for key, value in defaults.items() if key not in task_command_disallowed
     }
+    tasks_query_defaults = {
+        key: value for key, value in defaults.items() if key not in task_command_disallowed
+    }
     board_disallowed = task_command_disallowed.union(
         {"details", "out", "out_theme", "pandoc_args"},
     )
@@ -1013,7 +1012,7 @@ def build_default_map(defaults: dict[str, object]) -> CliDefaultMap:
             "tags": tags_defaults,
             "groups": groups_defaults,
         },
-        "tasks": {"list": tasks_list_defaults},
+        "tasks": {"list": tasks_list_defaults, "query": tasks_query_defaults},
         "board": board_defaults,
         "agenda": agenda_defaults,
     }

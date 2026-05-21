@@ -54,12 +54,12 @@ def test_parse_color_defaults_conflict() -> None:
     assert valid is False
 
 
-def test_parse_color_defaults_invalid_value() -> None:
-    """Non-boolean color flag should be rejected."""
+def test_parse_color_defaults_ignores_value() -> None:
+    """Color defaults should be driven by key presence, not YAML value."""
     defaults, valid = config.parse_color_defaults({"--color": "yes"})
 
-    assert defaults == {}
-    assert valid is False
+    assert defaults == {"color_flag": True}
+    assert valid is True
 
 
 def test_build_config_defaults_applies_values() -> None:
@@ -107,6 +107,47 @@ def test_build_config_defaults_accepts_ordering_flags() -> None:
     assert default_values["order_by_priority"] is True
     assert default_values["order_by_level"] is True
     assert default_values["order_by_timestamp_desc"] is True
+
+
+def test_build_config_defaults_keeps_regular_boolean_values() -> None:
+    """Single-form boolean defaults should still honor explicit false values."""
+    raw: dict[str, object] = {
+        "--details": False,
+        "--order-by-level": False,
+    }
+
+    defaults = config.build_config_defaults(raw)
+
+    assert defaults is not None
+    default_values, _stats_defaults, _append_defaults = defaults
+    assert default_values["details"] is False
+    assert default_values["order_by_level"] is False
+
+
+def test_build_config_defaults_ignores_value_for_paired_boolean_flags() -> None:
+    """Paired boolean flags should derive defaults from the config key itself."""
+    raw: dict[str, object] = {
+        "--future-repeats": "enabled",
+        "--no-color": "disabled",
+    }
+
+    defaults = config.build_config_defaults(raw)
+
+    assert defaults is not None
+    default_values, _stats_defaults, _append_defaults = defaults
+    assert default_values["future_repeats"] is True
+    assert default_values["color_flag"] is False
+
+
+def test_build_config_defaults_sets_false_for_negated_paired_flag() -> None:
+    """Negated paired flags should store the negative destination value."""
+    raw: dict[str, object] = {"--no-future-repeats": True}
+
+    defaults = config.build_config_defaults(raw)
+
+    assert defaults is not None
+    default_values, _stats_defaults, _append_defaults = defaults
+    assert default_values["future_repeats"] is False
 
 
 def test_build_config_defaults_accepts_view_default() -> None:
@@ -722,6 +763,10 @@ def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
     board_defaults = default_map["board"]
     assert board_defaults["order_by_level"] is True
     assert board_defaults["order_by_timestamp_desc"] is False
+
+    tasks_query_defaults = default_map["tasks"]["query"]
+    assert tasks_query_defaults["order_by_level"] is True
+    assert tasks_query_defaults["order_by_timestamp_desc"] is False
 
 
 def test_build_default_map_strips_flow_board_unsupported_defaults() -> None:

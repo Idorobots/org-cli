@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import calendar
 import logging
 import sys
 from dataclasses import dataclass
@@ -44,6 +43,7 @@ from org.commands.interactive_common import (
     INTERACTIVE_HELP_FOOTER_HINT,
     FooterPromptState,
     InteractiveHelpEntry,
+    advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
     build_footer_prompt_text,
@@ -52,6 +52,8 @@ from org.commands.interactive_common import (
     read_keypress,
     render_interactive_help_modal,
     set_mouse_reporting,
+    set_timestamp_fields,
+    shift_datetimes_by_unit,
 )
 from org.commands.search_common import filter_nodes_by_search
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
@@ -506,7 +508,7 @@ def _monthly_or_yearly_repeater_matches_day(
     """Return whether a monthly/yearly repeater lands on the target day."""
     next_start = start
     for _ in range(20000):
-        shifted_start, _ = _shift_datetimes_by_unit(
+        shifted_start, _ = shift_datetimes_by_unit(
             next_start,
             None,
             value=repeat_value,
@@ -1045,138 +1047,18 @@ def _move_selection(session: _AgendaSession, step: int) -> None:
     session.selected_row_index = (session.selected_row_index + step) % len(session.row_locations)
 
 
-def _set_timestamp_fields(timestamp: Timestamp, start: datetime, end: datetime | None) -> None:
-    """Set timestamp date/time fields while preserving active/repeater metadata."""
-    timestamp.start_year = start.year
-    timestamp.start_month = start.month
-    timestamp.start_day = start.day
-    timestamp.start_dayname = start.strftime("%a")
-    if timestamp.start_hour is not None:
-        timestamp.start_hour = start.hour
-        timestamp.start_minute = start.minute
-
-    if end is None or timestamp.end is None:
-        return
-
-    timestamp.end_year = end.year
-    timestamp.end_month = end.month
-    timestamp.end_day = end.day
-    timestamp.end_dayname = end.strftime("%a")
-    if timestamp.end_hour is not None:
-        timestamp.end_hour = end.hour
-        timestamp.end_minute = end.minute
-
-
-def _add_months(value: datetime, months: int) -> datetime:
-    """Add months to a datetime while clamping day to month length."""
-    year = value.year + (value.month - 1 + months) // 12
-    month = (value.month - 1 + months) % 12 + 1
-    day = min(value.day, calendar.monthrange(year, month)[1])
-    return value.replace(year=year, month=month, day=day)
-
-
 def _shift_timestamp_by_days(timestamp: Timestamp, day_delta: int) -> None:
     """Shift one timestamp by a day delta."""
     shifted_start = timestamp.start + timedelta(days=day_delta)
     shifted_end = None if timestamp.end is None else timestamp.end + timedelta(days=day_delta)
-    _set_timestamp_fields(timestamp, shifted_start, shifted_end)
+    set_timestamp_fields(timestamp, shifted_start, shifted_end)
 
 
 def _shift_timestamp_by_hours(timestamp: Timestamp, hour_delta: int) -> None:
     """Shift one timestamp by an hour delta."""
     shifted_start = timestamp.start + timedelta(hours=hour_delta)
     shifted_end = None if timestamp.end is None else timestamp.end + timedelta(hours=hour_delta)
-    _set_timestamp_fields(timestamp, shifted_start, shifted_end)
-
-
-def _shift_datetimes_by_unit(
-    start: datetime,
-    end: datetime | None,
-    *,
-    value: int,
-    unit: str,
-) -> tuple[datetime, datetime | None]:
-    """Shift start/end datetimes by one repeater unit."""
-    if unit == "d":
-        delta = timedelta(days=value)
-        return start + delta, None if end is None else end + delta
-    if unit == "w":
-        delta = timedelta(weeks=value)
-        return start + delta, None if end is None else end + delta
-    if unit == "h":
-        delta = timedelta(hours=value)
-        return start + delta, None if end is None else end + delta
-    if unit == "m":
-        return _add_months(start, value), None if end is None else _add_months(end, value)
-    if unit == "y":
-        months = value * 12
-        return _add_months(start, months), None if end is None else _add_months(end, months)
-    raise ValueError(f"Unsupported repeater unit: {unit}")
-
-
-def _now_aligned_for_datetime(start: datetime, now: datetime) -> datetime:
-    """Normalize current datetime to match timezone-awareness of start."""
-    if start.tzinfo is None:
-        return now.replace(tzinfo=None)
-    if now.tzinfo is None:
-        return now.replace(tzinfo=start.tzinfo)
-    return now.astimezone(start.tzinfo)
-
-
-def _advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
-    """Advance timestamp once by its repeater marker, when present."""
-    if timestamp.repeater is None:
-        return False
-
-    mark = timestamp.repeater.mark
-    value = timestamp.repeater.value
-    unit = timestamp.repeater.unit
-    if value <= 0:
-        return False
-
-    start = timestamp.start
-    end = timestamp.end
-
-    try:
-        if mark == "+":
-            shifted_start, shifted_end = _shift_datetimes_by_unit(
-                start,
-                end,
-                value=value,
-                unit=unit,
-            )
-        elif mark == "++":
-            now = _now_aligned_for_datetime(start, local_now())
-            shifted_start, shifted_end = _shift_datetimes_by_unit(
-                start,
-                end,
-                value=value,
-                unit=unit,
-            )
-            while shifted_start <= now:
-                shifted_start, shifted_end = _shift_datetimes_by_unit(
-                    shifted_start,
-                    shifted_end,
-                    value=value,
-                    unit=unit,
-                )
-        elif mark == ".+":
-            now = _now_aligned_for_datetime(start, local_now())
-            base_start = start.replace(year=now.year, month=now.month, day=now.day)
-            base_end = None if end is None else base_start + (end - start)
-            shifted_start, shifted_end = _shift_datetimes_by_unit(
-                base_start,
-                base_end,
-                value=value,
-                unit=unit,
-            )
-        else:
-            return False
-    except ValueError:
-        return False
-
-    _set_timestamp_fields(timestamp, shifted_start, shifted_end)
-    return True
+    set_timestamp_fields(timestamp, shifted_start, shifted_end)
 
 
 def _save_document_changes(document: Document) -> None:
@@ -1748,7 +1630,7 @@ def _apply_state_change_with_value(session: _AgendaSession, new_state: str) -> N
     heading.todo = new_state
     append_repeat_transition(heading, old_state, new_state, action_now)
 
-    if heading.scheduled is not None and _advance_timestamp_by_repeater(heading.scheduled):
+    if heading.scheduled is not None and advance_timestamp_by_repeater(heading.scheduled):
         logger.info(
             "Agenda repeater advance: file=%s title=%s id=%s field=scheduled value=%s",
             heading.document.filename,
@@ -1756,7 +1638,7 @@ def _apply_state_change_with_value(session: _AgendaSession, new_state: str) -> N
             heading.id,
             heading.scheduled,
         )
-    if heading.deadline is not None and _advance_timestamp_by_repeater(heading.deadline):
+    if heading.deadline is not None and advance_timestamp_by_repeater(heading.deadline):
         logger.info(
             "Agenda repeater advance: file=%s title=%s id=%s field=deadline value=%s",
             heading.document.filename,
