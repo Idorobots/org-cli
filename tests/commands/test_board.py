@@ -83,6 +83,15 @@ def _visible_board_titles_by_column(
     return {column.title: [node.title_text for node in column.nodes] for column in session.columns}
 
 
+def _pin_board_now(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin board command current time for deterministic completed-task windows."""
+    monkeypatch.setattr(
+        board_command,
+        "local_now",
+        lambda: datetime(2026, 5, 9, 12, 0, tzinfo=UTC),
+    )
+
+
 def test_filter_recent_completed_nodes_uses_latest_timestamp_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1372,6 +1381,7 @@ def test_run_flow_board_coalesce_completed_true_shows_completed_column(
 ) -> None:
     """Fallback selector view should include DONE column for completed tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    _pin_board_now(monkeypatch)
     args = make_board_args(
         [fixture_path],
         todo_states="TODO,WAITING,IN-PROGRESS",
@@ -1393,6 +1403,7 @@ def test_run_flow_board_coalesce_completed_true_prefixes_state_in_panel(
 ) -> None:
     """Fallback DONE selector should include all completed state tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    _pin_board_now(monkeypatch)
     args = make_board_args(
         [fixture_path],
         todo_states="TODO,WAITING,IN-PROGRESS",
@@ -1415,6 +1426,7 @@ def test_run_flow_board_coalesce_completed_false_shows_individual_done_columns(
 ) -> None:
     """Fallback selector view should not render legacy COMPLETED header."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    _pin_board_now(monkeypatch)
     args = make_board_args(
         [fixture_path],
         todo_states="TODO,WAITING,IN-PROGRESS",
@@ -1438,6 +1450,7 @@ def test_run_flow_board_coalesce_completed_false_done_columns_ordered_after_todo
 ) -> None:
     """Fallback selector headers should stay in Backlog/TODO/DONE order."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    _pin_board_now(monkeypatch)
     args = make_board_args(
         [fixture_path],
         todo_states="TODO,WAITING,IN-PROGRESS",
@@ -1463,6 +1476,7 @@ def test_run_flow_board_coalesce_completed_false_tasks_in_correct_columns(
 ) -> None:
     """Fallback DONE selector should show all completed-state tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
+    _pin_board_now(monkeypatch)
     args = make_board_args(
         [fixture_path],
         todo_states="TODO,WAITING,IN-PROGRESS",

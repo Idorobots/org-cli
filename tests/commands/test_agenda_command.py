@@ -89,6 +89,13 @@ def _visible_agenda_task_titles(session: agenda_command._AgendaSession) -> list[
     return titles
 
 
+def _pin_agenda_now(monkeypatch: pytest.MonkeyPatch) -> datetime:
+    """Pin agenda command current time for deterministic date-sensitive tests."""
+    pinned_now = datetime(2025, 1, 15, 12, 0)
+    monkeypatch.setattr(agenda_command, "local_now", lambda: pinned_now)
+    return pinned_now
+
+
 def test_run_agenda_renders_expected_sections(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -234,7 +241,8 @@ def test_run_agenda_relative_sections_show_only_today(
     tmp_path: os.PathLike[str],
 ) -> None:
     """Overdue/upcoming sections should render only for current-day agenda panes."""
-    today_date = local_now().date()
+    pinned_now = _pin_agenda_now(monkeypatch)
+    today_date = pinned_now.date()
     fixture_path = os.path.join(tmp_path, "agenda_today_relative.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -281,7 +289,8 @@ def test_run_agenda_multi_day_shows_relative_sections_only_for_today(
     tmp_path: os.PathLike[str],
 ) -> None:
     """Multi-day agenda should include overdue/upcoming only on today's day pane."""
-    today = local_now().date()
+    pinned_now = _pin_agenda_now(monkeypatch)
+    today = pinned_now.date()
     fixture_path = os.path.join(tmp_path, "agenda_multiday_relative.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -293,7 +302,6 @@ def test_run_agenda_multi_day_shows_relative_sections_only_for_today(
             f"DEADLINE: <{(today + timedelta(days=5)).isoformat()} Fri>\n",
         )
 
-    today = local_now().date()
     start = (today - timedelta(days=1)).isoformat()
     args = _make_args([fixture_path], date=start, days=3)
 
@@ -469,7 +477,8 @@ def test_run_agenda_overdue_deadlines_precede_overdue_scheduled(
     tmp_path: os.PathLike[str],
 ) -> None:
     """Overdue deadlines section should appear before overdue scheduled section."""
-    today = local_now().date()
+    pinned_now = _pin_agenda_now(monkeypatch)
+    today = pinned_now.date()
     fixture_path = os.path.join(tmp_path, "agenda_overdue_section_order.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -493,7 +502,8 @@ def test_run_agenda_orders_overdue_and_upcoming_by_age(
     tmp_path: os.PathLike[str],
 ) -> None:
     """Overdue should be oldest-first and upcoming should be soonest-first."""
-    today = local_now().date()
+    pinned_now = _pin_agenda_now(monkeypatch)
+    today = pinned_now.date()
     fixture_path = os.path.join(tmp_path, "agenda_ordering.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -522,7 +532,8 @@ def test_run_agenda_omits_inactive_planning_timestamps(
     tmp_path: os.PathLike[str],
 ) -> None:
     """Inactive scheduled/deadline timestamps should be ignored."""
-    today = local_now().date()
+    pinned_now = _pin_agenda_now(monkeypatch)
+    today = pinned_now.date()
     fixture_path = os.path.join(tmp_path, "agenda_inactive.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
