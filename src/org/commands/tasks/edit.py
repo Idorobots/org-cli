@@ -14,7 +14,6 @@ from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.tasks.common import (
     resolve_headings_by_query,
     resolve_task_selector_query,
-    save_document,
 )
 
 
@@ -42,10 +41,9 @@ def run_tasks_edit(args: EditArgs) -> None:
         raise typer.BadParameter("tasks edit requires a selector that matches exactly one task")
 
     heading = selected_headings[0]
-    document = heading.document
     logger.info(
         "Editing task: file=%s title=%s id=%s tags=%s",
-        document.filename,
+        heading.document.filename,
         heading.title_text,
         heading.id,
         list(heading.heading_tags),
@@ -57,8 +55,6 @@ def run_tasks_edit(args: EditArgs) -> None:
         typer.echo("No changes.")
         return
 
-    logger.info("Saving edited file: %s", document.filename)
-    save_document(document)
     typer.echo("Edited 1 task.")
 
 

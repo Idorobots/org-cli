@@ -890,8 +890,8 @@ def test_handle_interactive_key_enter_edits_selected_task(
         ),
     )
 
-    def _fake_edit(heading: Heading) -> editor_command.HeadingEditResult:
-        return editor_command.HeadingEditResult(heading=heading, changed=False)
+    def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
+        return editor_command.DocumentEditResult(changed=False)
 
     monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
 
@@ -899,10 +899,10 @@ def test_handle_interactive_key_enter_edits_selected_task(
     assert session.status_message == "No changes."
 
 
-def test_handle_interactive_key_enter_persists_selected_source_node_after_changed_edit(
+def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after_changed_edit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Changed edit should persist using the originally selected session node."""
+    """Changed edit should reload using the originally selected session node identity."""
     nodes = node_from_org("* TODO A\n")
     args = make_list_args([])
     session = tasks_list._create_tasks_list_session(
@@ -915,30 +915,27 @@ def test_handle_interactive_key_enter_persists_selected_source_node_after_change
         ),
     )
     source_node = nodes[0]
-    detached_heading = node_from_org("* TODO Updated\n")[0]
 
-    def _fake_edit(_heading: Heading) -> editor_command.HeadingEditResult:
-        return editor_command.HeadingEditResult(heading=detached_heading, changed=True)
+    def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
+        return editor_command.DocumentEditResult(changed=True)
 
-    persisted_node: Heading | None = None
-    persisted_status = ""
+    reloaded_identity = None
 
-    def _fake_persist(
+    def _fake_reload(
         current_session: tasks_list._TasksListSession,
-        node: Heading,
-        status_message: str,
-    ) -> None:
-        nonlocal persisted_node, persisted_status
+        identity: object,
+    ) -> bool:
+        nonlocal reloaded_identity
         assert current_session is session
-        persisted_node = node
-        persisted_status = status_message
+        reloaded_identity = identity
+        return True
 
     monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
-    monkeypatch.setattr(tasks_list, "_persist_and_reload_selected", _fake_persist)
+    monkeypatch.setattr(tasks_list, "_reload_session_nodes", _fake_reload)
 
     assert tasks_list._handle_interactive_key(session, "ENTER") is True
-    assert persisted_node is source_node
-    assert persisted_status == "Task updated"
+    assert reloaded_identity == heading_identity(source_node)
+    assert session.status_message == "Task updated"
 
 
 def test_handle_interactive_key_dollar_archives_selected_task(

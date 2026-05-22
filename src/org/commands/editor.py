@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
+import org_parser
 import typer
-from org_parser.document import Heading
+
+
+if TYPE_CHECKING:
+    from org_parser.document import Document, Heading
 
 
 def _editor_program() -> str:
@@ -34,41 +40,104 @@ def edit_text_in_external_editor(initial_text: str, *, suffix: str = ".org") -> 
 
 
 @dataclass(frozen=True)
-class HeadingEditResult:
-    """Result of editing one heading subtree."""
+class DocumentEditResult:
+    """Result of editing a task's source document."""
 
-    heading: Heading
     changed: bool
 
 
-def _replace_heading_in_parent(heading: Heading, updated_heading: Heading) -> None:
-    """Replace one heading subtree inside parent children."""
-    parent = heading.parent
-    if parent is None:
-        raise typer.BadParameter("Unable to edit heading without a parent node")
-
-    updated_children = list(parent.children)
-    for index, child in enumerate(updated_children):
-        if child is heading:
-            updated_children[index] = updated_heading
-            parent.children = updated_children
-            return
-
-    raise typer.BadParameter("Unable to locate selected task in parent children")
-
-
-def edit_heading_subtree_in_external_editor(heading: Heading) -> HeadingEditResult:
-    """Edit one heading subtree in external editor and apply replacement."""
-    original_source = heading.render()
-    edited_source = edit_text_in_external_editor(original_source)
-    if edited_source == original_source:
-        return HeadingEditResult(heading=heading, changed=False)
-
+def _load_document_from_text(document_text: str, filename: str | None) -> Document:
+    """Parse full document text and preserve original filename when present."""
     try:
-        updated_heading = Heading.from_source(edited_source)
+        document = org_parser.loads(document_text)
     except (TypeError, ValueError) as err:
-        raise typer.BadParameter(f"Edited task content is invalid: {err}") from err
+        raise typer.BadParameter(f"Edited document content is invalid: {err}") from err
 
-    updated_heading.document = heading.document
-    _replace_heading_in_parent(heading, updated_heading)
-    return HeadingEditResult(heading=updated_heading, changed=True)
+    document.filename = "" if filename is None else filename
+    return document
+
+
+def _run_editor_at_line(filename: str, line: int) -> int:
+    """Open one file in the configured editor at a given line."""
+    editor = _editor_program()
+    try:
+        click.edit(editor=f"{editor} +{line}", filename=filename)
+    except click.ClickException:
+        return 1
+    return 0
+
+
+def _confirm_temporary_file_edit(prompt: str) -> bool:
+    """Ask whether a temporary-file fallback edit should be opened."""
+    return typer.confirm(prompt, default=False)
+
+
+def _edit_via_temporary_file(document_text: str, prompt: str) -> str | None:
+    """Prompt for and run the temporary-file fallback editor flow."""
+    if not _confirm_temporary_file_edit(prompt):
+        return None
+    return edit_text_in_external_editor(document_text)
+
+
+def _read_document_text(path: Path, filename: str) -> str:
+    """Read one document file from disk."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError as err:
+        raise typer.BadParameter(f"File '{filename}' not found") from err
+    except PermissionError as err:
+        raise typer.BadParameter(f"Permission denied for '{filename}'") from err
+
+
+def _write_document_text(path: Path, filename: str, document_text: str) -> None:
+    """Write one full document file to disk."""
+    try:
+        path.write_text(document_text, encoding="utf-8")
+    except PermissionError as err:
+        raise typer.BadParameter(f"Permission denied for '{filename}'") from err
+
+
+def _edit_document_without_filename(heading: Heading) -> DocumentEditResult:
+    """Edit a document that does not have a backing filename."""
+    original_text = heading.document.render()
+    edited_text = _edit_via_temporary_file(
+        original_text,
+        "This task is not associated with a file. Edit a temporary copy instead?",
+    )
+    if edited_text is None or edited_text == original_text:
+        return DocumentEditResult(changed=False)
+
+    return DocumentEditResult(changed=True)
+
+
+def _edit_document_with_filename(heading: Heading, filename: str) -> DocumentEditResult:
+    """Edit a document backed by a filename, preferring in-place file edits."""
+    path = Path(filename)
+    original_text = _read_document_text(path, filename)
+
+    return_code = _run_editor_at_line(filename, 0 if heading.line is None else heading.line)
+    if return_code == 0:
+        edited_text = _read_document_text(path, filename)
+        if edited_text == original_text:
+            return DocumentEditResult(changed=False)
+        _load_document_from_text(edited_text, filename)
+        return DocumentEditResult(changed=True)
+
+    fallback_text = _edit_via_temporary_file(
+        original_text,
+        "Opening the original file at the task line failed. Edit a temporary copy instead?",
+    )
+    if fallback_text is None or fallback_text == original_text:
+        return DocumentEditResult(changed=False)
+
+    _write_document_text(path, filename, fallback_text)
+    _load_document_from_text(fallback_text, filename)
+    return DocumentEditResult(changed=True)
+
+
+def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
+    """Edit the original task document, preferring in-place file editing at task line."""
+    filename = heading.document.filename or None
+    if filename is None:
+        return _edit_document_without_filename(heading)
+    return _edit_document_with_filename(heading, filename)

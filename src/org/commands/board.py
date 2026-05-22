@@ -864,7 +864,7 @@ def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
         session.status_message = "Action available only on task panels"
         return
 
-    source_document = heading.document
+    preserve_identity = heading_identity(heading)
     session.status_message = ""
     try:
         edit_result = edit_heading_subtree_in_external_editor(heading)
@@ -876,8 +876,6 @@ def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
         session.status_message = "No changes."
         return
 
-    _save_document_changes(source_document)
-    preserve_identity = heading_identity(edit_result.heading)
     try:
         _reload_session(session, preserve_identity)
     except typer.BadParameter as err:

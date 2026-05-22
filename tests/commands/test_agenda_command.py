@@ -1079,8 +1079,8 @@ def test_handle_interactive_key_enter_edits_selected_task(
     assert row is not None
     assert row.node is not None
 
-    def _fake_edit(heading: Heading) -> editor_command.HeadingEditResult:
-        return editor_command.HeadingEditResult(heading=heading, changed=False)
+    def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
+        return editor_command.DocumentEditResult(changed=False)
 
     monkeypatch.setattr(agenda_command, "edit_heading_subtree_in_external_editor", _fake_edit)
 
@@ -1088,10 +1088,10 @@ def test_handle_interactive_key_enter_edits_selected_task(
     assert session.status_message == "No changes."
 
 
-def test_handle_interactive_key_enter_saves_original_document_after_changed_edit(
+def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after_changed_edit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Changed edit should save the selected task's original document."""
+    """Changed edit should reload using the selected task identity."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
     root = org_parser.load(fixture_path)
@@ -1112,25 +1112,24 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
     row = agenda_command._selected_task_row(session)
     assert row is not None
     assert row.node is not None
-    source_document = row.node.document
-    detached_heading = next(iter(org_parser.loads("* TODO Updated\n")))
+    source_node = row.node
 
-    def _fake_edit(_heading: Heading) -> editor_command.HeadingEditResult:
-        return editor_command.HeadingEditResult(heading=detached_heading, changed=True)
+    def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
+        return editor_command.DocumentEditResult(changed=True)
 
-    saved_documents: list[Document] = []
+    refreshed_identity = None
 
-    def _capture_save(document: Document) -> None:
-        saved_documents.append(document)
+    def _capture_refresh(_session: agenda_command._AgendaSession, identity: object) -> None:
+        nonlocal refreshed_identity
+        refreshed_identity = identity
 
     monkeypatch.setattr(agenda_command, "edit_heading_subtree_in_external_editor", _fake_edit)
-    monkeypatch.setattr(agenda_command, "_save_document_changes", _capture_save)
     monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
-    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+    monkeypatch.setattr(agenda_command, "_refresh_session", _capture_refresh)
 
     assert agenda_command._handle_interactive_key(session, "ENTER") is True
     assert session.status_message == "Task updated"
-    assert saved_documents == [source_document]
+    assert refreshed_identity == agenda_command._heading_identity(source_node)
 
 
 def test_handle_interactive_key_dollar_archives_selected_task(

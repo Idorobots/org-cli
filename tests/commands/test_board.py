@@ -774,8 +774,8 @@ def test_handle_interactive_key_enter_edits_selected_task(
         status_message="",
     )
 
-    def _fake_edit(heading: Heading) -> editor_command.HeadingEditResult:
-        return editor_command.HeadingEditResult(heading=heading, changed=False)
+    def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
+        return editor_command.DocumentEditResult(changed=False)
 
     monkeypatch.setattr(board_command, "edit_heading_subtree_in_external_editor", _fake_edit)
 
@@ -1138,24 +1138,23 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
         scroll_offset=0,
         status_message="",
     )
-    source_document = nodes[0].document
-    detached_heading = node_from_org("* TODO Updated\n")[0]
+    source_node = nodes[0]
 
-    def _fake_edit(_heading: Heading) -> editor_command.HeadingEditResult:
-        return editor_command.HeadingEditResult(heading=detached_heading, changed=True)
+    def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
+        return editor_command.DocumentEditResult(changed=True)
 
-    saved_documents: list[Document] = []
+    reloaded_identity = None
 
-    def _capture_save(document: Document) -> None:
-        saved_documents.append(document)
+    def _capture_reload(_session: board_command._BoardSession, identity: object) -> None:
+        nonlocal reloaded_identity
+        reloaded_identity = identity
 
     monkeypatch.setattr(board_command, "edit_heading_subtree_in_external_editor", _fake_edit)
-    monkeypatch.setattr(board_command, "_save_document_changes", _capture_save)
-    monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
+    monkeypatch.setattr(board_command, "_reload_session", _capture_reload)
 
     assert board_command._handle_interactive_key(session, "ENTER") is True
     assert session.status_message == "Task updated"
-    assert saved_documents == [source_document]
+    assert reloaded_identity == heading_identity(source_node)
 
 
 def test_handle_interactive_key_dollar_archives_selected_task(
