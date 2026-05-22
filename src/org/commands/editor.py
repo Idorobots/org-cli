@@ -127,7 +127,9 @@ def _edit_document_with_filename(heading: Heading, filename: str) -> DocumentEdi
         original_text,
         "Opening the original file at the task line failed. Edit a temporary copy instead?",
     )
-    if fallback_text is None or fallback_text == original_text:
+    if fallback_text is None:
+        raise typer.BadParameter("Editor failed to open")
+    if fallback_text == original_text:
         return DocumentEditResult(changed=False)
 
     _write_document_text(path, filename, fallback_text)

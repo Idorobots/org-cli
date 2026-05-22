@@ -19,7 +19,7 @@ from org.commands import archive as archive_command
 from org.commands import board as board_command
 from org.commands import editor as editor_command
 from org.commands import interactive_actions
-from org.commands.interactive_common import heading_identity
+from org.commands.interactive_common import heading_locator
 from org.commands.tasks import capture as capture_command
 from tests.conftest import node_from_org
 
@@ -517,7 +517,7 @@ def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
 
     focused = session.columns[1].nodes[1]
     focused.priority = "A"
-    preserve_identity = heading_identity(focused)
+    preserve_identity = heading_locator(focused)
 
     reloaded_nodes = node_from_org("* TODO [#A] Other\n* TODO [#A] Focus\n")
 
@@ -863,7 +863,7 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     assert submit_result.success is True
     assert submit_result.keep_prompt_open is False
     assert reloaded["session"] is session
-    assert reloaded["identity"] == heading_identity(captured_node)
+    assert reloaded["identity"] == heading_locator(captured_node)
     assert session.status_message == "Task captured"
 
 
@@ -1154,7 +1154,7 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
 
     assert board_command._handle_interactive_key(session, "ENTER") is True
     assert session.status_message == "Task updated"
-    assert reloaded_identity == heading_identity(source_node)
+    assert reloaded_identity == heading_locator(source_node)
 
 
 def test_handle_interactive_key_dollar_archives_selected_task(

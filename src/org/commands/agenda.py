@@ -42,15 +42,18 @@ from org.commands.interactive_actions import (
 from org.commands.interactive_common import (
     INTERACTIVE_HELP_FOOTER_HINT,
     FooterPromptState,
+    HeadingLocator,
     InteractiveHelpEntry,
     advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
     build_footer_prompt_text,
+    heading_locator,
     interactive_help_command_text,
     local_now,
     read_keypress,
     render_interactive_help_modal,
+    resolve_heading_locator,
     set_mouse_reporting,
     set_timestamp_fields,
     shift_datetimes_by_unit,
@@ -934,17 +937,9 @@ def _build_day_rows(day_render: _DayRenderInput, render: _RenderContext) -> _Day
     return _DayRowModel(day=day_render.day, rows=rows, selectable_row_indexes=selectable)
 
 
-def _heading_identity(node: Heading) -> tuple[str, str, str, int | None]:
-    """Build stable heading identity tuple for selection restoration."""
-    filename = node.document.filename or ""
-    heading_id = node.id or ""
-    title = node.title_text
-    return (filename, heading_id, title, node.line)
-
-
 def _refresh_session(
     session: _AgendaSession,
-    preserve_identity: tuple[str, str, str, int | None] | None,
+    preserve_identity: HeadingLocator | None,
 ) -> None:
     """Recompute day row models and restore selection when possible."""
     session.now = local_now()
@@ -975,10 +970,11 @@ def _refresh_session(
         session.selected_row_index = 0
         return
 
-    if preserve_identity is not None:
+    preserved_node = resolve_heading_locator(session.nodes, preserve_identity)
+    if preserved_node is not None:
         for idx, (day_index, row_index) in enumerate(row_locations):
             row = day_models[day_index].rows[row_index]
-            if row.node is not None and _heading_identity(row.node) == preserve_identity:
+            if row.node is preserved_node:
                 session.selected_row_index = idx
                 return
 
@@ -989,7 +985,7 @@ def _refresh_session(
 
 def _refresh_visible_nodes(
     session: _AgendaSession,
-    preserve_identity: tuple[str, str, str, int | None] | None,
+    preserve_identity: HeadingLocator | None,
 ) -> None:
     """Refresh visible agenda nodes and restore selected task identity when possible."""
     session.nodes = filter_nodes_by_search(session.all_nodes, session.search_text)
@@ -1022,10 +1018,10 @@ def _refresh_session_if_minute_changed(session: _AgendaSession) -> None:
     if current_now == session_now:
         return
 
-    preserve_identity: tuple[str, str, str, int | None] | None = None
+    preserve_identity: HeadingLocator | None = None
     selected_row = _selected_task_row(session)
     if selected_row is not None and selected_row.node is not None:
-        preserve_identity = _heading_identity(selected_row.node)
+        preserve_identity = heading_locator(selected_row.node)
     _refresh_session(session, preserve_identity)
 
 
@@ -1498,7 +1494,7 @@ def _edit_selected_task_in_external_editor(session: _AgendaSession) -> None:
         session.status_message = "Action available only on task rows"
         return
 
-    preserve_identity = _heading_identity(row.node)
+    preserve_identity = heading_locator(row.node)
     session.status_message = ""
     try:
         edit_result = edit_heading_subtree_in_external_editor(row.node)
@@ -1529,7 +1525,7 @@ def _archive_selected_task(session: _AgendaSession) -> None:
         session.status_message = str(err)
         return
 
-    preserve_identity = _heading_identity(archive_result.heading)
+    preserve_identity = heading_locator(archive_result.heading)
     _reload_session_nodes(session)
     _refresh_session(session, preserve_identity)
     session.status_message = "Task archived"
@@ -1654,7 +1650,7 @@ def _apply_state_change_with_value(session: _AgendaSession, new_state: str) -> N
         new_state,
     )
     _save_document_changes(heading.document)
-    preserve_identity = _heading_identity(heading)
+    preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
     _refresh_session(session, preserve_identity)
     session.status_message = f"State updated: {old_state or '-'} -> {new_state}"
@@ -1674,7 +1670,7 @@ def _apply_shift_date(session: _AgendaSession, *, day_delta: int) -> None:
 
     heading = row.node
     _save_document_changes(heading.document)
-    preserve_identity = _heading_identity(heading)
+    preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
     _refresh_session(session, preserve_identity)
     session.status_message = status
@@ -1694,7 +1690,7 @@ def _apply_shift_time(session: _AgendaSession, *, hour_delta: int) -> None:
 
     heading = row.node
     _save_document_changes(heading.document)
-    preserve_identity = _heading_identity(heading)
+    preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
     _refresh_session(session, preserve_identity)
     session.status_message = status
@@ -1764,8 +1760,9 @@ def _apply_refile_with_value(session: _AgendaSession, destination_input: str) ->
     if source_document is not destination_document:
         _save_document_changes(source_document)
 
+    preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
-    _refresh_session(session, None)
+    _refresh_session(session, preserve_identity)
     session.status_message = f"Refiled task to {destination_doc_path}"
 
 
@@ -1809,7 +1806,7 @@ def _apply_clock_entry_with_value(session: _AgendaSession, duration_input: str) 
     )
 
     _save_document_changes(heading.document)
-    preserve_identity = _heading_identity(heading)
+    preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
     _refresh_session(session, preserve_identity)
     session.status_message = f"Added clock entry ({duration_text})"
@@ -1822,9 +1819,9 @@ def _clear_search(session: _AgendaSession) -> None:
         return
 
     selected_row = _selected_task_row(session)
-    preserve_identity: tuple[str, str, str, int | None] | None = None
+    preserve_identity: HeadingLocator | None = None
     if selected_row is not None and selected_row.node is not None:
-        preserve_identity = _heading_identity(selected_row.node)
+        preserve_identity = heading_locator(selected_row.node)
     session.search_text = ""
     _refresh_visible_nodes(session, preserve_identity)
     session.status_message = "Search cleared"
@@ -1891,7 +1888,7 @@ def _apply_capture_task(session: _AgendaSession, template_name: str) -> None:
     try:
         _save_document_changes(capture_result.document)
         _reload_session_nodes(session)
-        _refresh_session(session, _heading_identity(capture_result.heading))
+        _refresh_session(session, heading_locator(capture_result.heading))
     except typer.BadParameter as err:
         session.status_message = str(err)
         return
@@ -2019,9 +2016,9 @@ def _capture_agenda_search_prompt_state(session: _AgendaSession) -> ActionResult
 def _apply_search_text(session: _AgendaSession, search_text: str) -> ActionResult:
     """Apply search text to agenda rows and return match status."""
     selected_row = _selected_task_row(session)
-    preserve_identity: tuple[str, str, str, int | None] | None = None
+    preserve_identity: HeadingLocator | None = None
     if selected_row is not None and selected_row.node is not None:
-        preserve_identity = _heading_identity(selected_row.node)
+        preserve_identity = heading_locator(selected_row.node)
     session.search_text = search_text
     _refresh_visible_nodes(session, preserve_identity)
     status = "Search cleared" if not search_text else f"{len(session.nodes)} matches"

@@ -10,18 +10,22 @@ from rich.console import Console
 from org.commands.interactive_common import (
     BRACKETED_PASTE_DISABLE,
     BRACKETED_PASTE_ENABLE,
+    HeadingLocator,
     InteractiveHelpEntry,
     KeyBinding,
     dispatch_key_binding,
     extract_bracketed_paste_text,
+    heading_locator,
     key_binding_for_action,
     key_binding_requires_live_pause,
     read_input_event,
     render_interactive_help_modal,
     render_interactive_help_panel_text,
+    resolve_heading_locator,
     set_bracketed_paste,
 )
 from org.commands.tasks.common import resolve_todo_state_selection, todo_states_for_heading
+from tests.conftest import node_from_org
 
 
 if TYPE_CHECKING:
@@ -173,3 +177,42 @@ def test_render_interactive_help_panel_text_includes_title_and_rows() -> None:
     assert "Key bindings:" in output
     assert "Esc/q" in output
     assert "Exit the view and return to the shell." in output
+
+
+def test_heading_locator_uses_id_when_present() -> None:
+    """Locator should preserve filename, ID, and title for a heading."""
+    node = node_from_org("* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n")[0]
+
+    assert heading_locator(node) == HeadingLocator(
+        filename=node.document.filename or "",
+        heading_id="task-1",
+        title="Keep",
+    )
+
+
+def test_resolve_heading_locator_prefers_id_after_title_change() -> None:
+    """Locator resolution should follow heading ID after reloads change the title."""
+    original = node_from_org("* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n")[0]
+    reloaded = node_from_org("* TODO Updated\n:PROPERTIES:\n:ID: task-1\n:END:\n")
+
+    resolved = resolve_heading_locator(reloaded, heading_locator(original))
+
+    assert resolved is reloaded[0]
+
+
+def test_resolve_heading_locator_falls_back_to_title_without_id() -> None:
+    """Locator resolution should use title when a heading has no ID."""
+    original = node_from_org("* TODO Keep\n")[0]
+    reloaded = node_from_org("* TODO Keep\n* TODO Other\n")
+
+    resolved = resolve_heading_locator(reloaded, heading_locator(original))
+
+    assert resolved is reloaded[0]
+
+
+def test_resolve_heading_locator_returns_none_when_heading_disappears() -> None:
+    """Locator resolution should fail cleanly when the target heading is gone."""
+    original = node_from_org("* TODO Keep\n")[0]
+    reloaded = node_from_org("* TODO Other\n")
+
+    assert resolve_heading_locator(reloaded, heading_locator(original)) is None

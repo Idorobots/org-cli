@@ -59,16 +59,12 @@ class InteractiveHelpEntry:
 
 
 @dataclass(frozen=True)
-class HeadingIdentity:
-    """Stable identity used to restore selected heading across reloads."""
+class HeadingLocator:
+    """Stable heading locator used to restore selection across reloads."""
 
     filename: str
     heading_id: str | None
     title: str
-    todo: str | None
-    priority: str | None
-    scheduled: str | None
-    deadline: str | None
 
 
 @dataclass(frozen=True)
@@ -220,35 +216,44 @@ def shift_priority(priority: str | None, *, increase: bool) -> str | None:
     return order[min(len(order) - 1, index + 1)]
 
 
-def heading_identity(node: Heading) -> HeadingIdentity:
-    """Build stable heading identity for selection restoration."""
-    return HeadingIdentity(
+def heading_locator(node: Heading) -> HeadingLocator:
+    """Build a stable heading locator for selection restoration."""
+    return HeadingLocator(
         filename=node.document.filename or "",
         heading_id=node.id,
         title=node.title_text,
-        todo=node.todo,
-        priority=node.priority,
-        scheduled=str(node.scheduled) if node.scheduled is not None else None,
-        deadline=str(node.deadline) if node.deadline is not None else None,
     )
 
 
-def heading_identity_matches(node: Heading, identity: HeadingIdentity) -> bool:
-    """Return whether node matches preserved heading identity."""
-    same_file = (node.document.filename or "") == identity.filename
-    if not same_file:
-        return False
+def resolve_heading_locator(
+    candidates: list[Heading],
+    locator: HeadingLocator | None,
+) -> Heading | None:
+    """Resolve a preserved heading locator against a candidate heading list."""
+    if locator is None or not candidates:
+        return None
 
-    if identity.heading_id is not None:
-        return node.id == identity.heading_id
+    document = None
+    for candidate in candidates:
+        if (candidate.document.filename or "") == locator.filename:
+            document = candidate.document
+            break
 
-    return (
-        node.title_text == identity.title
-        and node.todo == identity.todo
-        and node.priority == identity.priority
-        and (str(node.scheduled) if node.scheduled is not None else None) == identity.scheduled
-        and (str(node.deadline) if node.deadline is not None else None) == identity.deadline
+    if document is None:
+        return None
+
+    resolved = (
+        document.heading_by_id(locator.heading_id)
+        if locator.heading_id is not None
+        else document.heading_by_title(locator.title)
     )
+    if resolved is None:
+        return None
+
+    for candidate in candidates:
+        if candidate is resolved:
+            return candidate
+    return None
 
 
 def append_repeat_transition(

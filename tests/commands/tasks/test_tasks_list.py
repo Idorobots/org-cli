@@ -18,7 +18,7 @@ from org import config as config_module
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
 from org.commands import interactive_actions
-from org.commands.interactive_common import heading_identity
+from org.commands.interactive_common import heading_locator
 from org.commands.tasks import capture as capture_command
 from org.commands.tasks import list as tasks_list
 from org.histogram import visual_len
@@ -934,7 +934,7 @@ def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after
     monkeypatch.setattr(tasks_list, "_reload_session_nodes", _fake_reload)
 
     assert tasks_list._handle_interactive_key(session, "ENTER") is True
-    assert reloaded_identity == heading_identity(source_node)
+    assert reloaded_identity == heading_locator(source_node)
     assert session.status_message == "Task updated"
 
 
@@ -1032,7 +1032,7 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     assert submit_result.success is True
     assert submit_result.keep_prompt_open is False
     assert reload_args["session"] is session
-    assert reload_args["identity"] == heading_identity(captured_node)
+    assert reload_args["identity"] == heading_locator(captured_node)
     assert session.status_message == "Task captured"
 
 

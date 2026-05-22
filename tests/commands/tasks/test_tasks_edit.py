@@ -169,9 +169,8 @@ def test_run_tasks_edit_requires_editor_environment_variable(
 def test_run_tasks_edit_errors_on_non_zero_editor_exit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Edit should fall back to temp-file prompt when line-open fails."""
+    """Edit should report a clear error when line-open fallback is declined."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n", encoding="utf-8")
 
@@ -184,12 +183,12 @@ def test_run_tasks_edit_errors_on_non_zero_editor_exit(
     monkeypatch.setenv("EDITOR", "sh -c 'exit 7'")
     monkeypatch.setattr(editor_command, "_confirm_temporary_file_edit", _confirm)
 
-    tasks_edit.run_tasks_edit(make_edit_args([str(source)]))
+    with pytest.raises(typer.BadParameter, match="Editor failed to open"):
+        tasks_edit.run_tasks_edit(make_edit_args([str(source)]))
 
     assert prompts == [
         "Opening the original file at the task line failed. Edit a temporary copy instead?",
     ]
-    assert capsys.readouterr().out.strip() == "No changes."
 
 
 def test_run_tasks_edit_skips_save_when_content_is_unchanged(
