@@ -6960,7 +6960,7 @@ Perform steps in a loop while there are any tasks available for stepping.
   Too cumbersome, instead it'll use links to files.
 :END:
 Use IDs for headings. Support the "usual" =org-attach= file directories for attachments.
-** Usability improvements                                                                       :UX:
+** TODO Usability improvements                                                                  :UX:
 *** REWORKED User input prompts should be resolved in the active TUI view
 :LOGBOOK:
 - State "REWORKED"       from "TODO"       [2026-05-09 Sat 14:51]
@@ -7270,7 +7270,10 @@ Add additional logbook entries on various actions, for instance:
 
 *** Check if file was modified outside of org-cli before saving it.
 *** File watching for interactive commands and updated display
-*** TODO Editor should open the original file at the task line
+*** REWORKED Editor should open the original file at the task line
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-22 Fri 18:39]
+:END:
 Ideally, the original file containing the task would be then edited. This should apply to all commands that allow editing tasks.
 
 Use the following invocation. It appears to be a more-or-less standarized way of opening files at a given line that works well with `vim`, `nano`, `emacs` and even `gedit`.
@@ -7288,10 +7291,47 @@ The fallback invocation is the same as current behaviour:
 $EDITOR {document.filename}
 #+end_example
 
+Once the file is edited, it should be reloaded in its entiriety as edits to the entire file might have taken place. That means that the edited task will be reloaded automatically, so there's no need to handle the update in any special fashion (as done currently). Just rely on reloading the whole file and updating the respective command output with the updated file contents.
+
+**** DONE src/org/commands/editor.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-22 Fri 18:26]
+:END:
+
+In file src/org/commands/editor.py around line 122, near the ~def _edit_document_without_filename(heading: Heading) -> DocumentEditResult:~
+
+#+begin_example
+     reloaded_document = _load_document_from_text(edited_text, None)
+     _replace_document_contents(document, reloaded_document)
+
+#+end_example
+
+Since we're no longer returning the document, please also remove this reloading and replacement as it doesn't make much sense anymore.
+**** CANCELLED tests/commands/tasks/test_tasks_edit.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-05-22 Fri 18:35] \\
+  A parameter is actually used.
+:END:
+
+In file tests/commands/tasks/test_tasks_edit.py around line 47, near the ~def test_run_tasks_edit_replaces_subtree_by_query_id(~
+
+#+begin_example
+-    def _fake_edit(heading: Heading) -> editor_command.DocumentEditResult:
++    def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
+
+#+end_example
+
+Please don't leave unused arguments in functions, if an argument is no longer needed just refactor it out.
 *** Ability to switch views in-command
 =v= to select view from the list of configured views.
 
-*** Mark as completed should repect repeaters
+*** Mark as completed should respect repeaters
 The timestamp advancement should only be used if the new state is a completed state. In such a case, the state should be updated to the first TODO state defined for the document, a logbook repeat should be added to the task (`State {node.todo} to {new_state}`) and the repeaters should be advanced according to its rules.
 
 ** Codebase improvements

@@ -572,11 +572,15 @@ def test_cli_runner_tasks_edit_updates_subtree(
         encoding="utf-8",
     )
 
-    def _fake_editor(_: str, *, suffix: str = ".org") -> str:
-        del suffix
-        return "* TODO Updated\n:PROPERTIES:\n:ID: task-1\n:END:\n** TODO New child\n"
+    def _fake_open_at_line(filename: str, line: int) -> int:
+        assert line == 0
+        Path(filename).write_text(
+            "* TODO Updated\n:PROPERTIES:\n:ID: task-1\n:END:\n** TODO New child\n* TODO Tail\n",
+            encoding="utf-8",
+        )
+        return 0
 
-    monkeypatch.setattr("org.commands.editor.edit_text_in_external_editor", _fake_editor)
+    monkeypatch.setattr("org.commands.editor._run_editor_at_line", _fake_open_at_line)
 
     result = runner.invoke(
         app,

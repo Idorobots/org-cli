@@ -23,6 +23,7 @@ from org.commands.interactive_common import (
     advance_timestamp_by_repeater,
     decode_escape_sequence,
     detail_org_block,
+    heading_locator,
     local_now,
 )
 from org.commands.tasks import capture as capture_command
@@ -1054,6 +1055,69 @@ def test_apply_refile_rejects_same_file_with_equivalent_path(
     assert content.count("Refile me") == 1
 
 
+def test_apply_refile_preserves_moved_task_locator(
+    tmp_path: os.PathLike[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Refile should preserve selection for the moved task in its destination file."""
+    source_path = os.path.join(tmp_path, "agenda_refile_source.org")
+    destination_path = os.path.join(tmp_path, "agenda_refile_destination.org")
+    with open(source_path, "w", encoding="utf-8") as handle:
+        handle.write(
+            "* TODO Refile me\n"
+            ":PROPERTIES:\n"
+            ":ID: task-1\n"
+            ":END:\n"
+            "SCHEDULED: <2025-01-15 Wed 09:00>\n",
+        )
+    with open(destination_path, "w", encoding="utf-8") as handle:
+        handle.write("* TODO Existing\n")
+
+    args = _make_args([source_path], date="2025-01-15")
+    root = org_parser.load(source_path)
+    session = agenda_command._create_agenda_session(
+        args,
+        list(root),
+        ["DONE"],
+        ["TODO"],
+        False,
+    )
+    heading = root.heading_by_id("task-1")
+    assert heading is not None
+    monkeypatch.setattr(
+        agenda_command,
+        "_selected_task_row",
+        lambda _session: agenda_command._AgendaRow(
+            kind="task",
+            day=datetime(2025, 1, 15).date(),
+            node=heading,
+            source="scheduled",
+        ),
+    )
+
+    saved_documents: list[Document] = []
+    refreshed: dict[str, object] = {}
+
+    monkeypatch.setattr(agenda_command, "_save_document_changes", saved_documents.append)
+    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+
+    def _capture_refresh(
+        current_session: agenda_command._AgendaSession,
+        preserve_identity: object,
+    ) -> None:
+        refreshed["session"] = current_session
+        refreshed["identity"] = preserve_identity
+
+    monkeypatch.setattr(agenda_command, "_refresh_session", _capture_refresh)
+
+    agenda_command._apply_refile_with_value(session, destination_path)
+
+    assert refreshed["session"] is session
+    assert refreshed["identity"] == heading_locator(heading)
+    assert len(saved_documents) == 2
+    assert session.status_message == f"Refiled task to {destination_path}"
+
+
 def test_handle_interactive_key_enter_edits_selected_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1079,8 +1143,8 @@ def test_handle_interactive_key_enter_edits_selected_task(
     assert row is not None
     assert row.node is not None
 
-    def _fake_edit(heading: Heading) -> editor_command.HeadingEditResult:
-        return editor_command.HeadingEditResult(heading=heading, changed=False)
+    def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
+        return editor_command.DocumentEditResult(changed=False)
 
     monkeypatch.setattr(agenda_command, "edit_heading_subtree_in_external_editor", _fake_edit)
 
@@ -1088,10 +1152,10 @@ def test_handle_interactive_key_enter_edits_selected_task(
     assert session.status_message == "No changes."
 
 
-def test_handle_interactive_key_enter_saves_original_document_after_changed_edit(
+def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after_changed_edit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Changed edit should save the selected task's original document."""
+    """Changed edit should reload using the selected task identity."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
     root = org_parser.load(fixture_path)
@@ -1112,25 +1176,24 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
     row = agenda_command._selected_task_row(session)
     assert row is not None
     assert row.node is not None
-    source_document = row.node.document
-    detached_heading = next(iter(org_parser.loads("* TODO Updated\n")))
+    source_node = row.node
 
-    def _fake_edit(_heading: Heading) -> editor_command.HeadingEditResult:
-        return editor_command.HeadingEditResult(heading=detached_heading, changed=True)
+    def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
+        return editor_command.DocumentEditResult(changed=True)
 
-    saved_documents: list[Document] = []
+    refreshed_identity = None
 
-    def _capture_save(document: Document) -> None:
-        saved_documents.append(document)
+    def _capture_refresh(_session: agenda_command._AgendaSession, identity: object) -> None:
+        nonlocal refreshed_identity
+        refreshed_identity = identity
 
     monkeypatch.setattr(agenda_command, "edit_heading_subtree_in_external_editor", _fake_edit)
-    monkeypatch.setattr(agenda_command, "_save_document_changes", _capture_save)
     monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
-    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+    monkeypatch.setattr(agenda_command, "_refresh_session", _capture_refresh)
 
     assert agenda_command._handle_interactive_key(session, "ENTER") is True
     assert session.status_message == "Task updated"
-    assert saved_documents == [source_document]
+    assert refreshed_identity == heading_locator(source_node)
 
 
 def test_handle_interactive_key_dollar_archives_selected_task(
@@ -1255,7 +1318,7 @@ def test_handle_interactive_key_a_captures_and_schedules_on_timed_task_row(
     assert str(captured_node.scheduled) == expected_timestamp
     assert saved_documents == [captured_node.document]
     assert reloaded["session"] is session
-    assert reloaded["identity"] == agenda_command._heading_identity(captured_node)
+    assert reloaded["identity"] == heading_locator(captured_node)
     assert session.status_message == f"Task captured and scheduled for {expected_timestamp}"
 
 

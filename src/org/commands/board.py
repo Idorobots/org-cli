@@ -46,18 +46,18 @@ from org.commands.interactive_actions import (
 from org.commands.interactive_common import (
     INTERACTIVE_HELP_FOOTER_HINT,
     FooterPromptState,
-    HeadingIdentity,
+    HeadingLocator,
     InteractiveHelpEntry,
     advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
     build_footer_prompt_text,
-    heading_identity,
-    heading_identity_matches,
+    heading_locator,
     interactive_help_command_text,
     local_now,
     read_keypress,
     render_interactive_help_modal,
+    resolve_heading_locator,
     set_mouse_reporting,
     shift_priority,
 )
@@ -196,9 +196,6 @@ class _BoardStaticRenderInput:
     done_states: list[str]
     todo_states: list[str]
     color_enabled: bool
-
-
-_BoardHeadingIdentity = HeadingIdentity
 
 
 _BOARD_HELP_ENTRIES = [
@@ -656,16 +653,18 @@ def _ensure_selection_bounds(session: _BoardSession) -> None:
 
 def _refresh_visible_columns(
     session: _BoardSession,
-    preserve_identity: _BoardHeadingIdentity | None,
+    preserve_identity: HeadingLocator | None,
 ) -> None:
     """Refresh visible board columns and restore selected task when possible."""
     source_columns = session.all_columns or session.columns
     session.columns = _filter_columns_by_search(source_columns, session.search_text)
 
-    if preserve_identity is not None:
+    visible_nodes = [node for column in session.columns for node in column.nodes]
+    preserved_node = resolve_heading_locator(visible_nodes, preserve_identity)
+    if preserved_node is not None:
         for column_index, column in enumerate(session.columns):
             for row_index, node in enumerate(column.nodes):
-                if heading_identity_matches(node, preserve_identity):
+                if node is preserved_node:
                     session.selected_column_index = column_index
                     session.selected_row_index = row_index
                     _ensure_selection_bounds(session)
@@ -688,7 +687,7 @@ def _selected_node(session: _BoardSession) -> Heading | None:
 
 def _reload_session(
     session: _BoardSession,
-    preserve_identity: _BoardHeadingIdentity | None,
+    preserve_identity: HeadingLocator | None,
 ) -> None:
     """Reload processed nodes and rebuild board columns."""
     nodes, discovered_todo_states, discovered_done_states = load_and_process_data(session.args)
@@ -816,7 +815,7 @@ def _apply_state_move(session: _BoardSession, *, direction: int) -> None:
     )
 
     _save_document_changes(heading.document)
-    preserve_identity = heading_identity(heading)
+    preserve_identity = heading_locator(heading)
     try:
         _reload_session(session, preserve_identity)
     except typer.BadParameter as err:
@@ -848,7 +847,7 @@ def _apply_priority_shift(session: _BoardSession, *, increase: bool) -> None:
         new_priority,
     )
     _save_document_changes(heading.document)
-    preserve_identity = heading_identity(heading)
+    preserve_identity = heading_locator(heading)
     try:
         _reload_session(session, preserve_identity)
     except typer.BadParameter as err:
@@ -864,7 +863,7 @@ def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
         session.status_message = "Action available only on task panels"
         return
 
-    source_document = heading.document
+    preserve_identity = heading_locator(heading)
     session.status_message = ""
     try:
         edit_result = edit_heading_subtree_in_external_editor(heading)
@@ -876,8 +875,6 @@ def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
         session.status_message = "No changes."
         return
 
-    _save_document_changes(source_document)
-    preserve_identity = heading_identity(edit_result.heading)
     try:
         _reload_session(session, preserve_identity)
     except typer.BadParameter as err:
@@ -900,7 +897,7 @@ def _archive_selected_task(session: _BoardSession) -> None:
         session.status_message = str(err)
         return
 
-    preserve_identity = heading_identity(archive_result.heading)
+    preserve_identity = heading_locator(archive_result.heading)
     try:
         _reload_session(session, preserve_identity)
     except typer.BadParameter as err:
@@ -929,7 +926,7 @@ def _apply_capture_task(session: _BoardSession, template_name: str) -> None:
         return
 
     try:
-        _reload_session(session, heading_identity(capture_result.heading))
+        _reload_session(session, heading_locator(capture_result.heading))
     except typer.BadParameter as err:
         session.status_message = str(err)
         return
@@ -969,7 +966,7 @@ def _clear_search(session: _BoardSession) -> None:
         return
 
     selected = _selected_node(session)
-    preserve_identity = heading_identity(selected) if selected is not None else None
+    preserve_identity = heading_locator(selected) if selected is not None else None
     session.search_text = ""
     _refresh_visible_columns(session, preserve_identity)
     session.status_message = "Search cleared"
@@ -1015,7 +1012,7 @@ def _capture_board_search_prompt_state(session: _BoardSession) -> ActionResult |
 def _apply_search_text(session: _BoardSession, search_text: str) -> ActionResult:
     """Apply search text to board columns and return match status."""
     selected = _selected_node(session)
-    preserve_identity = heading_identity(selected) if selected is not None else None
+    preserve_identity = heading_locator(selected) if selected is not None else None
     session.search_text = search_text
     _refresh_visible_columns(session, preserve_identity)
     status = (

@@ -41,18 +41,18 @@ from org.commands.interactive_actions import (
 from org.commands.interactive_common import (
     INTERACTIVE_HELP_FOOTER_HINT,
     FooterPromptState,
-    HeadingIdentity,
+    HeadingLocator,
     InteractiveHelpEntry,
     advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
     build_footer_prompt_text,
-    heading_identity,
-    heading_identity_matches,
+    heading_locator,
     interactive_help_command_text,
     local_now,
     read_keypress,
     render_interactive_help_modal,
+    resolve_heading_locator,
     set_mouse_reporting,
     shift_priority,
 )
@@ -171,9 +171,6 @@ class _TasksListSessionData:
     todo_states: list[str]
     done_states: list[str]
     color_enabled: bool
-
-
-_TasksListHeadingIdentity = HeadingIdentity
 
 
 @dataclass
@@ -503,7 +500,7 @@ def _filter_nodes_by_search(nodes: list[Heading], search_text: str) -> list[Head
 
 def _refresh_visible_nodes(
     session: _TasksListSession,
-    preserve_identity: _TasksListHeadingIdentity | None,
+    preserve_identity: HeadingLocator | None,
 ) -> None:
     """Refresh visible nodes and restore selection when possible."""
     session.visible_nodes = _filter_nodes_by_search(session.all_nodes, session.search_text)
@@ -512,19 +509,18 @@ def _refresh_visible_nodes(
         session.scroll_offset = 0
         return
 
-    if preserve_identity is not None:
-        for index, node in enumerate(session.visible_nodes):
-            if heading_identity_matches(node, preserve_identity):
-                session.selected_index = index
-                _ensure_selection_bounds(session)
-                return
+    preserved_node = resolve_heading_locator(session.visible_nodes, preserve_identity)
+    if preserved_node is not None:
+        session.selected_index = session.visible_nodes.index(preserved_node)
+        _ensure_selection_bounds(session)
+        return
 
     _ensure_selection_bounds(session)
 
 
 def _reload_session_nodes(
     session: _TasksListSession,
-    preserve_identity: _TasksListHeadingIdentity | None,
+    preserve_identity: HeadingLocator | None,
 ) -> bool:
     """Reload session nodes via standard processing pipeline."""
     try:
@@ -552,7 +548,7 @@ def _persist_and_reload_selected(
     status_message: str,
 ) -> None:
     """Save selected heading document and refresh session state."""
-    preserve_identity = heading_identity(node)
+    preserve_identity = heading_locator(node)
     try:
         _save_document_changes(node.document)
     except typer.BadParameter as err:
@@ -665,7 +661,7 @@ def _edit_selected_task_in_external_editor(session: _TasksListSession) -> None:
         session.status_message = "Action available only on task rows"
         return
 
-    source_node = node
+    preserve_identity = heading_locator(node)
     session.status_message = ""
     try:
         edit_result = edit_heading_subtree_in_external_editor(node)
@@ -677,7 +673,8 @@ def _edit_selected_task_in_external_editor(session: _TasksListSession) -> None:
         session.status_message = "No changes."
         return
 
-    _persist_and_reload_selected(session, source_node, "Task updated")
+    if _reload_session_nodes(session, preserve_identity):
+        session.status_message = "Task updated"
 
 
 def _archive_selected_task(session: _TasksListSession) -> None:
@@ -694,7 +691,7 @@ def _archive_selected_task(session: _TasksListSession) -> None:
         session.status_message = str(err)
         return
 
-    preserve_identity = heading_identity(archive_result.heading)
+    preserve_identity = heading_locator(archive_result.heading)
     if _reload_session_nodes(session, preserve_identity):
         session.status_message = "Task archived"
 
@@ -719,7 +716,7 @@ def _apply_capture_task(session: _TasksListSession, template_name: str) -> None:
         return
 
     try:
-        if _reload_session_nodes(session, heading_identity(capture_result.heading)):
+        if _reload_session_nodes(session, heading_locator(capture_result.heading)):
             session.status_message = "Task captured"
     except typer.BadParameter as err:
         session.status_message = str(err)
@@ -732,7 +729,7 @@ def _clear_search(session: _TasksListSession) -> None:
         return
 
     selected = _selected_node(session)
-    preserve_identity = heading_identity(selected) if selected is not None else None
+    preserve_identity = heading_locator(selected) if selected is not None else None
     session.search_text = ""
     _refresh_visible_nodes(session, preserve_identity)
     session.status_message = "Search cleared"
@@ -891,7 +888,7 @@ def _capture_search_prompt_state(session: _TasksListSession) -> ActionResult | N
 def _apply_search_text(session: _TasksListSession, search_text: str) -> ActionResult:
     """Apply search text to visible tasks and return match status."""
     selected = _selected_node(session)
-    preserve_identity = heading_identity(selected) if selected is not None else None
+    preserve_identity = heading_locator(selected) if selected is not None else None
     session.search_text = search_text
     _refresh_visible_nodes(session, preserve_identity)
     status = "Search cleared" if not search_text else f"{len(session.visible_nodes)} matches"
