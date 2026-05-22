@@ -3,16 +3,77 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 import click
 import typer
+from rich.console import Group
+from rich.live import Live
+from rich.rule import Rule
 from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
+from org.commands.archive import archive_heading_subtree_and_save
+from org.commands.editor import edit_heading_subtree_in_external_editor
+from org.commands.interactive_action_builders import (
+    can_activate_configured_capture_templates,
+    quit_view_action,
+    status_external_action,
+    status_noninteractive_action,
+    status_view_action,
+    view_action,
+)
+from org.commands.interactive_actions import (
+    ActionResult,
+    PromptInteractiveAction,
+    PromptInteractiveActionContract,
+    SessionAction,
+    action_requires_live_pause,
+    dispatch_action_key,
+    handle_active_interactive_action_input,
+)
+from org.commands.interactive_common import (
+    INTERACTIVE_HELP_FOOTER_HINT,
+    FooterPromptState,
+    HeadingIdentity,
+    InteractiveHelpEntry,
+    advance_timestamp_by_repeater,
+    append_repeat_transition,
+    apply_help_modal_key,
+    build_footer_prompt_text,
+    heading_identity,
+    heading_identity_matches,
+    interactive_help_command_text,
+    local_now,
+    read_keypress,
+    render_interactive_help_modal,
+    set_mouse_reporting,
+    shift_priority,
+)
+from org.commands.search_common import filter_nodes_by_search
+from org.commands.tasks.capture import TasksCaptureArgs, capture_task
+from org.commands.tasks.common import (
+    PlanningTimestampField,
+    PromptActionConfig,
+    capture_template_prompt_config,
+    configured_capture_template_names,
+    planning_field_label,
+    planning_prompt_config,
+    replace_heading_tags_from_csv,
+    replace_planning_timestamp_from_raw,
+    resolve_capture_template_selection,
+    resolve_todo_state_selection,
+    save_document,
+    state_selection_prompt_config,
+    tags_prompt_config,
+    todo_states_for_heading,
+)
 from org.output_format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
@@ -38,8 +99,12 @@ from org.tui import (
 
 
 if TYPE_CHECKING:
-    from org_parser.document import Heading
+    from org_parser.document import Document, Heading
     from rich.console import Console
+
+
+logger = logging.getLogger("org")
+_HIGHLIGHT_ROW_STYLE = "on grey23"
 
 
 @dataclass
@@ -81,6 +146,7 @@ class ListArgs:
     out: str
     out_theme: str
     pandoc_args: str | None
+    noninteractive: bool = False
 
 
 @dataclass(frozen=True)
@@ -95,6 +161,80 @@ class TasksListRenderInput:
     details: bool
     line_width: int | None
     out_theme: str
+
+
+@dataclass(frozen=True)
+class _TasksListSessionData:
+    """Loaded task data shared by static and interactive renderers."""
+
+    nodes: list[Heading]
+    todo_states: list[str]
+    done_states: list[str]
+    color_enabled: bool
+
+
+_TasksListHeadingIdentity = HeadingIdentity
+
+
+@dataclass
+class _TasksListSession:
+    """Interactive tasks-list session state."""
+
+    args: ListArgs
+    all_nodes: list[Heading]
+    visible_nodes: list[Heading]
+    todo_states: list[str]
+    done_states: list[str]
+    color_enabled: bool
+    selected_index: int
+    scroll_offset: int
+    status_message: str
+    search_text: str
+    search_prompt_previous_text: str | None = None
+    show_help_modal: bool = False
+    active_interactive_action: PromptInteractiveActionContract[_TasksListSession] | None = None
+
+
+_TASKS_LIST_HELP_ENTRIES = [
+    InteractiveHelpEntry("Esc/q", "Exit the task list and return to the shell."),
+    InteractiveHelpEntry(
+        "Up/Down, n/p, Wheel",
+        "Move selection through visible tasks while keeping the selected row in view.",
+    ),
+    InteractiveHelpEntry(
+        "/",
+        "Open search prompt; filter visible tasks by heading/body/properties text.",
+    ),
+    InteractiveHelpEntry("x", "Clear the active search filter and restore full results."),
+    InteractiveHelpEntry(
+        "Enter",
+        "Open the selected task subtree in the external editor workflow.",
+    ),
+    InteractiveHelpEntry(
+        "a",
+        "Capture a new task from configured templates, then reload the list.",
+    ),
+    InteractiveHelpEntry(
+        "$",
+        "Archive the selected task subtree using standard archive rules.",
+    ),
+    InteractiveHelpEntry(
+        "t",
+        "Prompt for and apply a TODO state transition on the selected task.",
+    ),
+    InteractiveHelpEntry(
+        "S-Up/S-Down",
+        "Increase or decrease priority across A/B/C/none for the selected task.",
+    ),
+    InteractiveHelpEntry(
+        "g",
+        "Prompt for CSV tags and replace selected task tags (blank clears).",
+    ),
+    InteractiveHelpEntry(
+        "s / d / c",
+        "Prompt and set or clear scheduled, deadline, or closed timestamps.",
+    ),
+]
 
 
 class TasksListOutputFormatter(Protocol):
@@ -292,16 +432,13 @@ def _should_page_prepared_output(
     return estimated_lines > console_height
 
 
-def run_tasks_list(args: ListArgs) -> None:
-    """Run the tasks list command."""
-    color_enabled = setup_output(args)
-    console = build_console(color_enabled, args.width)
-    if args.offset < 0:
-        raise typer.BadParameter("--offset must be non-negative")
-    if args.max_results is not None and args.max_results < 0:
-        raise typer.BadParameter("--limit must be non-negative")
+def _run_tasks_list_static(
+    console: Console,
+    args: ListArgs,
+    data: _TasksListSessionData,
+) -> None:
+    """Render tasks list using non-interactive output formatters."""
     requested_limit = args.max_results
-    args.max_results = _resolve_tasks_limit(args.max_results, console.height)
 
     output_format = args.out.strip().lower()
     should_use_pager = output_format == OutputFormat.ORG and (
@@ -311,34 +448,752 @@ def run_tasks_list(args: ListArgs) -> None:
         formatter = get_tasks_list_formatter(args.out, args.pandoc_args)
     except OutputFormatError as exc:
         raise click.UsageError(str(exc)) from exc
-    with processing_status(console, color_enabled):
-        nodes, todo_states, done_states = load_and_process_data(args)
-        try:
-            prepared_output = formatter.prepare(
-                TasksListRenderInput(
-                    nodes=nodes,
-                    console=console,
-                    color_enabled=color_enabled,
-                    done_states=done_states,
-                    todo_states=todo_states,
-                    details=args.details,
-                    line_width=console.width,
-                    out_theme=args.out_theme,
-                ),
-            )
-        except OutputFormatError as exc:
-            raise click.UsageError(str(exc)) from exc
+
+    try:
+        prepared_output = formatter.prepare(
+            TasksListRenderInput(
+                nodes=data.nodes,
+                console=console,
+                color_enabled=data.color_enabled,
+                done_states=data.done_states,
+                todo_states=data.todo_states,
+                details=args.details,
+                line_width=console.width,
+                out_theme=args.out_theme,
+            ),
+        )
+    except OutputFormatError as exc:
+        raise click.UsageError(str(exc)) from exc
 
     if should_use_pager and _should_page_prepared_output(
         prepared_output,
         details=args.details,
         console_height=console.height,
     ):
-        with console.pager(styles=color_enabled):
+        with console.pager(styles=data.color_enabled):
             print_prepared_output(console, prepared_output)
         return
 
     print_prepared_output(console, prepared_output)
+
+
+def _ensure_selection_bounds(session: _TasksListSession) -> None:
+    """Clamp selected index to currently visible rows."""
+    if not session.visible_nodes:
+        session.selected_index = 0
+        session.scroll_offset = 0
+        return
+
+    session.selected_index = min(max(session.selected_index, 0), len(session.visible_nodes) - 1)
+
+
+def _selected_node(session: _TasksListSession) -> Heading | None:
+    """Return currently selected heading or None when selection is empty."""
+    if not session.visible_nodes:
+        return None
+    if session.selected_index < 0 or session.selected_index >= len(session.visible_nodes):
+        return None
+    return session.visible_nodes[session.selected_index]
+
+
+def _filter_nodes_by_search(nodes: list[Heading], search_text: str) -> list[Heading]:
+    """Filter nodes by case-insensitive substring match over one node's own text."""
+    return filter_nodes_by_search(nodes, search_text)
+
+
+def _refresh_visible_nodes(
+    session: _TasksListSession,
+    preserve_identity: _TasksListHeadingIdentity | None,
+) -> None:
+    """Refresh visible nodes and restore selection when possible."""
+    session.visible_nodes = _filter_nodes_by_search(session.all_nodes, session.search_text)
+    if not session.visible_nodes:
+        session.selected_index = 0
+        session.scroll_offset = 0
+        return
+
+    if preserve_identity is not None:
+        for index, node in enumerate(session.visible_nodes):
+            if heading_identity_matches(node, preserve_identity):
+                session.selected_index = index
+                _ensure_selection_bounds(session)
+                return
+
+    _ensure_selection_bounds(session)
+
+
+def _reload_session_nodes(
+    session: _TasksListSession,
+    preserve_identity: _TasksListHeadingIdentity | None,
+) -> bool:
+    """Reload session nodes via standard processing pipeline."""
+    try:
+        nodes, todo_states, done_states = load_and_process_data(session.args)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return False
+
+    session.all_nodes = nodes
+    session.todo_states = todo_states
+    session.done_states = done_states
+    _refresh_visible_nodes(session, preserve_identity)
+    return True
+
+
+def _save_document_changes(document: Document) -> None:
+    """Persist one mutated document to disk."""
+    logger.info("Saving tasks list edit file: %s", document.filename)
+    save_document(document)
+
+
+def _persist_and_reload_selected(
+    session: _TasksListSession,
+    node: Heading,
+    status_message: str,
+) -> None:
+    """Save selected heading document and refresh session state."""
+    preserve_identity = heading_identity(node)
+    try:
+        _save_document_changes(node.document)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    if _reload_session_nodes(session, preserve_identity):
+        session.status_message = status_message
+
+
+def _build_task_row_text(
+    node: Heading,
+    session: _TasksListSession,
+    *,
+    line_width: int,
+) -> Text:
+    """Build one interactive row using the static task line format."""
+    line = format_task_line(
+        node,
+        TaskLineConfig(
+            color_enabled=session.color_enabled,
+            done_states=session.done_states,
+            todo_states=session.todo_states,
+            line_width=line_width,
+        ),
+    )
+    if session.color_enabled:
+        return Text.from_markup(line)
+    return Text(line)
+
+
+def _sync_scroll(session: _TasksListSession, viewport_height: int) -> None:
+    """Keep selected row inside the current viewport window."""
+    max_offset = max(0, len(session.visible_nodes) - viewport_height)
+    session.scroll_offset = min(max(session.scroll_offset, 0), max_offset)
+
+    if not session.visible_nodes:
+        return
+
+    if session.selected_index < session.scroll_offset:
+        session.scroll_offset = session.selected_index
+    elif session.selected_index >= session.scroll_offset + viewport_height:
+        session.scroll_offset = session.selected_index - viewport_height + 1
+
+    session.scroll_offset = min(max(session.scroll_offset, 0), max_offset)
+
+
+def _interactive_tasks_list_renderable(console: Console, session: _TasksListSession) -> Group:
+    """Build scrollable interactive tasks list renderable."""
+    if session.show_help_modal:
+        return Group(
+            render_interactive_help_modal(
+                _TASKS_LIST_HELP_ENTRIES,
+                color_enabled=session.color_enabled,
+            ),
+        )
+
+    viewport_height = max(5, console.size.height - 3)
+    _ensure_selection_bounds(session)
+    _sync_scroll(session, viewport_height)
+
+    window = session.visible_nodes[session.scroll_offset : session.scroll_offset + viewport_height]
+    viewport_table = Table.grid(expand=True)
+    viewport_table.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
+    for index, node in enumerate(window, start=session.scroll_offset):
+        row_style = _HIGHLIGHT_ROW_STYLE if index == session.selected_index else ""
+        viewport_table.add_row(
+            _build_task_row_text(node, session, line_width=console.size.width),
+            style=row_style,
+        )
+
+    for _ in range(viewport_height - len(window)):
+        viewport_table.add_row(Text(""))
+    table = viewport_table
+
+    selected_row = session.selected_index + 1 if session.visible_nodes else 0
+    total_rows = len(session.visible_nodes)
+    search_text = session.search_text or "-"
+    row_text = f"Rows {selected_row}/{total_rows} | Search: {search_text}"
+    prompt_line = None
+    active_action = session.active_interactive_action
+    if active_action is not None:
+        prompt_line = build_footer_prompt_text(active_action.prompt_config.prompt)
+    status = session.status_message or ""
+    footer_style = "dim" if session.color_enabled else ""
+
+    footer_line = Table.grid(expand=True)
+    footer_line.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
+    footer_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
+    footer_line.add_row(
+        Text(row_text, style=footer_style, no_wrap=True, overflow="ellipsis"),
+        Text(
+            INTERACTIVE_HELP_FOOTER_HINT,
+            style=footer_style,
+            no_wrap=True,
+            overflow="ellipsis",
+        ),
+    )
+
+    status_text = Text(status, style=footer_style, no_wrap=True, overflow="ellipsis")
+    if prompt_line is None:
+        return Group(table, Rule(style=footer_style), footer_line, status_text)
+    return Group(table, Rule(style=footer_style), footer_line, prompt_line, status_text)
+
+
+def _edit_selected_task_in_external_editor(session: _TasksListSession) -> None:
+    """Edit selected task subtree in configured external editor."""
+    node = _selected_node(session)
+    if node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    source_node = node
+    session.status_message = ""
+    try:
+        edit_result = edit_heading_subtree_in_external_editor(node)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    if not edit_result.changed:
+        session.status_message = "No changes."
+        return
+
+    _persist_and_reload_selected(session, source_node, "Task updated")
+
+
+def _archive_selected_task(session: _TasksListSession) -> None:
+    """Archive selected task subtree using shared archive-location rules."""
+    node = _selected_node(session)
+    if node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    session.status_message = ""
+    try:
+        archive_result = archive_heading_subtree_and_save(node, {})
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    preserve_identity = heading_identity(archive_result.heading)
+    if _reload_session_nodes(session, preserve_identity):
+        session.status_message = "Task archived"
+
+
+def _apply_capture_task(session: _TasksListSession, template_name: str) -> None:
+    """Capture a new task and reload list session."""
+    session.status_message = ""
+    capture_args = TasksCaptureArgs(
+        template_name=template_name,
+        config=session.args.config,
+        file=None,
+        parent=None,
+        set_values=None,
+    )
+    try:
+        capture_result = capture_task(capture_args)
+    except KeyboardInterrupt:
+        session.status_message = "Capture cancelled"
+        return
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    try:
+        if _reload_session_nodes(session, heading_identity(capture_result.heading)):
+            session.status_message = "Task captured"
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+
+
+def _clear_search(session: _TasksListSession) -> None:
+    """Clear active interactive search and restore full visible list."""
+    if not session.search_text:
+        session.status_message = "Search already clear"
+        return
+
+    selected = _selected_node(session)
+    preserve_identity = heading_identity(selected) if selected is not None else None
+    session.search_text = ""
+    _refresh_visible_nodes(session, preserve_identity)
+    session.status_message = "Search cleared"
+
+
+def _apply_state_change_with_value(session: _TasksListSession, new_state: str) -> None:
+    """Apply TODO state transition on selected task."""
+    node = _selected_node(session)
+    if node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    old_state = node.todo
+    if old_state == new_state:
+        session.status_message = "State unchanged"
+        return
+
+    node.todo = new_state
+    append_repeat_transition(node, old_state, new_state, local_now())
+    if node.scheduled is not None:
+        advance_timestamp_by_repeater(node.scheduled)
+    if node.deadline is not None:
+        advance_timestamp_by_repeater(node.deadline)
+    _persist_and_reload_selected(
+        session,
+        node,
+        f"State updated: {old_state or '-'} -> {new_state}",
+    )
+
+
+def _apply_priority_shift(session: _TasksListSession, *, increase: bool) -> None:
+    """Increase or decrease priority one step for selected task."""
+    node = _selected_node(session)
+    if node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    old_priority = node.priority
+    new_priority = shift_priority(old_priority, increase=increase)
+    if old_priority == new_priority:
+        session.status_message = "Priority unchanged"
+        return
+
+    node.priority = new_priority
+    _persist_and_reload_selected(
+        session,
+        node,
+        f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}",
+    )
+
+
+def _apply_tags_edit(session: _TasksListSession, raw_tags: str) -> None:
+    """Apply tags edit using submitted footer prompt value."""
+    node = _selected_node(session)
+    if node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    try:
+        _old_tags, _new_tags, changed = replace_heading_tags_from_csv(node, raw_tags)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    if not changed:
+        session.status_message = "Tags unchanged"
+        return
+
+    _persist_and_reload_selected(session, node, "Tags updated")
+
+
+def _apply_planning_timestamp_edit(
+    session: _TasksListSession,
+    *,
+    field: PlanningTimestampField,
+    raw_timestamp: str,
+) -> None:
+    """Prompt and update one planning timestamp field on selected task."""
+    node = _selected_node(session)
+    if node is None:
+        session.status_message = "Action available only on task rows"
+        return
+
+    prompt_label = planning_field_label(field)
+    try:
+        _old_timestamp, _new_timestamp, changed = replace_planning_timestamp_from_raw(
+            node,
+            field,
+            raw_timestamp,
+        )
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    if not changed:
+        session.status_message = f"{prompt_label} unchanged"
+        return
+
+    _persist_and_reload_selected(session, node, f"{prompt_label} updated")
+
+
+def _state_choices_for_selected_node(session: _TasksListSession) -> list[str]:
+    """Return TODO-state choices for selected task."""
+    node = _selected_node(session)
+    if node is None:
+        return []
+    return todo_states_for_heading(node)
+
+
+def _can_activate_state_prompt(session: _TasksListSession) -> ActionResult | None:
+    """Validate preconditions for opening state prompt."""
+    if _selected_node(session) is None:
+        return ActionResult(success=False, status_message="Action available only on task rows")
+    if not _state_choices_for_selected_node(session):
+        return ActionResult(success=False, status_message="No TODO states defined")
+    return None
+
+
+def _submit_search_action(
+    session: _TasksListSession,
+    _target: _TasksListSession,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted interactive search value."""
+    return _apply_search_text(session, raw_value.strip())
+
+
+def _preview_search_action(
+    session: _TasksListSession,
+    _target: _TasksListSession,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Live-update search results while editing interactive search prompt."""
+    return _apply_search_text(session, raw_value.strip())
+
+
+def _cancel_search_action(
+    session: _TasksListSession,
+    _target: _TasksListSession,
+) -> ActionResult:
+    """Cancel search prompt and restore previously active search filter."""
+    previous_text = session.search_prompt_previous_text or ""
+    session.search_prompt_previous_text = None
+    _apply_search_text(session, previous_text)
+    return ActionResult(status_message="Search cancelled")
+
+
+def _capture_search_prompt_state(session: _TasksListSession) -> ActionResult | None:
+    """Capture current search filter before activating search prompt."""
+    session.search_prompt_previous_text = session.search_text
+    return None
+
+
+def _apply_search_text(session: _TasksListSession, search_text: str) -> ActionResult:
+    """Apply search text to visible tasks and return match status."""
+    selected = _selected_node(session)
+    preserve_identity = heading_identity(selected) if selected is not None else None
+    session.search_text = search_text
+    _refresh_visible_nodes(session, preserve_identity)
+    status = "Search cleared" if not search_text else f"{len(session.visible_nodes)} matches"
+    return ActionResult(status_message=status)
+
+
+def _submit_state_action(
+    session: _TasksListSession,
+    _node: Heading,
+    raw_value: str,
+    options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted TODO-state selection."""
+    active = session.active_interactive_action
+    if active is None:
+        return ActionResult(success=False)
+
+    value = raw_value.strip()
+    states = options or []
+    selected_state = resolve_todo_state_selection(value, states)
+    if selected_state is None and not value:
+        return ActionResult(status_message=active.prompt_config.cancel_status)
+    if selected_state is None:
+        return ActionResult(
+            success=False,
+            status_message=active.prompt_config.invalid_status,
+            keep_prompt_open=True,
+        )
+
+    _apply_state_change_with_value(session, selected_state)
+    return ActionResult(status_message=session.status_message)
+
+
+def _submit_capture_action(
+    session: _TasksListSession,
+    _target: _TasksListSession,
+    raw_value: str,
+    options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted capture template selection from active prompt."""
+    active = session.active_interactive_action
+    if active is None:
+        return ActionResult(success=False)
+
+    value = raw_value.strip()
+    template_name = resolve_capture_template_selection(value, options or [])
+    if template_name is None and not value:
+        return ActionResult(status_message=active.prompt_config.cancel_status)
+    if template_name is None:
+        return ActionResult(
+            success=False,
+            status_message=active.prompt_config.invalid_status,
+            keep_prompt_open=True,
+        )
+
+    _apply_capture_task(session, template_name)
+    return ActionResult(status_message=session.status_message)
+
+
+def _submit_tags_action(
+    session: _TasksListSession,
+    _node: Heading,
+    raw_value: str,
+    _options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted tag-edit value."""
+    _apply_tags_edit(session, raw_value)
+    return ActionResult(status_message=session.status_message)
+
+
+def _submit_planning_action(
+    session: _TasksListSession,
+    _node: Heading,
+    raw_value: str,
+    options: list[str] | None,
+) -> ActionResult:
+    """Apply submitted planning timestamp edit value."""
+    field = cast("PlanningTimestampField", (options or ["scheduled"])[0])
+    _apply_planning_timestamp_edit(session, field=field, raw_timestamp=raw_value)
+    return ActionResult(status_message=session.status_message)
+
+
+def _move_selection(session: _TasksListSession, step: int) -> None:
+    """Move selection forward/backward with wraparound."""
+    if not session.visible_nodes:
+        return
+    session.selected_index = (session.selected_index + step) % len(session.visible_nodes)
+
+
+def _tasks_list_actions(session: _TasksListSession) -> dict[str, SessionAction[_TasksListSession]]:
+    """Build interactive/noninteractive/view actions for tasks list session."""
+    return {
+        "q": quit_view_action(),
+        "ESC": quit_view_action(),
+        "n": view_action(lambda _session: _move_selection(session, 1)),
+        "DOWN": view_action(lambda _session: _move_selection(session, 1)),
+        "WHEEL-DOWN": view_action(lambda _session: _move_selection(session, 1)),
+        "p": view_action(lambda _session: _move_selection(session, -1)),
+        "UP": view_action(lambda _session: _move_selection(session, -1)),
+        "WHEEL-UP": view_action(lambda _session: _move_selection(session, -1)),
+        "ENTER": status_external_action(_edit_selected_task_in_external_editor),
+        "a": PromptInteractiveAction(
+            prompt_config=capture_template_prompt_config(),
+            apply_with_input=_submit_capture_action,
+            resolve_target=lambda current: current,
+            options_factory=lambda _session: configured_capture_template_names(),
+            can_activate=can_activate_configured_capture_templates,
+            requires_live_pause=True,
+        ),
+        "$": status_noninteractive_action(_archive_selected_task),
+        "/": PromptInteractiveAction(
+            prompt_config=PromptActionConfig(
+                prompt=FooterPromptState(label="Search text (blank clears)"),
+                cancel_status="Search cancelled",
+                invalid_status="Invalid search input",
+            ),
+            apply_with_input=_submit_search_action,
+            preview_with_input=_preview_search_action,
+            cancel_with_target=_cancel_search_action,
+            resolve_target=lambda current: current,
+            can_activate=_capture_search_prompt_state,
+        ),
+        "x": status_view_action(_clear_search),
+        "t": PromptInteractiveAction(
+            prompt_config=state_selection_prompt_config(
+                _state_choices_for_selected_node(session),
+            ),
+            apply_with_input=_submit_state_action,
+            resolve_target=_selected_node,
+            options_factory=_state_choices_for_selected_node,
+            can_activate=_can_activate_state_prompt,
+        ),
+        "S-UP": status_noninteractive_action(
+            lambda _session: _apply_priority_shift(session, increase=True),
+        ),
+        "S-DOWN": status_noninteractive_action(
+            lambda _session: _apply_priority_shift(session, increase=False),
+        ),
+        "g": PromptInteractiveAction(
+            prompt_config=tags_prompt_config(),
+            apply_with_input=_submit_tags_action,
+            resolve_target=_selected_node,
+        ),
+        "s": PromptInteractiveAction(
+            prompt_config=planning_prompt_config("scheduled"),
+            apply_with_input=_submit_planning_action,
+            resolve_target=_selected_node,
+            options_factory=lambda _session: ["scheduled"],
+        ),
+        "d": PromptInteractiveAction(
+            prompt_config=planning_prompt_config("deadline"),
+            apply_with_input=_submit_planning_action,
+            resolve_target=_selected_node,
+            options_factory=lambda _session: ["deadline"],
+        ),
+        "c": PromptInteractiveAction(
+            prompt_config=planning_prompt_config("closed"),
+            apply_with_input=_submit_planning_action,
+            resolve_target=_selected_node,
+            options_factory=lambda _session: ["closed"],
+        ),
+    }
+
+
+def _handle_interactive_key(session: _TasksListSession, key: str) -> bool:
+    """Handle one interactive keypress and return whether to continue."""
+    consumed, next_help_modal = apply_help_modal_key(
+        key,
+        show_help_modal=session.show_help_modal,
+    )
+    session.show_help_modal = next_help_modal
+    if consumed:
+        return True
+
+    result = dispatch_action_key(key, session, _tasks_list_actions(session))
+    if result.handled:
+        return result.continue_loop
+
+    if key:
+        session.status_message = f"Unsupported key: {key}"
+    return True
+
+
+def _create_tasks_list_session(args: ListArgs, data: _TasksListSessionData) -> _TasksListSession:
+    """Create interactive tasks list session state."""
+    session = _TasksListSession(
+        args=args,
+        all_nodes=list(data.nodes),
+        visible_nodes=list(data.nodes),
+        todo_states=list(data.todo_states),
+        done_states=list(data.done_states),
+        color_enabled=data.color_enabled,
+        selected_index=0,
+        scroll_offset=0,
+        status_message="",
+        search_text="",
+        show_help_modal=False,
+        active_interactive_action=None,
+    )
+    _ensure_selection_bounds(session)
+    return session
+
+
+def _run_tasks_list_interactive(
+    console: Console,
+    args: ListArgs,
+    data: _TasksListSessionData,
+) -> None:
+    """Run interactive tasks-list UI session."""
+    if not data.nodes:
+        console.print("No results", markup=False)
+        return
+
+    session = _create_tasks_list_session(args, data)
+    set_mouse_reporting(True)
+    try:
+        with Live(
+            _interactive_tasks_list_renderable(console, session),
+            console=console,
+            screen=True,
+            refresh_per_second=12,
+            auto_refresh=False,
+        ) as live:
+            while True:
+                if _handle_active_prompt_input(session, live):
+                    continue
+
+                key = read_keypress(timeout_seconds=0.2)
+                if not key:
+                    live.update(_interactive_tasks_list_renderable(console, session), refresh=True)
+                    continue
+
+                actions = _tasks_list_actions(session)
+                if action_requires_live_pause(key, actions):
+                    live.stop()
+                    should_continue = _handle_interactive_key(session, key)
+                    live.start()
+                else:
+                    should_continue = _handle_interactive_key(session, key)
+
+                if not should_continue:
+                    break
+                live.update(_interactive_tasks_list_renderable(console, session), refresh=True)
+    finally:
+        set_mouse_reporting(False)
+
+
+def _handle_active_prompt_input(session: _TasksListSession, live: Live) -> bool:
+    """Handle one prompt event and return whether input was consumed."""
+    if session.show_help_modal:
+        return False
+    return handle_active_interactive_action_input(
+        session,
+        pause_live=live.stop,
+        refresh=lambda: live.update(
+            _interactive_tasks_list_renderable(live.console, session),
+            refresh=True,
+        ),
+        resume_live=live.start,
+    )
+
+
+def _is_cli_option_present(argv: list[str], option: str) -> bool:
+    """Return True when a long option token is present in argv."""
+    return any(token == option or token.startswith(f"{option}=") for token in argv)
+
+
+def _is_interactive_tty() -> bool:
+    """Return whether both stdin and stdout are attached to a TTY."""
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _effective_noninteractive_mode(args: ListArgs) -> bool:
+    """Resolve whether tasks list should run in non-interactive mode."""
+    out_is_org = args.out.strip().lower() == OutputFormat.ORG
+    return args.noninteractive or args.details or not out_is_org or not _is_interactive_tty()
+
+
+def run_tasks_list(args: ListArgs) -> None:
+    """Run the tasks list command."""
+    color_enabled = setup_output(args)
+    console = build_console(color_enabled, args.width)
+    if args.offset < 0:
+        raise typer.BadParameter("--offset must be non-negative")
+    if args.max_results is not None and args.max_results < 0:
+        raise typer.BadParameter("--limit must be non-negative")
+    args.max_results = _resolve_tasks_limit(args.max_results, console.height)
+
+    with processing_status(console, color_enabled):
+        nodes, todo_states, done_states = load_and_process_data(args)
+    session_data = _TasksListSessionData(
+        nodes=nodes,
+        todo_states=todo_states,
+        done_states=done_states,
+        color_enabled=color_enabled,
+    )
+
+    if not _effective_noninteractive_mode(args):
+        _run_tasks_list_interactive(console, args, session_data)
+        return
+
+    _run_tasks_list_static(console, args, session_data)
 
 
 def register(app: typer.Typer) -> None:
@@ -347,6 +1202,10 @@ def register(app: typer.Typer) -> None:
     @app.command(
         "list",
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+        help=interactive_help_command_text(
+            "List tasks matching filters.",
+            _TASKS_LIST_HELP_ENTRIES,
+        ),
     )
     def tasks_list(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
@@ -355,7 +1214,7 @@ def register(app: typer.Typer) -> None:
             help="Org-mode archive files or directories to analyze",
         ),
         config: str = typer.Option(
-            ".org-cli.json",
+            ".org-cli.yaml",
             "--config",
             metavar="FILE",
             help="Config file name to load from current directory",
@@ -586,6 +1445,11 @@ def register(app: typer.Typer) -> None:
             pandoc_args=pandoc_args,
         )
         config_module.apply_config_defaults(args)
+        details_switch_present = _is_cli_option_present(sys.argv[1:], "--details")
+        out_switch_present = _is_cli_option_present(sys.argv[1:], "--out")
+        args.noninteractive = (
+            details_switch_present or out_switch_present or not _is_interactive_tty()
+        )
         config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks list")
         config_module.log_command_arguments(args, "tasks list")
         run_tasks_list(args)

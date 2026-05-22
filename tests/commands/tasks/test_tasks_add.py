@@ -21,7 +21,7 @@ def make_add_args(files: list[str], **overrides: object) -> tasks_add.AddArgs:
     """Build AddArgs with defaults and overrides."""
     args = tasks_add.AddArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         level=None,
         todo="TODO",
         priority=None,
@@ -231,11 +231,11 @@ def test_run_tasks_add_applies_edits_to_stdin_task_source(
     assert "Updated body" in source.read_text(encoding="utf-8")
 
 
-def test_run_tasks_add_stdin_uses_same_parent_level_validation_as_level(
+def test_run_tasks_add_stdin_parent_attach_relies_on_parser_normalization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Create should enforce parent-level constraints for stdin-provided heading levels."""
+    """Create should rely on parser attach normalization for stdin-provided headings."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Parent\n", encoding="utf-8")
     args = make_add_args(
@@ -249,8 +249,11 @@ def test_run_tasks_add_stdin_uses_same_parent_level_validation_as_level(
 
     monkeypatch.setattr("sys.stdin", io.StringIO("* TODO Child\n"))
 
-    with pytest.raises(typer.BadParameter, match="--level must be greater than parent level"):
-        tasks_add.run_tasks_add(args)
+    tasks_add.run_tasks_add(args)
+
+    root = org_parser.loads(source.read_text(encoding="utf-8"))
+    child = next(node for node in root if node.title_text.strip() == "Child")
+    assert child.level == 2
 
 
 def test_run_tasks_add_errors_when_stdin_task_source_is_empty(

@@ -20,7 +20,7 @@ def make_update_args(files: list[str], **overrides: object) -> tasks_update.Upda
     """Build UpdateArgs with defaults and overrides."""
     args = tasks_update.UpdateArgs(
         files=files,
-        config=".org-cli.json",
+        config=".org-cli.yaml",
         query_title=None,
         query_id="task-1",
         query=None,

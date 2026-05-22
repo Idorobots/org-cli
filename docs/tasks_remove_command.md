@@ -10,7 +10,7 @@ poetry run org tasks remove [OPTIONS] [FILE ...]
 
 ## Command-specific switches
 
-- `--config FILE` - Config file name to load from current directory (default: `.org-cli.json`).
+- `--config FILE` - Config file name to load from current directory (default: `.org-cli.yaml`).
 - `--query-title TEXT` - Heading title text of the task to remove.
 - `--query-id TEXT` - ID of the task to remove.
 - `--query QUERY` - Generic query-language predicate used to select one task.
