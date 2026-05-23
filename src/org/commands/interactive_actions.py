@@ -205,9 +205,9 @@ def handle_active_interactive_action_input[SessionT: ActionHostSession](
     refresh: Callable[[], None],
     pause_live: Callable[[], None] | None = None,
     resume_live: Callable[[], None] | None = None,
-    timeout_seconds: float = 0.2,
+    timeout_seconds: float | None = None,
 ) -> bool:
-    """Handle one input event for the active interactive prompt action."""
+    """Handle one input event while the caller manages interactive input mode."""
     action = session.active_interactive_action
     if action is None:
         return False

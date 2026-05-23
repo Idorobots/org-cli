@@ -43,6 +43,7 @@ from org.commands.interactive_common import (
     FooterPromptState,
     HeadingLocator,
     InteractiveHelpEntry,
+    InteractiveInputController,
     advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
@@ -53,7 +54,6 @@ from org.commands.interactive_common import (
     read_keypress,
     render_interactive_help_modal,
     resolve_heading_locator,
-    set_mouse_reporting,
     shift_priority,
 )
 from org.commands.search_common import filter_nodes_by_search
@@ -1103,51 +1103,51 @@ def _run_tasks_list_interactive(
         return
 
     session = _create_tasks_list_session(args, data)
-    set_mouse_reporting(True)
-    try:
-        with Live(
+    with (
+        Live(
             _interactive_tasks_list_renderable(console, session),
             console=console,
             screen=True,
-            refresh_per_second=12,
             auto_refresh=False,
-        ) as live:
-            while True:
-                if _handle_active_prompt_input(session, live):
-                    continue
+        ) as live,
+        InteractiveInputController() as input_controller,
+    ):
+        while True:
+            if _handle_active_prompt_input(session, live, input_controller):
+                continue
 
-                key = read_keypress(timeout_seconds=0.2)
-                if not key:
-                    live.update(_interactive_tasks_list_renderable(console, session), refresh=True)
-                    continue
+            key = read_keypress()
 
-                actions = _tasks_list_actions(session)
-                if action_requires_live_pause(key, actions):
-                    live.stop()
-                    should_continue = _handle_interactive_key(session, key)
-                    live.start()
-                else:
-                    should_continue = _handle_interactive_key(session, key)
+            actions = _tasks_list_actions(session)
+            if action_requires_live_pause(key, actions):
+                input_controller.suspend_live(live)
+                should_continue = _handle_interactive_key(session, key)
+                input_controller.resume_live(live)
+            else:
+                should_continue = _handle_interactive_key(session, key)
 
-                if not should_continue:
-                    break
-                live.update(_interactive_tasks_list_renderable(console, session), refresh=True)
-    finally:
-        set_mouse_reporting(False)
+            if not should_continue:
+                break
+            live.update(_interactive_tasks_list_renderable(console, session), refresh=True)
 
 
-def _handle_active_prompt_input(session: _TasksListSession, live: Live) -> bool:
+def _handle_active_prompt_input(
+    session: _TasksListSession,
+    live: Live,
+    input_controller: InteractiveInputController,
+) -> bool:
     """Handle one prompt event and return whether input was consumed."""
     if session.show_help_modal:
         return False
     return handle_active_interactive_action_input(
         session,
-        pause_live=live.stop,
+        pause_live=lambda: input_controller.suspend_live(live),
         refresh=lambda: live.update(
             _interactive_tasks_list_renderable(live.console, session),
             refresh=True,
         ),
-        resume_live=live.start,
+        resume_live=lambda: input_controller.resume_live(live),
+        timeout_seconds=None,
     )
 
 

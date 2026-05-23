@@ -7,7 +7,7 @@ import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from io import StringIO
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 import typer
@@ -1034,10 +1034,23 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
             assert refresh is True
             events.append("update")
 
-    consumed = board_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+    class _InputControllerStub:
+        def suspend_live(self, live: Live) -> None:
+            events.append("input-stop")
+            live.stop()
+
+        def resume_live(self, live: Live) -> None:
+            live.start()
+            events.append("input-start")
+
+    consumed = board_command._handle_active_prompt_input(
+        session,
+        cast("Live", _LiveStub()),
+        cast("Any", _InputControllerStub()),
+    )
 
     assert consumed is True
-    assert events == ["stop", "start", "update"]
+    assert events == ["input-stop", "stop", "start", "input-start", "update"]
 
 
 def test_search_prompt_live_updates_and_escape_reverts_search(
@@ -1082,12 +1095,25 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
             assert refresh is True
             events.append("update")
 
+    class _InputControllerStub:
+        def suspend_live(self, live: Live) -> None:
+            events.append("input-stop")
+            live.stop()
+
+        def resume_live(self, live: Live) -> None:
+            live.start()
+            events.append("input-start")
+
     monkeypatch.setattr(
         interactive_actions,
         "read_input_event_with_timeout",
         lambda _timeout, **_kwargs: ("TEXT", "b"),
     )
-    consumed = board_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+    consumed = board_command._handle_active_prompt_input(
+        session,
+        cast("Live", _LiveStub()),
+        cast("Any", _InputControllerStub()),
+    )
 
     assert consumed is True
     assert _visible_board_titles_by_column(session) == {
@@ -1103,7 +1129,11 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
         "read_input_event_with_timeout",
         lambda _timeout, **_kwargs: ("ESC", ""),
     )
-    consumed = board_command._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+    consumed = board_command._handle_active_prompt_input(
+        session,
+        cast("Live", _LiveStub()),
+        cast("Any", _InputControllerStub()),
+    )
 
     assert consumed is True
     assert _visible_board_titles_by_column(session) == {

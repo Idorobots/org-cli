@@ -44,6 +44,7 @@ from org.commands.interactive_common import (
     FooterPromptState,
     HeadingLocator,
     InteractiveHelpEntry,
+    InteractiveInputController,
     advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
@@ -54,7 +55,6 @@ from org.commands.interactive_common import (
     read_keypress,
     render_interactive_help_modal,
     resolve_heading_locator,
-    set_mouse_reporting,
     set_timestamp_fields,
     shift_datetimes_by_unit,
 )
@@ -96,6 +96,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("org")
 _HIGHLIGHT_ROW_STYLE = "on grey23"
+_INTERACTIVE_INPUT_TIMEOUT_SECONDS = 1.0
 
 
 @dataclass
@@ -1011,18 +1012,19 @@ def _selected_task_row(session: _AgendaSession) -> _AgendaRow | None:
     return row
 
 
-def _refresh_session_if_minute_changed(session: _AgendaSession) -> None:
+def _refresh_session_if_minute_changed(session: _AgendaSession) -> bool:
     """Refresh agenda rows when local wall-clock minute changes."""
     current_now = local_now().replace(second=0, microsecond=0)
     session_now = session.now.replace(second=0, microsecond=0)
     if current_now == session_now:
-        return
+        return False
 
     preserve_identity: HeadingLocator | None = None
     selected_row = _selected_task_row(session)
     if selected_row is not None and selected_row.node is not None:
         preserve_identity = heading_locator(selected_row.node)
     _refresh_session(session, preserve_identity)
+    return True
 
 
 def _paths_refer_to_same_file(source_path: str, destination_path: str) -> bool:
@@ -2215,49 +2217,58 @@ def _handle_interactive_key(session: _AgendaSession, key: str) -> bool:
 
 def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
     """Run interactive agenda event loop."""
-    set_mouse_reporting(True)
-    try:
-        with Live(
+    with (
+        Live(
             _interactive_agenda_renderable(console, session),
             console=console,
             screen=True,
-            refresh_per_second=12,
             auto_refresh=False,
-        ) as live:
-            while True:
-                if _handle_active_prompt_input(session, live):
-                    continue
+        ) as live,
+        InteractiveInputController() as input_controller,
+    ):
+        while True:
+            if _handle_active_prompt_input(session, live, input_controller):
+                continue
 
-                key = read_keypress(timeout_seconds=0.2)
-                if not key:
-                    live.update(_interactive_agenda_renderable(console, session), refresh=True)
-                    continue
-                actions = _agenda_actions(session)
-                if action_requires_live_pause(key, actions):
-                    live.stop()
-                    should_continue = _handle_interactive_key(session, key)
-                    live.start()
-                else:
-                    should_continue = _handle_interactive_key(session, key)
-                if not should_continue:
-                    break
-                live.update(_interactive_agenda_renderable(console, session), refresh=True)
-    finally:
-        set_mouse_reporting(False)
+            key = read_keypress(
+                timeout_seconds=_INTERACTIVE_INPUT_TIMEOUT_SECONDS,
+            )
+            if not key:
+                if _refresh_session_if_minute_changed(session):
+                    live.update(
+                        _interactive_agenda_renderable(console, session),
+                        refresh=True,
+                    )
+                continue
+            actions = _agenda_actions(session)
+            if action_requires_live_pause(key, actions):
+                input_controller.suspend_live(live)
+                should_continue = _handle_interactive_key(session, key)
+                input_controller.resume_live(live)
+            else:
+                should_continue = _handle_interactive_key(session, key)
+            if not should_continue:
+                break
+            live.update(_interactive_agenda_renderable(console, session), refresh=True)
 
 
-def _handle_active_prompt_input(session: _AgendaSession, live: Live) -> bool:
+def _handle_active_prompt_input(
+    session: _AgendaSession,
+    live: Live,
+    input_controller: InteractiveInputController,
+) -> bool:
     """Handle one agenda prompt event and return whether consumed."""
     if session.show_help_modal:
         return False
     return handle_active_interactive_action_input(
         session,
-        pause_live=live.stop,
+        pause_live=lambda: input_controller.suspend_live(live),
         refresh=lambda: live.update(
             _interactive_agenda_renderable(live.console, session),
             refresh=True,
         ),
-        resume_live=live.start,
+        resume_live=lambda: input_controller.resume_live(live),
+        timeout_seconds=_INTERACTIVE_INPUT_TIMEOUT_SECONDS,
     )
 
 

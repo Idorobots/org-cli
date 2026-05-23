@@ -8,9 +8,10 @@ import select
 import sys
 import termios
 import tty
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 
 from org_parser.element import Repeat
 from org_parser.time import Timestamp
@@ -25,9 +26,10 @@ from org.output_format import DEFAULT_OUTPUT_THEME
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterator, Mapping
 
     from org_parser.document import Heading
+    from rich.live import Live
 
 
 class _KeyHandler(Protocol):
@@ -92,6 +94,74 @@ class FooterPromptState:
     value: str = ""
     cursor_position: int = 0
     error_message: str = ""
+
+
+@dataclass
+class InteractiveInputController:
+    """Manage one interactive terminal session for fullscreen TUIs."""
+
+    _active: bool = False
+    _fd: int | None = None
+    _previous_mode: list[object] | None = None
+
+    def __enter__(self) -> Self:
+        """Enable mouse reporting and cbreak input mode."""
+        _set_mouse_reporting(True)
+        self.start()
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        """Restore terminal input mode and disable mouse reporting."""
+        self.stop()
+        _set_mouse_reporting(False)
+
+    def start(self) -> None:
+        """Enable cbreak input mode when inactive."""
+        if self._active:
+            return
+
+        fd = sys.stdin.fileno()
+        self._fd = fd
+        self._previous_mode = cast("list[object]", termios.tcgetattr(fd))
+        tty.setcbreak(fd)
+        self._active = True
+
+    def stop(self) -> None:
+        """Restore the previous terminal input mode when active."""
+        if not self._active or self._fd is None or self._previous_mode is None:
+            return
+
+        termios.tcsetattr(self._fd, termios.TCSADRAIN, cast("Any", self._previous_mode))
+        self._fd = None
+        self._previous_mode = None
+        self._active = False
+
+    def suspend_live(self, live: Live) -> None:
+        """Suspend interactive input and mouse support before leaving live mode."""
+        self.stop()
+        _set_mouse_reporting(False)
+        live.stop()
+
+    def resume_live(self, live: Live) -> None:
+        """Resume live mode, mouse reporting, and interactive input."""
+        live.start()
+        _set_mouse_reporting(True)
+        self.start()
+
+
+@contextmanager
+def terminal_input_mode(*, use_raw: bool) -> Iterator[None]:
+    """Temporarily switch stdin into raw or cbreak mode."""
+    fd = sys.stdin.fileno()
+    previous_mode = termios.tcgetattr(fd)
+    try:
+        if use_raw:
+            tty.setraw(fd)
+        else:
+            tty.setcbreak(fd)
+        yield
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, previous_mode)
 
 
 def render_interactive_help_panel_text(entries: list[InteractiveHelpEntry]) -> str:
@@ -623,7 +693,7 @@ def read_input_event(
     return ("TEXT", text)
 
 
-def set_mouse_reporting(enabled: bool) -> None:
+def _set_mouse_reporting(enabled: bool) -> None:
     """Enable or disable terminal mouse reporting."""
     if not sys.stdout.isatty():
         return
@@ -649,48 +719,65 @@ def set_bracketed_paste(enabled: bool) -> None:
         return
 
 
-def read_keypress(timeout_seconds: float | None = None) -> str:
-    """Read one keypress and normalize to a command token."""
+def read_keypress_with_temporary_raw_mode(timeout_seconds: float | None = None) -> str:
+    """Read one keypress while temporarily switching stdin into raw mode."""
+    with terminal_input_mode(use_raw=True):
+        return _read_keypress_in_active_terminal_mode(timeout_seconds)
+
+
+def _read_keypress_in_active_terminal_mode(timeout_seconds: float | None = None) -> str:
+    """Read one keypress while stdin is already in non-canonical mode."""
     fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        if timeout_seconds is not None:
-            ready, _, _ = select.select([fd], [], [], timeout_seconds)
-            if not ready:
-                return ""
-        first = os.read(fd, 1)
-        if first == b"\x03":
-            return "q"
-        if first in {b"\r", b"\n"}:
-            return "ENTER"
-        if first == b"\x1b":
-            return decode_escape_sequence(read_escape_sequence(fd))
-        try:
-            return first.decode("utf-8").lower()
-        except UnicodeDecodeError:
+    if timeout_seconds is not None:
+        ready, _, _ = select.select([fd], [], [], timeout_seconds)
+        if not ready:
             return ""
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    first = os.read(fd, 1)
+    if first == b"\x03":
+        return "q"
+    if first in {b"\r", b"\n"}:
+        return "ENTER"
+    if first == b"\x1b":
+        return decode_escape_sequence(read_escape_sequence(fd))
+    try:
+        return first.decode("utf-8").lower()
+    except UnicodeDecodeError:
+        return ""
 
 
-def read_input_event_with_timeout(
-    timeout_seconds: float,
+def read_keypress(timeout_seconds: float | None = None) -> str:
+    """Read one keypress while the caller manages terminal mode."""
+    return _read_keypress_in_active_terminal_mode(timeout_seconds)
+
+
+def read_input_event_with_temporary_cbreak_mode(
+    timeout_seconds: float | None,
     *,
     token_map: dict[str, str] | None = None,
     ctrl_p_as_paste: bool = False,
 ) -> tuple[str, str] | None:
-    """Read one input event with timeout, returning None when idle."""
+    """Read one input event while temporarily switching stdin into cbreak mode."""
+    with terminal_input_mode(use_raw=False):
+        return read_input_event_with_timeout(
+            timeout_seconds,
+            token_map=token_map,
+            ctrl_p_as_paste=ctrl_p_as_paste,
+        )
+
+
+def read_input_event_with_timeout(
+    timeout_seconds: float | None,
+    *,
+    token_map: dict[str, str] | None = None,
+    ctrl_p_as_paste: bool = False,
+) -> tuple[str, str] | None:
+    """Read one input event while the caller manages terminal mode."""
     fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setcbreak(fd)
+    if timeout_seconds is not None:
         ready, _, _ = select.select([fd], [], [], timeout_seconds)
         if not ready:
             return None
-        return read_input_event(fd, token_map=token_map, ctrl_p_as_paste=ctrl_p_as_paste)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    return read_input_event(fd, token_map=token_map, ctrl_p_as_paste=ctrl_p_as_paste)
 
 
 def apply_footer_prompt_input_event(
