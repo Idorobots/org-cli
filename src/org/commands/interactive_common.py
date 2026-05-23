@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 from org_parser.element import Repeat
 from org_parser.time import Timestamp
 from rich.console import Console, Group, RenderableType
+from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -25,10 +26,9 @@ from org.output_format import DEFAULT_OUTPUT_THEME
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from org_parser.document import Heading
-    from rich.live import Live
 
 
 class _KeyHandler(Protocol):
@@ -93,6 +93,48 @@ class FooterPromptState:
     value: str = ""
     cursor_position: int = 0
     error_message: str = ""
+
+
+@dataclass(frozen=True)
+class KeypressEvent:
+    """One decoded keypress or control token."""
+
+    key: str
+
+
+@dataclass(frozen=True)
+class InputEvent:
+    """One pasted text input event."""
+
+    key: str
+
+
+@dataclass(frozen=True)
+class TimeoutEvent:
+    """One idle timeout event emitted by the interactive loop."""
+
+
+type InteractiveEvent = KeypressEvent | InputEvent | TimeoutEvent
+
+
+@dataclass
+class InteractivePromptState:
+    """Command-owned footer prompt state and callbacks."""
+
+    prompt: FooterPromptState
+    cancel_status: str
+    invalid_status: str
+    submit_callback: Callable[[], bool]
+    preview: Callable[[], None] | None = None
+    cancel: Callable[[], None] | None = None
+
+
+@dataclass(frozen=True)
+class PromptEventResult:
+    """Result of applying one interactive event to prompt state."""
+
+    submitted: bool = False
+    changed: bool = False
 
 
 @dataclass
@@ -650,6 +692,49 @@ def _read_escape_input_event(
     return (event_map.get(escape_token, "IGNORE"), "")
 
 
+def _read_escape_event(fd: int) -> InteractiveEvent:
+    """Read one escape-sequence interactive event."""
+    escape_sequence = read_escape_sequence(fd)
+    if escape_sequence.startswith(BRACKETED_PASTE_START):
+        bracketed_payload = read_bracketed_paste_payload(fd, escape_sequence)
+        pasted_text = extract_bracketed_paste_text(bracketed_payload)
+        return InputEvent("" if pasted_text is None else pasted_text)
+
+    if escape_sequence == b"\x1b[3~":
+        return KeypressEvent("DELETE")
+
+    return KeypressEvent(decode_escape_sequence(escape_sequence))
+
+
+def _read_interactive_event_from_first_byte(fd: int, first: bytes) -> InteractiveEvent:
+    """Decode one shared interactive event from an already-read first byte."""
+    if first in {b"\r", b"\n"}:
+        return KeypressEvent("ENTER")
+    if first in {b"\x7f", b"\x08"}:
+        return KeypressEvent("BACKSPACE")
+    if first == b"\x10":
+        return InputEvent(_decode_bytes_payload(read_available_bytes(fd)))
+    if first == b"\x1b":
+        return _read_escape_event(fd)
+
+    text = read_utf8_input_text(fd, first)
+    if text is None:
+        return KeypressEvent("IGNORE")
+    return KeypressEvent(text)
+
+
+def read_interactive_event(timeout_seconds: float | None = None) -> InteractiveEvent:
+    """Read one shared interactive event for fullscreen command loops."""
+    fd = sys.stdin.fileno()
+    if timeout_seconds is not None:
+        ready, _, _ = select.select([fd], [], [], timeout_seconds)
+        if not ready:
+            return TimeoutEvent()
+
+    first = os.read(fd, 1)
+    return _read_interactive_event_from_first_byte(fd, first)
+
+
 def _read_input_event_from_first_byte(
     fd: int,
     first: bytes,
@@ -739,6 +824,84 @@ def read_keypress(timeout_seconds: float | None = None) -> str:
         return first.decode("utf-8").lower()
     except UnicodeDecodeError:
         return ""
+
+
+def apply_prompt_event(prompt: FooterPromptState, event: InteractiveEvent) -> PromptEventResult:
+    """Apply one interactive event to prompt state."""
+    result = PromptEventResult()
+    if isinstance(event, TimeoutEvent):
+        return result
+
+    if isinstance(event, InputEvent):
+        prompt.value = (
+            f"{prompt.value[: prompt.cursor_position]}"
+            f"{event.key}"
+            f"{prompt.value[prompt.cursor_position :]}"
+        )
+        prompt.cursor_position += len(event.key)
+        return PromptEventResult(changed=bool(event.key))
+
+    if event.key == "ENTER":
+        result = PromptEventResult(submitted=True)
+    elif event.key in {"LEFT", "RIGHT", "HOME", "END"}:
+        cursor_targets = {
+            "LEFT": max(0, prompt.cursor_position - 1),
+            "RIGHT": min(len(prompt.value), prompt.cursor_position + 1),
+            "HOME": 0,
+            "END": len(prompt.value),
+        }
+        prompt.cursor_position = cursor_targets[event.key]
+    elif event.key == "BACKSPACE" and prompt.cursor_position > 0:
+        prompt.value = (
+            f"{prompt.value[: prompt.cursor_position - 1]}{prompt.value[prompt.cursor_position :]}"
+        )
+        prompt.cursor_position -= 1
+        result = PromptEventResult(changed=True)
+    elif event.key == "DELETE" and prompt.cursor_position < len(prompt.value):
+        prompt.value = (
+            f"{prompt.value[: prompt.cursor_position]}{prompt.value[prompt.cursor_position + 1 :]}"
+        )
+        result = PromptEventResult(changed=True)
+    elif len(event.key) == 1 and ord(event.key) >= 32:
+        prompt.value = (
+            f"{prompt.value[: prompt.cursor_position]}"
+            f"{event.key}"
+            f"{prompt.value[prompt.cursor_position :]}"
+        )
+        prompt.cursor_position += len(event.key)
+        result = PromptEventResult(changed=True)
+
+    return result
+
+
+def interactive_loop(
+    *,
+    render: Callable[[], RenderableType],
+    on_event: Callable[[InteractiveEvent], bool],
+    bind_run_external: Callable[[Callable[[Callable[[], None]], None]], None] | None = None,
+    timeout_seconds: float | None = None,
+) -> None:
+    """Run one shared fullscreen interactive event loop."""
+    with (
+        Live(render(), screen=True, auto_refresh=False) as live,
+        InteractiveInputController() as controller,
+    ):
+
+        def _run_external(callback: Callable[[], None]) -> None:
+            controller.suspend_live(live)
+            try:
+                callback()
+            finally:
+                controller.resume_live(live)
+
+        if bind_run_external is not None:
+            bind_run_external(_run_external)
+
+        while True:
+            event = read_interactive_event(timeout_seconds)
+            if not on_event(event):
+                break
+            live.update(render(), refresh=True)
 
 
 def apply_footer_prompt_input_event(

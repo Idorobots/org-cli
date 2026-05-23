@@ -17,8 +17,7 @@ from rich.console import Console
 from org import config as config_module
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
-from org.commands import interactive_actions
-from org.commands.interactive_common import heading_locator
+from org.commands.interactive_common import KeypressEvent, heading_locator
 from org.commands.tasks import capture as capture_command
 from org.commands.tasks import list as tasks_list
 from org.histogram import visual_len
@@ -726,9 +725,9 @@ def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:
             color_enabled=False,
         ),
     )
-    assert tasks_list._handle_interactive_key(session, "WHEEL-DOWN") is True
+    assert tasks_list._handle_keypress_event(session, "WHEEL-DOWN") is True
     assert session.selected_index == 1
-    assert tasks_list._handle_interactive_key(session, "WHEEL-UP") is True
+    assert tasks_list._handle_keypress_event(session, "WHEEL-UP") is True
     assert session.selected_index == 0
 
 
@@ -782,10 +781,10 @@ def test_handle_interactive_key_question_toggles_help_modal() -> None:
         ),
     )
 
-    assert tasks_list._handle_interactive_key(session, "?") is True
+    assert tasks_list._handle_keypress_event(session, "?") is True
     assert session.show_help_modal is True
 
-    assert tasks_list._handle_interactive_key(session, "ENTER") is True
+    assert tasks_list._handle_keypress_event(session, "ENTER") is True
     assert session.show_help_modal is False
 
 
@@ -870,7 +869,7 @@ def test_handle_interactive_key_unsupported_sets_status_and_continues() -> None:
         ),
     )
     key = "UNSUPPORTED-ESC:1b5b3939397e"
-    assert tasks_list._handle_interactive_key(session, key) is True
+    assert tasks_list._handle_keypress_event(session, key) is True
     assert session.status_message == f"Unsupported key: {key}"
 
 
@@ -895,7 +894,7 @@ def test_handle_interactive_key_enter_edits_selected_task(
 
     monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    assert tasks_list._handle_interactive_key(session, "ENTER") is True
+    assert tasks_list._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "No changes."
 
 
@@ -933,7 +932,7 @@ def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after
     monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
     monkeypatch.setattr(tasks_list, "_reload_session_nodes", _fake_reload)
 
-    assert tasks_list._handle_interactive_key(session, "ENTER") is True
+    assert tasks_list._handle_keypress_event(session, "ENTER") is True
     assert reloaded_identity == heading_locator(source_node)
     assert session.status_message == "Task updated"
 
@@ -978,7 +977,7 @@ def test_handle_interactive_key_dollar_archives_selected_task(
     monkeypatch.setattr(tasks_list, "archive_heading_subtree_and_save", _fake_archive)
     monkeypatch.setattr(tasks_list, "_reload_session_nodes", lambda _session, _identity: True)
 
-    assert tasks_list._handle_interactive_key(session, "$") is True
+    assert tasks_list._handle_keypress_event(session, "$") is True
     assert session.status_message == "Task archived"
 
 
@@ -1025,12 +1024,11 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
 
     monkeypatch.setattr(tasks_list, "_reload_session_nodes", _fake_reload)
 
-    assert tasks_list._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "1"
-    submit_result = session.active_interactive_action.submit(session)
-    assert submit_result.success is True
-    assert submit_result.keep_prompt_open is False
+    assert tasks_list._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "1"
+    keep_open = session.active_prompt.submit_callback()
+    assert keep_open is False
     assert reload_args["session"] is session
     assert reload_args["identity"] == heading_locator(captured_node)
     assert session.status_message == "Task captured"
@@ -1057,13 +1055,12 @@ def test_handle_interactive_key_a_capture_blank_input_cancels(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert tasks_list._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = ""
-    submit_result = session.active_interactive_action.submit(session)
-    assert submit_result.success is True
-    assert submit_result.keep_prompt_open is False
-    assert submit_result.status_message == "Capture cancelled"
+    assert tasks_list._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = ""
+    keep_open = session.active_prompt.submit_callback()
+    assert keep_open is False
+    assert session.status_message == "Capture cancelled"
 
 
 def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
@@ -1087,14 +1084,13 @@ def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert tasks_list._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "99"
-    submit_result = session.active_interactive_action.submit(session)
+    assert tasks_list._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "99"
+    keep_open = session.active_prompt.submit_callback()
 
-    assert submit_result.success is False
-    assert submit_result.keep_prompt_open is True
-    assert submit_result.status_message == "Invalid capture template shortcut"
+    assert keep_open is True
+    assert session.status_message == "Invalid capture template shortcut"
 
 
 def test_handle_interactive_key_a_without_templates_reports_error(
@@ -1114,14 +1110,12 @@ def test_handle_interactive_key_a_without_templates_reports_error(
     )
     monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {})
 
-    assert tasks_list._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is None
+    assert tasks_list._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is None
     assert session.status_message == "No capture templates configured"
 
 
-def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.MonkeyPatch) -> None:
     """Prompt submission should pause live rendering for capture action."""
     nodes = node_from_org("* TODO A\n")
     args = make_list_args([])
@@ -1139,9 +1133,9 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
         "CONFIG_CAPTURE_TEMPLATES",
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
-    tasks_list._handle_interactive_key(session, "a")
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "1"
+    tasks_list._handle_keypress_event(session, "a")
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "1"
 
     captured_node = node_from_org("* TODO Captured\n")[0]
     monkeypatch.setattr(
@@ -1154,12 +1148,6 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
         ),
     )
     monkeypatch.setattr(tasks_list, "_reload_session_nodes", lambda _session, _identity: True)
-    monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("ENTER", ""),
-    )
-
     events: list[str] = []
 
     class _LiveStub:
@@ -1184,19 +1172,26 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
             live.start()
             events.append("input-start")
 
-    consumed = tasks_list._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
-    )
+    live = cast("Live", _LiveStub())
+    controller = cast("Any", _InputControllerStub())
+
+    def _run_prompt_external(callback: object) -> None:
+        controller.suspend_live(live)
+        try:
+            cast("Any", callback)()
+        finally:
+            controller.resume_live(live)
+
+    session.run_external = _run_prompt_external
+
+    consumed = tasks_list._handle_active_prompt_event(session, KeypressEvent("ENTER"))
+    live.update(tasks_list._interactive_tasks_list_renderable(live.console, session), refresh=True)
 
     assert consumed is True
     assert events == ["input-stop", "stop", "start", "input-start", "update"]
 
 
-def test_search_prompt_live_updates_and_escape_reverts_search(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
     """Search prompt should live-update results and ESC should restore prior filter."""
     nodes = node_from_org("* TODO Alpha\n* TODO Beta\n")
     args = make_list_args([])
@@ -1209,8 +1204,8 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
             color_enabled=False,
         ),
     )
-    assert tasks_list._handle_interactive_key(session, "/") is True
-    assert session.active_interactive_action is not None
+    assert tasks_list._handle_keypress_event(session, "/") is True
+    assert session.active_prompt is not None
 
     events: list[str] = []
 
@@ -1236,32 +1231,17 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
             live.start()
             events.append("input-start")
 
-    monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("TEXT", "b"),
-    )
-    consumed = tasks_list._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
-    )
+    live = cast("Live", _LiveStub())
+    consumed = tasks_list._handle_active_prompt_event(session, KeypressEvent("b"))
+    live.update(tasks_list._interactive_tasks_list_renderable(live.console, session), refresh=True)
 
     assert consumed is True
     assert [node.title_text for node in session.visible_nodes] == ["Beta"]
     assert session.search_text == "b"
     assert session.status_message == "1 matches"
 
-    monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("ESC", ""),
-    )
-    consumed = tasks_list._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
-    )
+    consumed = tasks_list._handle_active_prompt_event(session, KeypressEvent("ESC"))
+    live.update(tasks_list._interactive_tasks_list_renderable(live.console, session), refresh=True)
 
     assert consumed is True
     assert [node.title_text for node in session.visible_nodes] == ["Alpha", "Beta"]

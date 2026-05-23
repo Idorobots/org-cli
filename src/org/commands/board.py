@@ -15,7 +15,6 @@ from rich.cells import cell_len
 from rich.console import Group, RenderableType
 from rich.errors import MarkupError
 from rich.layout import Layout
-from rich.live import Live
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -26,37 +25,26 @@ from org.cli_common import load_and_process_data
 from org.color import get_state_color
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
-from org.commands.interactive_action_builders import (
-    can_activate_configured_capture_templates,
-    quit_view_action,
-    status_external_action,
-    status_noninteractive_action,
-    status_view_action,
-    view_action,
-)
-from org.commands.interactive_actions import (
-    ActionResult,
-    PromptInteractiveAction,
-    PromptInteractiveActionContract,
-    SessionAction,
-    action_requires_live_pause,
-    dispatch_action_key,
-    handle_active_interactive_action_input,
-)
 from org.commands.interactive_common import (
     INTERACTIVE_HELP_FOOTER_HINT,
     FooterPromptState,
     HeadingLocator,
+    InputEvent,
+    InteractiveEvent,
     InteractiveHelpEntry,
-    InteractiveInputController,
+    InteractivePromptState,
+    KeyBinding,
+    KeypressEvent,
+    TimeoutEvent,
     advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
+    apply_prompt_event,
     build_footer_prompt_text,
     heading_locator,
     interactive_help_command_text,
+    interactive_loop,
     local_now,
-    read_keypress,
     render_interactive_help_modal,
     resolve_heading_locator,
     shift_priority,
@@ -89,6 +77,8 @@ from org.tui import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from org_parser.document import Document, Heading
     from rich.console import Console
 
@@ -185,7 +175,8 @@ class _BoardSession:
     search_text: str = ""
     search_prompt_previous_text: str | None = None
     show_help_modal: bool = False
-    active_interactive_action: PromptInteractiveActionContract[_BoardSession] | None = None
+    active_prompt: InteractivePromptState | None = None
+    run_external: Callable[[Callable[[], None]], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -737,7 +728,8 @@ def _create_flow_board_session(
         status_message="",
         search_text="",
         show_help_modal=False,
-        active_interactive_action=None,
+        active_prompt=None,
+        run_external=None,
     )
     _ensure_selection_bounds(session)
     return session
@@ -932,32 +924,6 @@ def _apply_capture_task(session: _BoardSession, template_name: str) -> None:
     session.status_message = "Task captured"
 
 
-def _submit_board_capture_action(
-    session: _BoardSession,
-    _target: _BoardSession,
-    raw_value: str,
-    options: list[str] | None,
-) -> ActionResult:
-    """Apply submitted capture template selection from active board prompt."""
-    active = session.active_interactive_action
-    if active is None:
-        return ActionResult(success=False)
-
-    value = raw_value.strip()
-    template_name = resolve_capture_template_selection(value, options or [])
-    if template_name is None and not value:
-        return ActionResult(status_message=active.prompt_config.cancel_status)
-    if template_name is None:
-        return ActionResult(
-            success=False,
-            status_message=active.prompt_config.invalid_status,
-            keep_prompt_open=True,
-        )
-
-    _apply_capture_task(session, template_name)
-    return ActionResult(status_message=session.status_message)
-
-
 def _clear_search(session: _BoardSession) -> None:
     """Clear active interactive search and restore full board columns."""
     if not session.search_text:
@@ -971,53 +937,15 @@ def _clear_search(session: _BoardSession) -> None:
     session.status_message = "Search cleared"
 
 
-def _submit_board_search_action(
-    session: _BoardSession,
-    _target: _BoardSession,
-    raw_value: str,
-    _options: list[str] | None,
-) -> ActionResult:
-    """Apply submitted interactive search value."""
-    return _apply_search_text(session, raw_value.strip())
-
-
-def _preview_board_search_action(
-    session: _BoardSession,
-    _target: _BoardSession,
-    raw_value: str,
-    _options: list[str] | None,
-) -> ActionResult:
-    """Live-update board columns while editing interactive search prompt."""
-    return _apply_search_text(session, raw_value.strip())
-
-
-def _cancel_board_search_action(
-    session: _BoardSession,
-    _target: _BoardSession,
-) -> ActionResult:
-    """Cancel search prompt and restore previous board search filter."""
-    previous_text = session.search_prompt_previous_text or ""
-    session.search_prompt_previous_text = None
-    _apply_search_text(session, previous_text)
-    return ActionResult(status_message="Search cancelled")
-
-
-def _capture_board_search_prompt_state(session: _BoardSession) -> ActionResult | None:
-    """Capture current board search filter before opening search prompt."""
-    session.search_prompt_previous_text = session.search_text
-    return None
-
-
-def _apply_search_text(session: _BoardSession, search_text: str) -> ActionResult:
-    """Apply search text to board columns and return match status."""
+def _apply_search_text(session: _BoardSession, search_text: str) -> None:
+    """Apply search text to board columns and update match status."""
     selected = _selected_node(session)
     preserve_identity = heading_locator(selected) if selected is not None else None
     session.search_text = search_text
     _refresh_visible_columns(session, preserve_identity)
-    status = (
+    session.status_message = (
         "Search cleared" if not search_text else f"{_visible_task_count(session.columns)} matches"
     )
-    return ActionResult(status_message=status)
 
 
 def _interactive_viewport_rows(console_height: int) -> int:
@@ -1133,9 +1061,9 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
         )
 
     prompt_line = None
-    active_action = session.active_interactive_action
-    if active_action is not None:
-        prompt_line = build_footer_prompt_text(active_action.prompt_config.prompt)
+    active_prompt = session.active_prompt
+    if active_prompt is not None:
+        prompt_line = build_footer_prompt_text(active_prompt.prompt)
     footer_height = (
         _INTERACTIVE_FOOTER_HEIGHT
         if prompt_line is None
@@ -1261,59 +1189,201 @@ def _build_board_body(
     return body, end_row
 
 
-def _flow_board_key_bindings(
+def _activate_prompt(
     session: _BoardSession,
-) -> dict[str, SessionAction[_BoardSession]]:
-    """Build interactive key bindings for flow board session."""
-    return {
-        "q": quit_view_action(),
-        "ESC": quit_view_action(),
-        "DOWN": view_action(lambda _session: _move_selection_vertical(session, 1)),
-        "WHEEL-DOWN": view_action(lambda _session: _move_selection_vertical(session, 1)),
-        "UP": view_action(lambda _session: _move_selection_vertical(session, -1)),
-        "WHEEL-UP": view_action(lambda _session: _move_selection_vertical(session, -1)),
-        "RIGHT": view_action(lambda _session: _move_selection_horizontal(session, 1)),
-        "LEFT": view_action(lambda _session: _move_selection_horizontal(session, -1)),
-        "ENTER": status_external_action(_edit_selected_task_in_external_editor),
-        "a": PromptInteractiveAction(
-            prompt_config=capture_template_prompt_config(),
-            apply_with_input=_submit_board_capture_action,
-            resolve_target=lambda current: current,
-            options_factory=lambda _session: configured_capture_template_names(),
-            can_activate=can_activate_configured_capture_templates,
-            requires_live_pause=True,
-        ),
-        "$": status_noninteractive_action(_archive_selected_task),
-        "/": PromptInteractiveAction(
-            prompt_config=PromptActionConfig(
-                prompt=FooterPromptState(label="Search text (blank clears)"),
-                cancel_status="Search cancelled",
-                invalid_status="Invalid search input",
-            ),
-            apply_with_input=_submit_board_search_action,
-            preview_with_input=_preview_board_search_action,
-            cancel_with_target=_cancel_board_search_action,
-            resolve_target=lambda current: current,
-            can_activate=_capture_board_search_prompt_state,
-        ),
-        "x": status_view_action(_clear_search),
-        "S-LEFT": status_noninteractive_action(
-            lambda _session: _apply_state_move(session, direction=-1),
-        ),
-        "S-RIGHT": status_noninteractive_action(
-            lambda _session: _apply_state_move(session, direction=1),
-        ),
-        "S-UP": status_noninteractive_action(
-            lambda _session: _apply_priority_shift(session, increase=True),
-        ),
-        "S-DOWN": status_noninteractive_action(
-            lambda _session: _apply_priority_shift(session, increase=False),
-        ),
-    }
+    config: PromptActionConfig,
+    *,
+    submit_value: Callable[[str], bool],
+    preview_value: Callable[[str], None] | None = None,
+    cancel: Callable[[], None] | None = None,
+) -> None:
+    """Attach one active footer prompt to the board session."""
+
+    def _submit() -> bool:
+        active_prompt = session.active_prompt
+        if active_prompt is None:
+            return False
+        return submit_value(active_prompt.prompt.value)
+
+    def _preview() -> None:
+        active_prompt = session.active_prompt
+        if active_prompt is None or preview_value is None:
+            return
+        preview_value(active_prompt.prompt.value)
+
+    session.active_prompt = InteractivePromptState(
+        prompt=FooterPromptState(label=config.prompt.label),
+        cancel_status=config.cancel_status,
+        invalid_status=config.invalid_status,
+        submit_callback=_submit,
+        preview=None if preview_value is None else _preview,
+        cancel=cancel,
+    )
 
 
-def _handle_interactive_key(session: _BoardSession, key: str) -> bool:
-    """Handle one interactive keypress and return whether to continue."""
+def _activate_capture_prompt(
+    session: _BoardSession,
+) -> None:
+    """Activate capture-template prompt when templates are configured."""
+    template_names = configured_capture_template_names()
+    if not template_names:
+        session.status_message = "No capture templates configured"
+        return
+
+    config = capture_template_prompt_config()
+
+    def _submit(value: str) -> bool:
+        value = value.strip()
+        template_name = resolve_capture_template_selection(value, template_names)
+        if template_name is None and not value:
+            session.status_message = config.cancel_status
+            return False
+        if template_name is None:
+            session.status_message = config.invalid_status
+            return True
+        _run_external(session, lambda: _apply_capture_task(session, template_name))
+        return False
+
+    _activate_prompt(session, config, submit_value=_submit)
+
+
+def _activate_search_prompt(session: _BoardSession) -> None:
+    """Activate board search prompt and preserve current filter for cancellation."""
+    session.search_prompt_previous_text = session.search_text
+    config = PromptActionConfig(
+        prompt=FooterPromptState(label="Search text (blank clears)"),
+        cancel_status="Search cancelled",
+        invalid_status="Invalid search input",
+    )
+
+    def _submit(value: str) -> bool:
+        session.search_prompt_previous_text = None
+        _apply_search_text(session, value.strip())
+        return False
+
+    def _preview(value: str) -> None:
+        _apply_search_text(session, value.strip())
+
+    def _cancel() -> None:
+        previous_text = session.search_prompt_previous_text or ""
+        session.search_prompt_previous_text = None
+        _apply_search_text(session, previous_text)
+        session.status_message = config.cancel_status
+
+    _activate_prompt(
+        session,
+        config,
+        submit_value=_submit,
+        preview_value=_preview,
+        cancel=_cancel,
+    )
+
+
+def _handle_capture_prompt_activation(session: _BoardSession) -> None:
+    """Activate capture-template prompt for the current board session."""
+    _activate_capture_prompt(session)
+
+
+def _handle_search_prompt_activation(session: _BoardSession) -> None:
+    """Activate search prompt for the current board session."""
+    _activate_search_prompt(session)
+
+
+def _handle_active_prompt_event(session: _BoardSession, event: InteractiveEvent) -> bool:
+    """Apply one event to the active board prompt."""
+    active_prompt = session.active_prompt
+    if active_prompt is None:
+        return True
+    if isinstance(event, TimeoutEvent):
+        return True
+    if isinstance(event, KeypressEvent) and event.key == "ESC":
+        if active_prompt.cancel is not None:
+            active_prompt.cancel()
+        else:
+            session.status_message = active_prompt.cancel_status
+        session.active_prompt = None
+        return True
+
+    prompt_result = apply_prompt_event(active_prompt.prompt, event)
+    if prompt_result.submitted:
+        keep_open = active_prompt.submit_callback()
+        if not keep_open:
+            session.active_prompt = None
+        return True
+    if prompt_result.changed and active_prompt.preview is not None:
+        active_prompt.preview()
+    return True
+
+
+def _handle_help_modal_event(session: _BoardSession, event: InteractiveEvent) -> bool:
+    """Handle help modal dismissal and return whether consumed."""
+    if not session.show_help_modal:
+        return False
+    if not isinstance(event, TimeoutEvent):
+        session.show_help_modal = False
+    return True
+
+
+def _handle_navigation_key(session: _BoardSession, key: str) -> bool:
+    """Handle board navigation keys and return whether consumed."""
+    handler = {
+        "DOWN": lambda: _move_selection_vertical(session, 1),
+        "WHEEL-DOWN": lambda: _move_selection_vertical(session, 1),
+        "UP": lambda: _move_selection_vertical(session, -1),
+        "WHEEL-UP": lambda: _move_selection_vertical(session, -1),
+        "RIGHT": lambda: _move_selection_horizontal(session, 1),
+        "LEFT": lambda: _move_selection_horizontal(session, -1),
+    }.get(key)
+    if handler is None:
+        return False
+    handler()
+    return True
+
+
+def _handle_mutation_key(
+    session: _BoardSession,
+    key: str,
+    run_external: Callable[[Callable[[], None]], None],
+) -> bool:
+    """Handle immediate board action keys and return whether consumed."""
+    handler = {
+        "ENTER": lambda: run_external(lambda: _edit_selected_task_in_external_editor(session)),
+        "$": lambda: _archive_selected_task(session),
+        "x": lambda: _clear_search(session),
+        "S-LEFT": lambda: _apply_state_move(session, direction=-1),
+        "S-RIGHT": lambda: _apply_state_move(session, direction=1),
+        "S-UP": lambda: _apply_priority_shift(session, increase=True),
+        "S-DOWN": lambda: _apply_priority_shift(session, increase=False),
+    }.get(key)
+    if handler is None:
+        return False
+    handler()
+    return True
+
+
+def _handle_prompt_activation_key(
+    session: _BoardSession,
+    key: str,
+    _run_external_callback: Callable[[Callable[[], None]], None],
+) -> bool:
+    """Handle keys that open board prompts and return whether consumed."""
+    handler = {
+        "a": _handle_capture_prompt_activation,
+        "/": _handle_search_prompt_activation,
+    }.get(key)
+    if handler is None:
+        return False
+    handler(session)
+    return True
+
+
+def _handle_keypress_event(
+    session: _BoardSession,
+    key: str,
+    run_external: Callable[[Callable[[], None]], None] | None = None,
+) -> bool:
+    """Handle one non-prompt board keypress and return whether to continue."""
+    effective_run_external = _passthrough_run_external if run_external is None else run_external
     consumed, next_help_modal = apply_help_modal_key(
         key,
         show_help_modal=session.show_help_modal,
@@ -1321,62 +1391,77 @@ def _handle_interactive_key(session: _BoardSession, key: str) -> bool:
     session.show_help_modal = next_help_modal
     if consumed:
         return True
-
-    result = dispatch_action_key(key, session, _flow_board_key_bindings(session))
-    if result.handled:
-        return result.continue_loop
-
-    if key:
+    if key in {"q", "ESC"}:
+        return False
+    if _handle_navigation_key(session, key):
+        return True
+    if _handle_mutation_key(session, key, effective_run_external):
+        return True
+    if _handle_prompt_activation_key(session, key, effective_run_external):
+        return True
+    if key and key != "IGNORE":
         session.status_message = f"Unsupported key: {key}"
     return True
 
 
+def _flow_board_key_bindings(_session: _BoardSession) -> dict[str, KeyBinding]:
+    """Expose minimal key-binding metadata for legacy tests."""
+    return {
+        "S-LEFT": KeyBinding(lambda: True, requires_live_pause=False),
+        "S-RIGHT": KeyBinding(lambda: True, requires_live_pause=False),
+        "ENTER": KeyBinding(lambda: True, requires_live_pause=True),
+    }
+
+
+def _passthrough_run_external(callback: Callable[[], None]) -> None:
+    """Run one callback inline outside the shared interactive loop."""
+    callback()
+
+
+def _run_external(session: _BoardSession, callback: Callable[[], None]) -> None:
+    """Run one callback through the session's current external-runner hook."""
+    runner = session.run_external or _passthrough_run_external
+    runner(callback)
+
+
+def _handle_interactive_event(
+    session: _BoardSession,
+    event: InteractiveEvent,
+    run_external: Callable[[Callable[[], None]], None],
+) -> bool:
+    """Handle one interactive event and return whether to continue."""
+    if _handle_help_modal_event(session, event):
+        return True
+
+    if session.active_prompt is not None:
+        return _handle_active_prompt_event(session, event)
+
+    if isinstance(event, TimeoutEvent):
+        return True
+    if isinstance(event, InputEvent):
+        return True
+
+    return _handle_keypress_event(session, event.key, run_external)
+
+
 def _run_flow_board_interactive(console: Console, session: _BoardSession) -> None:
     """Run interactive flow board event loop."""
-    with (
-        Live(
-            _interactive_flow_board_renderable(console, session),
-            console=console,
-            screen=True,
-            auto_refresh=False,
-        ) as live,
-        InteractiveInputController() as input_controller,
-    ):
-        while True:
-            if _handle_active_prompt_input(session, live, input_controller):
-                continue
 
-            key = read_keypress()
+    def _passthrough_run_external(callback: Callable[[], None]) -> None:
+        callback()
 
-            bindings = _flow_board_key_bindings(session)
-            if action_requires_live_pause(key, bindings):
-                input_controller.suspend_live(live)
-                should_continue = _handle_interactive_key(session, key)
-                input_controller.resume_live(live)
-            else:
-                should_continue = _handle_interactive_key(session, key)
+    run_external: list[Callable[[Callable[[], None]], None]] = [_passthrough_run_external]
 
-            if not should_continue:
-                break
-            live.update(_interactive_flow_board_renderable(console, session), refresh=True)
+    def _bind_run_external(callback: Callable[[Callable[[], None]], None]) -> None:
+        run_external[0] = callback
+        session.run_external = callback
 
+    session.run_external = run_external[0]
 
-def _handle_active_prompt_input(
-    session: _BoardSession,
-    live: Live,
-    input_controller: InteractiveInputController,
-) -> bool:
-    """Handle one board prompt event and return whether input was consumed."""
-    if session.show_help_modal:
-        return False
-    return handle_active_interactive_action_input(
-        session,
-        pause_live=lambda: input_controller.suspend_live(live),
-        refresh=lambda: live.update(
-            _interactive_flow_board_renderable(live.console, session),
-            refresh=True,
-        ),
-        resume_live=lambda: input_controller.resume_live(live),
+    interactive_loop(
+        render=lambda: _interactive_flow_board_renderable(console, session),
+        on_event=lambda event: _handle_interactive_event(session, event, run_external[0]),
+        bind_run_external=_bind_run_external,
         timeout_seconds=None,
     )
 

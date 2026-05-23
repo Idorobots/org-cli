@@ -13,7 +13,6 @@ import typer
 from org_parser.time import Clock, Timestamp
 from rich import box
 from rich.console import Group
-from rich.live import Live
 from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
@@ -22,37 +21,25 @@ from org import config as config_module
 from org.cli_common import load_and_process_data, resolve_input_paths
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
-from org.commands.interactive_action_builders import (
-    can_activate_configured_capture_templates,
-    quit_view_action,
-    status_external_action,
-    status_noninteractive_action,
-    status_view_action,
-    view_action,
-)
-from org.commands.interactive_actions import (
-    ActionResult,
-    PromptInteractiveAction,
-    PromptInteractiveActionContract,
-    SessionAction,
-    action_requires_live_pause,
-    dispatch_action_key,
-    handle_active_interactive_action_input,
-)
 from org.commands.interactive_common import (
     INTERACTIVE_HELP_FOOTER_HINT,
     FooterPromptState,
     HeadingLocator,
+    InputEvent,
+    InteractiveEvent,
     InteractiveHelpEntry,
-    InteractiveInputController,
+    InteractivePromptState,
+    KeypressEvent,
+    TimeoutEvent,
     advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
+    apply_prompt_event,
     build_footer_prompt_text,
     heading_locator,
     interactive_help_command_text,
+    interactive_loop,
     local_now,
-    read_keypress,
     render_interactive_help_modal,
     resolve_heading_locator,
     set_timestamp_fields,
@@ -90,6 +77,8 @@ from org.validation import parse_date_argument
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from org_parser.document import Document, Heading
     from rich.console import Console
 
@@ -265,7 +254,8 @@ class _AgendaSession:
     search_text: str
     search_prompt_previous_text: str | None = None
     show_help_modal: bool = False
-    active_interactive_action: PromptInteractiveActionContract[_AgendaSession] | None = None
+    active_prompt: InteractivePromptState | None = None
+    run_external: Callable[[Callable[[], None]], None] | None = None
 
 
 _AGENDA_HELP_ENTRIES = [
@@ -1436,7 +1426,6 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
             ),
         )
 
-    _refresh_session_if_minute_changed(session)
     rows = _build_interactive_rows(session)
     viewport_height = max(5, console.size.height - 3)
     selected_row = _selected_viewport_row_index(rows, _selected_row_location(session))
@@ -1466,9 +1455,9 @@ def _interactive_agenda_renderable(console: Console, session: _AgendaSession) ->
     search_text = session.search_text or "-"
     scroll_text = f"Lines {end_line}/{total_lines} | Search: {search_text}"
     prompt_line = None
-    active_action = session.active_interactive_action
-    if active_action is not None:
-        prompt_line = build_footer_prompt_text(active_action.prompt_config.prompt)
+    active_prompt = session.active_prompt
+    if active_prompt is not None:
+        prompt_line = build_footer_prompt_text(active_prompt.prompt)
     status = session.status_message or ""
     footer_style = "dim" if session.render.color_enabled else ""
     footer_line = Table.grid(expand=True)
@@ -1905,162 +1894,36 @@ def _state_choices_for_selected_row(session: _AgendaSession) -> list[str]:
     return todo_states_for_heading(row.node)
 
 
-def _can_activate_agenda_state_prompt(session: _AgendaSession) -> ActionResult | None:
+def _can_activate_agenda_state_prompt(session: _AgendaSession) -> str | None:
     """Validate preconditions for state prompt activation."""
     row = _selected_task_row(session)
     if row is None or row.node is None:
-        return ActionResult(success=False, status_message="Action available only on task rows")
+        return "Action available only on task rows"
     if not _state_choices_for_selected_row(session):
-        return ActionResult(success=False, status_message="No TODO states defined")
+        return "No TODO states defined"
     return None
 
 
-def _can_activate_agenda_capture_prompt(session: _AgendaSession) -> ActionResult | None:
+def _can_activate_agenda_capture_prompt(session: _AgendaSession) -> str | None:
     """Validate preconditions for capture template prompt activation."""
     if _timetable_schedule_for_selected_row(session) is None:
-        return ActionResult(
-            success=False,
-            status_message="Capture is available only on timetable time rows",
-        )
-    return can_activate_configured_capture_templates(session)
-
-
-def _submit_agenda_state_action(
-    session: _AgendaSession,
-    _row: _AgendaRow,
-    raw_value: str,
-    options: list[str] | None,
-) -> ActionResult:
-    """Apply submitted TODO-state value from active agenda prompt."""
-    active = session.active_interactive_action
-    if active is None:
-        return ActionResult(success=False)
-
-    value = raw_value.strip()
-    states = options or []
-    selected_state = resolve_todo_state_selection(value, states)
-    if selected_state is None and not value:
-        return ActionResult(status_message=active.prompt_config.cancel_status)
-    if selected_state is None:
-        return ActionResult(
-            success=False,
-            status_message=active.prompt_config.invalid_status,
-            keep_prompt_open=True,
-        )
-
-    _apply_state_change_with_value(session, selected_state)
-    return ActionResult(status_message=session.status_message)
-
-
-def _submit_agenda_capture_action(
-    session: _AgendaSession,
-    _target: _AgendaSession,
-    raw_value: str,
-    options: list[str] | None,
-) -> ActionResult:
-    """Apply submitted capture template selection from active agenda prompt."""
-    active = session.active_interactive_action
-    if active is None:
-        return ActionResult(success=False)
-
-    value = raw_value.strip()
-    template_name = resolve_capture_template_selection(value, options or [])
-    if template_name is None and not value:
-        return ActionResult(status_message=active.prompt_config.cancel_status)
-    if template_name is None:
-        return ActionResult(
-            success=False,
-            status_message=active.prompt_config.invalid_status,
-            keep_prompt_open=True,
-        )
-
-    _apply_capture_task(session, template_name)
-    return ActionResult(status_message=session.status_message)
-
-
-def _submit_agenda_search_action(
-    session: _AgendaSession,
-    _target: _AgendaSession,
-    raw_value: str,
-    _options: list[str] | None,
-) -> ActionResult:
-    """Apply submitted interactive search value."""
-    return _apply_search_text(session, raw_value.strip())
-
-
-def _preview_agenda_search_action(
-    session: _AgendaSession,
-    _target: _AgendaSession,
-    raw_value: str,
-    _options: list[str] | None,
-) -> ActionResult:
-    """Live-update agenda rows while editing interactive search prompt."""
-    return _apply_search_text(session, raw_value.strip())
-
-
-def _cancel_agenda_search_action(
-    session: _AgendaSession,
-    _target: _AgendaSession,
-) -> ActionResult:
-    """Cancel search prompt and restore previous agenda search filter."""
-    previous_text = session.search_prompt_previous_text or ""
-    session.search_prompt_previous_text = None
-    _apply_search_text(session, previous_text)
-    return ActionResult(status_message="Search cancelled")
-
-
-def _capture_agenda_search_prompt_state(session: _AgendaSession) -> ActionResult | None:
-    """Capture current agenda search filter before opening search prompt."""
-    session.search_prompt_previous_text = session.search_text
+        return "Capture is available only on timetable time rows"
+    if not configured_capture_template_names():
+        return "No capture templates configured"
     return None
 
 
-def _apply_search_text(session: _AgendaSession, search_text: str) -> ActionResult:
-    """Apply search text to agenda rows and return match status."""
+def _apply_search_text(session: _AgendaSession, search_text: str) -> None:
+    """Apply search text to agenda rows and update match status."""
     selected_row = _selected_task_row(session)
     preserve_identity: HeadingLocator | None = None
     if selected_row is not None and selected_row.node is not None:
         preserve_identity = heading_locator(selected_row.node)
     session.search_text = search_text
     _refresh_visible_nodes(session, preserve_identity)
-    status = "Search cleared" if not search_text else f"{len(session.nodes)} matches"
-    return ActionResult(status_message=status)
-
-
-def _submit_agenda_refile_action(
-    session: _AgendaSession,
-    _row: _AgendaRow,
-    raw_value: str,
-    _options: list[str] | None,
-) -> ActionResult:
-    """Apply submitted refile destination from active agenda prompt."""
-    active = session.active_interactive_action
-    if active is None:
-        return ActionResult(success=False)
-
-    value = raw_value.strip()
-    if not value:
-        return ActionResult(status_message=active.prompt_config.cancel_status)
-    _apply_refile_with_value(session, value)
-    return ActionResult(status_message=session.status_message)
-
-
-def _submit_agenda_clock_action(
-    session: _AgendaSession,
-    _row: _AgendaRow,
-    raw_value: str,
-    _options: list[str] | None,
-) -> ActionResult:
-    """Apply submitted clock duration from active agenda prompt."""
-    active = session.active_interactive_action
-    if active is None:
-        return ActionResult(success=False)
-
-    value = raw_value.strip()
-    if not value:
-        return ActionResult(status_message=active.prompt_config.cancel_status)
-    _apply_clock_entry_with_value(session, value)
-    return ActionResult(status_message=session.status_message)
+    session.status_message = (
+        "Search cleared" if not search_text else f"{len(session.nodes)} matches"
+    )
 
 
 def _create_agenda_session(
@@ -2090,102 +1953,10 @@ def _create_agenda_session(
         status_message="",
         search_text="",
         show_help_modal=False,
-        active_interactive_action=None,
+        active_prompt=None,
     )
     _refresh_session(session, None)
     return session
-
-
-def _agenda_actions(session: _AgendaSession) -> dict[str, SessionAction[_AgendaSession]]:
-    """Build interactive/noninteractive/view actions for agenda session."""
-    return {
-        "q": quit_view_action(),
-        "ESC": quit_view_action(),
-        "n": view_action(lambda _session: _move_selection(session, 1)),
-        "DOWN": view_action(lambda _session: _move_selection(session, 1)),
-        "WHEEL-DOWN": view_action(lambda _session: _move_selection(session, 1)),
-        "p": view_action(lambda _session: _move_selection(session, -1)),
-        "UP": view_action(lambda _session: _move_selection(session, -1)),
-        "WHEEL-UP": view_action(lambda _session: _move_selection(session, -1)),
-        "f": view_action(
-            lambda _session: _set_start_date_relative(
-                session,
-                day_delta=session.days,
-            ),
-        ),
-        "RIGHT": view_action(
-            lambda _session: _set_start_date_relative(
-                session,
-                day_delta=session.days,
-            ),
-        ),
-        "b": view_action(
-            lambda _session: _set_start_date_relative(
-                session,
-                day_delta=-session.days,
-            ),
-        ),
-        "LEFT": view_action(
-            lambda _session: _set_start_date_relative(
-                session,
-                day_delta=-session.days,
-            ),
-        ),
-        "ENTER": status_external_action(_edit_selected_task_in_external_editor),
-        "a": PromptInteractiveAction(
-            prompt_config=capture_template_prompt_config(),
-            apply_with_input=_submit_agenda_capture_action,
-            resolve_target=lambda current: current,
-            options_factory=lambda _session: configured_capture_template_names(),
-            can_activate=_can_activate_agenda_capture_prompt,
-            requires_live_pause=True,
-        ),
-        "$": status_noninteractive_action(_archive_selected_task),
-        "/": PromptInteractiveAction(
-            prompt_config=PromptActionConfig(
-                prompt=FooterPromptState(label="Search text (blank clears)"),
-                cancel_status="Search cancelled",
-                invalid_status="Invalid search input",
-            ),
-            apply_with_input=_submit_agenda_search_action,
-            preview_with_input=_preview_agenda_search_action,
-            cancel_with_target=_cancel_agenda_search_action,
-            resolve_target=lambda current: current,
-            can_activate=_capture_agenda_search_prompt_state,
-        ),
-        "x": status_view_action(_clear_search),
-        "t": PromptInteractiveAction(
-            prompt_config=state_selection_prompt_config(
-                _state_choices_for_selected_row(session),
-            ),
-            apply_with_input=_submit_agenda_state_action,
-            resolve_target=_selected_task_row,
-            options_factory=_state_choices_for_selected_row,
-            can_activate=_can_activate_agenda_state_prompt,
-        ),
-        "S-LEFT": status_noninteractive_action(
-            lambda _session: _apply_shift_date(session, day_delta=-1),
-        ),
-        "S-RIGHT": status_noninteractive_action(
-            lambda _session: _apply_shift_date(session, day_delta=1),
-        ),
-        "S-UP": status_noninteractive_action(
-            lambda _session: _apply_shift_time(session, hour_delta=-1),
-        ),
-        "S-DOWN": status_noninteractive_action(
-            lambda _session: _apply_shift_time(session, hour_delta=1),
-        ),
-        "r": PromptInteractiveAction(
-            prompt_config=refile_prompt_config(resolve_input_paths(session.args.files)),
-            apply_with_input=_submit_agenda_refile_action,
-            resolve_target=_selected_task_row,
-        ),
-        "c": PromptInteractiveAction(
-            prompt_config=clock_duration_prompt_config(),
-            apply_with_input=_submit_agenda_clock_action,
-            resolve_target=_selected_task_row,
-        ),
-    }
 
 
 def _set_start_date_relative(session: _AgendaSession, *, day_delta: int) -> None:
@@ -2194,10 +1965,284 @@ def _set_start_date_relative(session: _AgendaSession, *, day_delta: int) -> None
     _refresh_session(session, None)
 
 
-def _handle_interactive_key(session: _AgendaSession, key: str) -> bool:
-    """Handle one interactive keypress and return whether to continue."""
-    _refresh_session_if_minute_changed(session)
+def _activate_prompt(
+    session: _AgendaSession,
+    config: PromptActionConfig,
+    *,
+    submit_value: Callable[[str], bool],
+    preview_value: Callable[[str], None] | None = None,
+    cancel: Callable[[], None] | None = None,
+) -> None:
+    """Attach one active footer prompt to the agenda session."""
 
+    def _submit() -> bool:
+        active_prompt = session.active_prompt
+        if active_prompt is None:
+            return False
+        return submit_value(active_prompt.prompt.value)
+
+    def _preview() -> None:
+        active_prompt = session.active_prompt
+        if active_prompt is None or preview_value is None:
+            return
+        preview_value(active_prompt.prompt.value)
+
+    session.active_prompt = InteractivePromptState(
+        prompt=FooterPromptState(label=config.prompt.label),
+        cancel_status=config.cancel_status,
+        invalid_status=config.invalid_status,
+        submit_callback=_submit,
+        preview=None if preview_value is None else _preview,
+        cancel=cancel,
+    )
+
+
+def _activate_capture_prompt(
+    session: _AgendaSession,
+) -> None:
+    """Activate capture-template prompt when timetable row and templates allow it."""
+    status_message = _can_activate_agenda_capture_prompt(session)
+    if status_message is not None:
+        session.status_message = status_message
+        return
+
+    template_names = configured_capture_template_names()
+    config = capture_template_prompt_config()
+
+    def _submit(value: str) -> bool:
+        value = value.strip()
+        template_name = resolve_capture_template_selection(value, template_names)
+        if template_name is None and not value:
+            session.status_message = config.cancel_status
+            return False
+        if template_name is None:
+            session.status_message = config.invalid_status
+            return True
+        _run_external(session, lambda: _apply_capture_task(session, template_name))
+        return False
+
+    _activate_prompt(session, config, submit_value=_submit)
+
+
+def _activate_search_prompt(session: _AgendaSession) -> None:
+    """Activate agenda search prompt and preserve current search for cancellation."""
+    session.search_prompt_previous_text = session.search_text
+    config = PromptActionConfig(
+        prompt=FooterPromptState(label="Search text (blank clears)"),
+        cancel_status="Search cancelled",
+        invalid_status="Invalid search input",
+    )
+
+    def _submit(value: str) -> bool:
+        session.search_prompt_previous_text = None
+        _apply_search_text(session, value.strip())
+        return False
+
+    def _preview(value: str) -> None:
+        _apply_search_text(session, value.strip())
+
+    def _cancel() -> None:
+        previous_text = session.search_prompt_previous_text or ""
+        session.search_prompt_previous_text = None
+        _apply_search_text(session, previous_text)
+        session.status_message = config.cancel_status
+
+    _activate_prompt(
+        session,
+        config,
+        submit_value=_submit,
+        preview_value=_preview,
+        cancel=_cancel,
+    )
+
+
+def _activate_state_selection_prompt(
+    session: _AgendaSession,
+    states: list[str],
+) -> None:
+    """Activate TODO-state selection prompt for the selected agenda row."""
+    config = state_selection_prompt_config(states)
+
+    def _submit(value: str) -> bool:
+        value = value.strip()
+        selected_state = resolve_todo_state_selection(value, states)
+        if selected_state is None and not value:
+            session.status_message = config.cancel_status
+            return False
+        if selected_state is None:
+            session.status_message = config.invalid_status
+            return True
+        _apply_state_change_with_value(session, selected_state)
+        return False
+
+    _activate_prompt(session, config, submit_value=_submit)
+
+
+def _activate_value_prompt(
+    session: _AgendaSession,
+    config: PromptActionConfig,
+    apply_value: Callable[[str], None],
+) -> None:
+    """Activate one simple value prompt that applies non-blank trimmed input."""
+
+    def _submit(value: str) -> bool:
+        value = value.strip()
+        if not value:
+            session.status_message = config.cancel_status
+            return False
+        apply_value(value)
+        return False
+
+    _activate_prompt(session, config, submit_value=_submit)
+
+
+def _handle_capture_prompt_activation(session: _AgendaSession) -> None:
+    """Activate capture-template prompt for the current agenda session."""
+    _activate_capture_prompt(session)
+
+
+def _handle_search_prompt_activation(session: _AgendaSession) -> None:
+    """Activate search prompt for the current agenda session."""
+    _activate_search_prompt(session)
+
+
+def _handle_state_prompt_activation(session: _AgendaSession) -> None:
+    """Activate TODO-state selection prompt for the selected agenda row."""
+    status_message = _can_activate_agenda_state_prompt(session)
+    if status_message is not None:
+        session.status_message = status_message
+        return
+    _activate_state_selection_prompt(session, _state_choices_for_selected_row(session))
+
+
+def _handle_refile_prompt_activation(session: _AgendaSession) -> None:
+    """Activate refile prompt for the selected agenda row."""
+    row = _selected_task_row(session)
+    if row is None:
+        session.status_message = "Action available only on task rows"
+        return
+    _activate_value_prompt(
+        session,
+        refile_prompt_config(resolve_input_paths(session.args.files)),
+        lambda value: _apply_refile_with_value(session, value),
+    )
+
+
+def _handle_clock_prompt_activation(session: _AgendaSession) -> None:
+    """Activate clock duration prompt for the selected agenda row."""
+    row = _selected_task_row(session)
+    if row is None:
+        session.status_message = "Action available only on task rows"
+        return
+    _activate_value_prompt(
+        session,
+        clock_duration_prompt_config(),
+        lambda value: _apply_clock_entry_with_value(session, value),
+    )
+
+
+def _handle_active_prompt_event(session: _AgendaSession, event: InteractiveEvent) -> bool:
+    """Apply one event to the active agenda prompt."""
+    active_prompt = session.active_prompt
+    if active_prompt is None:
+        return True
+    if isinstance(event, TimeoutEvent):
+        return True
+    if isinstance(event, KeypressEvent) and event.key == "ESC":
+        if active_prompt.cancel is not None:
+            active_prompt.cancel()
+        else:
+            session.status_message = active_prompt.cancel_status
+        session.active_prompt = None
+        return True
+
+    prompt_result = apply_prompt_event(active_prompt.prompt, event)
+    if prompt_result.submitted:
+        keep_open = active_prompt.submit_callback()
+        if not keep_open:
+            session.active_prompt = None
+        return True
+    if prompt_result.changed and active_prompt.preview is not None:
+        active_prompt.preview()
+    return True
+
+
+def _handle_help_modal_event(session: _AgendaSession, event: InteractiveEvent) -> bool:
+    """Handle help modal dismissal and return whether consumed."""
+    if not session.show_help_modal:
+        return False
+    if not isinstance(event, TimeoutEvent):
+        session.show_help_modal = False
+    return True
+
+
+def _handle_navigation_key(session: _AgendaSession, key: str) -> bool:
+    """Handle agenda navigation keys and return whether consumed."""
+    handler = {
+        "n": lambda: _move_selection(session, 1),
+        "DOWN": lambda: _move_selection(session, 1),
+        "WHEEL-DOWN": lambda: _move_selection(session, 1),
+        "p": lambda: _move_selection(session, -1),
+        "UP": lambda: _move_selection(session, -1),
+        "WHEEL-UP": lambda: _move_selection(session, -1),
+        "f": lambda: _set_start_date_relative(session, day_delta=session.days),
+        "RIGHT": lambda: _set_start_date_relative(session, day_delta=session.days),
+        "b": lambda: _set_start_date_relative(session, day_delta=-session.days),
+        "LEFT": lambda: _set_start_date_relative(session, day_delta=-session.days),
+    }.get(key)
+    if handler is None:
+        return False
+    handler()
+    return True
+
+
+def _handle_mutation_key(
+    session: _AgendaSession,
+    key: str,
+    run_external: Callable[[Callable[[], None]], None],
+) -> bool:
+    """Handle immediate agenda action keys and return whether consumed."""
+    handler = {
+        "ENTER": lambda: run_external(lambda: _edit_selected_task_in_external_editor(session)),
+        "$": lambda: _archive_selected_task(session),
+        "x": lambda: _clear_search(session),
+        "S-LEFT": lambda: _apply_shift_date(session, day_delta=-1),
+        "S-RIGHT": lambda: _apply_shift_date(session, day_delta=1),
+        "S-UP": lambda: _apply_shift_time(session, hour_delta=-1),
+        "S-DOWN": lambda: _apply_shift_time(session, hour_delta=1),
+    }.get(key)
+    if handler is None:
+        return False
+    handler()
+    return True
+
+
+def _handle_prompt_activation_key(
+    session: _AgendaSession,
+    key: str,
+    _run_external_callback: Callable[[Callable[[], None]], None],
+) -> bool:
+    """Handle keys that open agenda prompts and return whether consumed."""
+    handler = {
+        "a": _handle_capture_prompt_activation,
+        "/": _handle_search_prompt_activation,
+        "t": _handle_state_prompt_activation,
+        "r": _handle_refile_prompt_activation,
+        "c": _handle_clock_prompt_activation,
+    }.get(key)
+    if handler is None:
+        return False
+    handler(session)
+    return True
+
+
+def _handle_keypress_event(
+    session: _AgendaSession,
+    key: str,
+    run_external: Callable[[Callable[[], None]], None] | None = None,
+) -> bool:
+    """Handle one non-prompt agenda keypress and return whether to continue."""
+    effective_run_external = _passthrough_run_external if run_external is None else run_external
     consumed, next_help_modal = apply_help_modal_key(
         key,
         show_help_modal=session.show_help_modal,
@@ -2205,69 +2250,69 @@ def _handle_interactive_key(session: _AgendaSession, key: str) -> bool:
     session.show_help_modal = next_help_modal
     if consumed:
         return True
-
-    result = dispatch_action_key(key, session, _agenda_actions(session))
-    if result.handled:
-        return result.continue_loop
-
-    if key:
+    if key in {"q", "ESC"}:
+        return False
+    if _handle_navigation_key(session, key):
+        return True
+    if _handle_mutation_key(session, key, effective_run_external):
+        return True
+    if _handle_prompt_activation_key(session, key, effective_run_external):
+        return True
+    if key and key != "IGNORE":
         session.status_message = f"Unsupported key: {key}"
     return True
 
 
+def _passthrough_run_external(callback: Callable[[], None]) -> None:
+    """Run one callback inline outside the shared interactive loop."""
+    callback()
+
+
+def _run_external(session: _AgendaSession, callback: Callable[[], None]) -> None:
+    """Run one callback through the session's current external-runner hook."""
+    runner = session.run_external or _passthrough_run_external
+    runner(callback)
+
+
+def _handle_interactive_event(
+    session: _AgendaSession,
+    event: InteractiveEvent,
+    run_external: Callable[[Callable[[], None]], None],
+) -> bool:
+    """Handle one agenda event and return whether to continue."""
+    if _handle_help_modal_event(session, event):
+        return True
+
+    if session.active_prompt is not None:
+        return _handle_active_prompt_event(session, event)
+
+    if isinstance(event, TimeoutEvent):
+        _refresh_session_if_minute_changed(session)
+        return True
+    if isinstance(event, InputEvent):
+        return True
+
+    return _handle_keypress_event(session, event.key, run_external)
+
+
 def _run_agenda_interactive(console: Console, session: _AgendaSession) -> None:
     """Run interactive agenda event loop."""
-    with (
-        Live(
-            _interactive_agenda_renderable(console, session),
-            console=console,
-            screen=True,
-            auto_refresh=False,
-        ) as live,
-        InteractiveInputController() as input_controller,
-    ):
-        while True:
-            if _handle_active_prompt_input(session, live, input_controller):
-                continue
 
-            key = read_keypress(
-                timeout_seconds=_INTERACTIVE_INPUT_TIMEOUT_SECONDS,
-            )
-            if not key:
-                if _refresh_session_if_minute_changed(session):
-                    live.update(
-                        _interactive_agenda_renderable(console, session),
-                        refresh=True,
-                    )
-                continue
-            actions = _agenda_actions(session)
-            if action_requires_live_pause(key, actions):
-                input_controller.suspend_live(live)
-                should_continue = _handle_interactive_key(session, key)
-                input_controller.resume_live(live)
-            else:
-                should_continue = _handle_interactive_key(session, key)
-            if not should_continue:
-                break
-            live.update(_interactive_agenda_renderable(console, session), refresh=True)
+    def _passthrough_run_external(callback: Callable[[], None]) -> None:
+        callback()
 
+    run_external: list[Callable[[Callable[[], None]], None]] = [_passthrough_run_external]
 
-def _handle_active_prompt_input(
-    session: _AgendaSession,
-    live: Live,
-    input_controller: InteractiveInputController,
-) -> bool:
-    """Handle one agenda prompt event and return whether consumed."""
-    if session.show_help_modal:
-        return False
-    return handle_active_interactive_action_input(
-        session,
-        pause_live=lambda: input_controller.suspend_live(live),
-        refresh=lambda: live.update(
-            _interactive_agenda_renderable(live.console, session),
-            refresh=True,
-        ),
-        resume_live=lambda: input_controller.resume_live(live),
+    def _bind_run_external(callback: Callable[[Callable[[], None]], None]) -> None:
+        run_external[0] = callback
+        session.run_external = callback
+
+    session.run_external = run_external[0]
+
+    interactive_loop(
+        render=lambda: _interactive_agenda_renderable(console, session),
+        on_event=lambda event: _handle_interactive_event(session, event, run_external[0]),
+        bind_run_external=_bind_run_external,
         timeout_seconds=_INTERACTIVE_INPUT_TIMEOUT_SECONDS,
     )
 

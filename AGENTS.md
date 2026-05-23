@@ -139,6 +139,7 @@ poetry add <package>
 - Avoid using default function arguments values.
 - Target test coverage is 90% or above.
 - Backwards compatibility is not required, no need to ensure it.
+- Do not add production compatibility shims solely to preserve old tests; refactor the tests to exercise the current code paths instead.
 
 ### Linting Policy
 - Under no circumstances should linter rules be disabled using `noqa` comments

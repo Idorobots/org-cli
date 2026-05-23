@@ -18,8 +18,7 @@ from org import config as config_module
 from org.commands import archive as archive_command
 from org.commands import board as board_command
 from org.commands import editor as editor_command
-from org.commands import interactive_actions
-from org.commands.interactive_common import heading_locator
+from org.commands.interactive_common import KeypressEvent, heading_locator
 from org.commands.tasks import capture as capture_command
 from tests.conftest import node_from_org
 
@@ -616,11 +615,9 @@ def test_handle_interactive_key_slash_activates_search_prompt() -> None:
         all_columns=[board_command._BoardColumn("TODO", nodes)],
     )
 
-    assert board_command._handle_interactive_key(session, "/") is True
-    assert session.active_interactive_action is not None
-    assert (
-        session.active_interactive_action.prompt_config.prompt.label == "Search text (blank clears)"
-    )
+    assert board_command._handle_keypress_event(session, "/") is True
+    assert session.active_prompt is not None
+    assert session.active_prompt.prompt.label == "Search text (blank clears)"
 
 
 def test_board_search_filters_each_column_and_clear_restores_columns() -> None:
@@ -648,13 +645,13 @@ def test_board_search_filters_each_column_and_clear_restores_columns() -> None:
         all_columns=all_columns,
     )
 
-    assert board_command._handle_interactive_key(session, "/") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "beta"
-    submit_result = session.active_interactive_action.submit(session)
+    assert board_command._handle_keypress_event(session, "/") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "beta"
+    keep_open = session.active_prompt.submit_callback()
 
-    assert submit_result.success is True
-    assert submit_result.status_message == "2 matches"
+    assert keep_open is False
+    assert session.status_message == "2 matches"
     assert _visible_board_titles_by_column(session) == {
         "Backlog": [],
         "TODO": ["Beta"],
@@ -662,7 +659,7 @@ def test_board_search_filters_each_column_and_clear_restores_columns() -> None:
     }
     assert session.search_text == "beta"
 
-    assert board_command._handle_interactive_key(session, "x") is True
+    assert board_command._handle_keypress_event(session, "x") is True
     assert session.status_message == "Search cleared"
     assert session.search_text == ""
     assert _visible_board_titles_by_column(session) == {
@@ -717,10 +714,10 @@ def test_handle_interactive_key_question_toggles_help_modal() -> None:
         status_message="",
     )
 
-    assert board_command._handle_interactive_key(session, "?") is True
+    assert board_command._handle_keypress_event(session, "?") is True
     assert session.show_help_modal is True
 
-    assert board_command._handle_interactive_key(session, "ENTER") is True
+    assert board_command._handle_keypress_event(session, "ENTER") is True
     assert session.show_help_modal is False
 
 
@@ -779,32 +776,8 @@ def test_handle_interactive_key_enter_edits_selected_task(
 
     monkeypatch.setattr(board_command, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    assert board_command._handle_interactive_key(session, "ENTER") is True
+    assert board_command._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "No changes."
-
-
-def test_state_shift_key_bindings_do_not_require_live_pause() -> None:
-    """State shifts should run without stopping Live screen rendering."""
-    args = make_board_args([])
-    nodes = node_from_org("* TODO Task\n")
-    session = board_command._BoardSession(
-        args=args,
-        nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
-        columns=[board_command._BoardColumn("TODO", nodes)],
-        color_enabled=False,
-        selected_column_index=0,
-        selected_row_index=0,
-        scroll_offset=0,
-        status_message="",
-    )
-
-    bindings = board_command._flow_board_key_bindings(session)
-
-    assert bindings["S-LEFT"].requires_live_pause is False
-    assert bindings["S-RIGHT"].requires_live_pause is False
-    assert bindings["ENTER"].requires_live_pause is True
 
 
 def test_handle_interactive_key_a_captures_task_and_reloads(
@@ -856,12 +829,11 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
 
     monkeypatch.setattr(board_command, "_reload_session", _fake_reload)
 
-    assert board_command._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "1"
-    submit_result = session.active_interactive_action.submit(session)
-    assert submit_result.success is True
-    assert submit_result.keep_prompt_open is False
+    assert board_command._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "1"
+    keep_open = session.active_prompt.submit_callback()
+    assert keep_open is False
     assert reloaded["session"] is session
     assert reloaded["identity"] == heading_locator(captured_node)
     assert session.status_message == "Task captured"
@@ -895,13 +867,12 @@ def test_handle_interactive_key_a_capture_blank_input_cancels(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert board_command._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = ""
-    submit_result = session.active_interactive_action.submit(session)
-    assert submit_result.success is True
-    assert submit_result.keep_prompt_open is False
-    assert submit_result.status_message == "Capture cancelled"
+    assert board_command._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = ""
+    keep_open = session.active_prompt.submit_callback()
+    assert keep_open is False
+    assert session.status_message == "Capture cancelled"
 
 
 def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
@@ -932,14 +903,13 @@ def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert board_command._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "99"
-    submit_result = session.active_interactive_action.submit(session)
+    assert board_command._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "99"
+    keep_open = session.active_prompt.submit_callback()
 
-    assert submit_result.success is False
-    assert submit_result.keep_prompt_open is True
-    assert submit_result.status_message == "Invalid capture template shortcut"
+    assert keep_open is True
+    assert session.status_message == "Invalid capture template shortcut"
 
 
 def test_handle_interactive_key_a_without_templates_reports_error(
@@ -966,14 +936,12 @@ def test_handle_interactive_key_a_without_templates_reports_error(
     )
     monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {})
 
-    assert board_command._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is None
+    assert board_command._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is None
     assert session.status_message == "No capture templates configured"
 
 
-def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board prompt submission should pause live rendering for capture action."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Existing\n")
@@ -998,9 +966,9 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
         "CONFIG_CAPTURE_TEMPLATES",
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
-    board_command._handle_interactive_key(session, "a")
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "1"
+    board_command._handle_keypress_event(session, "a")
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "1"
 
     captured_node = node_from_org("* TODO Captured\n")[0]
     monkeypatch.setattr(
@@ -1013,12 +981,6 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
         ),
     )
     monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
-    monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("ENTER", ""),
-    )
-
     events: list[str] = []
 
     class _LiveStub:
@@ -1043,19 +1005,29 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
             live.start()
             events.append("input-start")
 
-    consumed = board_command._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
+    live = cast("Live", _LiveStub())
+    controller = cast("Any", _InputControllerStub())
+
+    def _run_prompt_external(callback: object) -> None:
+        controller.suspend_live(live)
+        try:
+            cast("Any", callback)()
+        finally:
+            controller.resume_live(live)
+
+    session.run_external = _run_prompt_external
+
+    consumed = board_command._handle_active_prompt_event(session, KeypressEvent("ENTER"))
+    live.update(
+        board_command._interactive_flow_board_renderable(live.console, session),
+        refresh=True,
     )
 
     assert consumed is True
     assert events == ["input-stop", "stop", "start", "input-start", "update"]
 
 
-def test_search_prompt_live_updates_and_escape_reverts_search(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
     """Board search prompt should live-update columns and ESC should restore prior filter."""
     args = make_board_args([])
     alpha, beta, done = node_from_org("* TODO Alpha\n* TODO Beta\n* DONE Finished\n")
@@ -1077,8 +1049,8 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
         status_message="",
         all_columns=all_columns,
     )
-    assert board_command._handle_interactive_key(session, "/") is True
-    assert session.active_interactive_action is not None
+    assert board_command._handle_keypress_event(session, "/") is True
+    assert session.active_prompt is not None
 
     events: list[str] = []
 
@@ -1104,15 +1076,11 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
             live.start()
             events.append("input-start")
 
-    monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("TEXT", "b"),
-    )
-    consumed = board_command._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
+    live = cast("Live", _LiveStub())
+    consumed = board_command._handle_active_prompt_event(session, KeypressEvent("b"))
+    live.update(
+        board_command._interactive_flow_board_renderable(live.console, session),
+        refresh=True,
     )
 
     assert consumed is True
@@ -1124,15 +1092,10 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
     assert session.search_text == "b"
     assert session.status_message == "1 matches"
 
-    monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("ESC", ""),
-    )
-    consumed = board_command._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
+    consumed = board_command._handle_active_prompt_event(session, KeypressEvent("ESC"))
+    live.update(
+        board_command._interactive_flow_board_renderable(live.console, session),
+        refresh=True,
     )
 
     assert consumed is True
@@ -1182,7 +1145,7 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
     monkeypatch.setattr(board_command, "edit_heading_subtree_in_external_editor", _fake_edit)
     monkeypatch.setattr(board_command, "_reload_session", _capture_reload)
 
-    assert board_command._handle_interactive_key(session, "ENTER") is True
+    assert board_command._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "Task updated"
     assert reloaded_identity == heading_locator(source_node)
 
@@ -1234,7 +1197,7 @@ def test_handle_interactive_key_dollar_archives_selected_task(
     monkeypatch.setattr(board_command, "archive_heading_subtree_and_save", _fake_archive)
     monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
 
-    assert board_command._handle_interactive_key(session, "$") is True
+    assert board_command._handle_keypress_event(session, "$") is True
     assert session.status_message == "Task archived"
 
 
