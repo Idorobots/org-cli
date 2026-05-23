@@ -451,7 +451,7 @@ def test_read_live_placeholder_value_keeps_raw_mode_for_full_input(
     )
     monkeypatch.setattr(
         "org.commands.tasks.capture.read_input_event",
-        lambda _fd, **_kwargs: next(events),
+        lambda **_kwargs: next(events),
     )
 
     value = capture._read_live_placeholder_value(
@@ -583,6 +583,7 @@ def test_extract_bracketed_paste_text_decodes_payload() -> None:
 
 def test_read_input_event_maps_bracketed_paste_to_text(monkeypatch: pytest.MonkeyPatch) -> None:
     """Bracketed paste input should be surfaced as TEXT event."""
+    monkeypatch.setattr("org.commands.interactive_common.sys.stdin.fileno", lambda: 0)
     monkeypatch.setattr("org.commands.interactive_common.os.read", lambda _fd, _n: b"\x1b")
     monkeypatch.setattr(
         "org.commands.interactive_common.read_escape_sequence",
@@ -593,7 +594,7 @@ def test_read_input_event_maps_bracketed_paste_to_text(monkeypatch: pytest.Monke
         lambda _fd, initial_payload: initial_payload + b"\x1b[201~",
     )
 
-    assert interactive_common.read_input_event(0, ctrl_p_as_paste=True) == ("TEXT", "Paste value")
+    assert interactive_common.read_input_event(ctrl_p_as_paste=True) == ("TEXT", "Paste value")
 
 
 def test_set_bracketed_paste_writes_terminal_sequences(monkeypatch: pytest.MonkeyPatch) -> None:

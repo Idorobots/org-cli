@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from io import StringIO
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-import pytest
 from rich.console import Console
 
 from org.commands.interactive_common import (
@@ -20,7 +19,6 @@ from org.commands.interactive_common import (
     key_binding_for_action,
     key_binding_requires_live_pause,
     read_input_event,
-    read_keypress,
     render_interactive_help_modal,
     render_interactive_help_panel_text,
     resolve_heading_locator,
@@ -28,6 +26,10 @@ from org.commands.interactive_common import (
 )
 from org.commands.tasks.common import resolve_todo_state_selection, todo_states_for_heading
 from tests.conftest import node_from_org
+
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_dispatch_key_binding_reports_unhandled_key() -> None:
@@ -82,6 +84,7 @@ def test_extract_bracketed_paste_text_decodes_payload() -> None:
 
 def test_read_input_event_maps_bracketed_paste_to_text(monkeypatch: pytest.MonkeyPatch) -> None:
     """Bracketed paste input should be surfaced as a TEXT event."""
+    monkeypatch.setattr("org.commands.interactive_common.sys.stdin.fileno", lambda: 0)
     monkeypatch.setattr("org.commands.interactive_common.os.read", lambda _fd, _n: b"\x1b")
     monkeypatch.setattr(
         "org.commands.interactive_common.read_escape_sequence",
@@ -91,23 +94,13 @@ def test_read_input_event_maps_bracketed_paste_to_text(monkeypatch: pytest.Monke
         "org.commands.interactive_common.read_bracketed_paste_payload",
         lambda _fd, initial_payload: initial_payload + b"\x1b[201~",
     )
-    assert read_input_event(0, ctrl_p_as_paste=True) == ("TEXT", "Paste value")
+    assert read_input_event(ctrl_p_as_paste=True) == ("TEXT", "Paste value")
 
 
-def test_read_input_event_raises_keyboard_interrupt_on_ctrl_c(
+def test_read_input_event_returns_none_when_timeout_expires(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Ctrl-C should propagate as KeyboardInterrupt during prompt input."""
-    monkeypatch.setattr("org.commands.interactive_common.os.read", lambda _fd, _n: b"\x03")
-
-    with pytest.raises(KeyboardInterrupt):
-        read_input_event(0)
-
-
-def test_read_keypress_raises_keyboard_interrupt_on_ctrl_c(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Ctrl-C should propagate as KeyboardInterrupt during fullscreen key reads."""
+    """Timed input reads should return None when no input arrives."""
 
     def _fake_select(
         _readers: object,
@@ -115,14 +108,12 @@ def test_read_keypress_raises_keyboard_interrupt_on_ctrl_c(
         _errors: object,
         _timeout: object,
     ) -> tuple[list[int], list[int], list[int]]:
-        return ([0], [], [])
+        return ([], [], [])
 
     monkeypatch.setattr("org.commands.interactive_common.select.select", _fake_select)
     monkeypatch.setattr("org.commands.interactive_common.sys.stdin.fileno", lambda: 0)
-    monkeypatch.setattr("org.commands.interactive_common.os.read", lambda _fd, _n: b"\x03")
 
-    with pytest.raises(KeyboardInterrupt):
-        read_keypress(timeout_seconds=0.1)
+    assert read_input_event(timeout_seconds=0.1) is None
 
 
 def test_set_bracketed_paste_writes_terminal_sequences(monkeypatch: pytest.MonkeyPatch) -> None:

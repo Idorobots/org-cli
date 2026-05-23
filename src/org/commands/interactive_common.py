@@ -650,18 +650,16 @@ def _read_escape_input_event(
     return (event_map.get(escape_token, "IGNORE"), "")
 
 
-def read_input_event(
+def _read_input_event_from_first_byte(
     fd: int,
+    first: bytes,
     *,
     token_map: dict[str, str] | None = None,
     ctrl_p_as_paste: bool = False,
 ) -> tuple[str, str]:
-    """Read one input event token and optional text payload."""
-    first = os.read(fd, 1)
+    """Decode one input event from an already-read first byte."""
     if first in {b"\r", b"\n"}:
         return ("ENTER", "")
-    if first == b"\x03":
-        raise KeyboardInterrupt
     if first in {b"\x7f", b"\x08"}:
         return ("BACKSPACE", "")
 
@@ -675,6 +673,28 @@ def read_input_event(
     if text is None:
         return ("IGNORE", "")
     return ("TEXT", text)
+
+
+def read_input_event(
+    timeout_seconds: float | None = None,
+    *,
+    token_map: dict[str, str] | None = None,
+    ctrl_p_as_paste: bool = False,
+) -> tuple[str, str] | None:
+    """Read one input event token and optional text payload."""
+    active_fd = sys.stdin.fileno()
+    if timeout_seconds is not None:
+        ready, _, _ = select.select([active_fd], [], [], timeout_seconds)
+        if not ready:
+            return None
+
+    first = os.read(active_fd, 1)
+    return _read_input_event_from_first_byte(
+        active_fd,
+        first,
+        token_map=token_map,
+        ctrl_p_as_paste=ctrl_p_as_paste,
+    )
 
 
 def _set_mouse_reporting(enabled: bool) -> None:
@@ -703,16 +723,14 @@ def set_bracketed_paste(enabled: bool) -> None:
         return
 
 
-def _read_keypress_in_active_terminal_mode(timeout_seconds: float | None = None) -> str:
-    """Read one keypress while stdin is already in non-canonical mode."""
+def read_keypress(timeout_seconds: float | None = None) -> str:
+    """Read one keypress while the caller manages terminal mode."""
     fd = sys.stdin.fileno()
     if timeout_seconds is not None:
         ready, _, _ = select.select([fd], [], [], timeout_seconds)
         if not ready:
             return ""
     first = os.read(fd, 1)
-    if first == b"\x03":
-        raise KeyboardInterrupt
     if first in {b"\r", b"\n"}:
         return "ENTER"
     if first == b"\x1b":
@@ -721,26 +739,6 @@ def _read_keypress_in_active_terminal_mode(timeout_seconds: float | None = None)
         return first.decode("utf-8").lower()
     except UnicodeDecodeError:
         return ""
-
-
-def read_keypress(timeout_seconds: float | None = None) -> str:
-    """Read one keypress while the caller manages terminal mode."""
-    return _read_keypress_in_active_terminal_mode(timeout_seconds)
-
-
-def read_input_event_with_timeout(
-    timeout_seconds: float | None,
-    *,
-    token_map: dict[str, str] | None = None,
-    ctrl_p_as_paste: bool = False,
-) -> tuple[str, str] | None:
-    """Read one input event while the caller manages terminal mode."""
-    fd = sys.stdin.fileno()
-    if timeout_seconds is not None:
-        ready, _, _ = select.select([fd], [], [], timeout_seconds)
-        if not ready:
-            return None
-    return read_input_event(fd, token_map=token_map, ctrl_p_as_paste=ctrl_p_as_paste)
 
 
 def apply_footer_prompt_input_event(

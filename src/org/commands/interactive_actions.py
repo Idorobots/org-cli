@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
 from org.commands.interactive_common import (
     apply_footer_prompt_input_event,
-    read_input_event_with_timeout,
+    read_input_event,
 )
 
 
@@ -212,7 +212,7 @@ def handle_active_interactive_action_input[SessionT: ActionHostSession](
     if action is None:
         return False
 
-    event = read_input_event_with_timeout(timeout_seconds, ctrl_p_as_paste=True)
+    event = read_input_event(timeout_seconds=timeout_seconds, ctrl_p_as_paste=True)
     if event is None:
         refresh()
         return True

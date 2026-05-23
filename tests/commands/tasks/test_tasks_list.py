@@ -1156,8 +1156,8 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
     monkeypatch.setattr(tasks_list, "_reload_session_nodes", lambda _session, _identity: True)
     monkeypatch.setattr(
         interactive_actions,
-        "read_input_event_with_timeout",
-        lambda _timeout, **_kwargs: ("ENTER", ""),
+        "read_input_event",
+        lambda **_kwargs: ("ENTER", ""),
     )
 
     events: list[str] = []
@@ -1238,8 +1238,8 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
 
     monkeypatch.setattr(
         interactive_actions,
-        "read_input_event_with_timeout",
-        lambda _timeout, **_kwargs: ("TEXT", "b"),
+        "read_input_event",
+        lambda **_kwargs: ("TEXT", "b"),
     )
     consumed = tasks_list._handle_active_prompt_input(
         session,
@@ -1254,8 +1254,8 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
 
     monkeypatch.setattr(
         interactive_actions,
-        "read_input_event_with_timeout",
-        lambda _timeout, **_kwargs: ("ESC", ""),
+        "read_input_event",
+        lambda **_kwargs: ("ESC", ""),
     )
     consumed = tasks_list._handle_active_prompt_input(
         session,
