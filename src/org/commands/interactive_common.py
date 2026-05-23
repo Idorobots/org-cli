@@ -8,7 +8,6 @@ import select
 import sys
 import termios
 import tty
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol, Self, cast
@@ -26,7 +25,7 @@ from org.output_format import DEFAULT_OUTPUT_THEME
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Mapping
 
     from org_parser.document import Heading
     from rich.live import Live
@@ -147,21 +146,6 @@ class InteractiveInputController:
         live.start()
         _set_mouse_reporting(True)
         self.start()
-
-
-@contextmanager
-def terminal_input_mode(*, use_raw: bool) -> Iterator[None]:
-    """Temporarily switch stdin into raw or cbreak mode."""
-    fd = sys.stdin.fileno()
-    previous_mode = termios.tcgetattr(fd)
-    try:
-        if use_raw:
-            tty.setraw(fd)
-        else:
-            tty.setcbreak(fd)
-        yield
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, previous_mode)
 
 
 def render_interactive_help_panel_text(entries: list[InteractiveHelpEntry]) -> str:
@@ -719,12 +703,6 @@ def set_bracketed_paste(enabled: bool) -> None:
         return
 
 
-def read_keypress_with_temporary_raw_mode(timeout_seconds: float | None = None) -> str:
-    """Read one keypress while temporarily switching stdin into raw mode."""
-    with terminal_input_mode(use_raw=True):
-        return _read_keypress_in_active_terminal_mode(timeout_seconds)
-
-
 def _read_keypress_in_active_terminal_mode(timeout_seconds: float | None = None) -> str:
     """Read one keypress while stdin is already in non-canonical mode."""
     fd = sys.stdin.fileno()
@@ -734,7 +712,7 @@ def _read_keypress_in_active_terminal_mode(timeout_seconds: float | None = None)
             return ""
     first = os.read(fd, 1)
     if first == b"\x03":
-        return "q"
+        raise KeyboardInterrupt
     if first in {b"\r", b"\n"}:
         return "ENTER"
     if first == b"\x1b":
@@ -748,21 +726,6 @@ def _read_keypress_in_active_terminal_mode(timeout_seconds: float | None = None)
 def read_keypress(timeout_seconds: float | None = None) -> str:
     """Read one keypress while the caller manages terminal mode."""
     return _read_keypress_in_active_terminal_mode(timeout_seconds)
-
-
-def read_input_event_with_temporary_cbreak_mode(
-    timeout_seconds: float | None,
-    *,
-    token_map: dict[str, str] | None = None,
-    ctrl_p_as_paste: bool = False,
-) -> tuple[str, str] | None:
-    """Read one input event while temporarily switching stdin into cbreak mode."""
-    with terminal_input_mode(use_raw=False):
-        return read_input_event_with_timeout(
-            timeout_seconds,
-            token_map=token_map,
-            ctrl_p_as_paste=ctrl_p_as_paste,
-        )
 
 
 def read_input_event_with_timeout(
