@@ -7,7 +7,7 @@ import os
 import sys
 from contextlib import contextmanager
 from io import StringIO
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import click
 import pytest
@@ -1156,8 +1156,8 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
     monkeypatch.setattr(tasks_list, "_reload_session_nodes", lambda _session, _identity: True)
     monkeypatch.setattr(
         interactive_actions,
-        "read_input_event_with_timeout",
-        lambda _timeout, **_kwargs: ("ENTER", ""),
+        "read_input_event",
+        lambda **_kwargs: ("ENTER", ""),
     )
 
     events: list[str] = []
@@ -1175,10 +1175,23 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
             assert refresh is True
             events.append("update")
 
-    consumed = tasks_list._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+    class _InputControllerStub:
+        def suspend_live(self, live: Live) -> None:
+            events.append("input-stop")
+            live.stop()
+
+        def resume_live(self, live: Live) -> None:
+            live.start()
+            events.append("input-start")
+
+    consumed = tasks_list._handle_active_prompt_input(
+        session,
+        cast("Live", _LiveStub()),
+        cast("Any", _InputControllerStub()),
+    )
 
     assert consumed is True
-    assert events == ["stop", "start", "update"]
+    assert events == ["input-stop", "stop", "start", "input-start", "update"]
 
 
 def test_search_prompt_live_updates_and_escape_reverts_search(
@@ -1214,12 +1227,25 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
             assert refresh is True
             events.append("update")
 
+    class _InputControllerStub:
+        def suspend_live(self, live: Live) -> None:
+            events.append("input-stop")
+            live.stop()
+
+        def resume_live(self, live: Live) -> None:
+            live.start()
+            events.append("input-start")
+
     monkeypatch.setattr(
         interactive_actions,
-        "read_input_event_with_timeout",
-        lambda _timeout, **_kwargs: ("TEXT", "b"),
+        "read_input_event",
+        lambda **_kwargs: ("TEXT", "b"),
     )
-    consumed = tasks_list._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+    consumed = tasks_list._handle_active_prompt_input(
+        session,
+        cast("Live", _LiveStub()),
+        cast("Any", _InputControllerStub()),
+    )
 
     assert consumed is True
     assert [node.title_text for node in session.visible_nodes] == ["Beta"]
@@ -1228,10 +1254,14 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
 
     monkeypatch.setattr(
         interactive_actions,
-        "read_input_event_with_timeout",
-        lambda _timeout, **_kwargs: ("ESC", ""),
+        "read_input_event",
+        lambda **_kwargs: ("ESC", ""),
     )
-    consumed = tasks_list._handle_active_prompt_input(session, cast("Live", _LiveStub()))
+    consumed = tasks_list._handle_active_prompt_input(
+        session,
+        cast("Live", _LiveStub()),
+        cast("Any", _InputControllerStub()),
+    )
 
     assert consumed is True
     assert [node.title_text for node in session.visible_nodes] == ["Alpha", "Beta"]

@@ -7214,9 +7214,15 @@ It's OK to show partially obscured task panels, so it should be possible to scro
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-05-03 Sun 00:29]
 :END:
-*** Input is very jittery                                                                      :Bug:
+*** DONE Input is very jittery                                                                 :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-23 Sat 16:23]
+:END:
 When holding an arrow key down to scroll a longer list the TUI gets jittery and sometimes the key escape sequence is displayed at the very bottom.
 I'm guessing the polling for input is too slow to catch key repeats and sometimes the native input handling kick is, hence printing the key escape sequence.
+
+This is likely caused by the Rich's Live rendering. A better option would be to render the UI and await user input without live rendering. Instead, the TUI should purely react to the input and re-render only when the input changes the command's session state.
+
 *** REWORKED Search action should be available in agenda and board.
 :PROPERTIES:
 :capture_time: [2026-05-09 Sat 14:48]

@@ -84,6 +84,7 @@ def test_extract_bracketed_paste_text_decodes_payload() -> None:
 
 def test_read_input_event_maps_bracketed_paste_to_text(monkeypatch: pytest.MonkeyPatch) -> None:
     """Bracketed paste input should be surfaced as a TEXT event."""
+    monkeypatch.setattr("org.commands.interactive_common.sys.stdin.fileno", lambda: 0)
     monkeypatch.setattr("org.commands.interactive_common.os.read", lambda _fd, _n: b"\x1b")
     monkeypatch.setattr(
         "org.commands.interactive_common.read_escape_sequence",
@@ -93,7 +94,26 @@ def test_read_input_event_maps_bracketed_paste_to_text(monkeypatch: pytest.Monke
         "org.commands.interactive_common.read_bracketed_paste_payload",
         lambda _fd, initial_payload: initial_payload + b"\x1b[201~",
     )
-    assert read_input_event(0, ctrl_p_as_paste=True) == ("TEXT", "Paste value")
+    assert read_input_event(ctrl_p_as_paste=True) == ("TEXT", "Paste value")
+
+
+def test_read_input_event_returns_none_when_timeout_expires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Timed input reads should return None when no input arrives."""
+
+    def _fake_select(
+        _readers: object,
+        _writers: object,
+        _errors: object,
+        _timeout: object,
+    ) -> tuple[list[int], list[int], list[int]]:
+        return ([], [], [])
+
+    monkeypatch.setattr("org.commands.interactive_common.select.select", _fake_select)
+    monkeypatch.setattr("org.commands.interactive_common.sys.stdin.fileno", lambda: 0)
+
+    assert read_input_event(timeout_seconds=0.1) is None
 
 
 def test_set_bracketed_paste_writes_terminal_sequences(monkeypatch: pytest.MonkeyPatch) -> None:

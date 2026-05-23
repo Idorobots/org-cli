@@ -445,7 +445,10 @@ def _read_live_placeholder_value(
                 ),
                 refresh=True,
             )
-            event_name, event_text = read_input_event(fd, ctrl_p_as_paste=True)
+            event = read_input_event(ctrl_p_as_paste=True)
+            if event is None:
+                continue
+            event_name, event_text = event
             help_key = event_text if event_name == "TEXT" else event_name
             consumed, show_help_modal = apply_help_modal_key(
                 help_key,
