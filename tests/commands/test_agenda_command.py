@@ -15,9 +15,11 @@ from org_parser.time import Timestamp
 from rich.console import Console
 
 from org import config as config_module
-from org.commands import agenda as agenda_command
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
+from org.commands.agenda import command as agenda_command
+from org.commands.agenda import events as agenda_events
+from org.commands.agenda import layout as agenda_layout
 from org.commands.interactive_common import (
     InputEvent,
     KeypressEvent,
@@ -85,10 +87,11 @@ def _make_args(files: list[str], **overrides: object) -> agenda_command.AgendaAr
     return args
 
 
-def _visible_agenda_task_titles(session: agenda_command._AgendaSession) -> list[str]:
+def _visible_agenda_task_titles(session: object) -> list[str]:
     """Return visible task titles from current interactive agenda rows."""
     titles: list[str] = []
-    for day_model in session.day_models:
+    typed_session = cast("agenda_command._AgendaSession", session)
+    for day_model in typed_session.day_models:
         titles.extend(
             row.node.title_text.strip()
             for row in day_model.rows
@@ -101,6 +104,8 @@ def _pin_agenda_now(monkeypatch: pytest.MonkeyPatch) -> datetime:
     """Pin agenda command current time for deterministic date-sensitive tests."""
     pinned_now = datetime(2025, 1, 15, 12, 0)
     monkeypatch.setattr(agenda_command, "local_now", lambda: pinned_now)
+    monkeypatch.setattr(agenda_events, "local_now", lambda: pinned_now)
+    monkeypatch.setattr(agenda_layout, "local_now", lambda: pinned_now)
     return pinned_now
 
 
@@ -788,10 +793,10 @@ def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:
         False,
     )
     start = session.selected_row_index
-    assert agenda_command._handle_keypress_event(session, "WHEEL-DOWN") is True
+    assert agenda_events._handle_keypress_event(session, "WHEEL-DOWN") is True
     assert session.selected_row_index == (start + 1) % len(session.row_locations)
 
-    assert agenda_command._handle_keypress_event(session, "WHEEL-UP") is True
+    assert agenda_events._handle_keypress_event(session, "WHEEL-UP") is True
     assert session.selected_row_index == start
 
 
@@ -802,7 +807,8 @@ def test_timeout_event_refreshes_now_marker_when_minute_changes(
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
     clock = {"value": datetime(2025, 1, 15, 10, 0)}
-    monkeypatch.setattr("org.commands.agenda.local_now", lambda: clock["value"])
+    monkeypatch.setattr("org.commands.agenda.command.local_now", lambda: clock["value"])
+    monkeypatch.setattr("org.commands.agenda.events.local_now", lambda: clock["value"])
     root = org_parser.load(fixture_path)
     session = agenda_command._create_agenda_session(
         args,
@@ -816,10 +822,10 @@ def test_timeout_event_refreshes_now_marker_when_minute_changes(
 
     clock["value"] = datetime(2025, 1, 15, 10, 1)
     assert (
-        agenda_command._handle_interactive_event(
+        agenda_events.handle_interactive_event(
             session,
             TimeoutEvent(),
-            agenda_command._passthrough_run_external,
+            agenda_events.passthrough_run_external,
         )
         is True
     )
@@ -841,7 +847,7 @@ def test_handle_interactive_key_unsupported_key_sets_status_and_continues() -> N
         False,
     )
     unsupported_key = "UNSUPPORTED-ESC:1b5b3939397e"
-    assert agenda_command._handle_keypress_event(session, unsupported_key) is True
+    assert agenda_events._handle_keypress_event(session, unsupported_key) is True
     assert session.status_message == f"Unsupported key: {unsupported_key}"
 
 
@@ -858,7 +864,7 @@ def test_handle_interactive_key_slash_activates_search_prompt() -> None:
         False,
     )
 
-    assert agenda_command._handle_keypress_event(session, "/") is True
+    assert agenda_events._handle_keypress_event(session, "/") is True
     assert session.active_prompt is not None
     assert session.active_prompt.prompt.label == "Search text (blank clears)"
 
@@ -880,7 +886,7 @@ def test_agenda_search_filters_rows_and_clear_restores_rows() -> None:
     assert "Timed agenda task" in all_titles
     assert "Untimed agenda task" in all_titles
 
-    assert agenda_command._handle_keypress_event(session, "/") is True
+    assert agenda_events._handle_keypress_event(session, "/") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "focus"
     keep_open = session.active_prompt.submit_callback()
@@ -890,7 +896,7 @@ def test_agenda_search_filters_rows_and_clear_restores_rows() -> None:
     assert _visible_agenda_task_titles(session) == ["Timed agenda task"]
     assert session.search_text == "focus"
 
-    assert agenda_command._handle_keypress_event(session, "x") is True
+    assert agenda_events._handle_keypress_event(session, "x") is True
     assert session.status_message == "Search cleared"
     assert session.search_text == ""
     assert _visible_agenda_task_titles(session) == all_titles
@@ -913,7 +919,7 @@ def test_interactive_renderable_footer_shows_active_search_text() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=220, height=24)
 
-    console.print(agenda_command._interactive_agenda_renderable(console, session))
+    console.print(agenda_layout.interactive_agenda_renderable(console, session))
     output = buffer.getvalue()
 
     assert "Search: focus" in output
@@ -940,16 +946,17 @@ def test_apply_state_change_uses_current_action_time(
     )
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
-    monkeypatch.setattr("org.commands.agenda.local_now", lambda: action_now)
-    monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
-    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr("org.commands.agenda.command.local_now", lambda: action_now)
+    monkeypatch.setattr(agenda_events, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_events, "local_now", lambda: action_now)
     monkeypatch.setattr(
-        agenda_command,
+        agenda_events,
         "_refresh_session",
         lambda _session, _preserve_identity: None,
     )
 
-    agenda_command._apply_state_change_with_value(session, "DONE")
+    agenda_events._apply_state_change_with_value(session, "DONE")
 
     assert heading.todo == "DONE"
     assert heading.repeats
@@ -979,16 +986,17 @@ def test_apply_clock_entry_uses_current_action_time(
     )
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
-    monkeypatch.setattr("org.commands.agenda.local_now", lambda: action_now)
-    monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
-    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr("org.commands.agenda.command.local_now", lambda: action_now)
+    monkeypatch.setattr(agenda_events, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_events, "local_now", lambda: action_now)
     monkeypatch.setattr(
-        agenda_command,
+        agenda_events,
         "_refresh_session",
         lambda _session, _preserve_identity: None,
     )
 
-    agenda_command._apply_clock_entry_with_value(session, "30")
+    agenda_events._apply_clock_entry_with_value(session, "30")
 
     assert heading.clock_entries
     timestamp = heading.clock_entries[-1].timestamp
@@ -1060,9 +1068,9 @@ def test_apply_refile_preserves_moved_task_locator(
     heading = root.heading_by_id("task-1")
     assert heading is not None
     monkeypatch.setattr(
-        agenda_command,
+        agenda_events,
         "_selected_task_row",
-        lambda _session: agenda_command._AgendaRow(
+        lambda _session: agenda_layout._AgendaRow(
             kind="task",
             day=datetime(2025, 1, 15).date(),
             node=heading,
@@ -1073,8 +1081,8 @@ def test_apply_refile_preserves_moved_task_locator(
     saved_documents: list[Document] = []
     refreshed: dict[str, object] = {}
 
-    monkeypatch.setattr(agenda_command, "_save_document_changes", saved_documents.append)
-    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_events, "_save_document_changes", saved_documents.append)
+    monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
 
     def _capture_refresh(
         current_session: agenda_command._AgendaSession,
@@ -1083,9 +1091,9 @@ def test_apply_refile_preserves_moved_task_locator(
         refreshed["session"] = current_session
         refreshed["identity"] = preserve_identity
 
-    monkeypatch.setattr(agenda_command, "_refresh_session", _capture_refresh)
+    monkeypatch.setattr(agenda_events, "_refresh_session", _capture_refresh)
 
-    agenda_command._apply_refile_with_value(session, destination_path)
+    agenda_events._apply_refile_with_value(session, destination_path)
 
     assert refreshed["session"] is session
     assert refreshed["identity"] == heading_locator(heading)
@@ -1121,9 +1129,9 @@ def test_handle_interactive_key_enter_edits_selected_task(
     def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
         return editor_command.DocumentEditResult(changed=False)
 
-    monkeypatch.setattr(agenda_command, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(agenda_events, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    assert agenda_command._handle_keypress_event(session, "ENTER") is True
+    assert agenda_events._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "No changes."
 
 
@@ -1162,11 +1170,11 @@ def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after
         nonlocal refreshed_identity
         refreshed_identity = identity
 
-    monkeypatch.setattr(agenda_command, "edit_heading_subtree_in_external_editor", _fake_edit)
-    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
-    monkeypatch.setattr(agenda_command, "_refresh_session", _capture_refresh)
+    monkeypatch.setattr(agenda_events, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_events, "_refresh_session", _capture_refresh)
 
-    assert agenda_command._handle_keypress_event(session, "ENTER") is True
+    assert agenda_events._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "Task updated"
     assert refreshed_identity == heading_locator(source_node)
 
@@ -1213,11 +1221,11 @@ def test_handle_interactive_key_dollar_archives_selected_task(
             destination_document=heading.document,
         )
 
-    monkeypatch.setattr(agenda_command, "archive_heading_subtree_and_save", _fake_archive)
-    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
-    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+    monkeypatch.setattr(agenda_events, "archive_heading_subtree_and_save", _fake_archive)
+    monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_events, "_refresh_session", lambda _session, _identity: None)
 
-    assert agenda_command._handle_keypress_event(session, "$") is True
+    assert agenda_events._handle_keypress_event(session, "$") is True
     assert session.status_message == "Task archived"
 
 
@@ -1260,7 +1268,7 @@ def test_handle_interactive_key_a_captures_and_schedules_on_timed_task_row(
     )
 
     monkeypatch.setattr(
-        agenda_command,
+        agenda_events,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -1272,8 +1280,8 @@ def test_handle_interactive_key_a_captures_and_schedules_on_timed_task_row(
     def _capture_save(document: Document) -> None:
         saved_documents.append(document)
 
-    monkeypatch.setattr(agenda_command, "_save_document_changes", _capture_save)
-    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_events, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
 
     def _fake_refresh(
         current_session: agenda_command._AgendaSession,
@@ -1282,9 +1290,9 @@ def test_handle_interactive_key_a_captures_and_schedules_on_timed_task_row(
         reloaded["session"] = current_session
         reloaded["identity"] = preserve_identity
 
-    monkeypatch.setattr(agenda_command, "_refresh_session", _fake_refresh)
+    monkeypatch.setattr(agenda_events, "_refresh_session", _fake_refresh)
 
-    assert agenda_command._handle_keypress_event(session, "a") is True
+    assert agenda_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "1"
     keep_open = session.active_prompt.submit_callback()
@@ -1303,6 +1311,11 @@ def test_handle_interactive_key_a_uses_now_marker_time(
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
     local_tz = local_now().tzinfo
+    monkeypatch.setattr(
+        agenda_events,
+        "local_now",
+        lambda: datetime(2025, 1, 15, 17, 4, 0, tzinfo=local_tz),
+    )
     monkeypatch.setattr(
         agenda_command,
         "local_now",
@@ -1330,7 +1343,7 @@ def test_handle_interactive_key_a_uses_now_marker_time(
     )
 
     monkeypatch.setattr(
-        agenda_command,
+        agenda_events,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -1338,11 +1351,11 @@ def test_handle_interactive_key_a_uses_now_marker_time(
             document=captured_node.document,
         ),
     )
-    monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
-    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
-    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+    monkeypatch.setattr(agenda_events, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_events, "_refresh_session", lambda _session, _identity: None)
 
-    assert agenda_command._handle_keypress_event(session, "a") is True
+    assert agenda_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "1"
     keep_open = session.active_prompt.submit_callback()
@@ -1369,7 +1382,7 @@ def test_handle_interactive_key_a_on_non_timetable_row_reports_blocked() -> None
     )
     session.selected_row_index = blocked_index
 
-    assert agenda_command._handle_keypress_event(session, "a") is True
+    assert agenda_events._handle_keypress_event(session, "a") is True
     assert session.status_message == "Capture is available only on timetable time rows"
 
 
@@ -1404,7 +1417,7 @@ def test_handle_interactive_key_a_blank_template_input_cancels(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert agenda_command._handle_keypress_event(session, "a") is True
+    assert agenda_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = ""
     keep_open = session.active_prompt.submit_callback()
@@ -1444,7 +1457,7 @@ def test_handle_interactive_key_a_invalid_shortcut_keeps_prompt_open(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert agenda_command._handle_keypress_event(session, "a") is True
+    assert agenda_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "42"
     keep_open = session.active_prompt.submit_callback()
@@ -1481,13 +1494,13 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
         "CONFIG_CAPTURE_TEMPLATES",
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
-    agenda_command._handle_keypress_event(session, "a")
+    agenda_events._handle_keypress_event(session, "a")
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "1"
 
     captured_node = next(iter(org_parser.loads("* TODO Captured\n")))
     monkeypatch.setattr(
-        agenda_command,
+        agenda_events,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -1495,9 +1508,9 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
             document=captured_node.document,
         ),
     )
-    monkeypatch.setattr(agenda_command, "_save_document_changes", lambda _document: None)
-    monkeypatch.setattr(agenda_command, "_reload_session_nodes", lambda _session: None)
-    monkeypatch.setattr(agenda_command, "_refresh_session", lambda _session, _identity: None)
+    monkeypatch.setattr(agenda_events, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(agenda_events, "_refresh_session", lambda _session, _identity: None)
     events: list[str] = []
 
     class _LiveStub:
@@ -1534,8 +1547,8 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
 
     session.run_external = _run_prompt_external
 
-    consumed = agenda_command._handle_active_prompt_event(session, KeypressEvent("ENTER"))
-    live.update(agenda_command._interactive_agenda_renderable(live.console, session), refresh=True)
+    consumed = agenda_events._handle_active_prompt_event(session, KeypressEvent("ENTER"))
+    live.update(agenda_layout.interactive_agenda_renderable(live.console, session), refresh=True)
 
     assert consumed is True
     assert events == ["input-stop", "stop", "start", "input-start", "update"]
@@ -1553,7 +1566,7 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
         ["TODO"],
         False,
     )
-    assert agenda_command._handle_keypress_event(session, "/") is True
+    assert agenda_events._handle_keypress_event(session, "/") is True
     assert session.active_prompt is not None
 
     events: list[str] = []
@@ -1581,16 +1594,16 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
             events.append("input-start")
 
     live = cast("Live", _LiveStub())
-    consumed = agenda_command._handle_active_prompt_event(session, InputEvent("focus"))
-    live.update(agenda_command._interactive_agenda_renderable(live.console, session), refresh=True)
+    consumed = agenda_events._handle_active_prompt_event(session, InputEvent("focus"))
+    live.update(agenda_layout.interactive_agenda_renderable(live.console, session), refresh=True)
 
     assert consumed is True
     assert _visible_agenda_task_titles(session) == ["Timed agenda task"]
     assert session.search_text == "focus"
     assert session.status_message == "1 matches"
 
-    consumed = agenda_command._handle_active_prompt_event(session, KeypressEvent("ESC"))
-    live.update(agenda_command._interactive_agenda_renderable(live.console, session), refresh=True)
+    consumed = agenda_events._handle_active_prompt_event(session, KeypressEvent("ESC"))
+    live.update(agenda_layout.interactive_agenda_renderable(live.console, session), refresh=True)
 
     assert consumed is True
     assert _visible_agenda_task_titles(session) == [
@@ -1623,7 +1636,7 @@ def test_handle_interactive_key_enter_on_non_task_row_stays_in_agenda() -> None:
     )
     session.selected_row_index = hour_index
 
-    assert agenda_command._handle_keypress_event(session, "ENTER") is True
+    assert agenda_events._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "Action available only on task rows"
 
 
@@ -1639,7 +1652,7 @@ def test_handle_interactive_key_escape_quits_interactive_loop() -> None:
         ["TODO"],
         False,
     )
-    assert agenda_command._handle_keypress_event(session, "ESC") is False
+    assert agenda_events._handle_keypress_event(session, "ESC") is False
 
 
 def test_detail_org_block_includes_selected_heading_children() -> None:
@@ -1670,7 +1683,7 @@ def test_interactive_renderable_footer_is_two_lines_without_status() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=300, height=24)
 
-    console.print(agenda_command._interactive_agenda_renderable(console, session))
+    console.print(agenda_layout.interactive_agenda_renderable(console, session))
     lines = buffer.getvalue().splitlines()
 
     assert len(lines) == 24
@@ -1695,7 +1708,7 @@ def test_interactive_renderable_footer_is_two_lines_with_status_on_narrow_width(
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=80, height=24)
 
-    console.print(agenda_command._interactive_agenda_renderable(console, session))
+    console.print(agenda_layout.interactive_agenda_renderable(console, session))
     lines = buffer.getvalue().splitlines()
 
     assert len(lines) == 24
@@ -1717,10 +1730,10 @@ def test_handle_interactive_key_question_toggles_help_modal() -> None:
         False,
     )
 
-    assert agenda_command._handle_keypress_event(session, "?") is True
+    assert agenda_events._handle_keypress_event(session, "?") is True
     assert session.show_help_modal is True
 
-    assert agenda_command._handle_keypress_event(session, "ENTER") is True
+    assert agenda_events._handle_keypress_event(session, "ENTER") is True
     assert session.show_help_modal is False
 
 
@@ -1740,7 +1753,7 @@ def test_interactive_renderable_shows_help_panel() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=120, height=24)
 
-    console.print(agenda_command._interactive_agenda_renderable(console, session))
+    console.print(agenda_layout.interactive_agenda_renderable(console, session))
     output = buffer.getvalue()
 
     assert "Key bindings" in output

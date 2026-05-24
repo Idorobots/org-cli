@@ -1,0 +1,976 @@
+"""Board interactive event handlers."""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Protocol, cast
+
+import typer
+
+from org import config as config_module
+from org.cli_common import load_and_process_data
+from org.commands.archive import archive_heading_subtree_and_save
+from org.commands.editor import edit_heading_subtree_in_external_editor
+from org.commands.interactive_common import (
+    FooterPromptState,
+    HeadingLocator,
+    InputEvent,
+    InteractiveEvent,
+    InteractiveHelpEntry,
+    InteractivePromptState,
+    KeyBinding,
+    KeypressEvent,
+    TimeoutEvent,
+    advance_timestamp_by_repeater,
+    append_repeat_transition,
+    apply_help_modal_key,
+    apply_prompt_event,
+    heading_locator,
+    interactive_loop,
+    local_now,
+    resolve_heading_locator,
+    shift_priority,
+)
+from org.commands.search_common import filter_nodes_by_search
+from org.commands.tasks.capture import TasksCaptureArgs, capture_task
+from org.commands.tasks.common import (
+    PromptActionConfig,
+    capture_template_prompt_config,
+    configured_capture_template_names,
+    resolve_capture_template_selection,
+    save_document,
+)
+from org.query_language import (
+    CompiledQuery,
+    EvalContext,
+    QueryParseError,
+    QueryRuntimeError,
+    Stream,
+    compile_query_text,
+)
+
+from .layout import _interactive_flow_board_renderable
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from org_parser.document import Document, Heading
+    from rich.console import Console
+
+    from .command import BoardArgs
+
+
+logger = logging.getLogger("org")
+
+
+class BoardColumnLike(Protocol):
+    @property
+    def title(self) -> str: ...
+
+    @property
+    def nodes(self) -> list[Heading]: ...
+
+
+@dataclass
+class _BoardColumn:
+    """One board column with title and assigned tasks."""
+
+    title: str
+    nodes: list[Heading]
+
+
+@dataclass(frozen=True)
+class _BoardColumnSpec:
+    """One board column filter specification."""
+
+    name: str
+    view_name: str
+    query: CompiledQuery
+
+
+@dataclass
+class _BoardSession:
+    """Interactive board session state."""
+
+    args: BoardArgs
+    nodes: list[Heading]
+    todo_states: list[str]
+    done_states: list[str]
+    columns: Sequence[BoardColumnLike]
+    color_enabled: bool
+    selected_column_index: int
+    selected_row_index: int
+    scroll_offset: int
+    status_message: str
+    all_columns: Sequence[BoardColumnLike] = field(default_factory=list)
+    search_text: str = ""
+    search_prompt_previous_text: str | None = None
+    show_help_modal: bool = False
+    active_prompt: InteractivePromptState | None = None
+    run_external: Callable[[Callable[[], None]], None] | None = None
+
+
+BoardColumn = _BoardColumn
+BoardSession = _BoardSession
+
+
+_BOARD_HELP_ENTRIES = [
+    InteractiveHelpEntry("Esc/q", "Exit the board and return to the shell."),
+    InteractiveHelpEntry(
+        "Up/Down, Wheel",
+        "Move the highlighted task up or down within the selected column.",
+    ),
+    InteractiveHelpEntry(
+        "Left/Right",
+        "Move focus across columns without changing task data.",
+    ),
+    InteractiveHelpEntry(
+        "Enter",
+        "Open the selected task subtree in the external editor workflow.",
+    ),
+    InteractiveHelpEntry(
+        "a",
+        "Capture a new task from configured templates and reload the board.",
+    ),
+    InteractiveHelpEntry(
+        "$",
+        "Archive the selected task subtree using standard archive rules.",
+    ),
+    InteractiveHelpEntry(
+        "/",
+        "Open search prompt and filter visible tasks in every column.",
+    ),
+    InteractiveHelpEntry(
+        "x",
+        "Clear active search filter and restore full board.",
+    ),
+    InteractiveHelpEntry(
+        "S-Left/S-Right",
+        "Step TODO state backward or forward using document state order.",
+    ),
+    InteractiveHelpEntry(
+        "S-Up/S-Down",
+        "Increase or decrease priority across A/B/C/none.",
+    ),
+]
+
+
+def _coerce_latest_timestamp_start(node: Heading) -> datetime | None:
+    """Return node latest timestamp start value when available."""
+    latest_timestamp = node.latest_timestamp
+    if latest_timestamp is None:
+        return None
+    return latest_timestamp.start
+
+
+def _filter_recent_completed_nodes(nodes: list[Heading], days: int) -> list[Heading]:
+    """Keep completed tasks only when latest_timestamp is within days window."""
+    now = local_now()
+    cutoff = now - timedelta(days=days)
+
+    filtered: list[Heading] = []
+    for node in nodes:
+        if not node.is_completed:
+            filtered.append(node)
+            continue
+
+        latest_start = _coerce_latest_timestamp_start(node)
+        if latest_start is None:
+            continue
+        if latest_start.tzinfo is None:
+            latest_start = latest_start.replace(tzinfo=now.tzinfo)
+        if latest_start >= cutoff:
+            filtered.append(node)
+
+    return filtered
+
+
+def _restore_key_order(specified: list[str], discovered: list[str]) -> list[str]:
+    """Return discovered keys with user-specified keys first in their original order."""
+    specified_set = set(specified)
+    extras = [k for k in discovered if k not in specified_set]
+    return [*specified, *extras]
+
+
+def _specified_states(args: BoardArgs) -> tuple[list[str], list[str]]:
+    """Return explicitly requested todo/done state lists."""
+    specified_todo_states = [k.strip() for k in args.todo_states.split(",") if k.strip()]
+    specified_done_states = [k.strip() for k in args.done_states.split(",") if k.strip()]
+    return specified_todo_states, specified_done_states
+
+
+def _resolved_states(
+    args: BoardArgs,
+    discovered_todo_states: list[str],
+    discovered_done_states: list[str],
+) -> tuple[list[str], list[str]]:
+    """Resolve visible flow board states from configured and discovered states."""
+    specified_todo_states, specified_done_states = _specified_states(args)
+    todo_states = _restore_key_order(specified_todo_states, discovered_todo_states)
+    done_states = _restore_key_order(specified_done_states, discovered_done_states)
+    return todo_states, done_states
+
+
+def _compile_column_filter_query(
+    filter_query: str,
+    order_by: str | None,
+) -> CompiledQuery:
+    """Compile one board column filter/order query text."""
+    base_query = f"select({filter_query})"
+    if order_by is None:
+        return compile_query_text(base_query)
+    return compile_query_text(f"{base_query} | sort_by({order_by})")
+
+
+def _fallback_view_config() -> config_module.BoardViewConfig:
+    """Return built-in fallback board filter view definition."""
+    return config_module.BoardViewConfig(
+        name="fallback",
+        columns=[
+            config_module.BoardColumnConfig(name="Backlog", filter=".todo == null"),
+            config_module.BoardColumnConfig(
+                name="TODO",
+                filter=".todo != null and not(.is_completed)",
+            ),
+            config_module.BoardColumnConfig(name="DONE", filter=".is_completed"),
+        ],
+    )
+
+
+def _compile_view_column_specs(view: config_module.BoardViewConfig) -> list[_BoardColumnSpec]:
+    """Compile one board view's filters into renderable column specs."""
+    column_specs: list[_BoardColumnSpec] = []
+    for column in view.columns:
+        try:
+            query = _compile_column_filter_query(column.filter, column.order_by)
+        except QueryParseError as err:
+            raise typer.BadParameter(
+                f"Invalid board filter/order-by (view={view.name}, column={column.name}): {err}",
+            ) from err
+        column_specs.append(
+            _BoardColumnSpec(
+                name=column.name,
+                view_name=view.name,
+                query=query,
+            ),
+        )
+    return column_specs
+
+
+def _resolve_selected_view_name(args: BoardArgs) -> str | None:
+    """Resolve selected board view name from command args."""
+    if args.view is None:
+        return None
+
+    selected_view = args.view.strip()
+    if not selected_view:
+        return None
+    return selected_view
+
+
+def _resolve_column_specs(args: BoardArgs) -> list[_BoardColumnSpec]:
+    """Resolve configured or fallback filter columns for board rendering."""
+    selected_view = _resolve_selected_view_name(args)
+    configured_views = config_module.CONFIG_BOARD_VIEWS
+
+    if selected_view is None:
+        return _compile_view_column_specs(_fallback_view_config())
+
+    if not configured_views:
+        raise typer.BadParameter("--view requested, but no board views are configured")
+
+    selected_view_config = configured_views.get(selected_view)
+    if selected_view_config is None:
+        raise typer.BadParameter(f"Requested board view not found: {selected_view}")
+
+    return _compile_view_column_specs(selected_view_config)
+
+
+def _build_selector_board_columns(
+    nodes: list[Heading],
+    column_specs: list[_BoardColumnSpec],
+) -> list[_BoardColumn]:
+    """Evaluate filter specs against processed task stream."""
+    columns: list[_BoardColumn] = []
+    for spec in column_specs:
+        try:
+            results = spec.query(Stream(nodes), EvalContext({}))
+        except QueryRuntimeError as err:
+            raise typer.BadParameter(
+                (
+                    "Board filter/order-by query failed "
+                    f"(view={spec.view_name}, column={spec.name}): {err}"
+                ),
+            ) from err
+
+        column_nodes = [cast("Heading", node) for node in results]
+        columns.append(_BoardColumn(title=spec.name, nodes=column_nodes))
+
+    return columns
+
+
+def _max_column_nodes(columns: list[_BoardColumn]) -> int:
+    """Return maximum node count among board columns."""
+    return max((len(column.nodes) for column in columns), default=0)
+
+
+def _column_with_filtered_nodes(column: BoardColumnLike, search_text: str) -> _BoardColumn:
+    """Return one board column with nodes filtered by search text."""
+    filtered_nodes = filter_nodes_by_search(column.nodes, search_text)
+    return _BoardColumn(title=column.title, nodes=filtered_nodes)
+
+
+def _filter_columns_by_search(
+    columns: Sequence[BoardColumnLike],
+    search_text: str,
+) -> list[_BoardColumn]:
+    """Filter nodes in each column by interactive search text."""
+    return [_column_with_filtered_nodes(column, search_text) for column in columns]
+
+
+def _visible_task_count(columns: Sequence[BoardColumnLike]) -> int:
+    """Return total number of visible tasks across all board columns."""
+    return sum(len(column.nodes) for column in columns)
+
+
+def _ensure_selection_bounds(session: _BoardSession) -> None:
+    """Clamp current selection to available columns and rows."""
+    if not session.columns:
+        session.selected_column_index = 0
+        session.selected_row_index = 0
+        return
+
+    session.selected_column_index = min(
+        max(session.selected_column_index, 0),
+        len(session.columns) - 1,
+    )
+    selected_nodes = session.columns[session.selected_column_index].nodes
+    if not selected_nodes:
+        session.selected_row_index = 0
+        return
+    session.selected_row_index = min(max(session.selected_row_index, 0), len(selected_nodes) - 1)
+
+
+def _refresh_visible_columns(
+    session: _BoardSession,
+    preserve_identity: HeadingLocator | None,
+) -> None:
+    """Refresh visible board columns and restore selected task when possible."""
+    source_columns = session.all_columns or session.columns
+    session.columns = _filter_columns_by_search(source_columns, session.search_text)
+
+    visible_nodes = [node for column in session.columns for node in column.nodes]
+    preserved_node = resolve_heading_locator(visible_nodes, preserve_identity)
+    if preserved_node is not None:
+        for column_index, column in enumerate(session.columns):
+            for row_index, node in enumerate(column.nodes):
+                if node is preserved_node:
+                    session.selected_column_index = column_index
+                    session.selected_row_index = row_index
+                    _ensure_selection_bounds(session)
+                    return
+
+    _ensure_selection_bounds(session)
+
+
+def _selected_node(session: _BoardSession) -> Heading | None:
+    """Return selected task node, if current selection targets one."""
+    if not session.columns:
+        return None
+    selected_nodes = session.columns[session.selected_column_index].nodes
+    if not selected_nodes:
+        return None
+    if session.selected_row_index < 0 or session.selected_row_index >= len(selected_nodes):
+        return None
+    return selected_nodes[session.selected_row_index]
+
+
+def _reload_session(
+    session: _BoardSession,
+    preserve_identity: HeadingLocator | None,
+) -> None:
+    """Reload processed nodes and rebuild board columns."""
+    nodes, discovered_todo_states, discovered_done_states = load_and_process_data(session.args)
+    todo_states, done_states = _resolved_states(
+        session.args,
+        discovered_todo_states,
+        discovered_done_states,
+    )
+
+    filtered_nodes = _filter_recent_completed_nodes(nodes, session.args.days)
+
+    session.nodes = filtered_nodes
+    session.todo_states = todo_states
+    session.done_states = done_states
+    session.all_columns = _build_selector_board_columns(
+        filtered_nodes,
+        _resolve_column_specs(session.args),
+    )
+    _refresh_visible_columns(session, preserve_identity)
+
+
+def _create_flow_board_session(
+    args: BoardArgs,
+    nodes: list[Heading],
+    todo_states: list[str],
+    done_states: list[str],
+    color_enabled: bool,
+) -> _BoardSession:
+    """Create interactive flow board session state."""
+    columns = _build_selector_board_columns(nodes, _resolve_column_specs(args))
+    selected_column_index = 0
+    for index, column in enumerate(columns):
+        if column.nodes:
+            selected_column_index = index
+            break
+
+    session = _BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=todo_states,
+        done_states=done_states,
+        all_columns=columns,
+        columns=columns,
+        color_enabled=color_enabled,
+        selected_column_index=selected_column_index,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+        search_text="",
+        show_help_modal=False,
+        active_prompt=None,
+        run_external=None,
+    )
+    _ensure_selection_bounds(session)
+    return session
+
+
+def _save_document_changes(document: Document) -> None:
+    """Persist one mutated document to disk."""
+    logger.info("Saving flow board edit file: %s", document.filename)
+    save_document(document)
+
+
+def _step_heading_state(heading: Heading, *, direction: int) -> tuple[str | None, str | None]:
+    """Resolve next heading state from document all_states ordering."""
+    ordered_states = list(dict.fromkeys(heading.document.all_states))
+    if not ordered_states:
+        return heading.todo, "No TODO states configured in document"
+
+    current_state = heading.todo
+    current_index = ordered_states.index(current_state) if current_state in ordered_states else -1
+
+    new_state = current_state
+    status: str | None = None
+    if current_index == -1:
+        if direction > 0:
+            new_state = ordered_states[0]
+        elif current_state is None:
+            status = "State unchanged"
+        else:
+            new_state = None
+    else:
+        step = 1 if direction > 0 else -1
+        next_index = current_index + step
+        if next_index < 0:
+            new_state = None
+        elif next_index >= len(ordered_states):
+            status = "Already at last state"
+        else:
+            new_state = ordered_states[next_index]
+    return new_state, status
+
+
+def _move_selection_vertical(session: _BoardSession, step: int) -> None:
+    """Move highlighted task up/down in the selected column."""
+    selected_nodes = session.columns[session.selected_column_index].nodes
+    if not selected_nodes:
+        session.status_message = "Selected column has no tasks"
+        return
+
+    next_index = session.selected_row_index + step
+    session.selected_row_index = min(max(next_index, 0), len(selected_nodes) - 1)
+
+
+def _move_selection_horizontal(session: _BoardSession, step: int) -> None:
+    """Move highlighted lane left/right, skipping empty columns."""
+    next_column = session.selected_column_index + step
+    while 0 <= next_column < len(session.columns):
+        selected_nodes = session.columns[next_column].nodes
+        if selected_nodes:
+            session.selected_column_index = next_column
+            session.selected_row_index = min(session.selected_row_index, len(selected_nodes) - 1)
+            return
+        next_column += step
+
+
+def _apply_state_move(session: _BoardSession, *, direction: int) -> None:
+    """Step selected task state through document state ordering."""
+    heading = _selected_node(session)
+    if heading is None:
+        session.status_message = "Action available only on task panels"
+        return
+
+    new_state, status = _step_heading_state(heading, direction=direction)
+    if status is not None:
+        session.status_message = status
+        return
+
+    old_state = heading.todo
+    if old_state == new_state:
+        session.status_message = "State unchanged"
+        return
+
+    action_now = local_now()
+    heading.todo = new_state
+    append_repeat_transition(heading, old_state, new_state, action_now)
+
+    if heading.scheduled is not None and advance_timestamp_by_repeater(heading.scheduled):
+        logger.info(
+            "Flow board repeater advance: file=%s title=%s id=%s field=scheduled value=%s",
+            heading.document.filename,
+            heading.title_text,
+            heading.id,
+            heading.scheduled,
+        )
+    if heading.deadline is not None and advance_timestamp_by_repeater(heading.deadline):
+        logger.info(
+            "Flow board repeater advance: file=%s title=%s id=%s field=deadline value=%s",
+            heading.document.filename,
+            heading.title_text,
+            heading.id,
+            heading.deadline,
+        )
+
+    logger.info(
+        "Flow board set state: file=%s title=%s id=%s from=%s to=%s",
+        heading.document.filename,
+        heading.title_text,
+        heading.id,
+        old_state,
+        new_state,
+    )
+
+    _save_document_changes(heading.document)
+    preserve_identity = heading_locator(heading)
+    try:
+        _reload_session(session, preserve_identity)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+    session.status_message = f"State updated: {old_state or '-'} -> {new_state or '-'}"
+
+
+def _apply_priority_shift(session: _BoardSession, *, increase: bool) -> None:
+    """Increase or decrease selected task priority."""
+    heading = _selected_node(session)
+    if heading is None:
+        session.status_message = "Action available only on task panels"
+        return
+
+    old_priority = heading.priority
+    new_priority = shift_priority(old_priority, increase=increase)
+    if old_priority == new_priority:
+        session.status_message = "Priority unchanged"
+        return
+
+    heading.priority = new_priority
+    logger.info(
+        "Flow board set priority: file=%s title=%s id=%s from=%s to=%s",
+        heading.document.filename,
+        heading.title_text,
+        heading.id,
+        old_priority,
+        new_priority,
+    )
+    _save_document_changes(heading.document)
+    preserve_identity = heading_locator(heading)
+    try:
+        _reload_session(session, preserve_identity)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+    session.status_message = f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}"
+
+
+def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
+    """Edit selected task subtree in configured external editor."""
+    heading = _selected_node(session)
+    if heading is None:
+        session.status_message = "Action available only on task panels"
+        return
+
+    preserve_identity = heading_locator(heading)
+    session.status_message = ""
+    try:
+        edit_result = edit_heading_subtree_in_external_editor(heading)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    if not edit_result.changed:
+        session.status_message = "No changes."
+        return
+
+    try:
+        _reload_session(session, preserve_identity)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+    session.status_message = "Task updated"
+
+
+def _archive_selected_task(session: _BoardSession) -> None:
+    """Archive selected task subtree using shared archive-location rules."""
+    heading = _selected_node(session)
+    if heading is None:
+        session.status_message = "Action available only on task panels"
+        return
+
+    session.status_message = ""
+    try:
+        archive_result = archive_heading_subtree_and_save(heading, {})
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    preserve_identity = heading_locator(archive_result.heading)
+    try:
+        _reload_session(session, preserve_identity)
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+    session.status_message = "Task archived"
+
+
+def _apply_capture_task(session: _BoardSession, template_name: str) -> None:
+    """Capture a new task and reload board session."""
+    session.status_message = ""
+    capture_args = TasksCaptureArgs(
+        template_name=template_name,
+        config=session.args.config,
+        file=None,
+        parent=None,
+        set_values=None,
+    )
+    try:
+        capture_result = capture_task(capture_args)
+    except KeyboardInterrupt:
+        session.status_message = "Capture cancelled"
+        return
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+
+    try:
+        _reload_session(session, heading_locator(capture_result.heading))
+    except typer.BadParameter as err:
+        session.status_message = str(err)
+        return
+    session.status_message = "Task captured"
+
+
+def _clear_search(session: _BoardSession) -> None:
+    """Clear active interactive search and restore full board columns."""
+    if not session.search_text:
+        session.status_message = "Search already clear"
+        return
+
+    selected = _selected_node(session)
+    preserve_identity = heading_locator(selected) if selected is not None else None
+    session.search_text = ""
+    _refresh_visible_columns(session, preserve_identity)
+    session.status_message = "Search cleared"
+
+
+def _apply_search_text(session: _BoardSession, search_text: str) -> None:
+    """Apply search text to board columns and update match status."""
+    selected = _selected_node(session)
+    preserve_identity = heading_locator(selected) if selected is not None else None
+    session.search_text = search_text
+    _refresh_visible_columns(session, preserve_identity)
+    session.status_message = (
+        "Search cleared" if not search_text else f"{_visible_task_count(session.columns)} matches"
+    )
+
+
+filter_recent_completed_nodes = _filter_recent_completed_nodes
+resolved_states = _resolved_states
+create_flow_board_session = _create_flow_board_session
+move_selection_horizontal = _move_selection_horizontal
+selected_node = _selected_node
+step_heading_state = _step_heading_state
+reload_session = _reload_session
+apply_state_move = _apply_state_move
+resolve_column_specs = _resolve_column_specs
+build_selector_board_columns = _build_selector_board_columns
+compile_view_column_specs = _compile_view_column_specs
+
+
+def _activate_prompt(
+    session: _BoardSession,
+    config: PromptActionConfig,
+    *,
+    submit_value: Callable[[str], bool],
+    preview_value: Callable[[str], None] | None = None,
+    cancel: Callable[[], None] | None = None,
+) -> None:
+    """Attach one active footer prompt to the board session."""
+
+    def _submit() -> bool:
+        active_prompt = session.active_prompt
+        if active_prompt is None:
+            return False
+        return submit_value(active_prompt.prompt.value)
+
+    def _preview() -> None:
+        active_prompt = session.active_prompt
+        if active_prompt is None or preview_value is None:
+            return
+        preview_value(active_prompt.prompt.value)
+
+    session.active_prompt = InteractivePromptState(
+        prompt=FooterPromptState(label=config.prompt.label),
+        cancel_status=config.cancel_status,
+        invalid_status=config.invalid_status,
+        submit_callback=_submit,
+        preview=None if preview_value is None else _preview,
+        cancel=cancel,
+    )
+
+
+def _activate_capture_prompt(session: _BoardSession) -> None:
+    template_names = configured_capture_template_names()
+    if not template_names:
+        session.status_message = "No capture templates configured"
+        return
+    config = capture_template_prompt_config()
+
+    def _submit(value: str) -> bool:
+        value = value.strip()
+        template_name = resolve_capture_template_selection(value, template_names)
+        if template_name is None and not value:
+            session.status_message = config.cancel_status
+            return False
+        if template_name is None:
+            session.status_message = config.invalid_status
+            return True
+        _run_external(session, lambda: _apply_capture_task(session, template_name))
+        return False
+
+    _activate_prompt(session, config, submit_value=_submit)
+
+
+def _activate_search_prompt(session: _BoardSession) -> None:
+    session.search_prompt_previous_text = session.search_text
+    config = PromptActionConfig(
+        prompt=FooterPromptState(label="Search text (blank clears)"),
+        cancel_status="Search cancelled",
+        invalid_status="Invalid search input",
+    )
+
+    def _submit(value: str) -> bool:
+        session.search_prompt_previous_text = None
+        _apply_search_text(session, value.strip())
+        return False
+
+    def _preview(value: str) -> None:
+        _apply_search_text(session, value.strip())
+
+    def _cancel() -> None:
+        previous_text = session.search_prompt_previous_text or ""
+        session.search_prompt_previous_text = None
+        _apply_search_text(session, previous_text)
+        session.status_message = config.cancel_status
+
+    _activate_prompt(
+        session,
+        config,
+        submit_value=_submit,
+        preview_value=_preview,
+        cancel=_cancel,
+    )
+
+
+def _handle_capture_prompt_activation(session: _BoardSession) -> None:
+    _activate_capture_prompt(session)
+
+
+def _handle_search_prompt_activation(session: _BoardSession) -> None:
+    _activate_search_prompt(session)
+
+
+def _handle_active_prompt_event(session: _BoardSession, event: InteractiveEvent) -> bool:
+    active_prompt = session.active_prompt
+    if active_prompt is None:
+        return True
+    if isinstance(event, TimeoutEvent):
+        return True
+    if isinstance(event, KeypressEvent) and event.key == "ESC":
+        if active_prompt.cancel is not None:
+            active_prompt.cancel()
+        else:
+            session.status_message = active_prompt.cancel_status
+        session.active_prompt = None
+        return True
+
+    prompt_result = apply_prompt_event(active_prompt.prompt, event)
+    if prompt_result.submitted:
+        keep_open = active_prompt.submit_callback()
+        if not keep_open:
+            session.active_prompt = None
+        return True
+    if prompt_result.changed and active_prompt.preview is not None:
+        active_prompt.preview()
+    return True
+
+
+def _handle_help_modal_event(session: _BoardSession, event: InteractiveEvent) -> bool:
+    if not session.show_help_modal:
+        return False
+    if not isinstance(event, TimeoutEvent):
+        session.show_help_modal = False
+    return True
+
+
+def _handle_navigation_key(session: _BoardSession, key: str) -> bool:
+    handler = {
+        "DOWN": lambda: _move_selection_vertical(session, 1),
+        "WHEEL-DOWN": lambda: _move_selection_vertical(session, 1),
+        "UP": lambda: _move_selection_vertical(session, -1),
+        "WHEEL-UP": lambda: _move_selection_vertical(session, -1),
+        "RIGHT": lambda: _move_selection_horizontal(session, 1),
+        "LEFT": lambda: _move_selection_horizontal(session, -1),
+    }.get(key)
+    if handler is None:
+        return False
+    handler()
+    return True
+
+
+def _handle_mutation_key(
+    session: _BoardSession,
+    key: str,
+    run_external: Callable[[Callable[[], None]], None],
+) -> bool:
+    handler = {
+        "ENTER": lambda: run_external(lambda: _edit_selected_task_in_external_editor(session)),
+        "$": lambda: _archive_selected_task(session),
+        "x": lambda: _clear_search(session),
+        "S-LEFT": lambda: _apply_state_move(session, direction=-1),
+        "S-RIGHT": lambda: _apply_state_move(session, direction=1),
+        "S-UP": lambda: _apply_priority_shift(session, increase=True),
+        "S-DOWN": lambda: _apply_priority_shift(session, increase=False),
+    }.get(key)
+    if handler is None:
+        return False
+    handler()
+    return True
+
+
+def _handle_prompt_activation_key(
+    session: _BoardSession,
+    key: str,
+    _run_external_callback: Callable[[Callable[[], None]], None],
+) -> bool:
+    handler = {
+        "a": _handle_capture_prompt_activation,
+        "/": _handle_search_prompt_activation,
+    }.get(key)
+    if handler is None:
+        return False
+    handler(session)
+    return True
+
+
+def _handle_keypress_event(
+    session: _BoardSession,
+    key: str,
+    run_external: Callable[[Callable[[], None]], None] | None = None,
+) -> bool:
+    effective_run_external = passthrough_run_external if run_external is None else run_external
+    consumed, next_help_modal = apply_help_modal_key(key, show_help_modal=session.show_help_modal)
+    session.show_help_modal = next_help_modal
+    if consumed:
+        return True
+    if key in {"q", "ESC"}:
+        return False
+    if _handle_navigation_key(session, key):
+        return True
+    if _handle_mutation_key(session, key, effective_run_external):
+        return True
+    if _handle_prompt_activation_key(session, key, effective_run_external):
+        return True
+    if key and key != "IGNORE":
+        session.status_message = f"Unsupported key: {key}"
+    return True
+
+
+def _flow_board_key_bindings(_session: _BoardSession) -> dict[str, KeyBinding]:
+    return {
+        "S-LEFT": KeyBinding(lambda: True, requires_live_pause=False),
+        "S-RIGHT": KeyBinding(lambda: True, requires_live_pause=False),
+        "ENTER": KeyBinding(lambda: True, requires_live_pause=True),
+    }
+
+
+def passthrough_run_external(callback: Callable[[], None]) -> None:
+    callback()
+
+
+def _run_external(session: _BoardSession, callback: Callable[[], None]) -> None:
+    runner = session.run_external or passthrough_run_external
+    runner(callback)
+
+
+def handle_interactive_event(
+    session: _BoardSession,
+    event: InteractiveEvent,
+    run_external: Callable[[Callable[[], None]], None],
+) -> bool:
+    if _handle_help_modal_event(session, event):
+        return True
+    if session.active_prompt is not None:
+        return _handle_active_prompt_event(session, event)
+    if isinstance(event, TimeoutEvent):
+        return True
+    if isinstance(event, InputEvent):
+        return True
+    return _handle_keypress_event(session, event.key, run_external)
+
+
+def run_flow_board_interactive(console: Console, session: _BoardSession) -> None:
+    run_external: list[Callable[[Callable[[], None]], None]] = [passthrough_run_external]
+
+    def _bind_run_external(callback: Callable[[Callable[[], None]], None]) -> None:
+        run_external[0] = callback
+        session.run_external = callback
+
+    session.run_external = run_external[0]
+    interactive_loop(
+        render=lambda: _interactive_flow_board_renderable(console, session),
+        on_event=lambda event: handle_interactive_event(session, event, run_external[0]),
+        bind_run_external=_bind_run_external,
+        timeout_seconds=None,
+    )
+
+
+__all__ = [
+    name
+    for name in globals()
+    if name.startswith(("_handle_", "_activate_"))
+    or name
+    in {
+        "passthrough_run_external",
+        "filter_recent_completed_nodes",
+        "resolved_states",
+        "create_flow_board_session",
+        "_run_external",
+        "_flow_board_key_bindings",
+        "run_flow_board_interactive",
+        "handle_interactive_event",
+    }
+]

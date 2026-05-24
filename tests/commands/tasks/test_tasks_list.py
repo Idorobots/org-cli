@@ -19,7 +19,9 @@ from org.commands import archive as archive_command
 from org.commands import editor as editor_command
 from org.commands.interactive_common import KeypressEvent, heading_locator
 from org.commands.tasks import capture as capture_command
-from org.commands.tasks import list as tasks_list
+from org.commands.tasks.list import command as tasks_list
+from org.commands.tasks.list import events as tasks_list_events
+from org.commands.tasks.list import layout as tasks_list_layout
 from org.histogram import visual_len
 from org.output_format import OutputFormat, OutputFormatError
 from tests.conftest import node_from_org
@@ -227,7 +229,7 @@ def test_run_tasks_list_markdown_converts_nodes_to_single_document(
         return "converted markdown"
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "markdown"])
-    monkeypatch.setattr("org.commands.tasks.list._org_to_pandoc_format", _fake_pandoc)
+    monkeypatch.setattr("org.commands.tasks.list.command._org_to_pandoc_format", _fake_pandoc)
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
 
@@ -254,7 +256,7 @@ def test_run_tasks_list_accepts_arbitrary_pandoc_output_format(
         return "converted gfm"
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "gfm"])
-    monkeypatch.setattr("org.commands.tasks.list._org_to_pandoc_format", _fake_pandoc)
+    monkeypatch.setattr("org.commands.tasks.list.command._org_to_pandoc_format", _fake_pandoc)
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
 
@@ -280,7 +282,7 @@ def test_run_tasks_list_markdown_pandoc_error_is_usage_error(
     args = make_list_args([fixture_path], out="markdown")
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "markdown"])
     monkeypatch.setattr(
-        "org.commands.tasks.list.get_tasks_list_formatter",
+        "org.commands.tasks.list.command.get_tasks_list_formatter",
         lambda _out, _pandoc_args: _FailingFormatter(),
     )
 
@@ -303,7 +305,7 @@ def test_run_tasks_list_pandoc_empty_results_prints_no_results(
         out="gfm",
         filter_tags=["nomatch$"],
     )
-    monkeypatch.setattr("org.commands.tasks.list._org_to_pandoc_format", _should_not_call)
+    monkeypatch.setattr("org.commands.tasks.list.command._org_to_pandoc_format", _should_not_call)
 
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
@@ -413,7 +415,10 @@ def test_run_tasks_list_defaults_limit_to_all_results_with_paging(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.tasks.list.build_console", lambda _color, _width: console)
+    monkeypatch.setattr(
+        "org.commands.tasks.list.command.build_console",
+        lambda _color, _width: console,
+    )
 
     args = make_list_args([fixture_path], max_results=None)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list"])
@@ -493,7 +498,10 @@ def test_run_tasks_list_uses_pager_for_org_output_when_overflowing(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.tasks.list.build_console", lambda _color, _width: console)
+    monkeypatch.setattr(
+        "org.commands.tasks.list.command.build_console",
+        lambda _color, _width: console,
+    )
 
     args = make_list_args([fixture_path], max_results=12)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--limit", "12"])
@@ -528,7 +536,10 @@ def test_run_tasks_list_skips_pager_when_limit_below_console_height(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.tasks.list.build_console", lambda _color, _width: console)
+    monkeypatch.setattr(
+        "org.commands.tasks.list.command.build_console",
+        lambda _color, _width: console,
+    )
 
     args = make_list_args([fixture_path], max_results=3)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--limit", "3"])
@@ -563,7 +574,10 @@ def test_run_tasks_list_does_not_use_pager_for_json_output_when_overflowing(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.tasks.list.build_console", lambda _color, _width: console)
+    monkeypatch.setattr(
+        "org.commands.tasks.list.command.build_console",
+        lambda _color, _width: console,
+    )
 
     args = make_list_args([fixture_path], max_results=12, out=OutputFormat.JSON)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "json", "--limit", "12"])
@@ -725,9 +739,9 @@ def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:
             color_enabled=False,
         ),
     )
-    assert tasks_list._handle_keypress_event(session, "WHEEL-DOWN") is True
+    assert tasks_list_events._handle_keypress_event(session, "WHEEL-DOWN") is True
     assert session.selected_index == 1
-    assert tasks_list._handle_keypress_event(session, "WHEEL-UP") is True
+    assert tasks_list_events._handle_keypress_event(session, "WHEEL-UP") is True
     assert session.selected_index == 0
 
 
@@ -755,14 +769,14 @@ def test_interactive_rows_counter_tracks_selected_row_while_scrolling() -> None:
         height=8,
         no_color=True,
     )
-    down_console.print(tasks_list._interactive_tasks_list_renderable(down_console, session))
+    down_console.print(tasks_list_layout.interactive_tasks_list_renderable(down_console, session))
     assert f"Rows 2/{total_rows}" in down_capture.getvalue()
     assert "Type ? for help" in down_capture.getvalue()
 
     session.selected_index = 0
     up_capture = StringIO()
     up_console = Console(file=up_capture, force_terminal=False, width=80, height=8, no_color=True)
-    up_console.print(tasks_list._interactive_tasks_list_renderable(up_console, session))
+    up_console.print(tasks_list_layout.interactive_tasks_list_renderable(up_console, session))
     assert f"Rows 1/{total_rows}" in up_capture.getvalue()
     assert "Type ? for help" in up_capture.getvalue()
 
@@ -781,10 +795,10 @@ def test_handle_interactive_key_question_toggles_help_modal() -> None:
         ),
     )
 
-    assert tasks_list._handle_keypress_event(session, "?") is True
+    assert tasks_list_events._handle_keypress_event(session, "?") is True
     assert session.show_help_modal is True
 
-    assert tasks_list._handle_keypress_event(session, "ENTER") is True
+    assert tasks_list_events._handle_keypress_event(session, "ENTER") is True
     assert session.show_help_modal is False
 
 
@@ -805,7 +819,7 @@ def test_interactive_renderable_shows_help_panel() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=100, height=12, no_color=True)
 
-    console.print(tasks_list._interactive_tasks_list_renderable(console, session))
+    console.print(tasks_list_layout.interactive_tasks_list_renderable(console, session))
     output = buffer.getvalue()
 
     assert "Key bindings" in output
@@ -869,7 +883,7 @@ def test_handle_interactive_key_unsupported_sets_status_and_continues() -> None:
         ),
     )
     key = "UNSUPPORTED-ESC:1b5b3939397e"
-    assert tasks_list._handle_keypress_event(session, key) is True
+    assert tasks_list_events._handle_keypress_event(session, key) is True
     assert session.status_message == f"Unsupported key: {key}"
 
 
@@ -892,9 +906,9 @@ def test_handle_interactive_key_enter_edits_selected_task(
     def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
         return editor_command.DocumentEditResult(changed=False)
 
-    monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(tasks_list_events, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    assert tasks_list._handle_keypress_event(session, "ENTER") is True
+    assert tasks_list_events._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "No changes."
 
 
@@ -929,10 +943,10 @@ def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after
         reloaded_identity = identity
         return True
 
-    monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
-    monkeypatch.setattr(tasks_list, "_reload_session_nodes", _fake_reload)
+    monkeypatch.setattr(tasks_list_events, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(tasks_list_events, "_reload_session_nodes", _fake_reload)
 
-    assert tasks_list._handle_keypress_event(session, "ENTER") is True
+    assert tasks_list_events._handle_keypress_event(session, "ENTER") is True
     assert reloaded_identity == heading_locator(source_node)
     assert session.status_message == "Task updated"
 
@@ -974,10 +988,14 @@ def test_handle_interactive_key_dollar_archives_selected_task(
             destination_document=heading.document,
         )
 
-    monkeypatch.setattr(tasks_list, "archive_heading_subtree_and_save", _fake_archive)
-    monkeypatch.setattr(tasks_list, "_reload_session_nodes", lambda _session, _identity: True)
+    monkeypatch.setattr(tasks_list_events, "archive_heading_subtree_and_save", _fake_archive)
+    monkeypatch.setattr(
+        tasks_list_events,
+        "_reload_session_nodes",
+        lambda _session, _identity: True,
+    )
 
-    assert tasks_list._handle_keypress_event(session, "$") is True
+    assert tasks_list_events._handle_keypress_event(session, "$") is True
     assert session.status_message == "Task archived"
 
 
@@ -1005,7 +1023,7 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     )
 
     monkeypatch.setattr(
-        tasks_list,
+        tasks_list_events,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -1022,9 +1040,9 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
         reload_args["identity"] = preserve_identity
         return True
 
-    monkeypatch.setattr(tasks_list, "_reload_session_nodes", _fake_reload)
+    monkeypatch.setattr(tasks_list_events, "_reload_session_nodes", _fake_reload)
 
-    assert tasks_list._handle_keypress_event(session, "a") is True
+    assert tasks_list_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "1"
     keep_open = session.active_prompt.submit_callback()
@@ -1055,7 +1073,7 @@ def test_handle_interactive_key_a_capture_blank_input_cancels(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert tasks_list._handle_keypress_event(session, "a") is True
+    assert tasks_list_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = ""
     keep_open = session.active_prompt.submit_callback()
@@ -1084,7 +1102,7 @@ def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert tasks_list._handle_keypress_event(session, "a") is True
+    assert tasks_list_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "99"
     keep_open = session.active_prompt.submit_callback()
@@ -1110,7 +1128,7 @@ def test_handle_interactive_key_a_without_templates_reports_error(
     )
     monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {})
 
-    assert tasks_list._handle_keypress_event(session, "a") is True
+    assert tasks_list_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is None
     assert session.status_message == "No capture templates configured"
 
@@ -1133,13 +1151,13 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
         "CONFIG_CAPTURE_TEMPLATES",
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
-    tasks_list._handle_keypress_event(session, "a")
+    tasks_list_events._handle_keypress_event(session, "a")
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "1"
 
     captured_node = node_from_org("* TODO Captured\n")[0]
     monkeypatch.setattr(
-        tasks_list,
+        tasks_list_events,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -1147,7 +1165,11 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
             document=captured_node.document,
         ),
     )
-    monkeypatch.setattr(tasks_list, "_reload_session_nodes", lambda _session, _identity: True)
+    monkeypatch.setattr(
+        tasks_list_events,
+        "_reload_session_nodes",
+        lambda _session, _identity: True,
+    )
     events: list[str] = []
 
     class _LiveStub:
@@ -1184,8 +1206,11 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
 
     session.run_external = _run_prompt_external
 
-    consumed = tasks_list._handle_active_prompt_event(session, KeypressEvent("ENTER"))
-    live.update(tasks_list._interactive_tasks_list_renderable(live.console, session), refresh=True)
+    consumed = tasks_list_events._handle_active_prompt_event(session, KeypressEvent("ENTER"))
+    live.update(
+        tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
+        refresh=True,
+    )
 
     assert consumed is True
     assert events == ["input-stop", "stop", "start", "input-start", "update"]
@@ -1204,7 +1229,7 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
             color_enabled=False,
         ),
     )
-    assert tasks_list._handle_keypress_event(session, "/") is True
+    assert tasks_list_events._handle_keypress_event(session, "/") is True
     assert session.active_prompt is not None
 
     events: list[str] = []
@@ -1232,16 +1257,22 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
             events.append("input-start")
 
     live = cast("Live", _LiveStub())
-    consumed = tasks_list._handle_active_prompt_event(session, KeypressEvent("b"))
-    live.update(tasks_list._interactive_tasks_list_renderable(live.console, session), refresh=True)
+    consumed = tasks_list_events._handle_active_prompt_event(session, KeypressEvent("b"))
+    live.update(
+        tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
+        refresh=True,
+    )
 
     assert consumed is True
     assert [node.title_text for node in session.visible_nodes] == ["Beta"]
     assert session.search_text == "b"
     assert session.status_message == "1 matches"
 
-    consumed = tasks_list._handle_active_prompt_event(session, KeypressEvent("ESC"))
-    live.update(tasks_list._interactive_tasks_list_renderable(live.console, session), refresh=True)
+    consumed = tasks_list_events._handle_active_prompt_event(session, KeypressEvent("ESC"))
+    live.update(
+        tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
+        refresh=True,
+    )
 
     assert consumed is True
     assert [node.title_text for node in session.visible_nodes] == ["Alpha", "Beta"]
@@ -1265,12 +1296,12 @@ def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.Monkey
         ),
     )
     monkeypatch.setattr(
-        tasks_list,
+        tasks_list_events,
         "_persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list._apply_state_change_with_value(session, "DONE")
+    tasks_list_events._apply_state_change_with_value(session, "DONE")
 
     assert node.todo == "DONE"
     assert node.repeats
@@ -1293,12 +1324,12 @@ def test_apply_state_change_advances_repeater_timestamp(monkeypatch: pytest.Monk
         ),
     )
     monkeypatch.setattr(
-        tasks_list,
+        tasks_list_events,
         "_persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list._apply_state_change_with_value(session, "DONE")
+    tasks_list_events._apply_state_change_with_value(session, "DONE")
 
     assert node.scheduled is not None
     assert str(node.scheduled).startswith("<2025-01-22")
@@ -1319,12 +1350,12 @@ def test_apply_scheduled_edit_updates_scheduled(monkeypatch: pytest.MonkeyPatch)
         ),
     )
     monkeypatch.setattr(
-        tasks_list,
+        tasks_list_events,
         "_persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list._apply_planning_timestamp_edit(
+    tasks_list_events._apply_planning_timestamp_edit(
         session,
         field="scheduled",
         raw_timestamp="<2025-01-20 Mon>",
@@ -1349,12 +1380,12 @@ def test_apply_closed_edit_updates_closed(monkeypatch: pytest.MonkeyPatch) -> No
         ),
     )
     monkeypatch.setattr(
-        tasks_list,
+        tasks_list_events,
         "_persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list._apply_planning_timestamp_edit(
+    tasks_list_events._apply_planning_timestamp_edit(
         session,
         field="closed",
         raw_timestamp="[2025-01-20 Mon 09:00]",
@@ -1383,8 +1414,8 @@ def test_persist_and_reload_selected_reports_save_failures(
     def _raise_save(_document: object) -> None:
         raise typer.BadParameter("Permission denied for 'dummy.org'")
 
-    monkeypatch.setattr(tasks_list, "_save_document_changes", _raise_save)
+    monkeypatch.setattr(tasks_list_events, "_save_document_changes", _raise_save)
 
-    tasks_list._persist_and_reload_selected(session, nodes[0], "updated")
+    tasks_list_events._persist_and_reload_selected(session, nodes[0], "updated")
 
     assert session.status_message == "Permission denied for 'dummy.org'"

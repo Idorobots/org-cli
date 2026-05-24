@@ -16,8 +16,10 @@ from rich.text import Text
 
 from org import config as config_module
 from org.commands import archive as archive_command
-from org.commands import board as board_command
 from org.commands import editor as editor_command
+from org.commands.board import command as board_command
+from org.commands.board import events as board_events
+from org.commands.board import layout as board_layout
 from org.commands.interactive_common import KeypressEvent, heading_locator
 from org.commands.tasks import capture as capture_command
 from tests.conftest import node_from_org
@@ -85,7 +87,7 @@ def _visible_board_titles_by_column(
 def _pin_board_now(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin board command current time for deterministic completed-task windows."""
     monkeypatch.setattr(
-        board_command,
+        board_events,
         "local_now",
         lambda: datetime(2026, 5, 9, 12, 0, tzinfo=UTC),
     )
@@ -96,7 +98,7 @@ def test_filter_recent_completed_nodes_uses_latest_timestamp_window(
 ) -> None:
     """Completed tasks should be filtered by latest_timestamp recency."""
     now = datetime(2026, 5, 9, 12, 0, tzinfo=UTC)
-    monkeypatch.setattr(board_command, "local_now", lambda: now)
+    monkeypatch.setattr(board_events, "local_now", lambda: now)
 
     nodes = node_from_org(
         "* TODO Active task\n"
@@ -116,7 +118,7 @@ def test_filter_recent_completed_nodes_respects_days_override(
 ) -> None:
     """Days override should widen completed-task retention window."""
     now = datetime(2026, 5, 9, 12, 0, tzinfo=UTC)
-    monkeypatch.setattr(board_command, "local_now", lambda: now)
+    monkeypatch.setattr(board_events, "local_now", lambda: now)
 
     nodes = node_from_org(
         "* DONE Mid-age done\nCLOSED: [2026-04-25 Sat 09:00]\n",
@@ -354,9 +356,9 @@ def test_move_selection_horizontal_skips_empty_columns() -> None:
 
 def test_interactive_viewport_rows_scales_with_panel_height() -> None:
     """Interactive viewport should account for panel line height."""
-    assert board_command._interactive_viewport_rows(24) == 4
-    assert board_command._interactive_viewport_rows(13) == 2
-    assert board_command._interactive_viewport_rows(9) == 1
+    assert board_layout._interactive_viewport_rows(24) == 4
+    assert board_layout._interactive_viewport_rows(13) == 2
+    assert board_layout._interactive_viewport_rows(9) == 1
 
 
 def test_sync_scroll_for_selection_keeps_selected_row_visible() -> None:
@@ -385,8 +387,8 @@ def test_sync_scroll_for_selection_keeps_selected_row_visible() -> None:
         done_states=["DONE"],
         todo_states=["TODO"],
     )
-    row_heights = board_command._interactive_row_heights(session, render)
-    _start, _end, _used = board_command._sync_scroll_for_selection(
+    row_heights = board_layout._interactive_row_heights(session, render)
+    _start, _end, _used = board_layout._sync_scroll_for_selection(
         session,
         row_heights,
         available_lines=8,
@@ -477,9 +479,9 @@ def test_apply_state_move_steps_state_and_reloads(
     def _capture_save(document: Document) -> None:
         saved_documents.append(document)
 
-    monkeypatch.setattr(board_command, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(board_events, "_save_document_changes", _capture_save)
     monkeypatch.setattr(
-        board_command,
+        board_events,
         "_reload_session",
         lambda _session, preserve_identity: reloaded.append(preserve_identity),
     )
@@ -521,7 +523,7 @@ def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
     reloaded_nodes = node_from_org("* TODO [#A] Other\n* TODO [#A] Focus\n")
 
     monkeypatch.setattr(
-        board_command,
+        board_events,
         "load_and_process_data",
         lambda _args: (reloaded_nodes, ["TODO"], ["DONE"]),
     )
@@ -556,7 +558,7 @@ def test_interactive_renderable_keeps_footer_at_bottom() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=120, height=24)
 
-    console.print(board_command._interactive_flow_board_renderable(console, session))
+    console.print(board_layout._interactive_flow_board_renderable(console, session))
     lines = buffer.getvalue().splitlines()
 
     assert len(lines) == 24
@@ -588,7 +590,7 @@ def test_interactive_renderable_footer_status_is_single_line() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=120, height=24)
 
-    console.print(board_command._interactive_flow_board_renderable(console, session))
+    console.print(board_layout._interactive_flow_board_renderable(console, session))
     lines = buffer.getvalue().splitlines()
 
     assert len(lines) == 24
@@ -615,7 +617,7 @@ def test_handle_interactive_key_slash_activates_search_prompt() -> None:
         all_columns=[board_command._BoardColumn("TODO", nodes)],
     )
 
-    assert board_command._handle_keypress_event(session, "/") is True
+    assert board_events._handle_keypress_event(session, "/") is True
     assert session.active_prompt is not None
     assert session.active_prompt.prompt.label == "Search text (blank clears)"
 
@@ -645,7 +647,7 @@ def test_board_search_filters_each_column_and_clear_restores_columns() -> None:
         all_columns=all_columns,
     )
 
-    assert board_command._handle_keypress_event(session, "/") is True
+    assert board_events._handle_keypress_event(session, "/") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "beta"
     keep_open = session.active_prompt.submit_callback()
@@ -659,7 +661,7 @@ def test_board_search_filters_each_column_and_clear_restores_columns() -> None:
     }
     assert session.search_text == "beta"
 
-    assert board_command._handle_keypress_event(session, "x") is True
+    assert board_events._handle_keypress_event(session, "x") is True
     assert session.status_message == "Search cleared"
     assert session.search_text == ""
     assert _visible_board_titles_by_column(session) == {
@@ -691,7 +693,7 @@ def test_interactive_renderable_footer_shows_active_search_text() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=120, height=24)
 
-    console.print(board_command._interactive_flow_board_renderable(console, session))
+    console.print(board_layout._interactive_flow_board_renderable(console, session))
     output = buffer.getvalue()
 
     assert "Search: task" in output
@@ -714,10 +716,10 @@ def test_handle_interactive_key_question_toggles_help_modal() -> None:
         status_message="",
     )
 
-    assert board_command._handle_keypress_event(session, "?") is True
+    assert board_events._handle_keypress_event(session, "?") is True
     assert session.show_help_modal is True
 
-    assert board_command._handle_keypress_event(session, "ENTER") is True
+    assert board_events._handle_keypress_event(session, "ENTER") is True
     assert session.show_help_modal is False
 
 
@@ -741,7 +743,7 @@ def test_interactive_renderable_shows_help_panel() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=120, height=24)
 
-    console.print(board_command._interactive_flow_board_renderable(console, session))
+    console.print(board_layout._interactive_flow_board_renderable(console, session))
     output = buffer.getvalue()
 
     assert "Key bindings" in output
@@ -774,9 +776,9 @@ def test_handle_interactive_key_enter_edits_selected_task(
     def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
         return editor_command.DocumentEditResult(changed=False)
 
-    monkeypatch.setattr(board_command, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(board_events, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    assert board_command._handle_keypress_event(session, "ENTER") is True
+    assert board_events._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "No changes."
 
 
@@ -811,7 +813,7 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     )
 
     monkeypatch.setattr(
-        board_command,
+        board_events,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -827,9 +829,9 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
         reloaded["session"] = current_session
         reloaded["identity"] = preserve_identity
 
-    monkeypatch.setattr(board_command, "_reload_session", _fake_reload)
+    monkeypatch.setattr(board_events, "_reload_session", _fake_reload)
 
-    assert board_command._handle_keypress_event(session, "a") is True
+    assert board_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "1"
     keep_open = session.active_prompt.submit_callback()
@@ -867,7 +869,7 @@ def test_handle_interactive_key_a_capture_blank_input_cancels(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert board_command._handle_keypress_event(session, "a") is True
+    assert board_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = ""
     keep_open = session.active_prompt.submit_callback()
@@ -903,7 +905,7 @@ def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert board_command._handle_keypress_event(session, "a") is True
+    assert board_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "99"
     keep_open = session.active_prompt.submit_callback()
@@ -936,7 +938,7 @@ def test_handle_interactive_key_a_without_templates_reports_error(
     )
     monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {})
 
-    assert board_command._handle_keypress_event(session, "a") is True
+    assert board_events._handle_keypress_event(session, "a") is True
     assert session.active_prompt is None
     assert session.status_message == "No capture templates configured"
 
@@ -966,13 +968,13 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
         "CONFIG_CAPTURE_TEMPLATES",
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
-    board_command._handle_keypress_event(session, "a")
+    board_events._handle_keypress_event(session, "a")
     assert session.active_prompt is not None
     session.active_prompt.prompt.value = "1"
 
     captured_node = node_from_org("* TODO Captured\n")[0]
     monkeypatch.setattr(
-        board_command,
+        board_events,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -980,7 +982,7 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
             document=captured_node.document,
         ),
     )
-    monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
+    monkeypatch.setattr(board_events, "_reload_session", lambda _session, _identity: None)
     events: list[str] = []
 
     class _LiveStub:
@@ -1017,9 +1019,9 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
 
     session.run_external = _run_prompt_external
 
-    consumed = board_command._handle_active_prompt_event(session, KeypressEvent("ENTER"))
+    consumed = board_events._handle_active_prompt_event(session, KeypressEvent("ENTER"))
     live.update(
-        board_command._interactive_flow_board_renderable(live.console, session),
+        board_layout._interactive_flow_board_renderable(live.console, session),
         refresh=True,
     )
 
@@ -1049,7 +1051,7 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
         status_message="",
         all_columns=all_columns,
     )
-    assert board_command._handle_keypress_event(session, "/") is True
+    assert board_events._handle_keypress_event(session, "/") is True
     assert session.active_prompt is not None
 
     events: list[str] = []
@@ -1077,9 +1079,9 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
             events.append("input-start")
 
     live = cast("Live", _LiveStub())
-    consumed = board_command._handle_active_prompt_event(session, KeypressEvent("b"))
+    consumed = board_events._handle_active_prompt_event(session, KeypressEvent("b"))
     live.update(
-        board_command._interactive_flow_board_renderable(live.console, session),
+        board_layout._interactive_flow_board_renderable(live.console, session),
         refresh=True,
     )
 
@@ -1092,9 +1094,9 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
     assert session.search_text == "b"
     assert session.status_message == "1 matches"
 
-    consumed = board_command._handle_active_prompt_event(session, KeypressEvent("ESC"))
+    consumed = board_events._handle_active_prompt_event(session, KeypressEvent("ESC"))
     live.update(
-        board_command._interactive_flow_board_renderable(live.console, session),
+        board_layout._interactive_flow_board_renderable(live.console, session),
         refresh=True,
     )
 
@@ -1142,10 +1144,10 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
         nonlocal reloaded_identity
         reloaded_identity = identity
 
-    monkeypatch.setattr(board_command, "edit_heading_subtree_in_external_editor", _fake_edit)
-    monkeypatch.setattr(board_command, "_reload_session", _capture_reload)
+    monkeypatch.setattr(board_events, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(board_events, "_reload_session", _capture_reload)
 
-    assert board_command._handle_keypress_event(session, "ENTER") is True
+    assert board_events._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "Task updated"
     assert reloaded_identity == heading_locator(source_node)
 
@@ -1194,10 +1196,10 @@ def test_handle_interactive_key_dollar_archives_selected_task(
             destination_document=heading.document,
         )
 
-    monkeypatch.setattr(board_command, "archive_heading_subtree_and_save", _fake_archive)
-    monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
+    monkeypatch.setattr(board_events, "archive_heading_subtree_and_save", _fake_archive)
+    monkeypatch.setattr(board_events, "_reload_session", lambda _session, _identity: None)
 
-    assert board_command._handle_keypress_event(session, "$") is True
+    assert board_events._handle_keypress_event(session, "$") is True
     assert session.status_message == "Task archived"
 
 
@@ -1324,7 +1326,7 @@ def test_run_flow_board_uses_pager_when_render_exceeds_console_height(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.board.build_console", lambda _color, _width: console)
+    monkeypatch.setattr("org.commands.board.command.build_console", lambda _color, _width: console)
 
     args = make_board_args([fixture_path], max_results=None)
     monkeypatch.setattr(sys, "argv", ["org", "board"])
@@ -1717,8 +1719,8 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
             )
         return ([source_node], ["TODO"], ["DONE"])
 
-    monkeypatch.setattr(board_command, "_save_document_changes", _capture_save)
-    monkeypatch.setattr(board_command, "load_and_process_data", _load_after_change)
+    monkeypatch.setattr(board_events, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(board_events, "load_and_process_data", _load_after_change)
 
     try:
         board_command._apply_state_move(session, direction=1)

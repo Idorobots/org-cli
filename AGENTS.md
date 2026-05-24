@@ -137,6 +137,7 @@ poetry add <package>
 - Avoid adding updates to comments (`now with extra functionality`), prefer to skip the addition or rewrite the comment if the change is significant.
 - Avoid mocking in tests as much as possible.
 - Avoid using default function arguments values.
+- Never use `import_module`; use normal imports instead.
 - Target test coverage is 90% or above.
 - Backwards compatibility is not required, no need to ensure it.
 - Do not add production compatibility shims solely to preserve old tests; refactor the tests to exercise the current code paths instead.
