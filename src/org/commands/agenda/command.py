@@ -71,23 +71,6 @@ def _resolve_tasks_limit(max_results: int | None) -> int:
     return max_results
 
 
-_AgendaSession = events.AgendaSession
-_AgendaRenderInput = layout.AgendaRenderInput
-_AgendaRow = layout.AgendaRow
-_RenderContext = layout.RenderContext
-_AGENDA_HELP_ENTRIES = layout.AgendaHelpEntries
-_create_agenda_session = events.create_agenda_session
-_selected_task_row = events.selected_task_row
-_apply_shift_date = events.apply_shift_date
-_refresh_visible_nodes = events.refresh_visible_nodes
-_apply_state_change_with_value = events.apply_state_change_with_value
-_apply_clock_entry_with_value = events.apply_clock_entry_with_value
-_apply_refile_with_value = events.apply_refile_with_value
-_selected_row = events.selected_row
-_shift_planning_time_for_row = events.shift_planning_time_for_row
-_refresh_session = events.refresh_session
-
-
 def run_agenda(args: AgendaArgs) -> None:
     """Run the agenda command."""
     color_enabled = setup_output(args)
@@ -145,7 +128,7 @@ def register(app: typer.Typer) -> None:
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         help=interactive_help_command_text(
             "Show agenda for one day or a date range.",
-            _AGENDA_HELP_ENTRIES,
+            layout.AGENDA_HELP_ENTRIES,
         ),
     )
     def agenda(  # noqa: PLR0913

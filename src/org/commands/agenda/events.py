@@ -53,12 +53,12 @@ from org.commands.tasks.common import (
 )
 
 from .layout import (
+    DayRenderInput,
+    DayRowModel,
+    RenderContext,
     _build_day_rows,
     _collect_day_entries,
-    _DayRenderInput,
-    _DayRowModel,
     _has_specific_time,
-    _RenderContext,
     _resolve_agenda_start_date,
     _selected_row_location,
     interactive_agenda_renderable,
@@ -83,17 +83,17 @@ AgendaRuntimeSession = Any
 
 
 @dataclass
-class _AgendaSession:
+class AgendaSession:
     """Interactive agenda session state."""
 
     args: AgendaArgs
     all_nodes: list[Heading]
     nodes: list[Heading]
-    render: _RenderContext
+    render: RenderContext
     start_date: date
     days: int
     now: datetime
-    day_models: list[_DayRowModel]
+    day_models: list[DayRowModel]
     row_locations: list[tuple[int, int]]
     selected_row_index: int
     scroll_offset: int
@@ -105,13 +105,13 @@ class _AgendaSession:
     run_external: Callable[[Callable[[], None]], None] | None = None
 
 
-def _refresh_session(
+def refresh_session(
     session: AgendaRuntimeSession,
     preserve_identity: HeadingLocator | None,
 ) -> None:
     """Recompute day row models and restore selection when possible."""
     session.now = local_now()
-    day_models: list[_DayRowModel] = []
+    day_models: list[DayRowModel] = []
     row_locations: list[tuple[int, int]] = []
 
     for day_offset in range(session.days):
@@ -123,7 +123,7 @@ def _refresh_session(
             include_relative_sections=(day == session.now.date()),
         )
         day_model = _build_day_rows(
-            _DayRenderInput(day=day, now=session.now, entries=entries),
+            DayRenderInput(day=day, now=session.now, entries=entries),
             session.render,
         )
         day_models.append(day_model)
@@ -150,16 +150,16 @@ def _refresh_session(
     session.selected_row_index = max(session.selected_row_index, 0)
 
 
-def _refresh_visible_nodes(
+def refresh_visible_nodes(
     session: AgendaRuntimeSession,
     preserve_identity: HeadingLocator | None,
 ) -> None:
     """Refresh visible agenda nodes and restore selected task identity when possible."""
     session.nodes = filter_nodes_by_search(session.all_nodes, session.search_text)
-    _refresh_session(session, preserve_identity)
+    refresh_session(session, preserve_identity)
 
 
-def _selected_task_row(session: AgendaRuntimeSession) -> AgendaRuntimeRow | None:
+def selected_task_row(session: AgendaRuntimeSession) -> AgendaRuntimeRow | None:
     """Return currently selected task row when selected row is a task."""
     location = _selected_row_location(session)
     if location is None:
@@ -178,10 +178,10 @@ def _refresh_session_if_minute_changed(session: AgendaRuntimeSession) -> bool:
     if current_now == session_now:
         return False
     preserve_identity = None
-    selected_row = _selected_task_row(session)
+    selected_row = selected_task_row(session)
     if selected_row is not None and selected_row.node is not None:
         preserve_identity = heading_locator(selected_row.node)
-    _refresh_session(session, preserve_identity)
+    refresh_session(session, preserve_identity)
     return True
 
 
@@ -231,7 +231,7 @@ def _reload_session_nodes(session: AgendaRuntimeSession) -> None:
 
 
 def _edit_selected_task_in_external_editor(session: AgendaRuntimeSession) -> None:
-    row = _selected_task_row(session)
+    row = selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -246,12 +246,12 @@ def _edit_selected_task_in_external_editor(session: AgendaRuntimeSession) -> Non
         session.status_message = "No changes."
         return
     _reload_session_nodes(session)
-    _refresh_session(session, preserve_identity)
+    refresh_session(session, preserve_identity)
     session.status_message = "Task updated"
 
 
 def _archive_selected_task(session: AgendaRuntimeSession) -> None:
-    row = _selected_task_row(session)
+    row = selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -263,7 +263,7 @@ def _archive_selected_task(session: AgendaRuntimeSession) -> None:
         return
     preserve_identity = heading_locator(archive_result.heading)
     _reload_session_nodes(session)
-    _refresh_session(session, preserve_identity)
+    refresh_session(session, preserve_identity)
     session.status_message = "Task archived"
 
 
@@ -302,11 +302,12 @@ def _shift_planning_for_row(
     return timestamp, f"Shifted {field_name} by {day_delta:+d} day"
 
 
-def _shift_planning_time_for_row(
+def shift_planning_time_for_row(
     row: AgendaRuntimeRow,
     *,
     hour_delta: int,
 ) -> tuple[Timestamp | None, str]:
+    """Shift the selected timed planning row by hours."""
     node = row.node
     if node is None:
         return None, "Action available only on task rows"
@@ -338,8 +339,9 @@ def _shift_planning_time_for_row(
     return timestamp, f"Shifted {field_name} {direction} by {abs(hour_delta)} hour"
 
 
-def _apply_state_change_with_value(session: AgendaRuntimeSession, new_state: str) -> None:
-    row = _selected_task_row(session)
+def apply_state_change_with_value(session: AgendaRuntimeSession, new_state: str) -> None:
+    """Apply a TODO state change to the selected agenda task."""
+    row = selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -370,12 +372,13 @@ def _apply_state_change_with_value(session: AgendaRuntimeSession, new_state: str
     _save_document_changes(heading.document)
     preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
-    _refresh_session(session, preserve_identity)
+    refresh_session(session, preserve_identity)
     session.status_message = f"State updated: {old_state or '-'} -> {new_state}"
 
 
-def _apply_shift_date(session: AgendaRuntimeSession, *, day_delta: int) -> None:
-    row = _selected_task_row(session)
+def apply_shift_date(session: AgendaRuntimeSession, *, day_delta: int) -> None:
+    """Shift the selected agenda task planning date by days."""
+    row = selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -387,16 +390,16 @@ def _apply_shift_date(session: AgendaRuntimeSession, *, day_delta: int) -> None:
     _save_document_changes(heading.document)
     preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
-    _refresh_session(session, preserve_identity)
+    refresh_session(session, preserve_identity)
     session.status_message = status
 
 
 def _apply_shift_time(session: AgendaRuntimeSession, *, hour_delta: int) -> None:
-    row = _selected_task_row(session)
+    row = selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
-    timestamp, status = _shift_planning_time_for_row(row, hour_delta=hour_delta)
+    timestamp, status = shift_planning_time_for_row(row, hour_delta=hour_delta)
     if timestamp is None:
         session.status_message = status
         return
@@ -404,7 +407,7 @@ def _apply_shift_time(session: AgendaRuntimeSession, *, hour_delta: int) -> None
     _save_document_changes(heading.document)
     preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
-    _refresh_session(session, preserve_identity)
+    refresh_session(session, preserve_identity)
     session.status_message = status
 
 
@@ -419,8 +422,9 @@ def _move_heading_to_document(heading: Heading, destination: Document) -> None:
         descendant.document = destination
 
 
-def _apply_refile_with_value(session: AgendaRuntimeSession, destination_input: str) -> None:
-    row = _selected_task_row(session)
+def apply_refile_with_value(session: AgendaRuntimeSession, destination_input: str) -> None:
+    """Refile the selected agenda task to the requested destination."""
+    row = selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -460,12 +464,13 @@ def _apply_refile_with_value(session: AgendaRuntimeSession, destination_input: s
         _save_document_changes(source_document)
     preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
-    _refresh_session(session, preserve_identity)
+    refresh_session(session, preserve_identity)
     session.status_message = f"Refiled task to {destination_doc_path}"
 
 
-def _apply_clock_entry_with_value(session: AgendaRuntimeSession, duration_input: str) -> None:
-    row = _selected_task_row(session)
+def apply_clock_entry_with_value(session: AgendaRuntimeSession, duration_input: str) -> None:
+    """Add a clock entry to the selected agenda task."""
+    row = selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -489,7 +494,7 @@ def _apply_clock_entry_with_value(session: AgendaRuntimeSession, duration_input:
     _save_document_changes(row.node.document)
     preserve_identity = heading_locator(row.node)
     _reload_session_nodes(session)
-    _refresh_session(session, preserve_identity)
+    refresh_session(session, preserve_identity)
     session.status_message = f"Added clock entry ({duration_text})"
 
 
@@ -497,16 +502,17 @@ def _clear_search(session: AgendaRuntimeSession) -> None:
     if not session.search_text:
         session.status_message = "Search already clear"
         return
-    selected_row = _selected_task_row(session)
+    selected_row = selected_task_row(session)
     preserve_identity = None
     if selected_row is not None and selected_row.node is not None:
         preserve_identity = heading_locator(selected_row.node)
     session.search_text = ""
-    _refresh_visible_nodes(session, preserve_identity)
+    refresh_visible_nodes(session, preserve_identity)
     session.status_message = "Search cleared"
 
 
-def _selected_row(session: AgendaRuntimeSession) -> AgendaRuntimeRow | None:
+def selected_row(session: AgendaRuntimeSession) -> AgendaRuntimeRow | None:
+    """Return the currently selected agenda row."""
     location = _selected_row_location(session)
     if location is None:
         return None
@@ -515,7 +521,7 @@ def _selected_row(session: AgendaRuntimeSession) -> AgendaRuntimeRow | None:
 
 
 def _timetable_schedule_for_selected_row(session: AgendaRuntimeSession) -> Timestamp | None:
-    row = _selected_row(session)
+    row = selected_row(session)
     if row is None:
         return None
     if row.kind == "task" and row.source not in {"scheduled", "deadline_today", "repeat"}:
@@ -558,7 +564,7 @@ def _apply_capture_task(session: AgendaRuntimeSession, template_name: str) -> No
     try:
         _save_document_changes(capture_result.document)
         _reload_session_nodes(session)
-        _refresh_session(session, heading_locator(capture_result.heading))
+        refresh_session(session, heading_locator(capture_result.heading))
     except typer.BadParameter as err:
         session.status_message = str(err)
         return
@@ -566,14 +572,14 @@ def _apply_capture_task(session: AgendaRuntimeSession, template_name: str) -> No
 
 
 def _state_choices_for_selected_row(session: AgendaRuntimeSession) -> list[str]:
-    row = _selected_task_row(session)
+    row = selected_task_row(session)
     if row is None or row.node is None:
         return []
     return todo_states_for_heading(row.node)
 
 
 def _can_activate_agenda_state_prompt(session: AgendaRuntimeSession) -> str | None:
-    row = _selected_task_row(session)
+    row = selected_task_row(session)
     if row is None or row.node is None:
         return "Action available only on task rows"
     if not _state_choices_for_selected_row(session):
@@ -590,12 +596,12 @@ def _can_activate_agenda_capture_prompt(session: AgendaRuntimeSession) -> str | 
 
 
 def _apply_search_text(session: AgendaRuntimeSession, search_text: str) -> None:
-    selected_row = _selected_task_row(session)
+    selected_row = selected_task_row(session)
     preserve_identity = None
     if selected_row is not None and selected_row.node is not None:
         preserve_identity = heading_locator(selected_row.node)
     session.search_text = search_text
-    _refresh_visible_nodes(session, preserve_identity)
+    refresh_visible_nodes(session, preserve_identity)
     session.status_message = (
         "Search cleared" if not search_text else f"{len(session.nodes)} matches"
     )
@@ -607,13 +613,13 @@ def create_agenda_session(
     done_states: list[str],
     todo_states: list[str],
     color_enabled: bool,
-) -> _AgendaSession:
+) -> AgendaSession:
     """Create interactive session state for agenda."""
-    session = _AgendaSession(
+    session = AgendaSession(
         args=args,
         all_nodes=list(nodes),
         nodes=nodes,
-        render=_RenderContext(
+        render=RenderContext(
             color_enabled=color_enabled,
             done_states=done_states,
             todo_states=todo_states,
@@ -630,13 +636,13 @@ def create_agenda_session(
         show_help_modal=False,
         active_prompt=None,
     )
-    _refresh_session(session, None)
+    refresh_session(session, None)
     return session
 
 
 def _set_start_date_relative(session: AgendaRuntimeSession, *, day_delta: int) -> None:
     session.start_date += timedelta(days=day_delta)
-    _refresh_session(session, None)
+    refresh_session(session, None)
 
 
 def _activate_prompt(
@@ -729,7 +735,7 @@ def _activate_state_selection_prompt(session: AgendaRuntimeSession, states: list
         if selected_state is None:
             session.status_message = config.invalid_status
             return True
-        _apply_state_change_with_value(session, selected_state)
+        apply_state_change_with_value(session, selected_state)
         return False
 
     _activate_prompt(session, config, submit_value=_submit)
@@ -768,24 +774,24 @@ def _handle_state_prompt_activation(session: AgendaRuntimeSession) -> None:
 
 
 def _handle_refile_prompt_activation(session: AgendaRuntimeSession) -> None:
-    if _selected_task_row(session) is None:
+    if selected_task_row(session) is None:
         session.status_message = "Action available only on task rows"
         return
     _activate_value_prompt(
         session,
         refile_prompt_config(resolve_input_paths(session.args.files)),
-        lambda value: _apply_refile_with_value(session, value),
+        lambda value: apply_refile_with_value(session, value),
     )
 
 
 def _handle_clock_prompt_activation(session: AgendaRuntimeSession) -> None:
-    if _selected_task_row(session) is None:
+    if selected_task_row(session) is None:
         session.status_message = "Action available only on task rows"
         return
     _activate_value_prompt(
         session,
         clock_duration_prompt_config(),
-        lambda value: _apply_clock_entry_with_value(session, value),
+        lambda value: apply_clock_entry_with_value(session, value),
     )
 
 
@@ -849,8 +855,8 @@ def _handle_mutation_key(
         "ENTER": lambda: run_external(lambda: _edit_selected_task_in_external_editor(session)),
         "$": lambda: _archive_selected_task(session),
         "x": lambda: _clear_search(session),
-        "S-LEFT": lambda: _apply_shift_date(session, day_delta=-1),
-        "S-RIGHT": lambda: _apply_shift_date(session, day_delta=1),
+        "S-LEFT": lambda: apply_shift_date(session, day_delta=-1),
+        "S-RIGHT": lambda: apply_shift_date(session, day_delta=1),
         "S-UP": lambda: _apply_shift_time(session, hour_delta=-1),
         "S-DOWN": lambda: _apply_shift_time(session, hour_delta=1),
     }.get(key)
@@ -902,6 +908,7 @@ def _handle_keypress_event(
 
 
 def passthrough_run_external(callback: Callable[[], None]) -> None:
+    """Run an external callback immediately."""
     callback()
 
 
@@ -915,6 +922,7 @@ def handle_interactive_event(
     event: InteractiveEvent,
     run_external: Callable[[Callable[[], None]], None],
 ) -> bool:
+    """Handle one agenda interactive event."""
     if _handle_help_modal_event(session, event):
         return True
     if session.active_prompt is not None:
@@ -928,6 +936,7 @@ def handle_interactive_event(
 
 
 def run_agenda_interactive(console: Console, session: AgendaRuntimeSession) -> None:
+    """Run the interactive agenda loop."""
     run_external: list[Callable[[Callable[[], None]], None]] = [passthrough_run_external]
 
     def _bind_run_external(callback: Callable[[Callable[[], None]], None]) -> None:
@@ -941,40 +950,3 @@ def run_agenda_interactive(console: Console, session: AgendaRuntimeSession) -> N
         bind_run_external=_bind_run_external,
         timeout_seconds=_INTERACTIVE_INPUT_TIMEOUT_SECONDS,
     )
-
-
-AgendaSession = _AgendaSession
-selected_task_row = _selected_task_row
-apply_shift_date = _apply_shift_date
-refresh_visible_nodes = _refresh_visible_nodes
-apply_state_change_with_value = _apply_state_change_with_value
-apply_clock_entry_with_value = _apply_clock_entry_with_value
-apply_refile_with_value = _apply_refile_with_value
-selected_row = _selected_row
-shift_planning_time_for_row = _shift_planning_time_for_row
-refresh_session = _refresh_session
-
-
-__all__ = [
-    name
-    for name in globals()
-    if name.startswith(("_handle_", "_activate_", "_apply_", "_refresh_", "_selected_"))
-    or name
-    in {
-        "AgendaSession",
-        "create_agenda_session",
-        "selected_task_row",
-        "apply_shift_date",
-        "refresh_visible_nodes",
-        "apply_state_change_with_value",
-        "apply_clock_entry_with_value",
-        "apply_refile_with_value",
-        "selected_row",
-        "shift_planning_time_for_row",
-        "refresh_session",
-        "passthrough_run_external",
-        "_run_external",
-        "run_agenda_interactive",
-        "handle_interactive_event",
-    }
-]

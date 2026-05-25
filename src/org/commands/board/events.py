@@ -75,7 +75,7 @@ class BoardColumnLike(Protocol):
 
 
 @dataclass
-class _BoardColumn:
+class BoardColumn:
     """One board column with title and assigned tasks."""
 
     title: str
@@ -83,7 +83,7 @@ class _BoardColumn:
 
 
 @dataclass(frozen=True)
-class _BoardColumnSpec:
+class BoardColumnSpec:
     """One board column filter specification."""
 
     name: str
@@ -92,7 +92,7 @@ class _BoardColumnSpec:
 
 
 @dataclass
-class _BoardSession:
+class BoardSession:
     """Interactive board session state."""
 
     args: BoardArgs
@@ -111,10 +111,6 @@ class _BoardSession:
     show_help_modal: bool = False
     active_prompt: InteractivePromptState | None = None
     run_external: Callable[[Callable[[], None]], None] | None = None
-
-
-BoardColumn = _BoardColumn
-BoardSession = _BoardSession
 
 
 _BOARD_HELP_ENTRIES = [
@@ -166,7 +162,7 @@ def _coerce_latest_timestamp_start(node: Heading) -> datetime | None:
     return latest_timestamp.start
 
 
-def _filter_recent_completed_nodes(nodes: list[Heading], days: int) -> list[Heading]:
+def filter_recent_completed_nodes(nodes: list[Heading], days: int) -> list[Heading]:
     """Keep completed tasks only when latest_timestamp is within days window."""
     now = local_now()
     cutoff = now - timedelta(days=days)
@@ -202,7 +198,7 @@ def _specified_states(args: BoardArgs) -> tuple[list[str], list[str]]:
     return specified_todo_states, specified_done_states
 
 
-def _resolved_states(
+def resolved_states(
     args: BoardArgs,
     discovered_todo_states: list[str],
     discovered_done_states: list[str],
@@ -240,9 +236,9 @@ def _fallback_view_config() -> config_module.BoardViewConfig:
     )
 
 
-def _compile_view_column_specs(view: config_module.BoardViewConfig) -> list[_BoardColumnSpec]:
+def compile_view_column_specs(view: config_module.BoardViewConfig) -> list[BoardColumnSpec]:
     """Compile one board view's filters into renderable column specs."""
-    column_specs: list[_BoardColumnSpec] = []
+    column_specs: list[BoardColumnSpec] = []
     for column in view.columns:
         try:
             query = _compile_column_filter_query(column.filter, column.order_by)
@@ -251,7 +247,7 @@ def _compile_view_column_specs(view: config_module.BoardViewConfig) -> list[_Boa
                 f"Invalid board filter/order-by (view={view.name}, column={column.name}): {err}",
             ) from err
         column_specs.append(
-            _BoardColumnSpec(
+            BoardColumnSpec(
                 name=column.name,
                 view_name=view.name,
                 query=query,
@@ -271,13 +267,13 @@ def _resolve_selected_view_name(args: BoardArgs) -> str | None:
     return selected_view
 
 
-def _resolve_column_specs(args: BoardArgs) -> list[_BoardColumnSpec]:
+def resolve_column_specs(args: BoardArgs) -> list[BoardColumnSpec]:
     """Resolve configured or fallback filter columns for board rendering."""
     selected_view = _resolve_selected_view_name(args)
     configured_views = config_module.CONFIG_BOARD_VIEWS
 
     if selected_view is None:
-        return _compile_view_column_specs(_fallback_view_config())
+        return compile_view_column_specs(_fallback_view_config())
 
     if not configured_views:
         raise typer.BadParameter("--view requested, but no board views are configured")
@@ -286,15 +282,15 @@ def _resolve_column_specs(args: BoardArgs) -> list[_BoardColumnSpec]:
     if selected_view_config is None:
         raise typer.BadParameter(f"Requested board view not found: {selected_view}")
 
-    return _compile_view_column_specs(selected_view_config)
+    return compile_view_column_specs(selected_view_config)
 
 
-def _build_selector_board_columns(
+def build_selector_board_columns(
     nodes: list[Heading],
-    column_specs: list[_BoardColumnSpec],
-) -> list[_BoardColumn]:
+    column_specs: list[BoardColumnSpec],
+) -> list[BoardColumn]:
     """Evaluate filter specs against processed task stream."""
-    columns: list[_BoardColumn] = []
+    columns: list[BoardColumn] = []
     for spec in column_specs:
         try:
             results = spec.query(Stream(nodes), EvalContext({}))
@@ -307,26 +303,26 @@ def _build_selector_board_columns(
             ) from err
 
         column_nodes = [cast("Heading", node) for node in results]
-        columns.append(_BoardColumn(title=spec.name, nodes=column_nodes))
+        columns.append(BoardColumn(title=spec.name, nodes=column_nodes))
 
     return columns
 
 
-def _max_column_nodes(columns: list[_BoardColumn]) -> int:
+def _max_column_nodes(columns: list[BoardColumn]) -> int:
     """Return maximum node count among board columns."""
     return max((len(column.nodes) for column in columns), default=0)
 
 
-def _column_with_filtered_nodes(column: BoardColumnLike, search_text: str) -> _BoardColumn:
+def _column_with_filtered_nodes(column: BoardColumnLike, search_text: str) -> BoardColumn:
     """Return one board column with nodes filtered by search text."""
     filtered_nodes = filter_nodes_by_search(column.nodes, search_text)
-    return _BoardColumn(title=column.title, nodes=filtered_nodes)
+    return BoardColumn(title=column.title, nodes=filtered_nodes)
 
 
 def _filter_columns_by_search(
     columns: Sequence[BoardColumnLike],
     search_text: str,
-) -> list[_BoardColumn]:
+) -> list[BoardColumn]:
     """Filter nodes in each column by interactive search text."""
     return [_column_with_filtered_nodes(column, search_text) for column in columns]
 
@@ -336,7 +332,7 @@ def _visible_task_count(columns: Sequence[BoardColumnLike]) -> int:
     return sum(len(column.nodes) for column in columns)
 
 
-def _ensure_selection_bounds(session: _BoardSession) -> None:
+def _ensure_selection_bounds(session: BoardSession) -> None:
     """Clamp current selection to available columns and rows."""
     if not session.columns:
         session.selected_column_index = 0
@@ -355,7 +351,7 @@ def _ensure_selection_bounds(session: _BoardSession) -> None:
 
 
 def _refresh_visible_columns(
-    session: _BoardSession,
+    session: BoardSession,
     preserve_identity: HeadingLocator | None,
 ) -> None:
     """Refresh visible board columns and restore selected task when possible."""
@@ -376,7 +372,7 @@ def _refresh_visible_columns(
     _ensure_selection_bounds(session)
 
 
-def _selected_node(session: _BoardSession) -> Heading | None:
+def selected_node(session: BoardSession) -> Heading | None:
     """Return selected task node, if current selection targets one."""
     if not session.columns:
         return None
@@ -388,46 +384,46 @@ def _selected_node(session: _BoardSession) -> Heading | None:
     return selected_nodes[session.selected_row_index]
 
 
-def _reload_session(
-    session: _BoardSession,
+def reload_session(
+    session: BoardSession,
     preserve_identity: HeadingLocator | None,
 ) -> None:
     """Reload processed nodes and rebuild board columns."""
     nodes, discovered_todo_states, discovered_done_states = load_and_process_data(session.args)
-    todo_states, done_states = _resolved_states(
+    todo_states, done_states = resolved_states(
         session.args,
         discovered_todo_states,
         discovered_done_states,
     )
 
-    filtered_nodes = _filter_recent_completed_nodes(nodes, session.args.days)
+    filtered_nodes = filter_recent_completed_nodes(nodes, session.args.days)
 
     session.nodes = filtered_nodes
     session.todo_states = todo_states
     session.done_states = done_states
-    session.all_columns = _build_selector_board_columns(
+    session.all_columns = build_selector_board_columns(
         filtered_nodes,
-        _resolve_column_specs(session.args),
+        resolve_column_specs(session.args),
     )
     _refresh_visible_columns(session, preserve_identity)
 
 
-def _create_flow_board_session(
+def create_flow_board_session(
     args: BoardArgs,
     nodes: list[Heading],
     todo_states: list[str],
     done_states: list[str],
     color_enabled: bool,
-) -> _BoardSession:
+) -> BoardSession:
     """Create interactive flow board session state."""
-    columns = _build_selector_board_columns(nodes, _resolve_column_specs(args))
+    columns = build_selector_board_columns(nodes, resolve_column_specs(args))
     selected_column_index = 0
     for index, column in enumerate(columns):
         if column.nodes:
             selected_column_index = index
             break
 
-    session = _BoardSession(
+    session = BoardSession(
         args=args,
         nodes=nodes,
         todo_states=todo_states,
@@ -454,7 +450,7 @@ def _save_document_changes(document: Document) -> None:
     save_document(document)
 
 
-def _step_heading_state(heading: Heading, *, direction: int) -> tuple[str | None, str | None]:
+def step_heading_state(heading: Heading, *, direction: int) -> tuple[str | None, str | None]:
     """Resolve next heading state from document all_states ordering."""
     ordered_states = list(dict.fromkeys(heading.document.all_states))
     if not ordered_states:
@@ -484,7 +480,7 @@ def _step_heading_state(heading: Heading, *, direction: int) -> tuple[str | None
     return new_state, status
 
 
-def _move_selection_vertical(session: _BoardSession, step: int) -> None:
+def _move_selection_vertical(session: BoardSession, step: int) -> None:
     """Move highlighted task up/down in the selected column."""
     selected_nodes = session.columns[session.selected_column_index].nodes
     if not selected_nodes:
@@ -495,7 +491,7 @@ def _move_selection_vertical(session: _BoardSession, step: int) -> None:
     session.selected_row_index = min(max(next_index, 0), len(selected_nodes) - 1)
 
 
-def _move_selection_horizontal(session: _BoardSession, step: int) -> None:
+def move_selection_horizontal(session: BoardSession, step: int) -> None:
     """Move highlighted lane left/right, skipping empty columns."""
     next_column = session.selected_column_index + step
     while 0 <= next_column < len(session.columns):
@@ -507,14 +503,14 @@ def _move_selection_horizontal(session: _BoardSession, step: int) -> None:
         next_column += step
 
 
-def _apply_state_move(session: _BoardSession, *, direction: int) -> None:
+def apply_state_move(session: BoardSession, *, direction: int) -> None:
     """Step selected task state through document state ordering."""
-    heading = _selected_node(session)
+    heading = selected_node(session)
     if heading is None:
         session.status_message = "Action available only on task panels"
         return
 
-    new_state, status = _step_heading_state(heading, direction=direction)
+    new_state, status = step_heading_state(heading, direction=direction)
     if status is not None:
         session.status_message = status
         return
@@ -557,16 +553,16 @@ def _apply_state_move(session: _BoardSession, *, direction: int) -> None:
     _save_document_changes(heading.document)
     preserve_identity = heading_locator(heading)
     try:
-        _reload_session(session, preserve_identity)
+        reload_session(session, preserve_identity)
     except typer.BadParameter as err:
         session.status_message = str(err)
         return
     session.status_message = f"State updated: {old_state or '-'} -> {new_state or '-'}"
 
 
-def _apply_priority_shift(session: _BoardSession, *, increase: bool) -> None:
+def _apply_priority_shift(session: BoardSession, *, increase: bool) -> None:
     """Increase or decrease selected task priority."""
-    heading = _selected_node(session)
+    heading = selected_node(session)
     if heading is None:
         session.status_message = "Action available only on task panels"
         return
@@ -589,16 +585,16 @@ def _apply_priority_shift(session: _BoardSession, *, increase: bool) -> None:
     _save_document_changes(heading.document)
     preserve_identity = heading_locator(heading)
     try:
-        _reload_session(session, preserve_identity)
+        reload_session(session, preserve_identity)
     except typer.BadParameter as err:
         session.status_message = str(err)
         return
     session.status_message = f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}"
 
 
-def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
+def _edit_selected_task_in_external_editor(session: BoardSession) -> None:
     """Edit selected task subtree in configured external editor."""
-    heading = _selected_node(session)
+    heading = selected_node(session)
     if heading is None:
         session.status_message = "Action available only on task panels"
         return
@@ -616,16 +612,16 @@ def _edit_selected_task_in_external_editor(session: _BoardSession) -> None:
         return
 
     try:
-        _reload_session(session, preserve_identity)
+        reload_session(session, preserve_identity)
     except typer.BadParameter as err:
         session.status_message = str(err)
         return
     session.status_message = "Task updated"
 
 
-def _archive_selected_task(session: _BoardSession) -> None:
+def _archive_selected_task(session: BoardSession) -> None:
     """Archive selected task subtree using shared archive-location rules."""
-    heading = _selected_node(session)
+    heading = selected_node(session)
     if heading is None:
         session.status_message = "Action available only on task panels"
         return
@@ -639,14 +635,14 @@ def _archive_selected_task(session: _BoardSession) -> None:
 
     preserve_identity = heading_locator(archive_result.heading)
     try:
-        _reload_session(session, preserve_identity)
+        reload_session(session, preserve_identity)
     except typer.BadParameter as err:
         session.status_message = str(err)
         return
     session.status_message = "Task archived"
 
 
-def _apply_capture_task(session: _BoardSession, template_name: str) -> None:
+def _apply_capture_task(session: BoardSession, template_name: str) -> None:
     """Capture a new task and reload board session."""
     session.status_message = ""
     capture_args = TasksCaptureArgs(
@@ -666,29 +662,29 @@ def _apply_capture_task(session: _BoardSession, template_name: str) -> None:
         return
 
     try:
-        _reload_session(session, heading_locator(capture_result.heading))
+        reload_session(session, heading_locator(capture_result.heading))
     except typer.BadParameter as err:
         session.status_message = str(err)
         return
     session.status_message = "Task captured"
 
 
-def _clear_search(session: _BoardSession) -> None:
+def _clear_search(session: BoardSession) -> None:
     """Clear active interactive search and restore full board columns."""
     if not session.search_text:
         session.status_message = "Search already clear"
         return
 
-    selected = _selected_node(session)
+    selected = selected_node(session)
     preserve_identity = heading_locator(selected) if selected is not None else None
     session.search_text = ""
     _refresh_visible_columns(session, preserve_identity)
     session.status_message = "Search cleared"
 
 
-def _apply_search_text(session: _BoardSession, search_text: str) -> None:
+def _apply_search_text(session: BoardSession, search_text: str) -> None:
     """Apply search text to board columns and update match status."""
-    selected = _selected_node(session)
+    selected = selected_node(session)
     preserve_identity = heading_locator(selected) if selected is not None else None
     session.search_text = search_text
     _refresh_visible_columns(session, preserve_identity)
@@ -697,21 +693,8 @@ def _apply_search_text(session: _BoardSession, search_text: str) -> None:
     )
 
 
-filter_recent_completed_nodes = _filter_recent_completed_nodes
-resolved_states = _resolved_states
-create_flow_board_session = _create_flow_board_session
-move_selection_horizontal = _move_selection_horizontal
-selected_node = _selected_node
-step_heading_state = _step_heading_state
-reload_session = _reload_session
-apply_state_move = _apply_state_move
-resolve_column_specs = _resolve_column_specs
-build_selector_board_columns = _build_selector_board_columns
-compile_view_column_specs = _compile_view_column_specs
-
-
 def _activate_prompt(
-    session: _BoardSession,
+    session: BoardSession,
     config: PromptActionConfig,
     *,
     submit_value: Callable[[str], bool],
@@ -742,7 +725,7 @@ def _activate_prompt(
     )
 
 
-def _activate_capture_prompt(session: _BoardSession) -> None:
+def _activate_capture_prompt(session: BoardSession) -> None:
     template_names = configured_capture_template_names()
     if not template_names:
         session.status_message = "No capture templates configured"
@@ -764,7 +747,7 @@ def _activate_capture_prompt(session: _BoardSession) -> None:
     _activate_prompt(session, config, submit_value=_submit)
 
 
-def _activate_search_prompt(session: _BoardSession) -> None:
+def _activate_search_prompt(session: BoardSession) -> None:
     session.search_prompt_previous_text = session.search_text
     config = PromptActionConfig(
         prompt=FooterPromptState(label="Search text (blank clears)"),
@@ -795,15 +778,15 @@ def _activate_search_prompt(session: _BoardSession) -> None:
     )
 
 
-def _handle_capture_prompt_activation(session: _BoardSession) -> None:
+def _handle_capture_prompt_activation(session: BoardSession) -> None:
     _activate_capture_prompt(session)
 
 
-def _handle_search_prompt_activation(session: _BoardSession) -> None:
+def _handle_search_prompt_activation(session: BoardSession) -> None:
     _activate_search_prompt(session)
 
 
-def _handle_active_prompt_event(session: _BoardSession, event: InteractiveEvent) -> bool:
+def _handle_active_prompt_event(session: BoardSession, event: InteractiveEvent) -> bool:
     active_prompt = session.active_prompt
     if active_prompt is None:
         return True
@@ -828,7 +811,7 @@ def _handle_active_prompt_event(session: _BoardSession, event: InteractiveEvent)
     return True
 
 
-def _handle_help_modal_event(session: _BoardSession, event: InteractiveEvent) -> bool:
+def _handle_help_modal_event(session: BoardSession, event: InteractiveEvent) -> bool:
     if not session.show_help_modal:
         return False
     if not isinstance(event, TimeoutEvent):
@@ -836,14 +819,14 @@ def _handle_help_modal_event(session: _BoardSession, event: InteractiveEvent) ->
     return True
 
 
-def _handle_navigation_key(session: _BoardSession, key: str) -> bool:
+def _handle_navigation_key(session: BoardSession, key: str) -> bool:
     handler = {
         "DOWN": lambda: _move_selection_vertical(session, 1),
         "WHEEL-DOWN": lambda: _move_selection_vertical(session, 1),
         "UP": lambda: _move_selection_vertical(session, -1),
         "WHEEL-UP": lambda: _move_selection_vertical(session, -1),
-        "RIGHT": lambda: _move_selection_horizontal(session, 1),
-        "LEFT": lambda: _move_selection_horizontal(session, -1),
+        "RIGHT": lambda: move_selection_horizontal(session, 1),
+        "LEFT": lambda: move_selection_horizontal(session, -1),
     }.get(key)
     if handler is None:
         return False
@@ -852,7 +835,7 @@ def _handle_navigation_key(session: _BoardSession, key: str) -> bool:
 
 
 def _handle_mutation_key(
-    session: _BoardSession,
+    session: BoardSession,
     key: str,
     run_external: Callable[[Callable[[], None]], None],
 ) -> bool:
@@ -860,8 +843,8 @@ def _handle_mutation_key(
         "ENTER": lambda: run_external(lambda: _edit_selected_task_in_external_editor(session)),
         "$": lambda: _archive_selected_task(session),
         "x": lambda: _clear_search(session),
-        "S-LEFT": lambda: _apply_state_move(session, direction=-1),
-        "S-RIGHT": lambda: _apply_state_move(session, direction=1),
+        "S-LEFT": lambda: apply_state_move(session, direction=-1),
+        "S-RIGHT": lambda: apply_state_move(session, direction=1),
         "S-UP": lambda: _apply_priority_shift(session, increase=True),
         "S-DOWN": lambda: _apply_priority_shift(session, increase=False),
     }.get(key)
@@ -872,7 +855,7 @@ def _handle_mutation_key(
 
 
 def _handle_prompt_activation_key(
-    session: _BoardSession,
+    session: BoardSession,
     key: str,
     _run_external_callback: Callable[[Callable[[], None]], None],
 ) -> bool:
@@ -887,7 +870,7 @@ def _handle_prompt_activation_key(
 
 
 def _handle_keypress_event(
-    session: _BoardSession,
+    session: BoardSession,
     key: str,
     run_external: Callable[[Callable[[], None]], None] | None = None,
 ) -> bool:
@@ -909,7 +892,7 @@ def _handle_keypress_event(
     return True
 
 
-def _flow_board_key_bindings(_session: _BoardSession) -> dict[str, KeyBinding]:
+def _flow_board_key_bindings(_session: BoardSession) -> dict[str, KeyBinding]:
     return {
         "S-LEFT": KeyBinding(lambda: True, requires_live_pause=False),
         "S-RIGHT": KeyBinding(lambda: True, requires_live_pause=False),
@@ -921,13 +904,13 @@ def passthrough_run_external(callback: Callable[[], None]) -> None:
     callback()
 
 
-def _run_external(session: _BoardSession, callback: Callable[[], None]) -> None:
+def _run_external(session: BoardSession, callback: Callable[[], None]) -> None:
     runner = session.run_external or passthrough_run_external
     runner(callback)
 
 
 def handle_interactive_event(
-    session: _BoardSession,
+    session: BoardSession,
     event: InteractiveEvent,
     run_external: Callable[[Callable[[], None]], None],
 ) -> bool:
@@ -942,7 +925,7 @@ def handle_interactive_event(
     return _handle_keypress_event(session, event.key, run_external)
 
 
-def run_flow_board_interactive(console: Console, session: _BoardSession) -> None:
+def run_flow_board_interactive(console: Console, session: BoardSession) -> None:
     run_external: list[Callable[[Callable[[], None]], None]] = [passthrough_run_external]
 
     def _bind_run_external(callback: Callable[[Callable[[], None]], None]) -> None:
@@ -965,9 +948,20 @@ __all__ = [
     or name
     in {
         "passthrough_run_external",
+        "BoardColumn",
+        "BoardColumnSpec",
+        "BoardSession",
         "filter_recent_completed_nodes",
         "resolved_states",
         "create_flow_board_session",
+        "move_selection_horizontal",
+        "selected_node",
+        "step_heading_state",
+        "reload_session",
+        "apply_state_move",
+        "resolve_column_specs",
+        "build_selector_board_columns",
+        "compile_view_column_specs",
         "_run_external",
         "_flow_board_key_bindings",
         "run_flow_board_interactive",

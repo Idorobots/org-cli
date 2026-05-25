@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from org_parser.document import Heading
 
-    from .events import _BoardSession
+    from .events import BoardSession
 
 
 class _BoardColumnLike(Protocol):
@@ -94,7 +94,7 @@ def _max_column_nodes(columns: Sequence[_BoardColumnLike]) -> int:
     return max((len(column.nodes) for column in columns), default=0)
 
 
-class _BoardPanelRenderConfig:
+class BoardPanelRenderConfig:
     """Rendering context passed to task panel builders."""
 
     def __init__(
@@ -105,6 +105,7 @@ class _BoardPanelRenderConfig:
         done_states: list[str],
         todo_states: list[str],
     ) -> None:
+        """Store board panel rendering settings."""
         self.width = width
         self.color_enabled = color_enabled
         self.done_states = done_states
@@ -141,9 +142,9 @@ def _state_prefix(
     return prefix
 
 
-def _build_task_panel(
+def build_task_panel(
     node: Heading,
-    render: _BoardPanelRenderConfig,
+    render: BoardPanelRenderConfig,
     *,
     highlighted: bool,
 ) -> Panel:
@@ -176,7 +177,7 @@ def _build_task_panel(
     )
 
 
-def _heading_and_meta_lines(node: Heading, render: _BoardPanelRenderConfig) -> tuple[int, int]:
+def _heading_and_meta_lines(node: Heading, render: BoardPanelRenderConfig) -> tuple[int, int]:
     """Estimate wrapped line counts for panel heading and metadata."""
     heading = Text("")
     heading.append_text(
@@ -198,13 +199,13 @@ def _heading_and_meta_lines(node: Heading, render: _BoardPanelRenderConfig) -> t
     return heading_lines, metadata_lines
 
 
-def _interactive_panel_height(node: Heading, render: _BoardPanelRenderConfig) -> int:
+def _interactive_panel_height(node: Heading, render: BoardPanelRenderConfig) -> int:
     """Estimate interactive panel height for one node."""
     heading_lines, metadata_lines = _heading_and_meta_lines(node, render)
     return heading_lines + metadata_lines + 2
 
 
-def _render_column_title_text(title: str) -> Text:
+def render_column_title_text(title: str) -> Text:
     """Render column title as Rich markup with literal fallback."""
     try:
         return Text.from_markup(title)
@@ -243,11 +244,6 @@ def _estimate_board_height(columns: Sequence[_BoardColumnLike], panel_content_wi
     return content_row_height + 3
 
 
-BoardPanelRenderConfig = _BoardPanelRenderConfig
-build_task_panel = _build_task_panel
-render_column_title_text = _render_column_title_text
-
-
 def render_static_flow_board(
     console: Console,
     columns: Sequence[_BoardColumnLike],
@@ -261,11 +257,11 @@ def render_static_flow_board(
     for _ in columns:
         table.add_column(ratio=1)
 
-    header_row = [_render_column_title_text(column.title) for column in columns]
+    header_row = [render_column_title_text(column.title) for column in columns]
     table.add_row(*header_row)
 
     panel_content_width = _estimate_panel_content_width(console.width, len(columns))
-    render = _BoardPanelRenderConfig(
+    render = BoardPanelRenderConfig(
         width=panel_content_width,
         color_enabled=color_enabled,
         done_states=done_states,
@@ -276,7 +272,7 @@ def render_static_flow_board(
         if not column.nodes:
             content_cells.append(Text(""))
             continue
-        panels = [_build_task_panel(node, render, highlighted=False) for node in column.nodes]
+        panels = [build_task_panel(node, render, highlighted=False) for node in column.nodes]
         content_cells.append(Group(*panels))
     table.add_row(*content_cells)
 
@@ -289,7 +285,7 @@ def render_static_flow_board(
     console.print(table)
 
 
-def _column_row_heights(nodes: Sequence[Heading], render: _BoardPanelRenderConfig) -> list[int]:
+def _column_row_heights(nodes: Sequence[Heading], render: BoardPanelRenderConfig) -> list[int]:
     return [_interactive_panel_height(node, render) for node in nodes]
 
 
@@ -300,8 +296,8 @@ def _interactive_viewport_rows(console_height: int) -> int:
 
 
 def _interactive_row_heights(
-    session: _BoardSession,
-    render: _BoardPanelRenderConfig,
+    session: BoardSession,
+    render: BoardPanelRenderConfig,
 ) -> list[int]:
     total_rows = _max_column_nodes(session.columns)
     row_heights: list[int] = []
@@ -316,8 +312,8 @@ def _interactive_row_heights(
 
 
 def _selected_column_row_heights(
-    session: _BoardSession,
-    render: _BoardPanelRenderConfig,
+    session: BoardSession,
+    render: BoardPanelRenderConfig,
 ) -> list[int]:
     if not session.columns:
         return []
@@ -347,7 +343,7 @@ def _window_end_for_height(
 
 
 def _sync_scroll_for_selection(
-    session: _BoardSession,
+    session: BoardSession,
     row_heights: list[int],
     available_lines: int,
 ) -> tuple[int, int, int]:
@@ -389,7 +385,7 @@ def _build_board_header(columns: Sequence[_BoardColumnLike]) -> Table:
         header.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
     header_cells: list[Text] = []
     for column in columns:
-        title_text = _render_column_title_text(column.title)
+        title_text = render_column_title_text(column.title)
         title_text.overflow = "ellipsis"
         title_text.no_wrap = True
         header_cells.append(title_text)
@@ -398,7 +394,7 @@ def _build_board_header(columns: Sequence[_BoardColumnLike]) -> Table:
 
 
 def _build_board_body(
-    session: _BoardSession,
+    session: BoardSession,
     panel_content_width: int,
     body_height: int,
 ) -> tuple[Table, int]:
@@ -406,7 +402,7 @@ def _build_board_body(
     for _ in session.columns:
         body.add_column(ratio=1)
 
-    render = _BoardPanelRenderConfig(
+    render = BoardPanelRenderConfig(
         width=panel_content_width,
         color_enabled=session.color_enabled,
         done_states=session.done_states,
@@ -440,14 +436,14 @@ def _build_board_body(
                 column_index == session.selected_column_index
                 and row_index == session.selected_row_index
             )
-            panels.append(_build_task_panel(node, render, highlighted=highlighted))
+            panels.append(build_task_panel(node, render, highlighted=highlighted))
         body_cells.append(Group(*panels) if panels else Text(""))
 
     body.add_row(*body_cells)
     return body, end_row
 
 
-def _interactive_flow_board_renderable(console: Console, session: _BoardSession) -> RenderableType:
+def _interactive_flow_board_renderable(console: Console, session: BoardSession) -> RenderableType:
     if session.show_help_modal:
         return render_interactive_help_modal(
             BOARD_HELP_ENTRIES,
@@ -505,17 +501,3 @@ def _interactive_flow_board_renderable(console: Console, session: _BoardSession)
             Group(Rule(style=footer_style), footer_line, prompt_line, status_text),
         )
     return layout
-
-
-__all__ = [
-    "BOARD_HELP_ENTRIES",
-    "_column_row_heights",
-    "_interactive_flow_board_renderable",
-    "_interactive_row_heights",
-    "_interactive_viewport_rows",
-    "_max_column_nodes",
-    "_selected_column_row_heights",
-    "_sync_scroll_for_selection",
-    "_window_end_for_height",
-    "render_static_flow_board",
-]

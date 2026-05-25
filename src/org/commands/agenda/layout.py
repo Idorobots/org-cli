@@ -76,7 +76,7 @@ class _DayEntries:
 
 
 @dataclass(frozen=True)
-class _RenderContext:
+class RenderContext:
     """Shared rendering context for agenda rows."""
 
     color_enabled: bool
@@ -85,7 +85,7 @@ class _RenderContext:
 
 
 @dataclass(frozen=True)
-class _TaskRow:
+class TaskRow:
     """Renderable task row data."""
 
     node: Heading
@@ -96,7 +96,7 @@ class _TaskRow:
 
 
 @dataclass(frozen=True)
-class _DayRenderInput:
+class DayRenderInput:
     """Per-day rendering input for agenda rows."""
 
     day: date
@@ -105,7 +105,7 @@ class _DayRenderInput:
 
 
 @dataclass(frozen=True)
-class _RelativeSectionInput:
+class RelativeSectionInput:
     """Renderable input for one relative section."""
 
     label: str
@@ -116,17 +116,17 @@ class _RelativeSectionInput:
 
 
 @dataclass(frozen=True)
-class _AgendaRenderInput:
+class AgendaRenderInput:
     """Top-level agenda rendering input."""
 
     args: AgendaArgs
     nodes: list[Heading]
     now: datetime
-    render: _RenderContext
+    render: RenderContext
 
 
 @dataclass(frozen=True)
-class _AgendaRow:
+class AgendaRow:
     """One renderable agenda row, optionally bound to a task."""
 
     kind: str
@@ -141,15 +141,15 @@ class _AgendaRow:
 
 
 @dataclass
-class _DayRowModel:
+class DayRowModel:
     """Rows and selectable row indexes for one day."""
 
     day: date
-    rows: list[_AgendaRow]
+    rows: list[AgendaRow]
     selectable_row_indexes: list[int]
 
 
-_AGENDA_HELP_ENTRIES = [
+AGENDA_HELP_ENTRIES = [
     InteractiveHelpEntry("Esc/q", "Exit the agenda view and return to the shell."),
     InteractiveHelpEntry(
         "n/p, Up/Down, Wheel",
@@ -203,17 +203,17 @@ _AGENDA_HELP_ENTRIES = [
 
 
 @dataclass(frozen=True)
-class _ViewportRow:
+class ViewportRow:
     """One interactive viewport row with optional bound agenda row."""
 
     kind: str
     day: date
-    agenda_row: _AgendaRow | None
+    agenda_row: AgendaRow | None
     location: tuple[int, int] | None
 
 
 @dataclass(frozen=True)
-class _RelativeRowsSpec:
+class RelativeRowsSpec:
     """Specification for building one relative section row group."""
 
     label: str
@@ -264,7 +264,7 @@ def _tags_text(node: Heading, color_enabled: bool) -> Text:
 def _heading_text(
     node: Heading,
     *,
-    render: _RenderContext,
+    render: RenderContext,
     prefix: str | None = None,
     state_override: str | None = None,
 ) -> Text:
@@ -628,7 +628,7 @@ def _merge_row_style(base_style: str, *, highlighted: bool) -> str:
     return _HIGHLIGHT_ROW_STYLE
 
 
-def _row_for_timed_entry(entry: _TimedEntry, day: date) -> _AgendaRow:
+def _row_for_timed_entry(entry: _TimedEntry, day: date) -> AgendaRow:
     """Build one row model for a timed entry."""
     source_map = {
         "repeat": "repeat",
@@ -636,7 +636,7 @@ def _row_for_timed_entry(entry: _TimedEntry, day: date) -> _AgendaRow:
         "deadline": "deadline_today",
     }
     source = source_map.get(entry.kind, "scheduled")
-    return _AgendaRow(
+    return AgendaRow(
         kind="task",
         day=day,
         time_text=entry.when.strftime("%H:%M"),
@@ -646,22 +646,22 @@ def _row_for_timed_entry(entry: _TimedEntry, day: date) -> _AgendaRow:
     )
 
 
-def _build_hour_rows(day_render: _DayRenderInput) -> list[_AgendaRow]:
+def _build_hour_rows(day_render: DayRenderInput) -> list[AgendaRow]:
     """Build timetable hour, now-marker, and timed task rows for one day."""
-    rows: list[_AgendaRow] = []
+    rows: list[AgendaRow] = []
     timed_by_hour: dict[int, list[_TimedEntry]] = {hour: [] for hour in range(24)}
     for entry in day_render.entries.timed:
         timed_by_hour[entry.when.hour].append(entry)
 
     for hour in range(24):
-        rows.append(_AgendaRow(kind="hour_marker", day=day_render.day, time_text=f"{hour:02d}:00"))
+        rows.append(AgendaRow(kind="hour_marker", day=day_render.day, time_text=f"{hour:02d}:00"))
         hour_entries = timed_by_hour[hour]
         is_now_hour = day_render.day == day_render.now.date() and day_render.now.hour == hour
         now_inserted = False
         for timed_entry in hour_entries:
             if is_now_hour and not now_inserted and timed_entry.when.minute > day_render.now.minute:
                 rows.append(
-                    _AgendaRow(
+                    AgendaRow(
                         kind="now_marker",
                         day=day_render.day,
                         time_text=day_render.now.strftime("%H:%M"),
@@ -672,7 +672,7 @@ def _build_hour_rows(day_render: _DayRenderInput) -> list[_AgendaRow]:
 
         if is_now_hour and not now_inserted:
             rows.append(
-                _AgendaRow(
+                AgendaRow(
                     kind="now_marker",
                     day=day_render.day,
                     time_text=day_render.now.strftime("%H:%M"),
@@ -681,13 +681,13 @@ def _build_hour_rows(day_render: _DayRenderInput) -> list[_AgendaRow]:
     return rows
 
 
-def _relative_section_rows(day: date, spec: _RelativeRowsSpec) -> list[_AgendaRow]:
+def _relative_section_rows(day: date, spec: RelativeRowsSpec) -> list[AgendaRow]:
     """Build rows for one overdue/upcoming relative section."""
     if not spec.entries:
         return []
-    rows = [_AgendaRow(kind="section", day=day, section_label=spec.label, style=spec.style)]
+    rows = [AgendaRow(kind="section", day=day, section_label=spec.label, style=spec.style)]
     rows.extend(
-        _AgendaRow(
+        AgendaRow(
             kind="task",
             day=day,
             time_text=_format_relative_days(entry.delta_days, in_future=spec.in_future),
@@ -701,36 +701,36 @@ def _relative_section_rows(day: date, spec: _RelativeRowsSpec) -> list[_AgendaRo
     return rows
 
 
-def _scheduled_untimed_rows(day: date, entries: list[Heading]) -> list[_AgendaRow]:
+def _scheduled_untimed_rows(day: date, entries: list[Heading]) -> list[AgendaRow]:
     """Build rows for scheduled-without-time section."""
     if not entries:
         return []
-    rows = [_AgendaRow(kind="section", day=day, section_label="Scheduled without specific time")]
+    rows = [AgendaRow(kind="section", day=day, section_label="Scheduled without specific time")]
     rows.extend(
-        _AgendaRow(kind="task", day=day, node=node, source="scheduled_untimed") for node in entries
+        AgendaRow(kind="task", day=day, node=node, source="scheduled_untimed") for node in entries
     )
     return rows
 
 
-def _deadline_untimed_rows(day: date, entries: list[Heading]) -> list[_AgendaRow]:
+def _deadline_untimed_rows(day: date, entries: list[Heading]) -> list[AgendaRow]:
     """Build rows for deadline-without-time section."""
     if not entries:
         return []
-    rows = [_AgendaRow(kind="section", day=day, section_label="Deadlines without specific time")]
+    rows = [AgendaRow(kind="section", day=day, section_label="Deadlines without specific time")]
     rows.extend(
-        _AgendaRow(kind="task", day=day, node=node, source="deadline_today") for node in entries
+        AgendaRow(kind="task", day=day, node=node, source="deadline_today") for node in entries
     )
     return rows
 
 
-def _build_day_rows(day_render: _DayRenderInput, render: _RenderContext) -> _DayRowModel:
+def _build_day_rows(day_render: DayRenderInput, render: RenderContext) -> DayRowModel:
     """Build all render rows and selectable indexes for one day."""
-    rows: list[_AgendaRow] = []
+    rows: list[AgendaRow] = []
     rows.extend(_build_hour_rows(day_render))
     rows.extend(
         _relative_section_rows(
             day_render.day,
-            _RelativeRowsSpec(
+            RelativeRowsSpec(
                 label="Overdue deadlines",
                 entries=day_render.entries.overdue_deadline,
                 source="overdue_deadline",
@@ -742,7 +742,7 @@ def _build_day_rows(day_render: _DayRenderInput, render: _RenderContext) -> _Day
     rows.extend(
         _relative_section_rows(
             day_render.day,
-            _RelativeRowsSpec(
+            RelativeRowsSpec(
                 label="Overdue scheduled",
                 entries=day_render.entries.overdue_scheduled,
                 source="overdue_scheduled",
@@ -756,7 +756,7 @@ def _build_day_rows(day_render: _DayRenderInput, render: _RenderContext) -> _Day
     rows.extend(
         _relative_section_rows(
             day_render.day,
-            _RelativeRowsSpec(
+            RelativeRowsSpec(
                 label="Upcoming deadlines (30d)",
                 entries=day_render.entries.upcoming_deadline,
                 source="upcoming_deadline",
@@ -768,7 +768,7 @@ def _build_day_rows(day_render: _DayRenderInput, render: _RenderContext) -> _Day
     selectable = [
         idx for idx, row in enumerate(rows) if row.kind == "task" and row.node is not None
     ]
-    return _DayRowModel(day=day_render.day, rows=rows, selectable_row_indexes=selectable)
+    return DayRowModel(day=day_render.day, rows=rows, selectable_row_indexes=selectable)
 
 
 def _selected_row_location(session: AgendaSessionLike) -> tuple[int, int] | None:
@@ -785,7 +785,7 @@ def _add_section_row(table: Table, label: str, *, color_enabled: bool, style: st
     return 1
 
 
-def _add_task_row(table: Table, row: _TaskRow, render: _RenderContext) -> int:
+def _add_task_row(table: Table, row: TaskRow, render: RenderContext) -> int:
     """Add one task row to the agenda table."""
     table.add_row(
         _category_text(row.node),
@@ -802,7 +802,7 @@ def _add_task_row(table: Table, row: _TaskRow, render: _RenderContext) -> int:
     return 1
 
 
-def _render_hour_rows(table: Table, day_render: _DayRenderInput, render: _RenderContext) -> int:
+def _render_hour_rows(table: Table, day_render: DayRenderInput, render: RenderContext) -> int:
     row_count = 0
     timed_by_hour: dict[int, list[_TimedEntry]] = {hour: [] for hour in range(24)}
     for entry in day_render.entries.timed:
@@ -826,7 +826,7 @@ def _render_hour_rows(table: Table, day_render: _DayRenderInput, render: _Render
                 now_inserted = True
             row_count += _add_task_row(
                 table,
-                _TaskRow(
+                TaskRow(
                     node=timed_entry.node,
                     time_text=timed_entry.when.strftime("%H:%M"),
                     state_override=timed_entry.state_override,
@@ -846,8 +846,8 @@ def _render_hour_rows(table: Table, day_render: _DayRenderInput, render: _Render
 
 def _render_relative_section(
     table: Table,
-    section: _RelativeSectionInput,
-    render: _RenderContext,
+    section: RelativeSectionInput,
+    render: RenderContext,
 ) -> int:
     if not section.entries:
         return 0
@@ -860,7 +860,7 @@ def _render_relative_section(
     for entry in section.entries:
         row_count += _add_task_row(
             table,
-            _TaskRow(
+            TaskRow(
                 node=entry.node,
                 time_text=_format_relative_days(
                     entry.delta_days,
@@ -877,7 +877,7 @@ def _render_relative_section(
 def _render_scheduled_untimed_section(
     table: Table,
     entries: Sequence[Heading],
-    render: _RenderContext,
+    render: RenderContext,
 ) -> int:
     if not entries:
         return 0
@@ -887,14 +887,14 @@ def _render_scheduled_untimed_section(
         color_enabled=render.color_enabled,
     )
     for node in entries:
-        row_count += _add_task_row(table, _TaskRow(node=node, time_text=""), render)
+        row_count += _add_task_row(table, TaskRow(node=node, time_text=""), render)
     return row_count
 
 
 def _render_deadline_untimed_section(
     table: Table,
     entries: Sequence[Heading],
-    render: _RenderContext,
+    render: RenderContext,
 ) -> int:
     if not entries:
         return 0
@@ -904,16 +904,16 @@ def _render_deadline_untimed_section(
         color_enabled=render.color_enabled,
     )
     for node in entries:
-        row_count += _add_task_row(table, _TaskRow(node=node, time_text=""), render)
+        row_count += _add_task_row(table, TaskRow(node=node, time_text=""), render)
     return row_count
 
 
-def _render_day_rows(table: Table, day_render: _DayRenderInput, render: _RenderContext) -> int:
+def _render_day_rows(table: Table, day_render: DayRenderInput, render: RenderContext) -> int:
     row_count = 0
     row_count += _render_hour_rows(table, day_render, render)
     row_count += _render_relative_section(
         table,
-        _RelativeSectionInput(
+        RelativeSectionInput(
             label="Overdue deadlines",
             entries=day_render.entries.overdue_deadline,
             style="bold red" if render.color_enabled else "",
@@ -923,7 +923,7 @@ def _render_day_rows(table: Table, day_render: _DayRenderInput, render: _RenderC
     )
     row_count += _render_relative_section(
         table,
-        _RelativeSectionInput(
+        RelativeSectionInput(
             label="Overdue scheduled",
             entries=day_render.entries.overdue_scheduled,
             style="orange3" if render.color_enabled else "",
@@ -943,7 +943,7 @@ def _render_day_rows(table: Table, day_render: _DayRenderInput, render: _RenderC
     )
     row_count += _render_relative_section(
         table,
-        _RelativeSectionInput(
+        RelativeSectionInput(
             label="Upcoming deadlines (30d)",
             entries=day_render.entries.upcoming_deadline,
             style="yellow" if render.color_enabled else "",
@@ -973,7 +973,7 @@ def _build_agenda_table(day: date, *, color_enabled: bool) -> Table:
 def _render_row_model(
     table: Table,
     row: AgendaRowLike,
-    render: _RenderContext,
+    render: RenderContext,
     *,
     highlighted: bool,
 ) -> int:
@@ -981,7 +981,7 @@ def _render_row_model(
     if row.kind == "task" and row.node is not None:
         return _add_task_row(
             table,
-            _TaskRow(
+            TaskRow(
                 node=row.node,
                 time_text=row.time_text,
                 style=row_style,
@@ -1015,21 +1015,21 @@ def _render_row_model(
     return 0
 
 
-def _build_interactive_rows(session: AgendaSessionLike) -> list[_ViewportRow]:
-    rows: list[_ViewportRow] = []
+def _build_interactive_rows(session: AgendaSessionLike) -> list[ViewportRow]:
+    rows: list[ViewportRow] = []
     for day_index, day_model in enumerate(session.day_models):
         rows.append(
-            _ViewportRow(kind="day_header", day=day_model.day, agenda_row=None, location=None),
+            ViewportRow(kind="day_header", day=day_model.day, agenda_row=None, location=None),
         )
         rows.append(
-            _ViewportRow(kind="day_rule", day=day_model.day, agenda_row=None, location=None),
+            ViewportRow(kind="day_rule", day=day_model.day, agenda_row=None, location=None),
         )
         for row_index, agenda_row in enumerate(day_model.rows):
             rows.append(
-                _ViewportRow(
+                ViewportRow(
                     kind="agenda",
                     day=day_model.day,
-                    agenda_row=_AgendaRow(
+                    agenda_row=AgendaRow(
                         kind=agenda_row.kind,
                         day=agenda_row.day,
                         time_text=agenda_row.time_text,
@@ -1045,13 +1045,13 @@ def _build_interactive_rows(session: AgendaSessionLike) -> list[_ViewportRow]:
             )
         if day_index != len(session.day_models) - 1:
             rows.append(
-                _ViewportRow(kind="spacer", day=day_model.day, agenda_row=None, location=None),
+                ViewportRow(kind="spacer", day=day_model.day, agenda_row=None, location=None),
             )
     return rows
 
 
 def _selected_viewport_row_index(
-    rows: list[_ViewportRow],
+    rows: list[ViewportRow],
     selected: tuple[int, int] | None,
 ) -> int | None:
     if selected is None:
@@ -1073,7 +1073,7 @@ def _build_interactive_viewport_table() -> Table:
 
 def _render_viewport_row(
     table: Table,
-    row: _ViewportRow,
+    row: ViewportRow,
     session: AgendaSessionLike,
     selected_location: tuple[int, int] | None,
 ) -> None:
@@ -1104,7 +1104,7 @@ def interactive_agenda_renderable(console: Console, session: AgendaSessionLike) 
     if session.show_help_modal:
         return Group(
             render_interactive_help_modal(
-                _AGENDA_HELP_ENTRIES,
+                AGENDA_HELP_ENTRIES,
                 color_enabled=session.render.color_enabled,
             ),
         )
@@ -1148,7 +1148,7 @@ def interactive_agenda_renderable(console: Console, session: AgendaSessionLike) 
     return Group(viewport_table, Rule(style=footer_style), footer_line, prompt_line, status_text)
 
 
-def render_agenda(console: Console, render_input: _AgendaRenderInput) -> None:
+def render_agenda(console: Console, render_input: AgendaRenderInput) -> None:
     """Render agenda output table."""
     start_date = _resolve_agenda_start_date(render_input.args.date)
     rendered_tables: list[Table] = []
@@ -1164,7 +1164,7 @@ def render_agenda(console: Console, render_input: _AgendaRenderInput) -> None:
         )
         day_rows = _render_day_rows(
             table,
-            _DayRenderInput(day=day, now=render_input.now, entries=entries),
+            DayRenderInput(day=day, now=render_input.now, entries=entries),
             render_input.render,
         )
         total_rows += day_rows + 2
@@ -1180,38 +1180,3 @@ def render_agenda(console: Console, render_input: _AgendaRenderInput) -> None:
         console.print(table)
         if idx != len(rendered_tables) - 1:
             console.print()
-
-
-AgendaRenderInput = _AgendaRenderInput
-RenderContext = _RenderContext
-AgendaHelpEntries = _AGENDA_HELP_ENTRIES
-AgendaRow = _AgendaRow
-
-
-__all__ = [
-    "_AGENDA_HELP_ENTRIES",
-    "_AgendaRenderInput",
-    "_AgendaRow",
-    "_DayEntries",
-    "_DayRenderInput",
-    "_DayRowModel",
-    "_RelativeEntry",
-    "_RelativeRowsSpec",
-    "_RelativeSectionInput",
-    "_RenderContext",
-    "_TaskRow",
-    "_TimedEntry",
-    "_ViewportRow",
-    "_add_section_row",
-    "_add_task_row",
-    "_build_day_rows",
-    "_collect_day_entries",
-    "_format_relative_days",
-    "_has_specific_time",
-    "_is_active_planning_timestamp",
-    "_merge_row_style",
-    "_resolve_agenda_start_date",
-    "_selected_row_location",
-    "interactive_agenda_renderable",
-    "render_agenda",
-]

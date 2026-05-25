@@ -7356,7 +7356,10 @@ Split config handling to be per-command and have the config file reflect that.
 *** TODO Interactive loop refactor
 See the following plan for details: [[file:./plans/interactive-loop-refactor.md]]
 
-*** TODO Refactor to be more MVC-ish
+*** DONE Refactor to be more MVC-ish
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-25 Mon 16:19]
+:END:
 Currently, commands mix some logic and rendering, and a lot of that logic and rendering is shared in different "common" modules such as =cli_common=, =interactive_common= and =tui=. Ideally, this would be reorganized for better separation between views and controller logic.
 A domain should be defined with all common utils reorganized as domain specific functions.
 For command output rendering, a common toolkit of widgets and widget-adjacent rendering tools should be extracted.

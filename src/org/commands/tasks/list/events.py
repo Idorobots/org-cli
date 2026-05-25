@@ -61,7 +61,7 @@ logger = logging.getLogger("org")
 
 
 @dataclass
-class _TasksListSession:
+class TasksListSession:
     """Interactive tasks-list session state."""
 
     args: ListArgs
@@ -80,7 +80,7 @@ class _TasksListSession:
     run_external: Callable[[Callable[[], None]], None] | None = None
 
 
-_TASKS_LIST_HELP_ENTRIES = [
+TASKS_LIST_HELP_ENTRIES = [
     InteractiveHelpEntry("Esc/q", "Exit the task list and return to the shell."),
     InteractiveHelpEntry(
         "Up/Down, n/p, Wheel",
@@ -122,7 +122,7 @@ _TASKS_LIST_HELP_ENTRIES = [
 ]
 
 
-def _ensure_selection_bounds(session: _TasksListSession) -> None:
+def ensure_selection_bounds(session: TasksListSession) -> None:
     """Clamp selected index to currently visible rows."""
     if not session.visible_nodes:
         session.selected_index = 0
@@ -132,7 +132,7 @@ def _ensure_selection_bounds(session: _TasksListSession) -> None:
     session.selected_index = min(max(session.selected_index, 0), len(session.visible_nodes) - 1)
 
 
-def _selected_node(session: _TasksListSession) -> Heading | None:
+def selected_node(session: TasksListSession) -> Heading | None:
     """Return currently selected heading or None when selection is empty."""
     if not session.visible_nodes:
         return None
@@ -141,8 +141,8 @@ def _selected_node(session: _TasksListSession) -> Heading | None:
     return session.visible_nodes[session.selected_index]
 
 
-def _refresh_visible_nodes(
-    session: _TasksListSession,
+def refresh_visible_nodes(
+    session: TasksListSession,
     preserve_identity: HeadingLocator | None,
 ) -> None:
     """Refresh visible nodes and restore selection when possible."""
@@ -155,14 +155,14 @@ def _refresh_visible_nodes(
     preserved_node = resolve_heading_locator(session.visible_nodes, preserve_identity)
     if preserved_node is not None:
         session.selected_index = session.visible_nodes.index(preserved_node)
-        _ensure_selection_bounds(session)
+        ensure_selection_bounds(session)
         return
 
-    _ensure_selection_bounds(session)
+    ensure_selection_bounds(session)
 
 
-def _reload_session_nodes(
-    session: _TasksListSession,
+def reload_session_nodes(
+    session: TasksListSession,
     preserve_identity: HeadingLocator | None,
 ) -> bool:
     """Reload session nodes via standard processing pipeline."""
@@ -175,36 +175,36 @@ def _reload_session_nodes(
     session.all_nodes = nodes
     session.todo_states = todo_states
     session.done_states = done_states
-    _refresh_visible_nodes(session, preserve_identity)
+    refresh_visible_nodes(session, preserve_identity)
     return True
 
 
-def _save_document_changes(document: Document) -> None:
+def save_document_changes(document: Document) -> None:
     """Persist one mutated document to disk."""
     logger.info("Saving tasks list edit file: %s", document.filename)
     save_document(document)
 
 
-def _persist_and_reload_selected(
-    session: _TasksListSession,
+def persist_and_reload_selected(
+    session: TasksListSession,
     node: Heading,
     status_message: str,
 ) -> None:
     """Save selected heading document and refresh session state."""
     preserve_identity = heading_locator(node)
     try:
-        _save_document_changes(node.document)
+        save_document_changes(node.document)
     except typer.BadParameter as err:
         session.status_message = str(err)
         return
 
-    if _reload_session_nodes(session, preserve_identity):
+    if reload_session_nodes(session, preserve_identity):
         session.status_message = status_message
 
 
-def _edit_selected_task_in_external_editor(session: _TasksListSession) -> None:
+def edit_selected_task_in_external_editor(session: TasksListSession) -> None:
     """Edit selected task subtree in configured external editor."""
-    node = _selected_node(session)
+    node = selected_node(session)
     if node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -221,13 +221,13 @@ def _edit_selected_task_in_external_editor(session: _TasksListSession) -> None:
         session.status_message = "No changes."
         return
 
-    if _reload_session_nodes(session, preserve_identity):
+    if reload_session_nodes(session, preserve_identity):
         session.status_message = "Task updated"
 
 
-def _archive_selected_task(session: _TasksListSession) -> None:
+def archive_selected_task(session: TasksListSession) -> None:
     """Archive selected task subtree using shared archive-location rules."""
-    node = _selected_node(session)
+    node = selected_node(session)
     if node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -240,11 +240,11 @@ def _archive_selected_task(session: _TasksListSession) -> None:
         return
 
     preserve_identity = heading_locator(archive_result.heading)
-    if _reload_session_nodes(session, preserve_identity):
+    if reload_session_nodes(session, preserve_identity):
         session.status_message = "Task archived"
 
 
-def _apply_capture_task(session: _TasksListSession, template_name: str) -> None:
+def apply_capture_task(session: TasksListSession, template_name: str) -> None:
     """Capture a new task and reload list session."""
     session.status_message = ""
     capture_args = TasksCaptureArgs(
@@ -264,28 +264,28 @@ def _apply_capture_task(session: _TasksListSession, template_name: str) -> None:
         return
 
     try:
-        if _reload_session_nodes(session, heading_locator(capture_result.heading)):
+        if reload_session_nodes(session, heading_locator(capture_result.heading)):
             session.status_message = "Task captured"
     except typer.BadParameter as err:
         session.status_message = str(err)
 
 
-def _clear_search(session: _TasksListSession) -> None:
+def clear_search(session: TasksListSession) -> None:
     """Clear active interactive search and restore full visible list."""
     if not session.search_text:
         session.status_message = "Search already clear"
         return
 
-    selected = _selected_node(session)
+    selected = selected_node(session)
     preserve_identity = heading_locator(selected) if selected is not None else None
     session.search_text = ""
-    _refresh_visible_nodes(session, preserve_identity)
+    refresh_visible_nodes(session, preserve_identity)
     session.status_message = "Search cleared"
 
 
-def _apply_state_change_with_value(session: _TasksListSession, new_state: str) -> None:
+def apply_state_change_with_value(session: TasksListSession, new_state: str) -> None:
     """Apply TODO state transition on selected task."""
-    node = _selected_node(session)
+    node = selected_node(session)
     if node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -301,16 +301,16 @@ def _apply_state_change_with_value(session: _TasksListSession, new_state: str) -
         advance_timestamp_by_repeater(node.scheduled)
     if node.deadline is not None:
         advance_timestamp_by_repeater(node.deadline)
-    _persist_and_reload_selected(
+    persist_and_reload_selected(
         session,
         node,
         f"State updated: {old_state or '-'} -> {new_state}",
     )
 
 
-def _apply_priority_shift(session: _TasksListSession, *, increase: bool) -> None:
+def apply_priority_shift(session: TasksListSession, *, increase: bool) -> None:
     """Increase or decrease priority one step for selected task."""
-    node = _selected_node(session)
+    node = selected_node(session)
     if node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -322,16 +322,16 @@ def _apply_priority_shift(session: _TasksListSession, *, increase: bool) -> None
         return
 
     node.priority = new_priority
-    _persist_and_reload_selected(
+    persist_and_reload_selected(
         session,
         node,
         f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}",
     )
 
 
-def _apply_tags_edit(session: _TasksListSession, raw_tags: str) -> None:
+def apply_tags_edit(session: TasksListSession, raw_tags: str) -> None:
     """Apply tags edit using submitted footer prompt value."""
-    node = _selected_node(session)
+    node = selected_node(session)
     if node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -346,17 +346,17 @@ def _apply_tags_edit(session: _TasksListSession, raw_tags: str) -> None:
         session.status_message = "Tags unchanged"
         return
 
-    _persist_and_reload_selected(session, node, "Tags updated")
+    persist_and_reload_selected(session, node, "Tags updated")
 
 
-def _apply_planning_timestamp_edit(
-    session: _TasksListSession,
+def apply_planning_timestamp_edit(
+    session: TasksListSession,
     *,
     field: PlanningTimestampField,
     raw_timestamp: str,
 ) -> None:
     """Prompt and update one planning timestamp field on selected task."""
-    node = _selected_node(session)
+    node = selected_node(session)
     if node is None:
         session.status_message = "Action available only on task rows"
         return
@@ -376,47 +376,47 @@ def _apply_planning_timestamp_edit(
         session.status_message = f"{prompt_label} unchanged"
         return
 
-    _persist_and_reload_selected(session, node, f"{prompt_label} updated")
+    persist_and_reload_selected(session, node, f"{prompt_label} updated")
 
 
-def _state_choices_for_selected_node(session: _TasksListSession) -> list[str]:
+def state_choices_for_selected_node(session: TasksListSession) -> list[str]:
     """Return TODO-state choices for selected task."""
-    node = _selected_node(session)
+    node = selected_node(session)
     if node is None:
         return []
     return todo_states_for_heading(node)
 
 
-def _can_activate_state_prompt(session: _TasksListSession) -> str | None:
+def can_activate_state_prompt(session: TasksListSession) -> str | None:
     """Validate preconditions for opening state prompt."""
-    if _selected_node(session) is None:
+    if selected_node(session) is None:
         return "Action available only on task rows"
-    if not _state_choices_for_selected_node(session):
+    if not state_choices_for_selected_node(session):
         return "No TODO states defined"
     return None
 
 
-def _apply_search_text(session: _TasksListSession, search_text: str) -> None:
+def apply_search_text(session: TasksListSession, search_text: str) -> None:
     """Apply search text to visible tasks and update match status."""
-    selected = _selected_node(session)
+    selected = selected_node(session)
     preserve_identity = heading_locator(selected) if selected is not None else None
     session.search_text = search_text
-    _refresh_visible_nodes(session, preserve_identity)
+    refresh_visible_nodes(session, preserve_identity)
     session.status_message = (
         "Search cleared" if not search_text else f"{len(session.visible_nodes)} matches"
     )
 
 
-def _move_selection(session: _TasksListSession, step: int) -> None:
+def move_selection(session: TasksListSession, step: int) -> None:
     """Move selection forward/backward with wraparound."""
     if not session.visible_nodes:
         return
     session.selected_index = (session.selected_index + step) % len(session.visible_nodes)
 
 
-def create_tasks_list_session(args: ListArgs, data: _TasksListSessionData) -> _TasksListSession:
+def create_tasks_list_session(args: ListArgs, data: _TasksListSessionData) -> TasksListSession:
     """Create interactive tasks list session state."""
-    session = _TasksListSession(
+    session = TasksListSession(
         args=args,
         all_nodes=list(data.nodes),
         visible_nodes=list(data.nodes),
@@ -431,34 +431,12 @@ def create_tasks_list_session(args: ListArgs, data: _TasksListSessionData) -> _T
         active_prompt=None,
         run_external=None,
     )
-    _ensure_selection_bounds(session)
+    ensure_selection_bounds(session)
     return session
 
 
-TasksListSession = _TasksListSession
-TasksListHelpEntries = _TASKS_LIST_HELP_ENTRIES
-ensure_selection_bounds = _ensure_selection_bounds
-selected_node = _selected_node
-refresh_visible_nodes = _refresh_visible_nodes
-reload_session_nodes = _reload_session_nodes
-save_document_changes = _save_document_changes
-persist_and_reload_selected = _persist_and_reload_selected
-edit_selected_task_in_external_editor = _edit_selected_task_in_external_editor
-archive_selected_task = _archive_selected_task
-apply_capture_task = _apply_capture_task
-clear_search = _clear_search
-apply_state_change_with_value = _apply_state_change_with_value
-apply_priority_shift = _apply_priority_shift
-apply_tags_edit = _apply_tags_edit
-apply_planning_timestamp_edit = _apply_planning_timestamp_edit
-state_choices_for_selected_node = _state_choices_for_selected_node
-can_activate_state_prompt = _can_activate_state_prompt
-apply_search_text = _apply_search_text
-move_selection = _move_selection
-
-
 def _activate_prompt(
-    session: _TasksListSession,
+    session: TasksListSession,
     config: PromptActionConfig,
     *,
     submit_value: Callable[[str], bool],
@@ -489,7 +467,7 @@ def _activate_prompt(
     )
 
 
-def _activate_capture_prompt(session: _TasksListSession) -> None:
+def _activate_capture_prompt(session: TasksListSession) -> None:
     """Activate capture-template prompt when templates are configured."""
     template_names = configured_capture_template_names()
     if not template_names:
@@ -507,13 +485,13 @@ def _activate_capture_prompt(session: _TasksListSession) -> None:
         if template_name is None:
             session.status_message = config.invalid_status
             return True
-        _run_external(session, lambda: _apply_capture_task(session, template_name))
+        _run_external(session, lambda: apply_capture_task(session, template_name))
         return False
 
     _activate_prompt(session, config, submit_value=_submit)
 
 
-def _activate_search_prompt(session: _TasksListSession) -> None:
+def _activate_search_prompt(session: TasksListSession) -> None:
     """Activate search prompt and preserve current search text for cancellation."""
     session.search_prompt_previous_text = session.search_text
     config = PromptActionConfig(
@@ -524,16 +502,16 @@ def _activate_search_prompt(session: _TasksListSession) -> None:
 
     def _submit(value: str) -> bool:
         session.search_prompt_previous_text = None
-        _apply_search_text(session, value.strip())
+        apply_search_text(session, value.strip())
         return False
 
     def _preview(value: str) -> None:
-        _apply_search_text(session, value.strip())
+        apply_search_text(session, value.strip())
 
     def _cancel() -> None:
         previous_text = session.search_prompt_previous_text or ""
         session.search_prompt_previous_text = None
-        _apply_search_text(session, previous_text)
+        apply_search_text(session, previous_text)
         session.status_message = config.cancel_status
 
     _activate_prompt(
@@ -545,37 +523,37 @@ def _activate_search_prompt(session: _TasksListSession) -> None:
     )
 
 
-def _activate_tags_prompt(session: _TasksListSession) -> None:
+def _activate_tags_prompt(session: TasksListSession) -> None:
     """Activate tags editing prompt for the selected task."""
-    if _selected_node(session) is None:
+    if selected_node(session) is None:
         session.status_message = "Action available only on task rows"
         return
 
     config = tags_prompt_config()
 
     def _submit(value: str) -> bool:
-        _apply_tags_edit(session, value)
+        apply_tags_edit(session, value)
         return False
 
     _activate_prompt(session, config, submit_value=_submit)
 
 
-def _activate_planning_prompt(session: _TasksListSession, field: PlanningTimestampField) -> None:
+def _activate_planning_prompt(session: TasksListSession, field: PlanningTimestampField) -> None:
     """Activate one planning timestamp prompt for the selected task."""
-    if _selected_node(session) is None:
+    if selected_node(session) is None:
         session.status_message = "Action available only on task rows"
         return
 
     config = planning_prompt_config(field)
 
     def _submit(value: str) -> bool:
-        _apply_planning_timestamp_edit(session, field=field, raw_timestamp=value)
+        apply_planning_timestamp_edit(session, field=field, raw_timestamp=value)
         return False
 
     _activate_prompt(session, config, submit_value=_submit)
 
 
-def _activate_state_selection_prompt(session: _TasksListSession, states: list[str]) -> None:
+def _activate_state_selection_prompt(session: TasksListSession, states: list[str]) -> None:
     """Activate TODO-state selection prompt for the selected task."""
     config = state_selection_prompt_config(states)
 
@@ -588,45 +566,45 @@ def _activate_state_selection_prompt(session: _TasksListSession, states: list[st
         if selected_state is None:
             session.status_message = config.invalid_status
             return True
-        _apply_state_change_with_value(session, selected_state)
+        apply_state_change_with_value(session, selected_state)
         return False
 
     _activate_prompt(session, config, submit_value=_submit)
 
 
-def _handle_capture_prompt_activation(session: _TasksListSession) -> None:
+def _handle_capture_prompt_activation(session: TasksListSession) -> None:
     _activate_capture_prompt(session)
 
 
-def _handle_search_prompt_activation(session: _TasksListSession) -> None:
+def _handle_search_prompt_activation(session: TasksListSession) -> None:
     _activate_search_prompt(session)
 
 
-def _handle_state_prompt_activation(session: _TasksListSession) -> None:
-    status_message = _can_activate_state_prompt(session)
+def _handle_state_prompt_activation(session: TasksListSession) -> None:
+    status_message = can_activate_state_prompt(session)
     if status_message is not None:
         session.status_message = status_message
         return
-    _activate_state_selection_prompt(session, _state_choices_for_selected_node(session))
+    _activate_state_selection_prompt(session, state_choices_for_selected_node(session))
 
 
-def _handle_tags_prompt_activation(session: _TasksListSession) -> None:
+def _handle_tags_prompt_activation(session: TasksListSession) -> None:
     _activate_tags_prompt(session)
 
 
-def _handle_scheduled_prompt_activation(session: _TasksListSession) -> None:
+def _handle_scheduled_prompt_activation(session: TasksListSession) -> None:
     _activate_planning_prompt(session, "scheduled")
 
 
-def _handle_deadline_prompt_activation(session: _TasksListSession) -> None:
+def _handle_deadline_prompt_activation(session: TasksListSession) -> None:
     _activate_planning_prompt(session, "deadline")
 
 
-def _handle_closed_prompt_activation(session: _TasksListSession) -> None:
+def _handle_closed_prompt_activation(session: TasksListSession) -> None:
     _activate_planning_prompt(session, "closed")
 
 
-def _handle_active_prompt_event(session: _TasksListSession, event: InteractiveEvent) -> bool:
+def _handle_active_prompt_event(session: TasksListSession, event: InteractiveEvent) -> bool:
     active_prompt = session.active_prompt
     if active_prompt is None:
         return True
@@ -651,7 +629,7 @@ def _handle_active_prompt_event(session: _TasksListSession, event: InteractiveEv
     return True
 
 
-def _handle_help_modal_event(session: _TasksListSession, event: InteractiveEvent) -> bool:
+def _handle_help_modal_event(session: TasksListSession, event: InteractiveEvent) -> bool:
     if not session.show_help_modal:
         return False
     if not isinstance(event, TimeoutEvent):
@@ -659,14 +637,14 @@ def _handle_help_modal_event(session: _TasksListSession, event: InteractiveEvent
     return True
 
 
-def _handle_navigation_key(session: _TasksListSession, key: str) -> bool:
+def _handle_navigation_key(session: TasksListSession, key: str) -> bool:
     handler = {
-        "n": lambda: _move_selection(session, 1),
-        "DOWN": lambda: _move_selection(session, 1),
-        "WHEEL-DOWN": lambda: _move_selection(session, 1),
-        "p": lambda: _move_selection(session, -1),
-        "UP": lambda: _move_selection(session, -1),
-        "WHEEL-UP": lambda: _move_selection(session, -1),
+        "n": lambda: move_selection(session, 1),
+        "DOWN": lambda: move_selection(session, 1),
+        "WHEEL-DOWN": lambda: move_selection(session, 1),
+        "p": lambda: move_selection(session, -1),
+        "UP": lambda: move_selection(session, -1),
+        "WHEEL-UP": lambda: move_selection(session, -1),
     }.get(key)
     if handler is None:
         return False
@@ -675,16 +653,16 @@ def _handle_navigation_key(session: _TasksListSession, key: str) -> bool:
 
 
 def _handle_mutation_key(
-    session: _TasksListSession,
+    session: TasksListSession,
     key: str,
     run_external: Callable[[Callable[[], None]], None],
 ) -> bool:
     handler = {
-        "ENTER": lambda: run_external(lambda: _edit_selected_task_in_external_editor(session)),
-        "$": lambda: _archive_selected_task(session),
-        "x": lambda: _clear_search(session),
-        "S-UP": lambda: _apply_priority_shift(session, increase=True),
-        "S-DOWN": lambda: _apply_priority_shift(session, increase=False),
+        "ENTER": lambda: run_external(lambda: edit_selected_task_in_external_editor(session)),
+        "$": lambda: archive_selected_task(session),
+        "x": lambda: clear_search(session),
+        "S-UP": lambda: apply_priority_shift(session, increase=True),
+        "S-DOWN": lambda: apply_priority_shift(session, increase=False),
     }.get(key)
     if handler is None:
         return False
@@ -693,7 +671,7 @@ def _handle_mutation_key(
 
 
 def _handle_prompt_activation_key(
-    session: _TasksListSession,
+    session: TasksListSession,
     key: str,
     _run_external_callback: Callable[[Callable[[], None]], None],
 ) -> bool:
@@ -713,7 +691,7 @@ def _handle_prompt_activation_key(
 
 
 def _handle_keypress_event(
-    session: _TasksListSession,
+    session: TasksListSession,
     key: str,
     run_external: Callable[[Callable[[], None]], None] | None = None,
 ) -> bool:
@@ -736,19 +714,21 @@ def _handle_keypress_event(
 
 
 def passthrough_run_external(callback: Callable[[], None]) -> None:
+    """Run an external callback immediately."""
     callback()
 
 
-def _run_external(session: _TasksListSession, callback: Callable[[], None]) -> None:
+def _run_external(session: TasksListSession, callback: Callable[[], None]) -> None:
     runner = session.run_external or passthrough_run_external
     runner(callback)
 
 
 def handle_interactive_event(
-    session: _TasksListSession,
+    session: TasksListSession,
     event: InteractiveEvent,
     run_external: Callable[[Callable[[], None]], None],
 ) -> bool:
+    """Handle one tasks-list interactive event."""
     if _handle_help_modal_event(session, event):
         return True
     if session.active_prompt is not None:
@@ -758,41 +738,3 @@ def handle_interactive_event(
     if isinstance(event, InputEvent):
         return True
     return _handle_keypress_event(session, event.key, run_external)
-
-
-__all__ = [
-    name
-    for name in globals()
-    if name.startswith(("_handle_", "_activate_"))
-    or name
-    in {
-        "_TASKS_LIST_HELP_ENTRIES",
-        "_TasksListSession",
-        "create_tasks_list_session",
-        "TasksListHelpEntries",
-        "ensure_selection_bounds",
-        "selected_node",
-        "refresh_visible_nodes",
-        "reload_session_nodes",
-        "save_document_changes",
-        "persist_and_reload_selected",
-        "edit_selected_task_in_external_editor",
-        "archive_selected_task",
-        "apply_capture_task",
-        "clear_search",
-        "apply_state_change_with_value",
-        "apply_priority_shift",
-        "apply_tags_edit",
-        "apply_planning_timestamp_edit",
-        "state_choices_for_selected_node",
-        "can_activate_state_prompt",
-        "apply_search_text",
-        "move_selection",
-        "_ensure_selection_bounds",
-        "_move_selection",
-        "_selected_node",
-        "passthrough_run_external",
-        "_run_external",
-        "handle_interactive_event",
-    }
-]

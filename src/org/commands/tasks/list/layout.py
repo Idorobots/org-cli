@@ -16,7 +16,7 @@ from org.commands.interactive_common import (
 )
 from org.tui import TaskLineConfig, format_task_line
 
-from .events import _TASKS_LIST_HELP_ENTRIES, _ensure_selection_bounds, _TasksListSession
+from .events import TASKS_LIST_HELP_ENTRIES, TasksListSession, ensure_selection_bounds
 
 
 if TYPE_CHECKING:
@@ -26,9 +26,9 @@ if TYPE_CHECKING:
 _HIGHLIGHT_ROW_STYLE = "on grey23"
 
 
-def _build_task_row_text(
+def build_task_row_text(
     node: Heading,
-    session: _TasksListSession,
+    session: TasksListSession,
     *,
     line_width: int,
 ) -> Text:
@@ -47,7 +47,7 @@ def _build_task_row_text(
     return Text(line)
 
 
-def _sync_scroll(session: _TasksListSession, viewport_height: int) -> None:
+def _sync_scroll(session: TasksListSession, viewport_height: int) -> None:
     """Keep selected row inside the current viewport window."""
     max_offset = max(0, len(session.visible_nodes) - viewport_height)
     session.scroll_offset = min(max(session.scroll_offset, 0), max_offset)
@@ -63,18 +63,18 @@ def _sync_scroll(session: _TasksListSession, viewport_height: int) -> None:
     session.scroll_offset = min(max(session.scroll_offset, 0), max_offset)
 
 
-def _interactive_tasks_list_renderable(console: Console, session: _TasksListSession) -> Group:
+def interactive_tasks_list_renderable(console: Console, session: TasksListSession) -> Group:
     """Build scrollable interactive tasks list renderable."""
     if session.show_help_modal:
         return Group(
             render_interactive_help_modal(
-                _TASKS_LIST_HELP_ENTRIES,
+                TASKS_LIST_HELP_ENTRIES,
                 color_enabled=session.color_enabled,
             ),
         )
 
     viewport_height = max(5, console.size.height - 3)
-    _ensure_selection_bounds(session)
+    ensure_selection_bounds(session)
     _sync_scroll(session, viewport_height)
 
     window = session.visible_nodes[session.scroll_offset : session.scroll_offset + viewport_height]
@@ -83,7 +83,7 @@ def _interactive_tasks_list_renderable(console: Console, session: _TasksListSess
     for index, node in enumerate(window, start=session.scroll_offset):
         row_style = _HIGHLIGHT_ROW_STYLE if index == session.selected_index else ""
         viewport_table.add_row(
-            _build_task_row_text(node, session, line_width=console.size.width),
+            build_task_row_text(node, session, line_width=console.size.width),
             style=row_style,
         )
 
@@ -118,14 +118,3 @@ def _interactive_tasks_list_renderable(console: Console, session: _TasksListSess
     if prompt_line is None:
         return Group(viewport_table, Rule(style=footer_style), footer_line, status_text)
     return Group(viewport_table, Rule(style=footer_style), footer_line, prompt_line, status_text)
-
-
-interactive_tasks_list_renderable = _interactive_tasks_list_renderable
-build_task_row_text = _build_task_row_text
-
-
-__all__ = [
-    "_interactive_tasks_list_renderable",
-    "build_task_row_text",
-    "interactive_tasks_list_renderable",
-]

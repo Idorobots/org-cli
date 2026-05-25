@@ -114,10 +114,6 @@ class _TasksListSessionData:
     color_enabled: bool
 
 
-_TasksListSession = events.TasksListSession
-_TASKS_LIST_HELP_ENTRIES = events.TasksListHelpEntries
-
-
 class TasksListOutputFormatter(Protocol):
     """Formatter interface for the tasks list command."""
 
@@ -363,28 +359,6 @@ def _filter_nodes_by_search(nodes: list[Heading], search_text: str) -> list[Head
     return filter_nodes_by_search(nodes, search_text)
 
 
-_ensure_selection_bounds = events.ensure_selection_bounds
-_selected_node = events.selected_node
-_refresh_visible_nodes = events.refresh_visible_nodes
-_reload_session_nodes = events.reload_session_nodes
-_save_document_changes = events.save_document_changes
-_persist_and_reload_selected = events.persist_and_reload_selected
-_build_task_row_text = layout.build_task_row_text
-_edit_selected_task_in_external_editor = events.edit_selected_task_in_external_editor
-_archive_selected_task = events.archive_selected_task
-_apply_capture_task = events.apply_capture_task
-_clear_search = events.clear_search
-_apply_state_change_with_value = events.apply_state_change_with_value
-_apply_priority_shift = events.apply_priority_shift
-_apply_tags_edit = events.apply_tags_edit
-_apply_planning_timestamp_edit = events.apply_planning_timestamp_edit
-_state_choices_for_selected_node = events.state_choices_for_selected_node
-_can_activate_state_prompt = events.can_activate_state_prompt
-_apply_search_text = events.apply_search_text
-_move_selection = events.move_selection
-_create_tasks_list_session = events.create_tasks_list_session
-
-
 def _run_tasks_list_interactive(
     console: Console,
     args: ListArgs,
@@ -463,7 +437,7 @@ def register(app: typer.Typer) -> None:
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         help=interactive_help_command_text(
             "List tasks matching filters.",
-            _TASKS_LIST_HELP_ENTRIES,
+            events.TASKS_LIST_HELP_ENTRIES,
         ),
     )
     def tasks_list(  # noqa: PLR0913

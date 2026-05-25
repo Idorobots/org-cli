@@ -58,12 +58,6 @@ class BoardArgs:
 
 
 _BOARD_HELP_ENTRIES = layout.BOARD_HELP_ENTRIES
-_BoardColumn = events.BoardColumn
-
-
-_resolve_column_specs = events.resolve_column_specs
-_build_selector_board_columns = events.build_selector_board_columns
-_compile_view_column_specs = events.compile_view_column_specs
 
 
 def _resolve_tasks_limit(max_results: int | None) -> int:
@@ -113,7 +107,7 @@ def run_flow_board(args: BoardArgs) -> None:
         )
         return
 
-    columns = _build_selector_board_columns(nodes, _resolve_column_specs(args))
+    columns = events.build_selector_board_columns(nodes, events.resolve_column_specs(args))
     layout.render_static_flow_board(
         console,
         columns,
@@ -121,26 +115,6 @@ def run_flow_board(args: BoardArgs) -> None:
         todo_states=todo_states,
         color_enabled=color_enabled,
     )
-
-
-class _BoardSession(events.BoardSession):
-    """Compatibility subclass for tests targeting command module state."""
-
-
-_filter_recent_completed_nodes = events.filter_recent_completed_nodes
-_move_selection_horizontal = events.move_selection_horizontal
-_selected_node = events.selected_node
-_step_heading_state = events.step_heading_state
-_apply_state_move = events.apply_state_move
-_reload_session = events.reload_session
-
-
-class _BoardPanelRenderConfig(layout.BoardPanelRenderConfig):
-    """Compatibility subclass for tests targeting command module render config."""
-
-
-_render_column_title_text = layout.render_column_title_text
-_build_task_panel = layout.build_task_panel
 
 
 def register(app: typer.Typer) -> None:
