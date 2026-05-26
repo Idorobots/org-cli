@@ -16,10 +16,15 @@ from rich.text import Text
 
 from org import config as config_module
 from org.commands import archive as archive_command
-from org.commands import board as board_command
 from org.commands import editor as editor_command
-from org.commands import interactive_actions
-from org.commands.interactive_common import heading_locator
+from org.commands.board import command as board_command
+from org.commands.board import events as board_events
+from org.commands.board import layout as board_layout
+from org.commands.interactive_common import (
+    KeypressEvent,
+    handle_active_prompt_event,
+    heading_locator,
+)
 from org.commands.tasks import capture as capture_command
 from tests.conftest import node_from_org
 
@@ -77,16 +82,58 @@ def make_board_args(files: list[str], **overrides: object) -> board_command.Boar
 
 
 def _visible_board_titles_by_column(
-    session: board_command._BoardSession,
+    session: board_events.BoardSession,
 ) -> dict[str, list[str]]:
     """Return visible task titles grouped by board column title."""
     return {column.title: [node.title_text for node in column.nodes] for column in session.columns}
 
 
+def _col(title: str, nodes: list[Heading]) -> board_events.BoardColumn:
+    return board_events.BoardColumn(title, nodes)
+
+
+def _default_columns(nodes: list[Heading]) -> list[board_events.BoardColumn]:
+    return [_col("TODO", nodes)]
+
+
+def _make_session(
+    args: board_command.BoardArgs,
+    nodes: list[Heading],
+    **overrides: object,
+) -> board_events.BoardSession:
+    resolved_columns = cast(
+        "list[board_events.BoardColumn] | None",
+        overrides.pop("columns", None),
+    )
+    resolved_all_columns = cast(
+        "list[board_events.BoardColumn] | None",
+        overrides.pop("all_columns", None),
+    )
+    session = board_events.BoardSession(
+        args=args,
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        columns=_default_columns(nodes) if resolved_columns is None else resolved_columns,
+        color_enabled=False,
+        selected_column_index=0,
+        selected_row_index=0,
+        scroll_offset=0,
+        status_message="",
+        all_columns=[],
+        search_text="",
+        show_help_modal=False,
+    )
+    session.all_columns = session.columns if resolved_all_columns is None else resolved_all_columns
+    for key, value in overrides.items():
+        setattr(session, key, value)
+    return session
+
+
 def _pin_board_now(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin board command current time for deterministic completed-task windows."""
     monkeypatch.setattr(
-        board_command,
+        board_events,
         "local_now",
         lambda: datetime(2026, 5, 9, 12, 0, tzinfo=UTC),
     )
@@ -97,7 +144,7 @@ def test_filter_recent_completed_nodes_uses_latest_timestamp_window(
 ) -> None:
     """Completed tasks should be filtered by latest_timestamp recency."""
     now = datetime(2026, 5, 9, 12, 0, tzinfo=UTC)
-    monkeypatch.setattr(board_command, "local_now", lambda: now)
+    monkeypatch.setattr(board_events, "local_now", lambda: now)
 
     nodes = node_from_org(
         "* TODO Active task\n"
@@ -107,7 +154,7 @@ def test_filter_recent_completed_nodes_uses_latest_timestamp_window(
         "CLOSED: [2026-04-01 Wed 09:00]\n",
     )
 
-    filtered = board_command._filter_recent_completed_nodes(nodes, days=7)
+    filtered = board_events.filter_recent_completed_nodes(nodes, days=7)
 
     assert [node.title_text for node in filtered] == ["Active task", "Recent done"]
 
@@ -117,15 +164,15 @@ def test_filter_recent_completed_nodes_respects_days_override(
 ) -> None:
     """Days override should widen completed-task retention window."""
     now = datetime(2026, 5, 9, 12, 0, tzinfo=UTC)
-    monkeypatch.setattr(board_command, "local_now", lambda: now)
+    monkeypatch.setattr(board_events, "local_now", lambda: now)
 
     nodes = node_from_org(
         "* DONE Mid-age done\nCLOSED: [2026-04-25 Sat 09:00]\n",
     )
 
-    assert board_command._filter_recent_completed_nodes(nodes, days=7) == []
+    assert board_events.filter_recent_completed_nodes(nodes, days=7) == []
     assert [
-        node.title_text for node in board_command._filter_recent_completed_nodes(nodes, days=30)
+        node.title_text for node in board_events.filter_recent_completed_nodes(nodes, days=30)
     ] == [
         "Mid-age done",
     ]
@@ -233,8 +280,8 @@ def test_build_selector_board_columns_preserves_processed_order() -> None:
         "* TODO [#C] Low\n* TODO Middle\n* TODO [#A] High\n* TODO [#B] Medium\n",
     )
 
-    specs = board_command._resolve_column_specs(make_board_args([]))
-    columns = board_command._build_selector_board_columns(nodes, specs)
+    specs = board_events.resolve_column_specs(make_board_args([]))
+    columns = board_events.build_selector_board_columns(nodes, specs)
 
     todo_column = next(column for column in columns if column.title == "TODO")
     assert [node.title_text for node in todo_column.nodes] == ["Low", "Middle", "High", "Medium"]
@@ -256,9 +303,9 @@ def test_build_selector_board_columns_with_order_by_overrides_processed_order() 
         ],
     )
 
-    columns = board_command._build_selector_board_columns(
+    columns = board_events.build_selector_board_columns(
         nodes,
-        board_command._compile_view_column_specs(view),
+        board_events.compile_view_column_specs(view),
     )
 
     todo_column = next(column for column in columns if column.title == "TODO")
@@ -276,9 +323,9 @@ def test_build_selector_board_columns_allows_matches_in_multiple_columns() -> No
         ],
     )
 
-    columns = board_command._build_selector_board_columns(
+    columns = board_events.build_selector_board_columns(
         nodes,
-        board_command._compile_view_column_specs(view),
+        board_events.compile_view_column_specs(view),
     )
 
     any_todo_column = next(column for column in columns if column.title == "Any todo")
@@ -297,9 +344,9 @@ def test_build_selector_board_columns_omits_non_matching_tasks() -> None:
         ],
     )
 
-    columns = board_command._build_selector_board_columns(
+    columns = board_events.build_selector_board_columns(
         nodes,
-        board_command._compile_view_column_specs(view),
+        board_events.compile_view_column_specs(view),
     )
 
     assert len(columns) == 1
@@ -309,7 +356,7 @@ def test_build_selector_board_columns_omits_non_matching_tasks() -> None:
 
 def test_render_column_title_text_allows_rich_markup() -> None:
     """Column titles should support Rich markup syntax."""
-    title = board_command._render_column_title_text("[bold green]Complete[/]")
+    title = board_layout.render_column_title_text("[bold green]Complete[/]")
 
     assert title.plain == "Complete"
     assert title.spans
@@ -317,7 +364,7 @@ def test_render_column_title_text_allows_rich_markup() -> None:
 
 def test_render_column_title_text_falls_back_on_invalid_markup() -> None:
     """Invalid markup in column title should render as literal text."""
-    title = board_command._render_column_title_text("[bold")
+    title = board_layout.render_column_title_text("[bold")
 
     assert title.plain == "[bold"
 
@@ -326,17 +373,15 @@ def test_move_selection_horizontal_skips_empty_columns() -> None:
     """Horizontal navigation should skip empty lanes."""
     args = make_board_args([])
     first, second = node_from_org("* TODO First\n* TODO Second\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=[first, second],
-        todo_states=["TODO", "WAITING", "INPROGRESS"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", [first]),
-            board_command._BoardColumn("WAITING", []),
-            board_command._BoardColumn("INPROGRESS", [second]),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", [first]),
+            _col("WAITING", []),
+            _col("INPROGRESS", [second]),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -346,33 +391,31 @@ def test_move_selection_horizontal_skips_empty_columns() -> None:
     )
 
     assert session.selected_column_index == 1
-    board_command._move_selection_horizontal(session, 1)
+    board_events.move_selection_horizontal(session, 1)
     assert session.selected_column_index == 3
 
-    board_command._move_selection_horizontal(session, -1)
+    board_events.move_selection_horizontal(session, -1)
     assert session.selected_column_index == 1
 
 
 def test_interactive_viewport_rows_scales_with_panel_height() -> None:
     """Interactive viewport should account for panel line height."""
-    assert board_command._interactive_viewport_rows(24) == 4
-    assert board_command._interactive_viewport_rows(13) == 2
-    assert board_command._interactive_viewport_rows(9) == 1
+    assert board_layout._interactive_viewport_rows(24) == 4
+    assert board_layout._interactive_viewport_rows(13) == 2
+    assert board_layout._interactive_viewport_rows(9) == 1
 
 
 def test_sync_scroll_for_selection_keeps_selected_row_visible() -> None:
     """Scroll sync should move viewport so selected task stays visible."""
     args = make_board_args([])
     nodes = node_from_org("\n".join(f"* TODO Task {index}" for index in range(6)))
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", nodes),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", nodes),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -380,14 +423,14 @@ def test_sync_scroll_for_selection_keeps_selected_row_visible() -> None:
         scroll_offset=0,
         status_message="",
     )
-    render = board_command._BoardPanelRenderConfig(
+    render = board_layout.BoardPanelRenderConfig(
         width=30,
         color_enabled=False,
         done_states=["DONE"],
         todo_states=["TODO"],
     )
-    row_heights = board_command._interactive_row_heights(session, render)
-    _start, _end, _used = board_command._sync_scroll_for_selection(
+    row_heights = board_layout._interactive_row_heights(session, render)
+    _start, _end, _used = board_layout._sync_scroll_for_selection(
         session,
         row_heights,
         available_lines=8,
@@ -400,7 +443,7 @@ def test_step_heading_state_right_from_none_uses_first_document_state() -> None:
     """Shift-right from empty state should use first all_states item."""
     heading = node_from_org("#+TODO: TODO WAITING | DONE\n* Task\n")[0]
 
-    new_state, status = board_command._step_heading_state(heading, direction=1)
+    new_state, status = board_events.step_heading_state(heading, direction=1)
 
     assert new_state == "TODO"
     assert status is None
@@ -410,7 +453,7 @@ def test_step_heading_state_left_from_first_moves_to_none() -> None:
     """Shift-left from first state should clear todo state."""
     heading = node_from_org("#+TODO: TODO WAITING | DONE\n* TODO Task\n")[0]
 
-    new_state, status = board_command._step_heading_state(heading, direction=-1)
+    new_state, status = board_events.step_heading_state(heading, direction=-1)
 
     assert new_state is None
     assert status is None
@@ -420,8 +463,8 @@ def test_step_heading_state_moves_prev_next_in_middle() -> None:
     """Shift-left/right should move through middle states."""
     heading = node_from_org("#+TODO: TODO WAITING | DONE\n* WAITING Task\n")[0]
 
-    next_state, next_status = board_command._step_heading_state(heading, direction=1)
-    prev_state, prev_status = board_command._step_heading_state(heading, direction=-1)
+    next_state, next_status = board_events.step_heading_state(heading, direction=1)
+    prev_state, prev_status = board_events.step_heading_state(heading, direction=-1)
 
     assert next_state == "DONE"
     assert next_status is None
@@ -434,8 +477,8 @@ def test_step_heading_state_boundary_no_ops() -> None:
     empty_heading = node_from_org("#+TODO: TODO | DONE\n* Task\n")[0]
     done_heading = node_from_org("#+TODO: TODO | DONE\n* DONE Task\n")[0]
 
-    no_state, no_state_status = board_command._step_heading_state(empty_heading, direction=-1)
-    last_state, last_state_status = board_command._step_heading_state(done_heading, direction=1)
+    no_state, no_state_status = board_events.step_heading_state(empty_heading, direction=-1)
+    last_state, last_state_status = board_events.step_heading_state(done_heading, direction=1)
 
     assert no_state is None
     assert no_state_status == "State unchanged"
@@ -447,7 +490,7 @@ def test_step_heading_state_deduplicates_document_states() -> None:
     """State stepping should deduplicate repeated all_states values."""
     heading = node_from_org("#+TODO: TODO TODO WAITING | DONE DONE\n* TODO Task\n")[0]
 
-    new_state, status = board_command._step_heading_state(heading, direction=1)
+    new_state, status = board_events.step_heading_state(heading, direction=1)
 
     assert new_state == "WAITING"
     assert status is None
@@ -459,12 +502,10 @@ def test_apply_state_move_steps_state_and_reloads(
     """Shift state move should persist, reload, and keep repeater behavior path."""
     args = make_board_args([])
     node = node_from_org("#+TODO: TODO | DONE\n* TODO Task\n")[0]
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=[node],
-        todo_states=["TODO"],
-        done_states=["DONE"],
-        columns=[board_command._BoardColumn("TODO", [node])],
+        columns=[_col("TODO", [node])],
         color_enabled=False,
         selected_column_index=0,
         selected_row_index=0,
@@ -478,14 +519,14 @@ def test_apply_state_move_steps_state_and_reloads(
     def _capture_save(document: Document) -> None:
         saved_documents.append(document)
 
-    monkeypatch.setattr(board_command, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(board_events, "_save_document_changes", _capture_save)
     monkeypatch.setattr(
-        board_command,
-        "_reload_session",
+        board_events,
+        "reload_session",
         lambda _session, preserve_identity: reloaded.append(preserve_identity),
     )
 
-    board_command._apply_state_move(session, direction=1)
+    board_events.apply_state_move(session, direction=1)
 
     assert node.todo == "DONE"
     assert saved_documents == [node.document]
@@ -499,14 +540,12 @@ def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
     """Selection should stay on the same task after priority resorting."""
     args = make_board_args([])
     original_nodes = node_from_org("* TODO [#A] Other\n* TODO [#C] Focus\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=original_nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
-        columns=board_command._build_selector_board_columns(
+        columns=board_events.build_selector_board_columns(
             original_nodes,
-            board_command._resolve_column_specs(args),
+            board_events.resolve_column_specs(args),
         ),
         color_enabled=False,
         selected_column_index=1,
@@ -522,14 +561,14 @@ def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
     reloaded_nodes = node_from_org("* TODO [#A] Other\n* TODO [#A] Focus\n")
 
     monkeypatch.setattr(
-        board_command,
+        board_events,
         "load_and_process_data",
         lambda _args: (reloaded_nodes, ["TODO"], ["DONE"]),
     )
 
-    board_command._reload_session(session, preserve_identity)
+    board_events.reload_session(session, preserve_identity)
 
-    selected = board_command._selected_node(session)
+    selected = board_events.selected_node(session)
     assert selected is not None
     assert selected.title_text == "Focus"
 
@@ -538,15 +577,13 @@ def test_interactive_renderable_keeps_footer_at_bottom() -> None:
     """Interactive render should reserve bottom lines for footer and status."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Task\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", nodes),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", nodes),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -557,7 +594,7 @@ def test_interactive_renderable_keeps_footer_at_bottom() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=120, height=24)
 
-    console.print(board_command._interactive_flow_board_renderable(console, session))
+    console.print(board_layout._interactive_flow_board_renderable(console, session))
     lines = buffer.getvalue().splitlines()
 
     assert len(lines) == 24
@@ -570,15 +607,13 @@ def test_interactive_renderable_footer_status_is_single_line() -> None:
     """Interactive footer status should be normalized to one visible line."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Task\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", nodes),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", nodes),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -589,7 +624,7 @@ def test_interactive_renderable_footer_status_is_single_line() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=120, height=24)
 
-    console.print(board_command._interactive_flow_board_renderable(console, session))
+    console.print(board_layout._interactive_flow_board_renderable(console, session))
     lines = buffer.getvalue().splitlines()
 
     assert len(lines) == 24
@@ -602,25 +637,21 @@ def test_handle_interactive_key_slash_activates_search_prompt() -> None:
     """Slash should activate board search prompt."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Task\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
-        columns=[board_command._BoardColumn("TODO", nodes)],
+        columns=[_col("TODO", nodes)],
         color_enabled=False,
         selected_column_index=0,
         selected_row_index=0,
         scroll_offset=0,
         status_message="",
-        all_columns=[board_command._BoardColumn("TODO", nodes)],
+        all_columns=[_col("TODO", nodes)],
     )
 
-    assert board_command._handle_interactive_key(session, "/") is True
-    assert session.active_interactive_action is not None
-    assert (
-        session.active_interactive_action.prompt_config.prompt.label == "Search text (blank clears)"
-    )
+    assert board_events._handle_keypress_event(session, "/") is True
+    assert session.active_prompt is not None
+    assert session.active_prompt.prompt.label == "Search text (blank clears)"
 
 
 def test_board_search_filters_each_column_and_clear_restores_columns() -> None:
@@ -630,15 +661,13 @@ def test_board_search_filters_each_column_and_clear_restores_columns() -> None:
         "* TODO Alpha\n* TODO Beta\n* DONE Beta done\n",
     )
     all_columns = [
-        board_command._BoardColumn("Backlog", []),
-        board_command._BoardColumn("TODO", [alpha, beta]),
-        board_command._BoardColumn("DONE", [beta_done]),
+        _col("Backlog", []),
+        _col("TODO", [alpha, beta]),
+        _col("DONE", [beta_done]),
     ]
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=[alpha, beta, beta_done],
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=all_columns,
         color_enabled=False,
         selected_column_index=1,
@@ -648,13 +677,13 @@ def test_board_search_filters_each_column_and_clear_restores_columns() -> None:
         all_columns=all_columns,
     )
 
-    assert board_command._handle_interactive_key(session, "/") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "beta"
-    submit_result = session.active_interactive_action.submit(session)
+    assert board_events._handle_keypress_event(session, "/") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "beta"
+    keep_open = session.active_prompt.submit_callback()
 
-    assert submit_result.success is True
-    assert submit_result.status_message == "2 matches"
+    assert keep_open is False
+    assert session.status_message == "2 matches"
     assert _visible_board_titles_by_column(session) == {
         "Backlog": [],
         "TODO": ["Beta"],
@@ -662,7 +691,7 @@ def test_board_search_filters_each_column_and_clear_restores_columns() -> None:
     }
     assert session.search_text == "beta"
 
-    assert board_command._handle_interactive_key(session, "x") is True
+    assert board_events._handle_keypress_event(session, "x") is True
     assert session.status_message == "Search cleared"
     assert session.search_text == ""
     assert _visible_board_titles_by_column(session) == {
@@ -676,12 +705,10 @@ def test_interactive_renderable_footer_shows_active_search_text() -> None:
     """Board footer should include currently active interactive search text."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Task\n")
-    column = board_command._BoardColumn("TODO", nodes)
-    session = board_command._BoardSession(
+    column = _col("TODO", nodes)
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[column],
         color_enabled=False,
         selected_column_index=0,
@@ -694,7 +721,7 @@ def test_interactive_renderable_footer_shows_active_search_text() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=120, height=24)
 
-    console.print(board_command._interactive_flow_board_renderable(console, session))
+    console.print(board_layout._interactive_flow_board_renderable(console, session))
     output = buffer.getvalue()
 
     assert "Search: task" in output
@@ -704,12 +731,10 @@ def test_handle_interactive_key_question_toggles_help_modal() -> None:
     """Question mark should open help modal and next key should close it."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Task\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
-        columns=[board_command._BoardColumn("TODO", nodes)],
+        columns=[_col("TODO", nodes)],
         color_enabled=False,
         selected_column_index=0,
         selected_row_index=0,
@@ -717,10 +742,10 @@ def test_handle_interactive_key_question_toggles_help_modal() -> None:
         status_message="",
     )
 
-    assert board_command._handle_interactive_key(session, "?") is True
+    assert board_events._handle_keypress_event(session, "?") is True
     assert session.show_help_modal is True
 
-    assert board_command._handle_interactive_key(session, "ENTER") is True
+    assert board_events._handle_keypress_event(session, "ENTER") is True
     assert session.show_help_modal is False
 
 
@@ -728,12 +753,10 @@ def test_interactive_renderable_shows_help_panel() -> None:
     """Help modal should render key bindings panel in body area."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Task\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
-        columns=[board_command._BoardColumn("TODO", nodes)],
+        columns=[_col("TODO", nodes)],
         color_enabled=False,
         selected_column_index=0,
         selected_row_index=0,
@@ -744,7 +767,7 @@ def test_interactive_renderable_shows_help_panel() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=120, height=24)
 
-    console.print(board_command._interactive_flow_board_renderable(console, session))
+    console.print(board_layout._interactive_flow_board_renderable(console, session))
     output = buffer.getvalue()
 
     assert "Key bindings" in output
@@ -757,15 +780,13 @@ def test_handle_interactive_key_enter_edits_selected_task(
     """Enter should trigger external-editor task editing for selected panel."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Task\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", nodes),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", nodes),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -777,34 +798,10 @@ def test_handle_interactive_key_enter_edits_selected_task(
     def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
         return editor_command.DocumentEditResult(changed=False)
 
-    monkeypatch.setattr(board_command, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(board_events, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    assert board_command._handle_interactive_key(session, "ENTER") is True
+    assert board_events._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "No changes."
-
-
-def test_state_shift_key_bindings_do_not_require_live_pause() -> None:
-    """State shifts should run without stopping Live screen rendering."""
-    args = make_board_args([])
-    nodes = node_from_org("* TODO Task\n")
-    session = board_command._BoardSession(
-        args=args,
-        nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
-        columns=[board_command._BoardColumn("TODO", nodes)],
-        color_enabled=False,
-        selected_column_index=0,
-        selected_row_index=0,
-        scroll_offset=0,
-        status_message="",
-    )
-
-    bindings = board_command._flow_board_key_bindings(session)
-
-    assert bindings["S-LEFT"].requires_live_pause is False
-    assert bindings["S-RIGHT"].requires_live_pause is False
-    assert bindings["ENTER"].requires_live_pause is True
 
 
 def test_handle_interactive_key_a_captures_task_and_reloads(
@@ -813,15 +810,13 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     """a should prompt for template then capture and reload board selection."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Existing\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", nodes),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", nodes),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -838,7 +833,7 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     )
 
     monkeypatch.setattr(
-        board_command,
+        board_events,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -848,20 +843,19 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     )
 
     def _fake_reload(
-        current_session: board_command._BoardSession,
+        current_session: board_events.BoardSession,
         preserve_identity: tuple[str, str, str, int | None] | None,
     ) -> None:
         reloaded["session"] = current_session
         reloaded["identity"] = preserve_identity
 
-    monkeypatch.setattr(board_command, "_reload_session", _fake_reload)
+    monkeypatch.setattr(board_events, "reload_session", _fake_reload)
 
-    assert board_command._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "1"
-    submit_result = session.active_interactive_action.submit(session)
-    assert submit_result.success is True
-    assert submit_result.keep_prompt_open is False
+    assert board_events._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "1"
+    keep_open = session.active_prompt.submit_callback()
+    assert keep_open is False
     assert reloaded["session"] is session
     assert reloaded["identity"] == heading_locator(captured_node)
     assert session.status_message == "Task captured"
@@ -873,15 +867,13 @@ def test_handle_interactive_key_a_capture_blank_input_cancels(
     """a should close prompt with cancel status on blank template input."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Existing\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", nodes),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", nodes),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -895,13 +887,12 @@ def test_handle_interactive_key_a_capture_blank_input_cancels(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert board_command._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = ""
-    submit_result = session.active_interactive_action.submit(session)
-    assert submit_result.success is True
-    assert submit_result.keep_prompt_open is False
-    assert submit_result.status_message == "Capture cancelled"
+    assert board_events._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = ""
+    keep_open = session.active_prompt.submit_callback()
+    assert keep_open is False
+    assert session.status_message == "Capture cancelled"
 
 
 def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
@@ -910,15 +901,13 @@ def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
     """a should keep capture prompt open for invalid template shortcuts."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Existing\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", nodes),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", nodes),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -932,14 +921,13 @@ def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert board_command._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "99"
-    submit_result = session.active_interactive_action.submit(session)
+    assert board_events._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "99"
+    keep_open = session.active_prompt.submit_callback()
 
-    assert submit_result.success is False
-    assert submit_result.keep_prompt_open is True
-    assert submit_result.status_message == "Invalid capture template shortcut"
+    assert keep_open is True
+    assert session.status_message == "Invalid capture template shortcut"
 
 
 def test_handle_interactive_key_a_without_templates_reports_error(
@@ -948,15 +936,13 @@ def test_handle_interactive_key_a_without_templates_reports_error(
     """a should report a clear status when no capture templates are configured."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Existing\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", nodes),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", nodes),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -966,26 +952,22 @@ def test_handle_interactive_key_a_without_templates_reports_error(
     )
     monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {})
 
-    assert board_command._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is None
+    assert board_events._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is None
     assert session.status_message == "No capture templates configured"
 
 
-def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board prompt submission should pause live rendering for capture action."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Existing\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", nodes),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", nodes),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -998,13 +980,13 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
         "CONFIG_CAPTURE_TEMPLATES",
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
-    board_command._handle_interactive_key(session, "a")
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "1"
+    board_events._handle_keypress_event(session, "a")
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "1"
 
     captured_node = node_from_org("* TODO Captured\n")[0]
     monkeypatch.setattr(
-        board_command,
+        board_events,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -1012,13 +994,7 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
             document=captured_node.document,
         ),
     )
-    monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
-    monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("ENTER", ""),
-    )
-
+    monkeypatch.setattr(board_events, "reload_session", lambda _session, _identity: None)
     events: list[str] = []
 
     class _LiveStub:
@@ -1043,32 +1019,40 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
             live.start()
             events.append("input-start")
 
-    consumed = board_command._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
+    live = cast("Live", _LiveStub())
+    controller = cast("Any", _InputControllerStub())
+
+    def _run_prompt_external(callback: object) -> None:
+        controller.suspend_live(live)
+        try:
+            cast("Any", callback)()
+        finally:
+            controller.resume_live(live)
+
+    session.run_external = _run_prompt_external
+
+    consumed = handle_active_prompt_event(session, KeypressEvent("ENTER"))
+    live.update(
+        board_layout._interactive_flow_board_renderable(live.console, session),
+        refresh=True,
     )
 
     assert consumed is True
     assert events == ["input-stop", "stop", "start", "input-start", "update"]
 
 
-def test_search_prompt_live_updates_and_escape_reverts_search(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
     """Board search prompt should live-update columns and ESC should restore prior filter."""
     args = make_board_args([])
     alpha, beta, done = node_from_org("* TODO Alpha\n* TODO Beta\n* DONE Finished\n")
     all_columns = [
-        board_command._BoardColumn("Backlog", []),
-        board_command._BoardColumn("TODO", [alpha, beta]),
-        board_command._BoardColumn("DONE", [done]),
+        _col("Backlog", []),
+        _col("TODO", [alpha, beta]),
+        _col("DONE", [done]),
     ]
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=[alpha, beta, done],
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=all_columns,
         color_enabled=False,
         selected_column_index=1,
@@ -1077,8 +1061,8 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
         status_message="",
         all_columns=all_columns,
     )
-    assert board_command._handle_interactive_key(session, "/") is True
-    assert session.active_interactive_action is not None
+    assert board_events._handle_keypress_event(session, "/") is True
+    assert session.active_prompt is not None
 
     events: list[str] = []
 
@@ -1104,15 +1088,11 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
             live.start()
             events.append("input-start")
 
-    monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("TEXT", "b"),
-    )
-    consumed = board_command._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
+    live = cast("Live", _LiveStub())
+    consumed = handle_active_prompt_event(session, KeypressEvent("b"))
+    live.update(
+        board_layout._interactive_flow_board_renderable(live.console, session),
+        refresh=True,
     )
 
     assert consumed is True
@@ -1124,15 +1104,10 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
     assert session.search_text == "b"
     assert session.status_message == "1 matches"
 
-    monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("ESC", ""),
-    )
-    consumed = board_command._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
+    consumed = handle_active_prompt_event(session, KeypressEvent("ESC"))
+    live.update(
+        board_layout._interactive_flow_board_renderable(live.console, session),
+        refresh=True,
     )
 
     assert consumed is True
@@ -1152,15 +1127,13 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
     """Changed edit should save the selected task's original document."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Task\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", nodes),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", nodes),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -1175,14 +1148,14 @@ def test_handle_interactive_key_enter_saves_original_document_after_changed_edit
 
     reloaded_identity = None
 
-    def _capture_reload(_session: board_command._BoardSession, identity: object) -> None:
+    def _capture_reload(_session: board_events.BoardSession, identity: object) -> None:
         nonlocal reloaded_identity
         reloaded_identity = identity
 
-    monkeypatch.setattr(board_command, "edit_heading_subtree_in_external_editor", _fake_edit)
-    monkeypatch.setattr(board_command, "_reload_session", _capture_reload)
+    monkeypatch.setattr(board_events, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(board_events, "reload_session", _capture_reload)
 
-    assert board_command._handle_interactive_key(session, "ENTER") is True
+    assert board_events._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "Task updated"
     assert reloaded_identity == heading_locator(source_node)
 
@@ -1193,15 +1166,13 @@ def test_handle_interactive_key_dollar_archives_selected_task(
     """$ should archive highlighted task using shared archive helper."""
     args = make_board_args([])
     nodes = node_from_org("* TODO Task\n")
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=nodes,
-        todo_states=["TODO"],
-        done_states=["DONE"],
         columns=[
-            board_command._BoardColumn("NOT STARTED", []),
-            board_command._BoardColumn("TODO", nodes),
-            board_command._BoardColumn("COMPLETED", []),
+            _col("NOT STARTED", []),
+            _col("TODO", nodes),
+            _col("COMPLETED", []),
         ],
         color_enabled=False,
         selected_column_index=1,
@@ -1231,10 +1202,10 @@ def test_handle_interactive_key_dollar_archives_selected_task(
             destination_document=heading.document,
         )
 
-    monkeypatch.setattr(board_command, "archive_heading_subtree_and_save", _fake_archive)
-    monkeypatch.setattr(board_command, "_reload_session", lambda _session, _identity: None)
+    monkeypatch.setattr(board_events, "archive_heading_subtree_and_save", _fake_archive)
+    monkeypatch.setattr(board_events, "reload_session", lambda _session, _identity: None)
 
-    assert board_command._handle_interactive_key(session, "$") is True
+    assert board_events._handle_keypress_event(session, "$") is True
     assert session.status_message == "Task archived"
 
 
@@ -1361,7 +1332,7 @@ def test_run_flow_board_uses_pager_when_render_exceeds_console_height(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.board.build_console", lambda _color, _width: console)
+    monkeypatch.setattr("org.commands.board.command.build_console", lambda _color, _width: console)
 
     args = make_board_args([fixture_path], max_results=None)
     monkeypatch.setattr(sys, "argv", ["org", "board"])
@@ -1616,7 +1587,7 @@ def test_run_flow_board_uses_default_view_from_config(
     try:
         # Simulate Typer default_map applying defaults: --view=kanban
         args.view = "kanban"
-        specs = board_command._resolve_column_specs(args)
+        specs = board_events.resolve_column_specs(args)
         assert [spec.name for spec in specs] == ["Backlog", "Working"]
         monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "150"])
         board_command.run_flow_board(args)
@@ -1720,14 +1691,12 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
         ],
     )
 
-    session = board_command._BoardSession(
+    session = _make_session(
         args=args,
         nodes=[source_node],
-        todo_states=["TODO"],
-        done_states=["DONE"],
-        columns=board_command._build_selector_board_columns(
+        columns=board_events.build_selector_board_columns(
             [source_node],
-            board_command._resolve_column_specs(args),
+            board_events.resolve_column_specs(args),
         ),
         color_enabled=False,
         selected_column_index=0,
@@ -1754,14 +1723,14 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
             )
         return ([source_node], ["TODO"], ["DONE"])
 
-    monkeypatch.setattr(board_command, "_save_document_changes", _capture_save)
-    monkeypatch.setattr(board_command, "load_and_process_data", _load_after_change)
+    monkeypatch.setattr(board_events, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(board_events, "load_and_process_data", _load_after_change)
 
     try:
-        board_command._apply_state_move(session, direction=1)
+        board_events.apply_state_move(session, direction=1)
         assert saved_documents == [source_node.document]
         assert session.selected_column_index == 1
-        selected = board_command._selected_node(session)
+        selected = board_events.selected_node(session)
         assert selected is not None
         assert selected.todo == "DONE"
     finally:
@@ -1779,9 +1748,9 @@ def test_build_task_panel_renders_rich_title_content() -> None:
         ),
     )
 
-    panel = board_command._build_task_panel(
+    panel = board_layout.build_task_panel(
         nodes[0],
-        board_command._BoardPanelRenderConfig(
+        board_layout.BoardPanelRenderConfig(
             width=60,
             color_enabled=True,
             done_states=["DONE"],
@@ -1855,9 +1824,9 @@ def test_build_task_panel_shows_colored_todo_state_prefix() -> None:
     """Task panels should show and colorize current TODO state."""
     node = node_from_org("#+TODO: TODO WAITING | DONE\n* TODO Task\n")[0]
 
-    panel = board_command._build_task_panel(
+    panel = board_layout.build_task_panel(
         node,
-        board_command._BoardPanelRenderConfig(
+        board_layout.BoardPanelRenderConfig(
             width=60,
             color_enabled=True,
             done_states=["DONE"],
@@ -1876,9 +1845,9 @@ def test_build_task_panel_without_todo_state_has_no_prefix() -> None:
     """Task panels without TODO state should keep heading text unchanged."""
     node = node_from_org("* Task without state\n")[0]
 
-    panel = board_command._build_task_panel(
+    panel = board_layout.build_task_panel(
         node,
-        board_command._BoardPanelRenderConfig(
+        board_layout.BoardPanelRenderConfig(
             width=60,
             color_enabled=True,
             done_states=["DONE"],

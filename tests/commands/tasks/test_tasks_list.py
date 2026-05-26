@@ -17,10 +17,16 @@ from rich.console import Console
 from org import config as config_module
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
-from org.commands import interactive_actions
-from org.commands.interactive_common import heading_locator
+from org.commands.interactive_common import (
+    KeypressEvent,
+    handle_active_prompt_event,
+    heading_locator,
+)
+from org.commands.search_common import filter_nodes_by_search
 from org.commands.tasks import capture as capture_command
-from org.commands.tasks import list as tasks_list
+from org.commands.tasks.list import command as tasks_list
+from org.commands.tasks.list import events as tasks_list_events
+from org.commands.tasks.list import layout as tasks_list_layout
 from org.histogram import visual_len
 from org.output_format import OutputFormat, OutputFormatError
 from tests.conftest import node_from_org
@@ -79,6 +85,30 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
     for key, value in overrides.items():
         setattr(args, key, value)
     return args
+
+
+def _make_session_data(
+    nodes: list[Heading],
+    *,
+    color_enabled: bool = False,
+) -> tasks_list._TasksListSessionData:
+    return tasks_list._TasksListSessionData(
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        color_enabled=color_enabled,
+    )
+
+
+def _make_session(
+    nodes: list[Heading],
+    *,
+    color_enabled: bool = False,
+) -> tasks_list_events.TasksListSession:
+    return tasks_list_events.create_tasks_list_session(
+        make_list_args([]),
+        _make_session_data(nodes, color_enabled=color_enabled),
+    )
 
 
 def test_run_tasks_list_no_results(
@@ -228,7 +258,7 @@ def test_run_tasks_list_markdown_converts_nodes_to_single_document(
         return "converted markdown"
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "markdown"])
-    monkeypatch.setattr("org.commands.tasks.list._org_to_pandoc_format", _fake_pandoc)
+    monkeypatch.setattr("org.commands.tasks.list.command._org_to_pandoc_format", _fake_pandoc)
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
 
@@ -255,7 +285,7 @@ def test_run_tasks_list_accepts_arbitrary_pandoc_output_format(
         return "converted gfm"
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "gfm"])
-    monkeypatch.setattr("org.commands.tasks.list._org_to_pandoc_format", _fake_pandoc)
+    monkeypatch.setattr("org.commands.tasks.list.command._org_to_pandoc_format", _fake_pandoc)
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
 
@@ -281,7 +311,7 @@ def test_run_tasks_list_markdown_pandoc_error_is_usage_error(
     args = make_list_args([fixture_path], out="markdown")
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "markdown"])
     monkeypatch.setattr(
-        "org.commands.tasks.list.get_tasks_list_formatter",
+        "org.commands.tasks.list.command.get_tasks_list_formatter",
         lambda _out, _pandoc_args: _FailingFormatter(),
     )
 
@@ -304,7 +334,7 @@ def test_run_tasks_list_pandoc_empty_results_prints_no_results(
         out="gfm",
         filter_tags=["nomatch$"],
     )
-    monkeypatch.setattr("org.commands.tasks.list._org_to_pandoc_format", _should_not_call)
+    monkeypatch.setattr("org.commands.tasks.list.command._org_to_pandoc_format", _should_not_call)
 
     tasks_list.run_tasks_list(args)
     captured = capsys.readouterr().out
@@ -414,7 +444,10 @@ def test_run_tasks_list_defaults_limit_to_all_results_with_paging(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.tasks.list.build_console", lambda _color, _width: console)
+    monkeypatch.setattr(
+        "org.commands.tasks.list.command.build_console",
+        lambda _color, _width: console,
+    )
 
     args = make_list_args([fixture_path], max_results=None)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list"])
@@ -494,7 +527,10 @@ def test_run_tasks_list_uses_pager_for_org_output_when_overflowing(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.tasks.list.build_console", lambda _color, _width: console)
+    monkeypatch.setattr(
+        "org.commands.tasks.list.command.build_console",
+        lambda _color, _width: console,
+    )
 
     args = make_list_args([fixture_path], max_results=12)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--limit", "12"])
@@ -529,7 +565,10 @@ def test_run_tasks_list_skips_pager_when_limit_below_console_height(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.tasks.list.build_console", lambda _color, _width: console)
+    monkeypatch.setattr(
+        "org.commands.tasks.list.command.build_console",
+        lambda _color, _width: console,
+    )
 
     args = make_list_args([fixture_path], max_results=3)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--limit", "3"])
@@ -564,7 +603,10 @@ def test_run_tasks_list_does_not_use_pager_for_json_output_when_overflowing(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.tasks.list.build_console", lambda _color, _width: console)
+    monkeypatch.setattr(
+        "org.commands.tasks.list.command.build_console",
+        lambda _color, _width: console,
+    )
 
     args = make_list_args([fixture_path], max_results=12, out=OutputFormat.JSON)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "json", "--limit", "12"])
@@ -682,9 +724,9 @@ def test_filter_nodes_by_search_matches_full_node_text() -> None:
     """Interactive search should match heading and body text from node-local contents."""
     nodes = node_from_org("* TODO Alpha title\nBody needle text\n* TODO Beta\n")
 
-    title_matches = tasks_list._filter_nodes_by_search(nodes, "alpha")
-    body_matches = tasks_list._filter_nodes_by_search(nodes, "needle")
-    no_matches = tasks_list._filter_nodes_by_search(nodes, "missing")
+    title_matches = filter_nodes_by_search(nodes, "alpha")
+    body_matches = filter_nodes_by_search(nodes, "needle")
+    no_matches = filter_nodes_by_search(nodes, "missing")
 
     assert [node.title_text for node in title_matches] == ["Alpha title"]
     assert [node.title_text for node in body_matches] == ["Alpha title"]
@@ -697,7 +739,7 @@ def test_filter_nodes_by_search_excludes_child_subtree_text() -> None:
         "* TODO Parent\nParent body\n** TODO Child\nUnique child text\n",
     )
 
-    matches = tasks_list._filter_nodes_by_search(nodes, "Unique child text")
+    matches = filter_nodes_by_search(nodes, "Unique child text")
 
     assert [node.title_text for node in matches] == ["Child"]
 
@@ -708,7 +750,7 @@ def test_filter_nodes_by_search_handles_non_string_property_values() -> None:
     node = nodes[0]
     node.properties["DISPLAY"] = 123
 
-    matches = tasks_list._filter_nodes_by_search(nodes, "123")
+    matches = filter_nodes_by_search(nodes, "123")
 
     assert [item.title_text for item in matches] == ["Parent"]
 
@@ -716,35 +758,17 @@ def test_filter_nodes_by_search_handles_non_string_property_values() -> None:
 def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:
     """Mouse wheel key tokens should move interactive selection."""
     nodes = node_from_org("* TODO A\n* TODO B\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
-    assert tasks_list._handle_interactive_key(session, "WHEEL-DOWN") is True
+    session = _make_session(nodes)
+    assert tasks_list_events._handle_keypress_event(session, "WHEEL-DOWN") is True
     assert session.selected_index == 1
-    assert tasks_list._handle_interactive_key(session, "WHEEL-UP") is True
+    assert tasks_list_events._handle_keypress_event(session, "WHEEL-UP") is True
     assert session.selected_index == 0
 
 
 def test_interactive_rows_counter_tracks_selected_row_while_scrolling() -> None:
     """Rows counter should follow selected row index in both directions."""
     nodes = node_from_org("* TODO A\n* TODO B\n* TODO C\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     session.selected_index = 1
     total_rows = len(session.visible_nodes)
 
@@ -756,14 +780,14 @@ def test_interactive_rows_counter_tracks_selected_row_while_scrolling() -> None:
         height=8,
         no_color=True,
     )
-    down_console.print(tasks_list._interactive_tasks_list_renderable(down_console, session))
+    down_console.print(tasks_list_layout.interactive_tasks_list_renderable(down_console, session))
     assert f"Rows 2/{total_rows}" in down_capture.getvalue()
     assert "Type ? for help" in down_capture.getvalue()
 
     session.selected_index = 0
     up_capture = StringIO()
     up_console = Console(file=up_capture, force_terminal=False, width=80, height=8, no_color=True)
-    up_console.print(tasks_list._interactive_tasks_list_renderable(up_console, session))
+    up_console.print(tasks_list_layout.interactive_tasks_list_renderable(up_console, session))
     assert f"Rows 1/{total_rows}" in up_capture.getvalue()
     assert "Type ? for help" in up_capture.getvalue()
 
@@ -771,42 +795,24 @@ def test_interactive_rows_counter_tracks_selected_row_while_scrolling() -> None:
 def test_handle_interactive_key_question_toggles_help_modal() -> None:
     """Question mark should open help modal and next key should close it."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
 
-    assert tasks_list._handle_interactive_key(session, "?") is True
+    assert tasks_list_events._handle_keypress_event(session, "?") is True
     assert session.show_help_modal is True
 
-    assert tasks_list._handle_interactive_key(session, "ENTER") is True
+    assert tasks_list_events._handle_keypress_event(session, "ENTER") is True
     assert session.show_help_modal is False
 
 
 def test_interactive_renderable_shows_help_panel() -> None:
     """Help modal should render key bindings panel in task list."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     session.show_help_modal = True
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, width=100, height=12, no_color=True)
 
-    console.print(tasks_list._interactive_tasks_list_renderable(console, session))
+    console.print(tasks_list_layout.interactive_tasks_list_renderable(console, session))
     output = buffer.getvalue()
 
     assert "Key bindings" in output
@@ -818,18 +824,9 @@ def test_interactive_task_row_reuses_static_line_format_with_level_prefix_and_ta
 ):
     """Interactive rows should keep static format including stars and right-aligned tags."""
     nodes = node_from_org("* TODO Task title :alpha:beta:\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
 
-    row = tasks_list._build_task_row_text(nodes[0], session, line_width=80)
+    row = tasks_list_layout.build_task_row_text(nodes[0], session, line_width=80)
 
     assert "* TODO" in row.plain
     assert row.plain.rstrip().endswith(":alpha:beta:")
@@ -839,18 +836,9 @@ def test_interactive_task_row_reuses_static_line_format_with_level_prefix_and_ta
 def test_interactive_task_row_parses_color_markup_without_literal_tags() -> None:
     """Interactive colored row should render markup instead of showing markup literals."""
     nodes = node_from_org("* DONE Task title\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=True,
-        ),
-    )
+    session = _make_session(nodes, color_enabled=True)
 
-    row = tasks_list._build_task_row_text(nodes[0], session, line_width=80)
+    row = tasks_list_layout.build_task_row_text(nodes[0], session, line_width=80)
 
     assert "[dim white]" not in row.plain
     assert "[/]" not in row.plain
@@ -859,18 +847,9 @@ def test_interactive_task_row_parses_color_markup_without_literal_tags() -> None
 def test_handle_interactive_key_unsupported_sets_status_and_continues() -> None:
     """Unsupported key should set status message without exiting interactive mode."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     key = "UNSUPPORTED-ESC:1b5b3939397e"
-    assert tasks_list._handle_interactive_key(session, key) is True
+    assert tasks_list_events._handle_keypress_event(session, key) is True
     assert session.status_message == f"Unsupported key: {key}"
 
 
@@ -879,23 +858,14 @@ def test_handle_interactive_key_enter_edits_selected_task(
 ) -> None:
     """Enter should trigger external-editor task editing on selected row."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
 
     def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
         return editor_command.DocumentEditResult(changed=False)
 
-    monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(tasks_list_events, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    assert tasks_list._handle_interactive_key(session, "ENTER") is True
+    assert tasks_list_events._handle_keypress_event(session, "ENTER") is True
     assert session.status_message == "No changes."
 
 
@@ -904,16 +874,7 @@ def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after
 ) -> None:
     """Changed edit should reload using the originally selected session node identity."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     source_node = nodes[0]
 
     def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
@@ -922,7 +883,7 @@ def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after
     reloaded_identity = None
 
     def _fake_reload(
-        current_session: tasks_list._TasksListSession,
+        current_session: tasks_list_events.TasksListSession,
         identity: object,
     ) -> bool:
         nonlocal reloaded_identity
@@ -930,10 +891,10 @@ def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after
         reloaded_identity = identity
         return True
 
-    monkeypatch.setattr(tasks_list, "edit_heading_subtree_in_external_editor", _fake_edit)
-    monkeypatch.setattr(tasks_list, "_reload_session_nodes", _fake_reload)
+    monkeypatch.setattr(tasks_list_events, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(tasks_list_events, "reload_session_nodes", _fake_reload)
 
-    assert tasks_list._handle_interactive_key(session, "ENTER") is True
+    assert tasks_list_events._handle_keypress_event(session, "ENTER") is True
     assert reloaded_identity == heading_locator(source_node)
     assert session.status_message == "Task updated"
 
@@ -943,16 +904,7 @@ def test_handle_interactive_key_dollar_archives_selected_task(
 ) -> None:
     """$ should archive selected task using shared archive helper."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
 
     def _fake_archive(
         heading: Heading,
@@ -975,10 +927,14 @@ def test_handle_interactive_key_dollar_archives_selected_task(
             destination_document=heading.document,
         )
 
-    monkeypatch.setattr(tasks_list, "archive_heading_subtree_and_save", _fake_archive)
-    monkeypatch.setattr(tasks_list, "_reload_session_nodes", lambda _session, _identity: True)
+    monkeypatch.setattr(tasks_list_events, "archive_heading_subtree_and_save", _fake_archive)
+    monkeypatch.setattr(
+        tasks_list_events,
+        "reload_session_nodes",
+        lambda _session, _identity: True,
+    )
 
-    assert tasks_list._handle_interactive_key(session, "$") is True
+    assert tasks_list_events._handle_keypress_event(session, "$") is True
     assert session.status_message == "Task archived"
 
 
@@ -987,16 +943,7 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
 ) -> None:
     """a should prompt for template then capture and reload list session."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     captured_node = node_from_org("* TODO Captured\n")[0]
     reload_args: dict[str, object] = {}
     monkeypatch.setattr(
@@ -1006,7 +953,7 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     )
 
     monkeypatch.setattr(
-        tasks_list,
+        tasks_list_events,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -1016,21 +963,20 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
     )
 
     def _fake_reload(
-        current_session: tasks_list._TasksListSession,
+        current_session: tasks_list_events.TasksListSession,
         preserve_identity: tuple[str, str, str, int | None] | None,
     ) -> bool:
         reload_args["session"] = current_session
         reload_args["identity"] = preserve_identity
         return True
 
-    monkeypatch.setattr(tasks_list, "_reload_session_nodes", _fake_reload)
+    monkeypatch.setattr(tasks_list_events, "reload_session_nodes", _fake_reload)
 
-    assert tasks_list._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "1"
-    submit_result = session.active_interactive_action.submit(session)
-    assert submit_result.success is True
-    assert submit_result.keep_prompt_open is False
+    assert tasks_list_events._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "1"
+    keep_open = session.active_prompt.submit_callback()
+    assert keep_open is False
     assert reload_args["session"] is session
     assert reload_args["identity"] == heading_locator(captured_node)
     assert session.status_message == "Task captured"
@@ -1041,29 +987,19 @@ def test_handle_interactive_key_a_capture_blank_input_cancels(
 ) -> None:
     """a should close prompt with cancel status on blank template input."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     monkeypatch.setattr(
         config_module,
         "CONFIG_CAPTURE_TEMPLATES",
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert tasks_list._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = ""
-    submit_result = session.active_interactive_action.submit(session)
-    assert submit_result.success is True
-    assert submit_result.keep_prompt_open is False
-    assert submit_result.status_message == "Capture cancelled"
+    assert tasks_list_events._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = ""
+    keep_open = session.active_prompt.submit_callback()
+    assert keep_open is False
+    assert session.status_message == "Capture cancelled"
 
 
 def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
@@ -1071,30 +1007,20 @@ def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
 ) -> None:
     """a should keep capture prompt open for invalid template shortcuts."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     monkeypatch.setattr(
         config_module,
         "CONFIG_CAPTURE_TEMPLATES",
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
 
-    assert tasks_list._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "99"
-    submit_result = session.active_interactive_action.submit(session)
+    assert tasks_list_events._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "99"
+    keep_open = session.active_prompt.submit_callback()
 
-    assert submit_result.success is False
-    assert submit_result.keep_prompt_open is True
-    assert submit_result.status_message == "Invalid capture template shortcut"
+    assert keep_open is True
+    assert session.status_message == "Invalid capture template shortcut"
 
 
 def test_handle_interactive_key_a_without_templates_reports_error(
@@ -1102,50 +1028,30 @@ def test_handle_interactive_key_a_without_templates_reports_error(
 ) -> None:
     """a should report a clear status when no capture templates are configured."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {})
 
-    assert tasks_list._handle_interactive_key(session, "a") is True
-    assert session.active_interactive_action is None
+    assert tasks_list_events._handle_keypress_event(session, "a") is True
+    assert session.active_prompt is None
     assert session.status_message == "No capture templates configured"
 
 
-def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.MonkeyPatch) -> None:
     """Prompt submission should pause live rendering for capture action."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     monkeypatch.setattr(
         config_module,
         "CONFIG_CAPTURE_TEMPLATES",
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )
-    tasks_list._handle_interactive_key(session, "a")
-    assert session.active_interactive_action is not None
-    session.active_interactive_action.prompt_config.prompt.value = "1"
+    tasks_list_events._handle_keypress_event(session, "a")
+    assert session.active_prompt is not None
+    session.active_prompt.prompt.value = "1"
 
     captured_node = node_from_org("* TODO Captured\n")[0]
     monkeypatch.setattr(
-        tasks_list,
+        tasks_list_events,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -1153,13 +1059,11 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
             document=captured_node.document,
         ),
     )
-    monkeypatch.setattr(tasks_list, "_reload_session_nodes", lambda _session, _identity: True)
     monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("ENTER", ""),
+        tasks_list_events,
+        "reload_session_nodes",
+        lambda _session, _identity: True,
     )
-
     events: list[str] = []
 
     class _LiveStub:
@@ -1184,33 +1088,34 @@ def test_handle_active_prompt_input_capture_submit_stops_and_restarts_live(
             live.start()
             events.append("input-start")
 
-    consumed = tasks_list._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
+    live = cast("Live", _LiveStub())
+    controller = cast("Any", _InputControllerStub())
+
+    def _run_prompt_external(callback: object) -> None:
+        controller.suspend_live(live)
+        try:
+            cast("Any", callback)()
+        finally:
+            controller.resume_live(live)
+
+    session.run_external = _run_prompt_external
+
+    consumed = handle_active_prompt_event(session, KeypressEvent("ENTER"))
+    live.update(
+        tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
+        refresh=True,
     )
 
     assert consumed is True
     assert events == ["input-stop", "stop", "start", "input-start", "update"]
 
 
-def test_search_prompt_live_updates_and_escape_reverts_search(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
     """Search prompt should live-update results and ESC should restore prior filter."""
     nodes = node_from_org("* TODO Alpha\n* TODO Beta\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
-    assert tasks_list._handle_interactive_key(session, "/") is True
-    assert session.active_interactive_action is not None
+    session = _make_session(nodes)
+    assert tasks_list_events._handle_keypress_event(session, "/") is True
+    assert session.active_prompt is not None
 
     events: list[str] = []
 
@@ -1236,15 +1141,11 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
             live.start()
             events.append("input-start")
 
-    monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("TEXT", "b"),
-    )
-    consumed = tasks_list._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
+    live = cast("Live", _LiveStub())
+    consumed = handle_active_prompt_event(session, KeypressEvent("b"))
+    live.update(
+        tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
+        refresh=True,
     )
 
     assert consumed is True
@@ -1252,15 +1153,10 @@ def test_search_prompt_live_updates_and_escape_reverts_search(
     assert session.search_text == "b"
     assert session.status_message == "1 matches"
 
-    monkeypatch.setattr(
-        interactive_actions,
-        "read_input_event",
-        lambda **_kwargs: ("ESC", ""),
-    )
-    consumed = tasks_list._handle_active_prompt_input(
-        session,
-        cast("Live", _LiveStub()),
-        cast("Any", _InputControllerStub()),
+    consumed = handle_active_prompt_event(session, KeypressEvent("ESC"))
+    live.update(
+        tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
+        refresh=True,
     )
 
     assert consumed is True
@@ -1274,23 +1170,14 @@ def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.Monkey
     """State change action should append one repeat/log transition entry."""
     nodes = node_from_org("* TODO A\n")
     node = nodes[0]
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     monkeypatch.setattr(
-        tasks_list,
-        "_persist_and_reload_selected",
+        tasks_list_events,
+        "persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list._apply_state_change_with_value(session, "DONE")
+    tasks_list_events.apply_state_change_with_value(session, "DONE")
 
     assert node.todo == "DONE"
     assert node.repeats
@@ -1302,23 +1189,14 @@ def test_apply_state_change_advances_repeater_timestamp(monkeypatch: pytest.Monk
     """State change action should advance repeated planning timestamps."""
     nodes = node_from_org("* TODO A\nSCHEDULED: <2025-01-15 Wed +1w>\n")
     node = nodes[0]
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     monkeypatch.setattr(
-        tasks_list,
-        "_persist_and_reload_selected",
+        tasks_list_events,
+        "persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list._apply_state_change_with_value(session, "DONE")
+    tasks_list_events.apply_state_change_with_value(session, "DONE")
 
     assert node.scheduled is not None
     assert str(node.scheduled).startswith("<2025-01-22")
@@ -1328,23 +1206,14 @@ def test_apply_scheduled_edit_updates_scheduled(monkeypatch: pytest.MonkeyPatch)
     """Scheduling edit action should update selected task scheduled timestamp."""
     nodes = node_from_org("* TODO A\n")
     node = nodes[0]
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     monkeypatch.setattr(
-        tasks_list,
-        "_persist_and_reload_selected",
+        tasks_list_events,
+        "persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list._apply_planning_timestamp_edit(
+    tasks_list_events.apply_planning_timestamp_edit(
         session,
         field="scheduled",
         raw_timestamp="<2025-01-20 Mon>",
@@ -1358,23 +1227,14 @@ def test_apply_closed_edit_updates_closed(monkeypatch: pytest.MonkeyPatch) -> No
     """Closed edit action should update selected task closed timestamp."""
     nodes = node_from_org("* TODO A\n")
     node = nodes[0]
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
     monkeypatch.setattr(
-        tasks_list,
-        "_persist_and_reload_selected",
+        tasks_list_events,
+        "persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list._apply_planning_timestamp_edit(
+    tasks_list_events.apply_planning_timestamp_edit(
         session,
         field="closed",
         raw_timestamp="[2025-01-20 Mon 09:00]",
@@ -1389,22 +1249,13 @@ def test_persist_and_reload_selected_reports_save_failures(
 ) -> None:
     """Persistence failures should be surfaced in status line and keep session alive."""
     nodes = node_from_org("* TODO A\n")
-    args = make_list_args([])
-    session = tasks_list._create_tasks_list_session(
-        args,
-        tasks_list._TasksListSessionData(
-            nodes=nodes,
-            todo_states=["TODO"],
-            done_states=["DONE"],
-            color_enabled=False,
-        ),
-    )
+    session = _make_session(nodes)
 
     def _raise_save(_document: object) -> None:
         raise typer.BadParameter("Permission denied for 'dummy.org'")
 
-    monkeypatch.setattr(tasks_list, "_save_document_changes", _raise_save)
+    monkeypatch.setattr(tasks_list_events, "save_document_changes", _raise_save)
 
-    tasks_list._persist_and_reload_selected(session, nodes[0], "updated")
+    tasks_list_events.persist_and_reload_selected(session, nodes[0], "updated")
 
     assert session.status_message == "Permission denied for 'dummy.org'"

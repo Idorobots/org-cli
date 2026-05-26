@@ -7340,7 +7340,7 @@ Please don't leave unused arguments in functions, if an argument is no longer ne
 *** Mark as completed should respect repeaters
 The timestamp advancement should only be used if the new state is a completed state. In such a case, the state should be updated to the first TODO state defined for the document, a logbook repeat should be added to the task (`State {node.todo} to {new_state}`) and the repeaters should be advanced according to its rules.
 
-** Codebase improvements
+** Codebase improvements                                                                   :Cleanup:
 *** Extract the =stats= command wrapper into a separate module
 *** Refactor the task CRUD utils into a separate module re-used by all the commands
 *** Refactor config handling so that no global state is mutated
@@ -7353,7 +7353,13 @@ Introduce linter rules that make sure these function cannot be used.
 - Sparkline for freequency plots
 *** Config handling is too generic
 Split config handling to be per-command and have the config file reflect that.
-*** Refactor to be more MVC-ish
+*** TODO Interactive loop refactor
+See the following plan for details: [[file:./plans/interactive-loop-refactor.md]]
+
+*** DONE Refactor to be more MVC-ish
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-25 Mon 16:19]
+:END:
 Currently, commands mix some logic and rendering, and a lot of that logic and rendering is shared in different "common" modules such as =cli_common=, =interactive_common= and =tui=. Ideally, this would be reorganized for better separation between views and controller logic.
 A domain should be defined with all common utils reorganized as domain specific functions.
 For command output rendering, a common toolkit of widgets and widget-adjacent rendering tools should be extracted.
