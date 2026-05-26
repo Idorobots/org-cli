@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import org_parser.time as org_time
 from rich import box
@@ -36,9 +36,7 @@ if TYPE_CHECKING:
     from org_parser.document import Heading
 
     from .command import AgendaArgs
-
-AgendaRowLike = Any
-AgendaSessionLike = Any
+    from .events import AgendaSession
 
 
 _HIGHLIGHT_ROW_STYLE = "on grey23"
@@ -771,11 +769,11 @@ def _build_day_rows(day_render: DayRenderInput, render: RenderContext) -> DayRow
     return DayRowModel(day=day_render.day, rows=rows, selectable_row_indexes=selectable)
 
 
-def _selected_row_location(session: AgendaSessionLike) -> tuple[int, int] | None:
+def _selected_row_location(session: AgendaSession) -> tuple[int, int] | None:
     """Return selected day/row indexes or None when no rows exist."""
     if not session.row_locations:
         return None
-    return cast("tuple[int, int]", session.row_locations[session.selected_row_index])
+    return session.row_locations[session.selected_row_index]
 
 
 def _add_section_row(table: Table, label: str, *, color_enabled: bool, style: str = "") -> int:
@@ -972,7 +970,7 @@ def _build_agenda_table(day: date, *, color_enabled: bool) -> Table:
 
 def _render_row_model(
     table: Table,
-    row: AgendaRowLike,
+    row: AgendaRow,
     render: RenderContext,
     *,
     highlighted: bool,
@@ -1015,7 +1013,7 @@ def _render_row_model(
     return 0
 
 
-def _build_interactive_rows(session: AgendaSessionLike) -> list[ViewportRow]:
+def _build_interactive_rows(session: AgendaSession) -> list[ViewportRow]:
     rows: list[ViewportRow] = []
     for day_index, day_model in enumerate(session.day_models):
         rows.append(
@@ -1074,7 +1072,7 @@ def _build_interactive_viewport_table() -> Table:
 def _render_viewport_row(
     table: Table,
     row: ViewportRow,
-    session: AgendaSessionLike,
+    session: AgendaSession,
     selected_location: tuple[int, int] | None,
 ) -> None:
     if row.kind in {"day_rule", "spacer"}:
@@ -1099,7 +1097,7 @@ def _render_viewport_row(
     )
 
 
-def interactive_agenda_renderable(console: Console, session: AgendaSessionLike) -> Group:
+def interactive_agenda_renderable(console: Console, session: AgendaSession) -> Group:
     """Build scrollable interactive agenda renderable with fixed footer controls."""
     if session.show_help_modal:
         return Group(

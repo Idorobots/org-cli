@@ -1,4 +1,4 @@
-"""Tests for shared interactive key-dispatch utilities."""
+"""Tests for shared interactive helpers."""
 
 from __future__ import annotations
 
@@ -10,14 +10,16 @@ from rich.console import Console
 from org.commands.interactive_common import (
     BRACKETED_PASTE_DISABLE,
     BRACKETED_PASTE_ENABLE,
+    FooterPromptState,
     HeadingLocator,
+    InputEvent,
     InteractiveHelpEntry,
-    KeyBinding,
-    dispatch_key_binding,
+    InteractivePromptState,
+    KeypressEvent,
+    create_interactive_prompt_state,
     extract_bracketed_paste_text,
+    handle_active_prompt_event,
     heading_locator,
-    key_binding_for_action,
-    key_binding_requires_live_pause,
     read_input_event,
     render_interactive_help_modal,
     render_interactive_help_panel_text,
@@ -32,48 +34,77 @@ if TYPE_CHECKING:
     import pytest
 
 
-def test_dispatch_key_binding_reports_unhandled_key() -> None:
-    """Unknown key should be returned as unhandled with continue-loop default."""
-    result = dispatch_key_binding("x", {})
-
-    assert result.handled is False
-    assert result.continue_loop is True
-    assert result.requires_live_pause is False
+class _PromptConfig:
+    def __init__(self, label: str) -> None:
+        self.prompt = FooterPromptState(label=label)
+        self.cancel_status = "Cancelled"
+        self.invalid_status = "Invalid"
 
 
-def test_dispatch_key_binding_executes_handler() -> None:
-    """Known key should execute callback and report handled result."""
-    called = {"value": False}
-
-    def _mark_called() -> None:
-        called["value"] = True
-
-    result = dispatch_key_binding("a", {"a": key_binding_for_action(_mark_called)})
-
-    assert called["value"]
-    assert result.handled is True
-    assert result.continue_loop is True
-    assert result.requires_live_pause is False
+class _PromptOwner:
+    def __init__(self, prompt: InteractivePromptState | None) -> None:
+        self.active_prompt = prompt
+        self.status_message = ""
 
 
-def test_dispatch_key_binding_can_exit_loop() -> None:
-    """Handlers may return False to request interactive loop exit."""
-    result = dispatch_key_binding("q", {"q": KeyBinding(lambda: False)})
-
-    assert result.handled is True
-    assert result.continue_loop is False
+def _submit_and_close(values: list[str], value: str) -> bool:
+    values.append(value)
+    return False
 
 
-def test_key_binding_requires_live_pause_reads_binding_metadata() -> None:
-    """Live pause helper should return binding pause metadata for key."""
-    bindings = {
-        "ENTER": key_binding_for_action(lambda: None, requires_live_pause=True),
-        "x": key_binding_for_action(lambda: None),
-    }
+def test_create_interactive_prompt_state_uses_submit_and_preview_callbacks() -> None:
+    """Prompt state should forward current value to submit and preview callbacks."""
+    previewed: list[str] = []
+    submitted: list[str] = []
 
-    assert key_binding_requires_live_pause("ENTER", bindings) is True
-    assert key_binding_requires_live_pause("x", bindings) is False
-    assert key_binding_requires_live_pause("missing", bindings) is False
+    prompt = create_interactive_prompt_state(
+        _PromptConfig("Search"),
+        submit_value=lambda value: _submit_and_close(submitted, value),
+        preview_value=previewed.append,
+    )
+    prompt.prompt.value = "needle"
+
+    assert prompt.preview is not None
+    prompt.preview()
+    keep_open = prompt.submit_callback()
+
+    assert previewed == ["needle"]
+    assert submitted == ["needle"]
+    assert keep_open is False
+
+
+def test_handle_active_prompt_event_closes_prompt_on_escape() -> None:
+    """Escape should close active prompt and set cancel status by default."""
+    owner = _PromptOwner(
+        InteractivePromptState(
+            prompt=FooterPromptState(label="Search"),
+            cancel_status="Cancelled",
+            invalid_status="Invalid",
+            submit_callback=lambda: False,
+        ),
+    )
+
+    assert handle_active_prompt_event(owner, KeypressEvent("ESC")) is True
+    assert owner.active_prompt is None
+    assert owner.status_message == "Cancelled"
+
+
+def test_handle_active_prompt_event_applies_input_and_submit() -> None:
+    """Prompt event handling should update prompt text and close after submit."""
+    submitted: list[str] = []
+    prompt = create_interactive_prompt_state(
+        _PromptConfig("Search"),
+        submit_value=lambda value: _submit_and_close(submitted, value),
+    )
+    owner = _PromptOwner(prompt)
+
+    assert handle_active_prompt_event(owner, InputEvent("abc")) is True
+    assert owner.active_prompt is not None
+    assert owner.active_prompt.prompt.value == "abc"
+
+    assert handle_active_prompt_event(owner, KeypressEvent("ENTER")) is True
+    assert submitted == ["abc"]
+    assert owner.active_prompt is None
 
 
 def test_extract_bracketed_paste_text_decodes_payload() -> None:

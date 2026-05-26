@@ -26,16 +26,9 @@ from org.output_format import DEFAULT_OUTPUT_THEME
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
 
     from org_parser.document import Heading
-
-
-class _KeyHandler(Protocol):
-    """Type protocol for interactive key handler callbacks."""
-
-    def __call__(self) -> bool | None:
-        """Run key handler callback and return optional continue-loop flag."""
 
 
 MOUSE_REPORTING_ENABLE = "\x1b[?1000h\x1b[?1006h"
@@ -66,23 +59,6 @@ class HeadingLocator:
     filename: str
     heading_id: str | None
     title: str
-
-
-@dataclass(frozen=True)
-class KeyBinding:
-    """One interactive key binding and optional live-pause requirement."""
-
-    handler: _KeyHandler
-    requires_live_pause: bool = False
-
-
-@dataclass(frozen=True)
-class KeyDispatchResult:
-    """Result of dispatching one keypress against key bindings."""
-
-    handled: bool
-    continue_loop: bool
-    requires_live_pause: bool
 
 
 @dataclass
@@ -127,6 +103,32 @@ class InteractivePromptState:
     submit_callback: Callable[[], bool]
     preview: Callable[[], None] | None = None
     cancel: Callable[[], None] | None = None
+
+
+class InteractivePromptOwner(Protocol):
+    """Type protocol for objects that own one active interactive prompt."""
+
+    active_prompt: InteractivePromptState | None
+    status_message: str
+
+
+class _PromptConfigLike(Protocol):
+    """Shape required to build one interactive prompt state."""
+
+    @property
+    def prompt(self) -> FooterPromptState:
+        """Return footer prompt configuration."""
+        ...
+
+    @property
+    def cancel_status(self) -> str:
+        """Return cancel status message."""
+        ...
+
+    @property
+    def invalid_status(self) -> str:
+        """Return invalid-input status message."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -252,49 +254,6 @@ def render_interactive_help_modal(
         padding=(0, 1),
         expand=True,
     )
-
-
-def key_binding_for_action(
-    action: _KeyHandler,
-    *,
-    requires_live_pause: bool = False,
-) -> KeyBinding:
-    """Build one key binding from a void action callback."""
-
-    def _handler() -> bool:
-        action()
-        return True
-
-    return KeyBinding(_handler, requires_live_pause=requires_live_pause)
-
-
-def dispatch_key_binding(
-    key: str,
-    bindings: Mapping[str, KeyBinding],
-) -> KeyDispatchResult:
-    """Dispatch one keypress to a key-binding map."""
-    binding = bindings.get(key)
-    if binding is None:
-        return KeyDispatchResult(handled=False, continue_loop=True, requires_live_pause=False)
-
-    outcome = binding.handler()
-    continue_loop = True if outcome is None else outcome
-    return KeyDispatchResult(
-        handled=True,
-        continue_loop=continue_loop,
-        requires_live_pause=binding.requires_live_pause,
-    )
-
-
-def key_binding_requires_live_pause(
-    key: str,
-    bindings: Mapping[str, KeyBinding],
-) -> bool:
-    """Return whether one key binding requires temporarily stopping Live."""
-    binding = bindings.get(key)
-    if binding is None:
-        return False
-    return binding.requires_live_pause
 
 
 def local_now() -> datetime:
@@ -808,24 +767,6 @@ def set_bracketed_paste(enabled: bool) -> None:
         return
 
 
-def read_keypress(timeout_seconds: float | None = None) -> str:
-    """Read one keypress while the caller manages terminal mode."""
-    fd = sys.stdin.fileno()
-    if timeout_seconds is not None:
-        ready, _, _ = select.select([fd], [], [], timeout_seconds)
-        if not ready:
-            return ""
-    first = os.read(fd, 1)
-    if first in {b"\r", b"\n"}:
-        return "ENTER"
-    if first == b"\x1b":
-        return decode_escape_sequence(read_escape_sequence(fd))
-    try:
-        return first.decode("utf-8").lower()
-    except UnicodeDecodeError:
-        return ""
-
-
 def apply_prompt_event(prompt: FooterPromptState, event: InteractiveEvent) -> PromptEventResult:
     """Apply one interactive event to prompt state."""
     result = PromptEventResult()
@@ -874,8 +815,63 @@ def apply_prompt_event(prompt: FooterPromptState, event: InteractiveEvent) -> Pr
     return result
 
 
+def create_interactive_prompt_state(
+    config: _PromptConfigLike,
+    *,
+    submit_value: Callable[[str], bool],
+    preview_value: Callable[[str], None] | None = None,
+    cancel: Callable[[], None] | None = None,
+) -> InteractivePromptState:
+    """Build one active interactive prompt state from prompt config and callbacks."""
+    prompt = FooterPromptState(label=config.prompt.label)
+
+    def _submit() -> bool:
+        return submit_value(prompt.value)
+
+    def _preview() -> None:
+        if preview_value is None:
+            return
+        preview_value(prompt.value)
+
+    return InteractivePromptState(
+        prompt=prompt,
+        cancel_status=config.cancel_status,
+        invalid_status=config.invalid_status,
+        submit_callback=_submit,
+        preview=None if preview_value is None else _preview,
+        cancel=cancel,
+    )
+
+
+def handle_active_prompt_event(session: InteractivePromptOwner, event: InteractiveEvent) -> bool:
+    """Handle one interactive event while a footer prompt is active."""
+    active_prompt = session.active_prompt
+    if active_prompt is None:
+        return True
+    if isinstance(event, TimeoutEvent):
+        return True
+    if isinstance(event, KeypressEvent) and event.key == "ESC":
+        if active_prompt.cancel is not None:
+            active_prompt.cancel()
+        else:
+            session.status_message = active_prompt.cancel_status
+        session.active_prompt = None
+        return True
+
+    prompt_result = apply_prompt_event(active_prompt.prompt, event)
+    if prompt_result.submitted:
+        keep_open = active_prompt.submit_callback()
+        if not keep_open:
+            session.active_prompt = None
+        return True
+    if prompt_result.changed and active_prompt.preview is not None:
+        active_prompt.preview()
+    return True
+
+
 def interactive_loop(
     *,
+    console: Console,
     render: Callable[[], RenderableType],
     on_event: Callable[[InteractiveEvent], bool],
     bind_run_external: Callable[[Callable[[Callable[[], None]], None]], None] | None = None,
@@ -883,7 +879,7 @@ def interactive_loop(
 ) -> None:
     """Run one shared fullscreen interactive event loop."""
     with (
-        Live(render(), screen=True, auto_refresh=False) as live,
+        Live(render(), console=console, screen=True, auto_refresh=False) as live,
         InteractiveInputController() as controller,
     ):
 
@@ -902,49 +898,6 @@ def interactive_loop(
             if not on_event(event):
                 break
             live.update(render(), refresh=True)
-
-
-def apply_footer_prompt_input_event(
-    prompt: FooterPromptState,
-    event_name: str,
-    event_text: str,
-) -> bool:
-    """Apply one input event to footer prompt and return submit status."""
-    if event_name == "ENTER":
-        return True
-
-    cursor_targets = {
-        "LEFT": max(0, prompt.cursor_position - 1),
-        "RIGHT": min(len(prompt.value), prompt.cursor_position + 1),
-        "HOME": 0,
-        "END": len(prompt.value),
-    }
-    target_cursor = cursor_targets.get(event_name)
-    if target_cursor is not None:
-        prompt.cursor_position = target_cursor
-        return False
-
-    if event_name == "BACKSPACE" and prompt.cursor_position > 0:
-        prompt.value = (
-            f"{prompt.value[: prompt.cursor_position - 1]}{prompt.value[prompt.cursor_position :]}"
-        )
-        prompt.cursor_position -= 1
-        return False
-
-    if event_name == "DELETE" and prompt.cursor_position < len(prompt.value):
-        prompt.value = (
-            f"{prompt.value[: prompt.cursor_position]}{prompt.value[prompt.cursor_position + 1 :]}"
-        )
-        return False
-
-    if event_name == "TEXT":
-        prompt.value = (
-            f"{prompt.value[: prompt.cursor_position]}"
-            f"{event_text}"
-            f"{prompt.value[prompt.cursor_position :]}"
-        )
-        prompt.cursor_position += len(event_text)
-    return False
 
 
 def build_footer_prompt_text(prompt: FooterPromptState) -> Text:

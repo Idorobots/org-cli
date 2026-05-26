@@ -20,7 +20,11 @@ from org.commands import editor as editor_command
 from org.commands.board import command as board_command
 from org.commands.board import events as board_events
 from org.commands.board import layout as board_layout
-from org.commands.interactive_common import KeypressEvent, heading_locator
+from org.commands.interactive_common import (
+    KeypressEvent,
+    handle_active_prompt_event,
+    heading_locator,
+)
 from org.commands.tasks import capture as capture_command
 from tests.conftest import node_from_org
 
@@ -1027,7 +1031,7 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
 
     session.run_external = _run_prompt_external
 
-    consumed = board_events._handle_active_prompt_event(session, KeypressEvent("ENTER"))
+    consumed = handle_active_prompt_event(session, KeypressEvent("ENTER"))
     live.update(
         board_layout._interactive_flow_board_renderable(live.console, session),
         refresh=True,
@@ -1085,7 +1089,7 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
             events.append("input-start")
 
     live = cast("Live", _LiveStub())
-    consumed = board_events._handle_active_prompt_event(session, KeypressEvent("b"))
+    consumed = handle_active_prompt_event(session, KeypressEvent("b"))
     live.update(
         board_layout._interactive_flow_board_renderable(live.console, session),
         refresh=True,
@@ -1100,7 +1104,7 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
     assert session.search_text == "b"
     assert session.status_message == "1 matches"
 
-    consumed = board_events._handle_active_prompt_event(session, KeypressEvent("ESC"))
+    consumed = handle_active_prompt_event(session, KeypressEvent("ESC"))
     live.update(
         board_layout._interactive_flow_board_renderable(live.console, session),
         refresh=True,

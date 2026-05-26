@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import typer
 from org_parser.time import Clock, Timestamp
@@ -20,12 +20,12 @@ from org.commands.interactive_common import (
     InputEvent,
     InteractiveEvent,
     InteractivePromptState,
-    KeypressEvent,
     TimeoutEvent,
     advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
-    apply_prompt_event,
+    create_interactive_prompt_state,
+    handle_active_prompt_event,
     heading_locator,
     interactive_loop,
     local_now,
@@ -53,6 +53,7 @@ from org.commands.tasks.common import (
 )
 
 from .layout import (
+    AgendaRow,
     DayRenderInput,
     DayRowModel,
     RenderContext,
@@ -76,10 +77,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("org")
 _INTERACTIVE_INPUT_TIMEOUT_SECONDS = 1.0
-
-
-AgendaRuntimeRow = Any
-AgendaRuntimeSession = Any
 
 
 @dataclass
@@ -106,7 +103,7 @@ class AgendaSession:
 
 
 def refresh_session(
-    session: AgendaRuntimeSession,
+    session: AgendaSession,
     preserve_identity: HeadingLocator | None,
 ) -> None:
     """Recompute day row models and restore selection when possible."""
@@ -151,7 +148,7 @@ def refresh_session(
 
 
 def refresh_visible_nodes(
-    session: AgendaRuntimeSession,
+    session: AgendaSession,
     preserve_identity: HeadingLocator | None,
 ) -> None:
     """Refresh visible agenda nodes and restore selected task identity when possible."""
@@ -159,7 +156,7 @@ def refresh_visible_nodes(
     refresh_session(session, preserve_identity)
 
 
-def selected_task_row(session: AgendaRuntimeSession) -> AgendaRuntimeRow | None:
+def selected_task_row(session: AgendaSession) -> AgendaRow | None:
     """Return currently selected task row when selected row is a task."""
     location = _selected_row_location(session)
     if location is None:
@@ -171,7 +168,7 @@ def selected_task_row(session: AgendaRuntimeSession) -> AgendaRuntimeRow | None:
     return row
 
 
-def _refresh_session_if_minute_changed(session: AgendaRuntimeSession) -> bool:
+def _refresh_session_if_minute_changed(session: AgendaSession) -> bool:
     """Refresh agenda rows when local wall-clock minute changes."""
     current_now = local_now().replace(second=0, microsecond=0)
     session_now = session.now.replace(second=0, microsecond=0)
@@ -196,7 +193,7 @@ def _paths_refer_to_same_file(source_path: str, destination_path: str) -> bool:
     return source_resolved == destination_resolved
 
 
-def _move_selection(session: AgendaRuntimeSession, step: int) -> None:
+def _move_selection(session: AgendaSession, step: int) -> None:
     """Move highlighted row selection forward/backward with wraparound."""
     if not session.row_locations:
         return
@@ -223,14 +220,14 @@ def _save_document_changes(document: Document) -> None:
     save_document(document)
 
 
-def _reload_session_nodes(session: AgendaRuntimeSession) -> None:
+def _reload_session_nodes(session: AgendaSession) -> None:
     """Reload nodes through standard processing pipeline after mutations."""
     nodes, _, _ = load_and_process_data(session.args)
     session.all_nodes = nodes
     session.nodes = filter_nodes_by_search(nodes, session.search_text)
 
 
-def _edit_selected_task_in_external_editor(session: AgendaRuntimeSession) -> None:
+def _edit_selected_task_in_external_editor(session: AgendaSession) -> None:
     row = selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
@@ -250,7 +247,7 @@ def _edit_selected_task_in_external_editor(session: AgendaRuntimeSession) -> Non
     session.status_message = "Task updated"
 
 
-def _archive_selected_task(session: AgendaRuntimeSession) -> None:
+def _archive_selected_task(session: AgendaSession) -> None:
     row = selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
@@ -268,7 +265,7 @@ def _archive_selected_task(session: AgendaRuntimeSession) -> None:
 
 
 def _shift_planning_for_row(
-    row: AgendaRuntimeRow,
+    row: AgendaRow,
     *,
     day_delta: int,
 ) -> tuple[Timestamp | None, str]:
@@ -303,7 +300,7 @@ def _shift_planning_for_row(
 
 
 def shift_planning_time_for_row(
-    row: AgendaRuntimeRow,
+    row: AgendaRow,
     *,
     hour_delta: int,
 ) -> tuple[Timestamp | None, str]:
@@ -339,7 +336,7 @@ def shift_planning_time_for_row(
     return timestamp, f"Shifted {field_name} {direction} by {abs(hour_delta)} hour"
 
 
-def apply_state_change_with_value(session: AgendaRuntimeSession, new_state: str) -> None:
+def apply_state_change_with_value(session: AgendaSession, new_state: str) -> None:
     """Apply a TODO state change to the selected agenda task."""
     row = selected_task_row(session)
     if row is None or row.node is None:
@@ -376,7 +373,7 @@ def apply_state_change_with_value(session: AgendaRuntimeSession, new_state: str)
     session.status_message = f"State updated: {old_state or '-'} -> {new_state}"
 
 
-def apply_shift_date(session: AgendaRuntimeSession, *, day_delta: int) -> None:
+def apply_shift_date(session: AgendaSession, *, day_delta: int) -> None:
     """Shift the selected agenda task planning date by days."""
     row = selected_task_row(session)
     if row is None or row.node is None:
@@ -394,7 +391,7 @@ def apply_shift_date(session: AgendaRuntimeSession, *, day_delta: int) -> None:
     session.status_message = status
 
 
-def _apply_shift_time(session: AgendaRuntimeSession, *, hour_delta: int) -> None:
+def _apply_shift_time(session: AgendaSession, *, hour_delta: int) -> None:
     row = selected_task_row(session)
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
@@ -422,7 +419,7 @@ def _move_heading_to_document(heading: Heading, destination: Document) -> None:
         descendant.document = destination
 
 
-def apply_refile_with_value(session: AgendaRuntimeSession, destination_input: str) -> None:
+def apply_refile_with_value(session: AgendaSession, destination_input: str) -> None:
     """Refile the selected agenda task to the requested destination."""
     row = selected_task_row(session)
     if row is None or row.node is None:
@@ -468,7 +465,7 @@ def apply_refile_with_value(session: AgendaRuntimeSession, destination_input: st
     session.status_message = f"Refiled task to {destination_doc_path}"
 
 
-def apply_clock_entry_with_value(session: AgendaRuntimeSession, duration_input: str) -> None:
+def apply_clock_entry_with_value(session: AgendaSession, duration_input: str) -> None:
     """Add a clock entry to the selected agenda task."""
     row = selected_task_row(session)
     if row is None or row.node is None:
@@ -498,7 +495,7 @@ def apply_clock_entry_with_value(session: AgendaRuntimeSession, duration_input: 
     session.status_message = f"Added clock entry ({duration_text})"
 
 
-def _clear_search(session: AgendaRuntimeSession) -> None:
+def _clear_search(session: AgendaSession) -> None:
     if not session.search_text:
         session.status_message = "Search already clear"
         return
@@ -511,7 +508,7 @@ def _clear_search(session: AgendaRuntimeSession) -> None:
     session.status_message = "Search cleared"
 
 
-def selected_row(session: AgendaRuntimeSession) -> AgendaRuntimeRow | None:
+def selected_row(session: AgendaSession) -> AgendaRow | None:
     """Return the currently selected agenda row."""
     location = _selected_row_location(session)
     if location is None:
@@ -520,7 +517,7 @@ def selected_row(session: AgendaRuntimeSession) -> AgendaRuntimeRow | None:
     return session.day_models[day_index].rows[row_index]
 
 
-def _timetable_schedule_for_selected_row(session: AgendaRuntimeSession) -> Timestamp | None:
+def _timetable_schedule_for_selected_row(session: AgendaSession) -> Timestamp | None:
     row = selected_row(session)
     if row is None:
         return None
@@ -539,7 +536,7 @@ def _timetable_schedule_for_selected_row(session: AgendaRuntimeSession) -> Times
     return Timestamp.from_source(f"<{row.day:%Y-%m-%d} {day_name} {hour:02d}:{minute:02d}>")
 
 
-def _apply_capture_task(session: AgendaRuntimeSession, template_name: str) -> None:
+def _apply_capture_task(session: AgendaSession, template_name: str) -> None:
     scheduled = _timetable_schedule_for_selected_row(session)
     if scheduled is None:
         session.status_message = "Capture is available only on timetable time rows"
@@ -571,14 +568,14 @@ def _apply_capture_task(session: AgendaRuntimeSession, template_name: str) -> No
     session.status_message = f"Task captured and scheduled for {scheduled}"
 
 
-def _state_choices_for_selected_row(session: AgendaRuntimeSession) -> list[str]:
+def _state_choices_for_selected_row(session: AgendaSession) -> list[str]:
     row = selected_task_row(session)
     if row is None or row.node is None:
         return []
     return todo_states_for_heading(row.node)
 
 
-def _can_activate_agenda_state_prompt(session: AgendaRuntimeSession) -> str | None:
+def _can_activate_agenda_state_prompt(session: AgendaSession) -> str | None:
     row = selected_task_row(session)
     if row is None or row.node is None:
         return "Action available only on task rows"
@@ -587,7 +584,7 @@ def _can_activate_agenda_state_prompt(session: AgendaRuntimeSession) -> str | No
     return None
 
 
-def _can_activate_agenda_capture_prompt(session: AgendaRuntimeSession) -> str | None:
+def _can_activate_agenda_capture_prompt(session: AgendaSession) -> str | None:
     if _timetable_schedule_for_selected_row(session) is None:
         return "Capture is available only on timetable time rows"
     if not configured_capture_template_names():
@@ -595,7 +592,7 @@ def _can_activate_agenda_capture_prompt(session: AgendaRuntimeSession) -> str | 
     return None
 
 
-def _apply_search_text(session: AgendaRuntimeSession, search_text: str) -> None:
+def _apply_search_text(session: AgendaSession, search_text: str) -> None:
     selected_row = selected_task_row(session)
     preserve_identity = None
     if selected_row is not None and selected_row.node is not None:
@@ -640,42 +637,28 @@ def create_agenda_session(
     return session
 
 
-def _set_start_date_relative(session: AgendaRuntimeSession, *, day_delta: int) -> None:
+def _set_start_date_relative(session: AgendaSession, *, day_delta: int) -> None:
     session.start_date += timedelta(days=day_delta)
     refresh_session(session, None)
 
 
 def _activate_prompt(
-    session: AgendaRuntimeSession,
+    session: AgendaSession,
     config: PromptActionConfig,
     *,
     submit_value: Callable[[str], bool],
     preview_value: Callable[[str], None] | None = None,
     cancel: Callable[[], None] | None = None,
 ) -> None:
-    def _submit() -> bool:
-        active_prompt = session.active_prompt
-        if active_prompt is None:
-            return False
-        return submit_value(active_prompt.prompt.value)
-
-    def _preview() -> None:
-        active_prompt = session.active_prompt
-        if active_prompt is None or preview_value is None:
-            return
-        preview_value(active_prompt.prompt.value)
-
-    session.active_prompt = InteractivePromptState(
-        prompt=FooterPromptState(label=config.prompt.label),
-        cancel_status=config.cancel_status,
-        invalid_status=config.invalid_status,
-        submit_callback=_submit,
-        preview=None if preview_value is None else _preview,
+    session.active_prompt = create_interactive_prompt_state(
+        config,
+        submit_value=submit_value,
+        preview_value=preview_value,
         cancel=cancel,
     )
 
 
-def _activate_capture_prompt(session: AgendaRuntimeSession) -> None:
+def _activate_capture_prompt(session: AgendaSession) -> None:
     status_message = _can_activate_agenda_capture_prompt(session)
     if status_message is not None:
         session.status_message = status_message
@@ -698,7 +681,7 @@ def _activate_capture_prompt(session: AgendaRuntimeSession) -> None:
     _activate_prompt(session, config, submit_value=_submit)
 
 
-def _activate_search_prompt(session: AgendaRuntimeSession) -> None:
+def _activate_search_prompt(session: AgendaSession) -> None:
     session.search_prompt_previous_text = session.search_text
     config = PromptActionConfig(
         prompt=FooterPromptState(label="Search text (blank clears)"),
@@ -723,7 +706,7 @@ def _activate_search_prompt(session: AgendaRuntimeSession) -> None:
     _activate_prompt(session, config, submit_value=_submit, preview_value=_preview, cancel=_cancel)
 
 
-def _activate_state_selection_prompt(session: AgendaRuntimeSession, states: list[str]) -> None:
+def _activate_state_selection_prompt(session: AgendaSession, states: list[str]) -> None:
     config = state_selection_prompt_config(states)
 
     def _submit(value: str) -> bool:
@@ -742,7 +725,7 @@ def _activate_state_selection_prompt(session: AgendaRuntimeSession, states: list
 
 
 def _activate_value_prompt(
-    session: AgendaRuntimeSession,
+    session: AgendaSession,
     config: PromptActionConfig,
     apply_value: Callable[[str], None],
 ) -> None:
@@ -757,15 +740,15 @@ def _activate_value_prompt(
     _activate_prompt(session, config, submit_value=_submit)
 
 
-def _handle_capture_prompt_activation(session: AgendaRuntimeSession) -> None:
+def _handle_capture_prompt_activation(session: AgendaSession) -> None:
     _activate_capture_prompt(session)
 
 
-def _handle_search_prompt_activation(session: AgendaRuntimeSession) -> None:
+def _handle_search_prompt_activation(session: AgendaSession) -> None:
     _activate_search_prompt(session)
 
 
-def _handle_state_prompt_activation(session: AgendaRuntimeSession) -> None:
+def _handle_state_prompt_activation(session: AgendaSession) -> None:
     status_message = _can_activate_agenda_state_prompt(session)
     if status_message is not None:
         session.status_message = status_message
@@ -773,7 +756,7 @@ def _handle_state_prompt_activation(session: AgendaRuntimeSession) -> None:
     _activate_state_selection_prompt(session, _state_choices_for_selected_row(session))
 
 
-def _handle_refile_prompt_activation(session: AgendaRuntimeSession) -> None:
+def _handle_refile_prompt_activation(session: AgendaSession) -> None:
     if selected_task_row(session) is None:
         session.status_message = "Action available only on task rows"
         return
@@ -784,7 +767,7 @@ def _handle_refile_prompt_activation(session: AgendaRuntimeSession) -> None:
     )
 
 
-def _handle_clock_prompt_activation(session: AgendaRuntimeSession) -> None:
+def _handle_clock_prompt_activation(session: AgendaSession) -> None:
     if selected_task_row(session) is None:
         session.status_message = "Action available only on task rows"
         return
@@ -795,31 +778,7 @@ def _handle_clock_prompt_activation(session: AgendaRuntimeSession) -> None:
     )
 
 
-def _handle_active_prompt_event(session: AgendaRuntimeSession, event: InteractiveEvent) -> bool:
-    active_prompt = session.active_prompt
-    if active_prompt is None:
-        return True
-    if isinstance(event, TimeoutEvent):
-        return True
-    if isinstance(event, KeypressEvent) and event.key == "ESC":
-        if active_prompt.cancel is not None:
-            active_prompt.cancel()
-        else:
-            session.status_message = active_prompt.cancel_status
-        session.active_prompt = None
-        return True
-    prompt_result = apply_prompt_event(active_prompt.prompt, event)
-    if prompt_result.submitted:
-        keep_open = active_prompt.submit_callback()
-        if not keep_open:
-            session.active_prompt = None
-        return True
-    if prompt_result.changed and active_prompt.preview is not None:
-        active_prompt.preview()
-    return True
-
-
-def _handle_help_modal_event(session: AgendaRuntimeSession, event: InteractiveEvent) -> bool:
+def _handle_help_modal_event(session: AgendaSession, event: InteractiveEvent) -> bool:
     if not session.show_help_modal:
         return False
     if not isinstance(event, TimeoutEvent):
@@ -827,7 +786,7 @@ def _handle_help_modal_event(session: AgendaRuntimeSession, event: InteractiveEv
     return True
 
 
-def _handle_navigation_key(session: AgendaRuntimeSession, key: str) -> bool:
+def _handle_navigation_key(session: AgendaSession, key: str) -> bool:
     handler = {
         "n": lambda: _move_selection(session, 1),
         "DOWN": lambda: _move_selection(session, 1),
@@ -847,7 +806,7 @@ def _handle_navigation_key(session: AgendaRuntimeSession, key: str) -> bool:
 
 
 def _handle_mutation_key(
-    session: AgendaRuntimeSession,
+    session: AgendaSession,
     key: str,
     run_external: Callable[[Callable[[], None]], None],
 ) -> bool:
@@ -867,7 +826,7 @@ def _handle_mutation_key(
 
 
 def _handle_prompt_activation_key(
-    session: AgendaRuntimeSession,
+    session: AgendaSession,
     key: str,
     _run_external_callback: Callable[[Callable[[], None]], None],
 ) -> bool:
@@ -885,7 +844,7 @@ def _handle_prompt_activation_key(
 
 
 def _handle_keypress_event(
-    session: AgendaRuntimeSession,
+    session: AgendaSession,
     key: str,
     run_external: Callable[[Callable[[], None]], None] | None = None,
 ) -> bool:
@@ -912,13 +871,13 @@ def passthrough_run_external(callback: Callable[[], None]) -> None:
     callback()
 
 
-def _run_external(session: AgendaRuntimeSession, callback: Callable[[], None]) -> None:
+def _run_external(session: AgendaSession, callback: Callable[[], None]) -> None:
     runner = session.run_external or passthrough_run_external
     runner(callback)
 
 
 def handle_interactive_event(
-    session: AgendaRuntimeSession,
+    session: AgendaSession,
     event: InteractiveEvent,
     run_external: Callable[[Callable[[], None]], None],
 ) -> bool:
@@ -926,7 +885,7 @@ def handle_interactive_event(
     if _handle_help_modal_event(session, event):
         return True
     if session.active_prompt is not None:
-        return _handle_active_prompt_event(session, event)
+        return handle_active_prompt_event(session, event)
     if isinstance(event, TimeoutEvent):
         _refresh_session_if_minute_changed(session)
         return True
@@ -935,7 +894,7 @@ def handle_interactive_event(
     return _handle_keypress_event(session, event.key, run_external)
 
 
-def run_agenda_interactive(console: Console, session: AgendaRuntimeSession) -> None:
+def run_agenda_interactive(console: Console, session: AgendaSession) -> None:
     """Run the interactive agenda loop."""
     run_external: list[Callable[[Callable[[], None]], None]] = [passthrough_run_external]
 
@@ -945,6 +904,7 @@ def run_agenda_interactive(console: Console, session: AgendaRuntimeSession) -> N
 
     session.run_external = run_external[0]
     interactive_loop(
+        console=console,
         render=lambda: interactive_agenda_renderable(console, session),
         on_event=lambda event: handle_interactive_event(session, event, run_external[0]),
         bind_run_external=_bind_run_external,

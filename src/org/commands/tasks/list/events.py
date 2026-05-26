@@ -18,12 +18,12 @@ from org.commands.interactive_common import (
     InteractiveEvent,
     InteractiveHelpEntry,
     InteractivePromptState,
-    KeypressEvent,
     TimeoutEvent,
     advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
-    apply_prompt_event,
+    create_interactive_prompt_state,
+    handle_active_prompt_event,
     heading_locator,
     local_now,
     resolve_heading_locator,
@@ -444,25 +444,10 @@ def _activate_prompt(
     cancel: Callable[[], None] | None = None,
 ) -> None:
     """Attach one active footer prompt to the tasks list session."""
-
-    def _submit() -> bool:
-        active_prompt = session.active_prompt
-        if active_prompt is None:
-            return False
-        return submit_value(active_prompt.prompt.value)
-
-    def _preview() -> None:
-        active_prompt = session.active_prompt
-        if active_prompt is None or preview_value is None:
-            return
-        preview_value(active_prompt.prompt.value)
-
-    session.active_prompt = InteractivePromptState(
-        prompt=FooterPromptState(label=config.prompt.label),
-        cancel_status=config.cancel_status,
-        invalid_status=config.invalid_status,
-        submit_callback=_submit,
-        preview=None if preview_value is None else _preview,
+    session.active_prompt = create_interactive_prompt_state(
+        config,
+        submit_value=submit_value,
+        preview_value=preview_value,
         cancel=cancel,
     )
 
@@ -604,31 +589,6 @@ def _handle_closed_prompt_activation(session: TasksListSession) -> None:
     _activate_planning_prompt(session, "closed")
 
 
-def _handle_active_prompt_event(session: TasksListSession, event: InteractiveEvent) -> bool:
-    active_prompt = session.active_prompt
-    if active_prompt is None:
-        return True
-    if isinstance(event, TimeoutEvent):
-        return True
-    if isinstance(event, KeypressEvent) and event.key == "ESC":
-        if active_prompt.cancel is not None:
-            active_prompt.cancel()
-        else:
-            session.status_message = active_prompt.cancel_status
-        session.active_prompt = None
-        return True
-
-    prompt_result = apply_prompt_event(active_prompt.prompt, event)
-    if prompt_result.submitted:
-        keep_open = active_prompt.submit_callback()
-        if not keep_open:
-            session.active_prompt = None
-        return True
-    if prompt_result.changed and active_prompt.preview is not None:
-        active_prompt.preview()
-    return True
-
-
 def _handle_help_modal_event(session: TasksListSession, event: InteractiveEvent) -> bool:
     if not session.show_help_modal:
         return False
@@ -732,7 +692,7 @@ def handle_interactive_event(
     if _handle_help_modal_event(session, event):
         return True
     if session.active_prompt is not None:
-        return _handle_active_prompt_event(session, event)
+        return handle_active_prompt_event(session, event)
     if isinstance(event, TimeoutEvent):
         return True
     if isinstance(event, InputEvent):

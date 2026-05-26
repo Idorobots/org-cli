@@ -17,7 +17,11 @@ from rich.console import Console
 from org import config as config_module
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
-from org.commands.interactive_common import KeypressEvent, heading_locator
+from org.commands.interactive_common import (
+    KeypressEvent,
+    handle_active_prompt_event,
+    heading_locator,
+)
 from org.commands.search_common import filter_nodes_by_search
 from org.commands.tasks import capture as capture_command
 from org.commands.tasks.list import command as tasks_list
@@ -1096,7 +1100,7 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
 
     session.run_external = _run_prompt_external
 
-    consumed = tasks_list_events._handle_active_prompt_event(session, KeypressEvent("ENTER"))
+    consumed = handle_active_prompt_event(session, KeypressEvent("ENTER"))
     live.update(
         tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
         refresh=True,
@@ -1138,7 +1142,7 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
             events.append("input-start")
 
     live = cast("Live", _LiveStub())
-    consumed = tasks_list_events._handle_active_prompt_event(session, KeypressEvent("b"))
+    consumed = handle_active_prompt_event(session, KeypressEvent("b"))
     live.update(
         tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
         refresh=True,
@@ -1149,7 +1153,7 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
     assert session.search_text == "b"
     assert session.status_message == "1 matches"
 
-    consumed = tasks_list_events._handle_active_prompt_event(session, KeypressEvent("ESC"))
+    consumed = handle_active_prompt_event(session, KeypressEvent("ESC"))
     live.update(
         tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
         refresh=True,

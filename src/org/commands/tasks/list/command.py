@@ -380,6 +380,7 @@ def _run_tasks_list_interactive(
     session.run_external = run_external[0]
 
     interactive_loop(
+        console=console,
         render=lambda: layout.interactive_tasks_list_renderable(console, session),
         on_event=lambda event: events.handle_interactive_event(session, event, run_external[0]),
         bind_run_external=_bind_run_external,

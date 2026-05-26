@@ -27,6 +27,7 @@ from org.commands.interactive_common import (
     advance_timestamp_by_repeater,
     decode_escape_sequence,
     detail_org_block,
+    handle_active_prompt_event,
     heading_locator,
     local_now,
 )
@@ -1444,7 +1445,7 @@ def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.Monke
 
     session.run_external = _run_prompt_external
 
-    consumed = agenda_events._handle_active_prompt_event(session, KeypressEvent("ENTER"))
+    consumed = handle_active_prompt_event(session, KeypressEvent("ENTER"))
     live.update(agenda_layout.interactive_agenda_renderable(live.console, session), refresh=True)
 
     assert consumed is True
@@ -1485,7 +1486,7 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
             events.append("input-start")
 
     live = cast("Live", _LiveStub())
-    consumed = agenda_events._handle_active_prompt_event(session, InputEvent("focus"))
+    consumed = handle_active_prompt_event(session, InputEvent("focus"))
     live.update(agenda_layout.interactive_agenda_renderable(live.console, session), refresh=True)
 
     assert consumed is True
@@ -1493,7 +1494,7 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
     assert session.search_text == "focus"
     assert session.status_message == "1 matches"
 
-    consumed = agenda_events._handle_active_prompt_event(session, KeypressEvent("ESC"))
+    consumed = handle_active_prompt_event(session, KeypressEvent("ESC"))
     live.update(agenda_layout.interactive_agenda_renderable(live.console, session), refresh=True)
 
     assert consumed is True

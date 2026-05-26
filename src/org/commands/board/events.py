@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 import typer
 
@@ -18,15 +18,13 @@ from org.commands.interactive_common import (
     HeadingLocator,
     InputEvent,
     InteractiveEvent,
-    InteractiveHelpEntry,
     InteractivePromptState,
-    KeyBinding,
-    KeypressEvent,
     TimeoutEvent,
     advance_timestamp_by_repeater,
     append_repeat_transition,
     apply_help_modal_key,
-    apply_prompt_event,
+    create_interactive_prompt_state,
+    handle_active_prompt_event,
     heading_locator,
     interactive_loop,
     local_now,
@@ -66,14 +64,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger("org")
 
 
-class BoardColumnLike(Protocol):
-    @property
-    def title(self) -> str: ...
-
-    @property
-    def nodes(self) -> list[Heading]: ...
-
-
 @dataclass
 class BoardColumn:
     """One board column with title and assigned tasks."""
@@ -99,59 +89,18 @@ class BoardSession:
     nodes: list[Heading]
     todo_states: list[str]
     done_states: list[str]
-    columns: Sequence[BoardColumnLike]
+    columns: Sequence[BoardColumn]
     color_enabled: bool
     selected_column_index: int
     selected_row_index: int
     scroll_offset: int
     status_message: str
-    all_columns: Sequence[BoardColumnLike] = field(default_factory=list)
+    all_columns: Sequence[BoardColumn] = field(default_factory=list)
     search_text: str = ""
     search_prompt_previous_text: str | None = None
     show_help_modal: bool = False
     active_prompt: InteractivePromptState | None = None
     run_external: Callable[[Callable[[], None]], None] | None = None
-
-
-_BOARD_HELP_ENTRIES = [
-    InteractiveHelpEntry("Esc/q", "Exit the board and return to the shell."),
-    InteractiveHelpEntry(
-        "Up/Down, Wheel",
-        "Move the highlighted task up or down within the selected column.",
-    ),
-    InteractiveHelpEntry(
-        "Left/Right",
-        "Move focus across columns without changing task data.",
-    ),
-    InteractiveHelpEntry(
-        "Enter",
-        "Open the selected task subtree in the external editor workflow.",
-    ),
-    InteractiveHelpEntry(
-        "a",
-        "Capture a new task from configured templates and reload the board.",
-    ),
-    InteractiveHelpEntry(
-        "$",
-        "Archive the selected task subtree using standard archive rules.",
-    ),
-    InteractiveHelpEntry(
-        "/",
-        "Open search prompt and filter visible tasks in every column.",
-    ),
-    InteractiveHelpEntry(
-        "x",
-        "Clear active search filter and restore full board.",
-    ),
-    InteractiveHelpEntry(
-        "S-Left/S-Right",
-        "Step TODO state backward or forward using document state order.",
-    ),
-    InteractiveHelpEntry(
-        "S-Up/S-Down",
-        "Increase or decrease priority across A/B/C/none.",
-    ),
-]
 
 
 def _coerce_latest_timestamp_start(node: Heading) -> datetime | None:
@@ -313,21 +262,21 @@ def _max_column_nodes(columns: list[BoardColumn]) -> int:
     return max((len(column.nodes) for column in columns), default=0)
 
 
-def _column_with_filtered_nodes(column: BoardColumnLike, search_text: str) -> BoardColumn:
+def _column_with_filtered_nodes(column: BoardColumn, search_text: str) -> BoardColumn:
     """Return one board column with nodes filtered by search text."""
     filtered_nodes = filter_nodes_by_search(column.nodes, search_text)
     return BoardColumn(title=column.title, nodes=filtered_nodes)
 
 
 def _filter_columns_by_search(
-    columns: Sequence[BoardColumnLike],
+    columns: Sequence[BoardColumn],
     search_text: str,
 ) -> list[BoardColumn]:
     """Filter nodes in each column by interactive search text."""
     return [_column_with_filtered_nodes(column, search_text) for column in columns]
 
 
-def _visible_task_count(columns: Sequence[BoardColumnLike]) -> int:
+def _visible_task_count(columns: Sequence[BoardColumn]) -> int:
     """Return total number of visible tasks across all board columns."""
     return sum(len(column.nodes) for column in columns)
 
@@ -702,25 +651,10 @@ def _activate_prompt(
     cancel: Callable[[], None] | None = None,
 ) -> None:
     """Attach one active footer prompt to the board session."""
-
-    def _submit() -> bool:
-        active_prompt = session.active_prompt
-        if active_prompt is None:
-            return False
-        return submit_value(active_prompt.prompt.value)
-
-    def _preview() -> None:
-        active_prompt = session.active_prompt
-        if active_prompt is None or preview_value is None:
-            return
-        preview_value(active_prompt.prompt.value)
-
-    session.active_prompt = InteractivePromptState(
-        prompt=FooterPromptState(label=config.prompt.label),
-        cancel_status=config.cancel_status,
-        invalid_status=config.invalid_status,
-        submit_callback=_submit,
-        preview=None if preview_value is None else _preview,
+    session.active_prompt = create_interactive_prompt_state(
+        config,
+        submit_value=submit_value,
+        preview_value=preview_value,
         cancel=cancel,
     )
 
@@ -784,31 +718,6 @@ def _handle_capture_prompt_activation(session: BoardSession) -> None:
 
 def _handle_search_prompt_activation(session: BoardSession) -> None:
     _activate_search_prompt(session)
-
-
-def _handle_active_prompt_event(session: BoardSession, event: InteractiveEvent) -> bool:
-    active_prompt = session.active_prompt
-    if active_prompt is None:
-        return True
-    if isinstance(event, TimeoutEvent):
-        return True
-    if isinstance(event, KeypressEvent) and event.key == "ESC":
-        if active_prompt.cancel is not None:
-            active_prompt.cancel()
-        else:
-            session.status_message = active_prompt.cancel_status
-        session.active_prompt = None
-        return True
-
-    prompt_result = apply_prompt_event(active_prompt.prompt, event)
-    if prompt_result.submitted:
-        keep_open = active_prompt.submit_callback()
-        if not keep_open:
-            session.active_prompt = None
-        return True
-    if prompt_result.changed and active_prompt.preview is not None:
-        active_prompt.preview()
-    return True
 
 
 def _handle_help_modal_event(session: BoardSession, event: InteractiveEvent) -> bool:
@@ -892,15 +801,8 @@ def _handle_keypress_event(
     return True
 
 
-def _flow_board_key_bindings(_session: BoardSession) -> dict[str, KeyBinding]:
-    return {
-        "S-LEFT": KeyBinding(lambda: True, requires_live_pause=False),
-        "S-RIGHT": KeyBinding(lambda: True, requires_live_pause=False),
-        "ENTER": KeyBinding(lambda: True, requires_live_pause=True),
-    }
-
-
 def passthrough_run_external(callback: Callable[[], None]) -> None:
+    """Run an external callback immediately."""
     callback()
 
 
@@ -914,10 +816,11 @@ def handle_interactive_event(
     event: InteractiveEvent,
     run_external: Callable[[Callable[[], None]], None],
 ) -> bool:
+    """Handle one flow-board interactive event."""
     if _handle_help_modal_event(session, event):
         return True
     if session.active_prompt is not None:
-        return _handle_active_prompt_event(session, event)
+        return handle_active_prompt_event(session, event)
     if isinstance(event, TimeoutEvent):
         return True
     if isinstance(event, InputEvent):
@@ -926,6 +829,7 @@ def handle_interactive_event(
 
 
 def run_flow_board_interactive(console: Console, session: BoardSession) -> None:
+    """Run the interactive flow-board loop."""
     run_external: list[Callable[[Callable[[], None]], None]] = [passthrough_run_external]
 
     def _bind_run_external(callback: Callable[[Callable[[], None]], None]) -> None:
@@ -934,37 +838,9 @@ def run_flow_board_interactive(console: Console, session: BoardSession) -> None:
 
     session.run_external = run_external[0]
     interactive_loop(
+        console=console,
         render=lambda: _interactive_flow_board_renderable(console, session),
         on_event=lambda event: handle_interactive_event(session, event, run_external[0]),
         bind_run_external=_bind_run_external,
         timeout_seconds=None,
     )
-
-
-__all__ = [
-    name
-    for name in globals()
-    if name.startswith(("_handle_", "_activate_"))
-    or name
-    in {
-        "passthrough_run_external",
-        "BoardColumn",
-        "BoardColumnSpec",
-        "BoardSession",
-        "filter_recent_completed_nodes",
-        "resolved_states",
-        "create_flow_board_session",
-        "move_selection_horizontal",
-        "selected_node",
-        "step_heading_state",
-        "reload_session",
-        "apply_state_move",
-        "resolve_column_specs",
-        "build_selector_board_columns",
-        "compile_view_column_specs",
-        "_run_external",
-        "_flow_board_key_bindings",
-        "run_flow_board_interactive",
-        "handle_interactive_event",
-    }
-]
