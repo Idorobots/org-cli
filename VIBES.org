@@ -7353,7 +7353,10 @@ Introduce linter rules that make sure these function cannot be used.
 - Sparkline for freequency plots
 *** Config handling is too generic
 Split config handling to be per-command and have the config file reflect that.
-*** TODO Interactive loop refactor
+*** REWORKED Interactive loop refactor
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-26 Tue 21:27]
+:END:
 See the following plan for details: [[file:./plans/interactive-loop-refactor.md]]
 
 *** DONE Refactor to be more MVC-ish
@@ -7365,9 +7368,10 @@ A domain should be defined with all common utils reorganized as domain specific 
 For command output rendering, a common toolkit of widgets and widget-adjacent rendering tools should be extracted.
 Lastly, some common logic should be extracted that allows performing actions generically. Views should only trigger those actions and actions should modify the domain.
 
-** Agenda usability improvements                                                                :UX:
+** TODO Agenda usability improvements                                                           :UX:
 *** Agenda non-interactive output format
 - Should be adjusted to "look and feel" just like the interactive one.
+*** Show state transition for repeats on the timeline
 *** Agenda frequency plot
 Show a task frequency plot in the agenda header and highlight the bucket that corresponds to the selected range.
 *** DONE Agenda should show tasks that repeat on future dates
@@ -7381,8 +7385,96 @@ The same should be true for tasks that have a repeating deadline.
 
 There should be a CLI switch for enabling/disabling showing these "future repeats": =--future-repeats/--no-future-repeats=. By default these should be shown.
 
-*** Customizable agenda views
-- Similar to board, allow ordering sections.
+*** REWORKED Query language date handling functions                                          :Query:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-05-31 Sun 12:47] \\
+  Needed some manual changes.
+:END:
+Query language should support comparisona and equality of datetimes, dates, times and timedeltas.
+It should also support subtraction and addition between datetimes/dates/times and timedeltas.
+
+Operators:
+- =>=, =<= ~>=~, ~<=~ and ~==~ should suport comparison between timestamps, datetimes, dates, times and timedaltas, it is OK if only objects of the same type are comparable.
+- =+= and =-= should support support additions and subtractions of a base type (timestmps, datetimes, dates, times or timedeltas) and timedeltas. Either LHS or RHS of the expression can be of the base type, but the other side must be a timedelta object.
+
+In addition to that, several new functions should be added:
+- =date(timestamp)= returns =.timestamp.start.date()=, can be applied to =datetime= objects returning just =datetime.date()=.
+- =timedelta(N, T)= - returns a =timedelta= object representing =N= periods of type =T=. The =T= type must be either of =y=, =m=, =w=, =d=, =h=, =min=, =sec=, representing years, months, weeks, days, hours, minutes and seconds respectively.
+- =weeks(N)=, =days(N)=, =hours(N)=, =minutes(N)=, =seconds(N)= - return a =timedelta= object representing the specified number of periods,
+- =years(N)= - returns a =timedelta=-like object representing a number of years, when added/subtracted from a =datetime= object it should shift the date by exactly =N= years (respective of leap years, etc).
+- =months(N)= - returns a =timedelta=-like object representing a number of months, when added/subtracted from a =datetime= object it should shift the date by exactly =N= months (respective of leap years, etc). When the day of the result is not a proper value for that month, it should be clamped to the max days of that month.
+- =now= - returns a datetime object that represents current date and time.
+- =time(string)= returns a time object represented by the string value passed to the function.
+- =datetime(value)= - coerces a string or date objects to datetime. For string arguments, returns a datetime object that's represented by the string value passed to the function (it is OK if only the ISO format is supported).
+
+Ideally, it should be possible to run queries such as following successfully after this update:
+
+#+begin_example
+# Same time, two days from now.
+now + days(2)
+
+# Find all tasks with deadline today
+select(date(.deadline) == date(now))
+
+# Find all tasks with a deadline within a time range.
+select(let datetime("2025-04-01") as $d in (.deadline.start >= $d and .deadline.start < ($d + months(1)))
+#+end_example
+
+*** TODO Customizable agenda views                                                          :Config:
+The agenda command should support customizable views in a similar way that the board commands supports them. The configuration file should be extended with a section dedicated to the agenda that allows defining views.
+
+Each view should have a name and an ordered list of sections.
+Each section has a =name= that can be styled with Rich markup, a =filter= used for selecting tasks that are supposed to appear in that section, =order-by= that determines the ordering of tasks in that section, and a =style= that determines how to markup the task lines in that section. Optionally, a section can have a =timeline= boolean flag that determines if tasks should be broken down by times with a =NOW= indication.
+
+Here's an example view configuration:
+
+#+begin_src yaml
+agenda:
+  views:
+    - name: stuff
+      sections:
+        - name: "[bold red]Overdue deadlines[/]"
+          filter: not(.is_completed) and date(.deadline) < $date
+          order-by: .deadline
+          style: "[bold red]"
+        - name: "[bold dim yellow]Overdue scheduled[/]"
+          filter: not(.is_completed) and date(.scheduled) < $date
+          order-by: .scheduled
+          style: "[bold dim yellow]"
+        - name: Agenda for today
+          filter: .timestamps | map(date(.) == $date) | any
+          order-by: .timestamps | map(date(.)) | .[0]
+          style: "[bold white]"
+          timeline: true
+        - name: Upcoming deadlines (30d)
+          filter: let date(.deadline) as $d in ($d > $date and $d <= ($date + days(30))
+          style: "[white]"
+#+end_src
+
+The agenda command should be updated with a =--view NAME= CLI switch that allows selecting which view to use, same as the board command. When a specific view is selected, the rendering should be done according to the views configuration. For each section:
+- add a heading line with that sections =name=,
+- use =filter= query wrapped in =select(...)= to filter down the list of tasks for that section,
+- use =order-by= query wrapped in =sort_by(...)= to order the list of tasks for that section,
+- if =timeline= is set to true, build a time table with a =NOW= indication for this section, if it's not present or =false=, tasks should be displayed in a plain manner.
+- use =style= and the current line item formating logic to build a task line item representation for each task.
+
+When executing the filter or order-by queries during tasks selection for a given section, the query language context should include a =$date= value representing the date of that specified agenda day. Since agenda accepts a =--days= parameter, each day should be treated separately. Analogously, when viewing next or previous range, the dates should be handled separately.
+
+When a view is not configured a default view shoud be used:
+
+#+begin_src yaml
+agenda:
+  views:
+    - name: default
+      sections:
+        - name: "[bold dim white]Agenda[/]"
+          filter: .timestamps | map(date(.) == $date) | any
+          order-by: .timestamps | map(date(.)) | .[0]
+          style: "[bold white]"
+          timeline: true
+#+end_src
+
+*** Customizable agenda view columns                                                        :Config:
 - Similar to the superagenda thingie for Emacs
 
 #+begin_src yaml
@@ -7393,7 +7485,10 @@ agenda:
         - name: Category
           data: .category
         - name: Time
-          data: if (. | is_overdue) then (. | timediff(now())) else (.scheduled or .deadline or .closed)
+          data: |
+            if (.scheduled.start < $date or .deadline.start < $date)
+            then (. | timediff(now()))
+            else (.scheduled or .deadline or .closed)
         - name: State
           data: |
             if .todo == "CANCELLED"
@@ -7405,25 +7500,7 @@ agenda:
           data: .title.stripped
         - name: Tags
           data: .tags
-          justify: right
-      sections:
-        - name: Overdue deadlines
-          filter: .deadline != null and (.deadline < $date)
-          style: "[bold red]"
-          timeline: false
-        - name: Overdue scheduled
-          filter: .scheduled != null and (.deadline < $date)
-          style: "[bold dim yellow]"
-          timeline: false
-        - name: Deadlines for today
-          filter: .deadline.date == $date
-          style: "[bold white]"
-        - name: Scheduled for today
-          filter: .scheduled.date == $date
-          style: "[white]"
-        - name: Upcoming deadlines (30d)
-          filter: .deadline != null and not(. | is_overdue)
-          style: "[white]"
+          align: right
 #+end_src
 
 *** Agenda review/standalone review command
@@ -7433,7 +7510,7 @@ Could be just a view of the agenda itself =org agenda --view review=
 =--notify= and =agenda.notify-command= setting to send reminders about scheduled tasks that are about to start.
 *** Tasks that span multiple hours should be shown as a block in the agenda view.
 
-*** Agenda plan subcommand
+*** Agenda plan action
 Interactively ask what needs to be done today, use a configurable scenario:
 
 #+begin_src yaml
@@ -7451,9 +7528,9 @@ agenda:
           template: fun-time-activity
 #+end_src
 
-The command will prompt the user for each step multiple times (empty response moves to the next step). Each proper input will be added to a growing list of tasks. Once done (final step with empty response) the user will see a summary of generated tasks with an option to either accept it, drop it or make edits. Upon accepting, the tasks will be added to their respective documents and the documents will be saved.
+The action will prompt the user for each step multiple times (empty response moves to the next step). Each proper input will be added to a growing list of tasks. Once done (final step with empty response) the user will see a summary of generated tasks with an option to either accept it, drop it or make edits. Upon accepting, the tasks will be added to their respective documents and the documents will be saved.
 
-When typing, the command should propose existing tasks that are reccurent (either scheduled or deadline with a repeater) by title. When a newly added task matches an existing recurrent task by title it should be "reused" instead of creating a duplicate (reuse as in, scheduled/deadline set to the current day while preserving the repeater).
+When typing, the action should propose existing tasks by title. When a newly added task matches an existing recurrent task by title it should be "reused" instead of creating a duplicate (reuse as in, scheduled set to the current day while preserving the repeater if present).
 
 ** Query language extensions
 *** Query language improvements

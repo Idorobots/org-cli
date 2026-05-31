@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from datetime import date, datetime, time, timedelta
+from typing import cast
 
 import org_parser
 import pytest
@@ -11,6 +13,7 @@ from org_parser.element import Repeat
 from org_parser.text import RichText
 from org_parser.time import Clock, Timestamp
 
+import org.query_language.runtime as runtime_module
 from org.query_language import EvalContext, QueryRuntimeError, Stream, compile_query_text
 from tests.conftest import node_from_org
 
@@ -1188,3 +1191,173 @@ def test_runtime_broadcast_with_singleton_side_variants() -> None:
 
     assert left_singleton(Stream([2, 3]), EvalContext({})) == [3, 4]
     assert right_singleton(Stream([2, 3]), EvalContext({})) == [3, 4]
+
+
+def test_runtime_temporal_type_function_and_constructors() -> None:
+    """Temporal constructors should produce expected runtime value types."""
+    result = _execute(
+        '[ datetime("2025-04-01"), date(datetime("2025-04-01T12:30:00")), '
+        'time("10:30:15"), days(2), months(1) ] | map(type)',
+        [None],
+        None,
+    )
+
+    assert result == [["datetime", "date", "time", "timedelta", "timedelta"]]
+
+
+def test_runtime_now_function_returns_datetime(monkeypatch: pytest.MonkeyPatch) -> None:
+    """now should emit the current datetime."""
+    fixed_now = datetime(2026, 5, 31, 9, 45, 0)
+    monkeypatch.setattr(runtime_module, "_current_datetime", lambda: fixed_now)
+
+    result = _execute("now", [None], None)
+    assert result == [fixed_now]
+
+
+def test_runtime_temporal_comparisons_support_same_type_values() -> None:
+    """Temporal comparisons should work for same-type operands."""
+    result = _execute(
+        'datetime("2025-04-02") > datetime("2025-04-01"), '
+        'date(datetime("2025-04-02")) >= date(datetime("2025-04-02")), '
+        'time("10:30:00") < time("11:00:00"), '
+        'days(2) == timedelta(48, "h")',
+        [None],
+        None,
+    )
+
+    assert result == [(True, True, True, True)]
+
+
+def test_runtime_temporal_comparisons_reject_mixed_types() -> None:
+    """Temporal comparisons should reject mixed temporal operand types."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('datetime("2025-04-01") > date(datetime("2025-04-01"))', [None], None)
+
+
+def test_runtime_temporal_arithmetic_supports_datetime_date_time_and_timedelta() -> None:
+    """Temporal arithmetic should support supported base types and offsets."""
+    result = _execute(
+        'datetime("2025-04-01T10:00:00") + days(2), '
+        'date(datetime("2025-04-01T10:00:00")) + weeks(1), '
+        'time("10:00:00") + minutes(30), '
+        "days(2) + hours(12)",
+        [None],
+        None,
+    )
+
+    assert result == [
+        (
+            datetime(2025, 4, 3, 10, 0),
+            date(2025, 4, 8),
+            time(10, 30),
+            timedelta(days=2, hours=12),
+        ),
+    ]
+
+
+def test_runtime_temporal_arithmetic_supports_org_values() -> None:
+    """Temporal arithmetic should shift org wrappers while preserving wrapper type."""
+    result = _execute(
+        'timestamp("<2025-04-01 Tue 10:00>") + days(2), '
+        'clock("<2025-04-01 Tue 10:00-11:00>") + hours(2), '
+        'repeat("<2025-04-01 Tue>", "TODO", "DONE") + weeks(1)',
+        [None],
+        None,
+    )
+
+    timestamp_value, clock_value, repeat_value = cast(
+        "tuple[object, object, object]",
+        result[0],
+    )
+    assert isinstance(timestamp_value, Timestamp)
+    assert isinstance(clock_value, Clock)
+    assert isinstance(repeat_value, Repeat)
+    assert str(timestamp_value) == "<2025-04-03 Thu 10:00>"
+    assert str(clock_value) == "CLOCK: <2025-04-01 Tue 12:00-13:00>\n"
+    assert str(repeat_value) == '- State "DONE"       from "TODO"       <2025-04-08 Tue 00:00>\n'
+
+
+def test_runtime_month_and_year_arithmetic_clamps_day() -> None:
+    """Month and year arithmetic should clamp invalid month-end dates."""
+    result = _execute(
+        'datetime("2024-01-31T10:00:00") + months(1), '
+        'datetime("2024-02-29T10:00:00") + years(1), '
+        'datetime("2025-03-31T10:00:00") - months(1)',
+        [None],
+        None,
+    )
+
+    assert result == [
+        (
+            datetime(2024, 2, 29, 10, 0),
+            datetime(2025, 2, 28, 10, 0),
+            datetime(2025, 2, 28, 10, 0),
+        ),
+    ]
+
+
+def test_runtime_time_arithmetic_rejects_day_or_calendar_offsets() -> None:
+    """Standalone time arithmetic should reject offsets with day or calendar parts."""
+    with pytest.raises(QueryRuntimeError):
+        _execute('time("10:00:00") + days(1)', [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute('time("10:00:00") + months(1)', [None], None)
+
+
+def test_runtime_temporal_helpers_validate_input_types() -> None:
+    """Temporal constructor helpers should validate unsupported inputs."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("datetime(1)", [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute("date(1)", [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute("time(1)", [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute('timedelta(1.5, "d")', [None], None)
+    with pytest.raises(QueryRuntimeError):
+        _execute('timedelta(1, "fortnight")', [None], None)
+
+
+def test_runtime_sort_and_extrema_support_temporal_values() -> None:
+    """sort_by, max, and min should support temporal comparable values."""
+    sorted_values = _execute(
+        ".[0] | .[] | sort_by(.)",
+        [[datetime(2025, 4, 1), datetime(2025, 4, 3), datetime(2025, 4, 2)]],
+        None,
+    )
+    max_value = _execute("max", [timedelta(days=1), timedelta(days=3)], None)
+    min_value = _execute("min", [time(10, 0), time(9, 30)], None)
+
+    assert sorted_values == [datetime(2025, 4, 3), datetime(2025, 4, 2), datetime(2025, 4, 1)]
+    assert max_value == [timedelta(days=3)]
+    assert min_value == [time(9, 30)]
+
+
+def test_runtime_temporal_acceptance_examples(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Acceptance-example temporal queries should execute successfully."""
+    fixed_now = datetime(2025, 4, 15, 9, 0, 0)
+    monkeypatch.setattr(runtime_module, "_current_datetime", lambda: fixed_now)
+    nodes = [
+        *node_from_org(
+            """* TODO Today
+DEADLINE: <2025-04-15 Tue 18:00>
+* TODO This Month
+DEADLINE: <2025-04-20 Sun 10:00>
+* TODO Next Month
+DEADLINE: <2025-05-01 Thu 09:00>
+""",
+        ),
+    ]
+
+    same_time = _execute("now + days(2)", [None], None)
+    today = _execute(".[] | select(date(.deadline) == date(now)) | .title_text", nodes, None)
+    range_result = _execute(
+        '.[] | select(let datetime("2025-04-01") as $d in '
+        "(.deadline.start >= $d and .deadline.start < ($d + months(1)))) | .title_text",
+        nodes,
+        None,
+    )
+
+    assert same_time == [fixed_now + timedelta(days=2)]
+    assert today == ["Today"]
+    assert range_result == ["Today", "This Month"]

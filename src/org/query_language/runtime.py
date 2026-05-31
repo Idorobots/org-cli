@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import types
+from calendar import monthrange
 from collections.abc import (
     Callable,
     Iterable,
@@ -15,7 +16,7 @@ from collections.abc import (
     Sequence as CollectionSequence,
 )
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from hashlib import sha256
 from itertools import product
 from math import trunc
@@ -62,10 +63,21 @@ class Stream(list[object]):
 
 
 _OPERATOR_NOT_HANDLED = object()
-type ComparableKey = int | float | str | datetime
+type ComparableKey = int | float | str | datetime | time | timedelta
 
 
 logger = logging.getLogger("org")
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarDelta:
+    """Calendar-based duration supporting exact month/year shifts."""
+
+    months: int = 0
+
+    def __neg__(self) -> CalendarDelta:
+        """Return negated calendar delta."""
+        return CalendarDelta(months=-self.months)
 
 
 def _as_string_value(value: object) -> str | None:
@@ -75,6 +87,187 @@ def _as_string_value(value: object) -> str | None:
     if isinstance(value, RichText):
         return value.text
     return None
+
+
+def _as_numeric_value(value: object) -> int | float | None:
+    """Return numeric value excluding booleans."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    return None
+
+
+def _as_org_datetime(value: object) -> datetime | None:
+    """Return start datetime for org timestamp-like values."""
+    timestamp_value = _as_timestamp_comparable(value)
+    if timestamp_value is None:
+        return None
+    return timestamp_value.start
+
+
+def _is_temporal_amount(value: object) -> bool:
+    """Return whether value can act as temporal offset."""
+    return isinstance(value, (timedelta, CalendarDelta))
+
+
+def _add_months(value: datetime, months: int) -> datetime:
+    """Add months to a datetime while clamping day to month length."""
+    year = value.year + (value.month - 1 + months) // 12
+    month = (value.month - 1 + months) % 12 + 1
+    day = min(value.day, monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day)
+
+
+def _time_from_delta(base: time, delta_value: timedelta) -> time:
+    """Shift a time by timedelta modulo one day while preserving tzinfo/fold."""
+    if abs(delta_value.total_seconds()) >= 24 * 60 * 60:
+        raise QueryRuntimeError("time arithmetic supports only hours, minutes, and seconds")
+    base_datetime = datetime.combine(date(2000, 1, 1), base)
+    shifted = base_datetime + delta_value
+    day_offset = shifted.date() - base_datetime.date()
+    if day_offset.days != 0:
+        shifted -= timedelta(days=day_offset.days)
+    return shifted.timetz() if base.tzinfo is not None else shifted.time().replace(fold=base.fold)
+
+
+def _shift_datetime_value(value: datetime, delta_value: object, operator: str) -> datetime:
+    """Shift datetime value by timedelta-like operand."""
+    signed_delta = _signed_temporal_amount(delta_value, operator)
+    if isinstance(signed_delta, timedelta):
+        return value + signed_delta
+    return _add_months(value, signed_delta.months)
+
+
+def _shift_date_value(value: date, delta_value: object, operator: str) -> date:
+    """Shift date value by timedelta-like operand."""
+    shifted = _shift_datetime_value(datetime.combine(value, time.min), delta_value, operator)
+    return shifted.date()
+
+
+def _shift_time_value(value: time, delta_value: object, operator: str) -> time:
+    """Shift time value by sub-day timedelta-like operand."""
+    signed_delta = _signed_temporal_amount(delta_value, operator)
+    if isinstance(signed_delta, CalendarDelta):
+        raise QueryRuntimeError("time arithmetic supports only hours, minutes, and seconds")
+    return _time_from_delta(value, signed_delta)
+
+
+def _signed_temporal_amount(value: object, operator: str) -> timedelta | CalendarDelta:
+    """Return timedelta-like operand with operator sign applied."""
+    if not _is_temporal_amount(value):
+        raise QueryRuntimeError(f"{operator} operator requires a temporal offset")
+    if operator == "+":
+        return cast("timedelta | CalendarDelta", value)
+    if isinstance(value, timedelta):
+        return -value
+    return -cast("CalendarDelta", value)
+
+
+def _shift_org_value(value: object, delta_value: object, operator: str) -> object:
+    """Shift org timestamp-like wrapper while preserving wrapper shape."""
+    if isinstance(value, Timestamp):
+        return _shift_timestamp(value, delta_value, operator)
+    if isinstance(value, Clock):
+        if value.timestamp is None:
+            raise QueryRuntimeError("Clock timestamp is missing")
+        return Clock(timestamp=_shift_timestamp(value.timestamp, delta_value, operator))
+    if isinstance(value, Repeat):
+        return Repeat(
+            before=value.before,
+            after=value.after,
+            timestamp=_shift_timestamp(value.timestamp, delta_value, operator),
+        )
+    raise QueryRuntimeError(f"Unsupported temporal base type: {_type_name(value)}")
+
+
+def _shift_timestamp(value: Timestamp, delta_value: object, operator: str) -> Timestamp:
+    """Shift Timestamp start/end values while preserving active state."""
+    start = _shift_datetime_value(value.start, delta_value, operator)
+    end = None if value.end is None else _shift_datetime_value(value.end, delta_value, operator)
+    return _timestamp_from_datetimes(start, end=end, active=value.is_active)
+
+
+def _apply_temporal_delta_arithmetic(operator: str, left: object, right: object) -> object:
+    """Apply arithmetic between timedelta-like operands."""
+    if isinstance(left, timedelta) and isinstance(right, timedelta):
+        return left + right if operator == "+" else left - right
+    if isinstance(left, timedelta) and isinstance(right, CalendarDelta):
+        raise QueryRuntimeError(
+            f"{operator} operator does not support mixing timedelta and calendar delta",
+        )
+    if isinstance(left, CalendarDelta) and isinstance(right, timedelta):
+        raise QueryRuntimeError(
+            f"{operator} operator does not support mixing calendar delta and timedelta",
+        )
+    if isinstance(left, CalendarDelta) and isinstance(right, CalendarDelta):
+        months = left.months + right.months if operator == "+" else left.months - right.months
+        return CalendarDelta(months=months)
+    return _OPERATOR_NOT_HANDLED
+
+
+def _apply_temporal_base_left(operator: str, left: object, right: object) -> object:
+    """Apply temporal arithmetic when base value is on the left."""
+    if not _is_temporal_amount(right):
+        return _OPERATOR_NOT_HANDLED
+    if _as_org_datetime(left) is not None:
+        return _shift_org_value(left, right, operator)
+    if isinstance(left, datetime):
+        return _shift_datetime_value(left, right, operator)
+    if isinstance(left, date) and not isinstance(left, datetime):
+        return _shift_date_value(left, right, operator)
+    if isinstance(left, time):
+        return _shift_time_value(left, right, operator)
+    return _OPERATOR_NOT_HANDLED
+
+
+def _apply_temporal_base_right(operator: str, left: object, right: object) -> object:
+    """Apply temporal arithmetic when base value is on the right."""
+    if not _is_temporal_amount(left):
+        return _OPERATOR_NOT_HANDLED
+    if operator != "+":
+        raise QueryRuntimeError(
+            "- operator requires temporal value on the left and offset on the right",
+        )
+    if _as_org_datetime(right) is not None:
+        return _shift_org_value(right, left, operator)
+    if isinstance(right, datetime):
+        return _shift_datetime_value(right, left, operator)
+    if isinstance(right, date) and not isinstance(right, datetime):
+        return _shift_date_value(right, left, operator)
+    if isinstance(right, time):
+        return _shift_time_value(right, left, operator)
+    return _OPERATOR_NOT_HANDLED
+
+
+def _apply_temporal_arithmetic(operator: str, left: object, right: object) -> object:
+    """Apply temporal arithmetic for base temporal values and offsets."""
+    if operator not in {"+", "-"}:
+        return _OPERATOR_NOT_HANDLED
+    temporal_delta_result = _apply_temporal_delta_arithmetic(operator, left, right)
+    if temporal_delta_result is not _OPERATOR_NOT_HANDLED:
+        return temporal_delta_result
+    left_base_result = _apply_temporal_base_left(operator, left, right)
+    if left_base_result is not _OPERATOR_NOT_HANDLED:
+        return left_base_result
+    return _apply_temporal_base_right(operator, left, right)
+
+
+def _normalized_comparable_temporal(value: object) -> tuple[str, object] | None:
+    """Return normalized same-type temporal comparable value."""
+    org_datetime = _as_org_datetime(value)
+    if org_datetime is not None:
+        return ("datetime", org_datetime)
+    comparables: tuple[tuple[type[object], str], ...] = (
+        (datetime, "datetime"),
+        (date, "date"),
+        (time, "time"),
+        (timedelta, "timedelta"),
+    )
+    for expected_type, category in comparables:
+        if isinstance(value, expected_type):
+            return (category, value)
+    return ("calendar-delta", value.months) if isinstance(value, CalendarDelta) else None
 
 
 def _stream(values: Iterable[object] = ()) -> Stream:
@@ -618,10 +811,10 @@ def _apply_numeric_operator(operator: str, left: object, right: object) -> objec
     if extended_result is not _OPERATOR_NOT_HANDLED:
         return extended_result
 
-    if not isinstance(left, (int, float)) or not isinstance(right, (int, float)):
+    left_num = _as_numeric_value(left)
+    right_num = _as_numeric_value(right)
+    if left_num is None or right_num is None:
         raise QueryRuntimeError(f"{operator} operator requires numeric operands")
-    left_num = left
-    right_num = right
 
     if operator in {"**", "*", "+", "-"}:
         return _apply_simple_numeric_operator(operator, left_num, right_num)
@@ -647,6 +840,9 @@ def _apply_extended_non_numeric_operator(operator: str, left: object, right: obj
     """Apply supported string and collection operators."""
     left_text = _as_string_value(left)
     right_text = _as_string_value(right)
+    temporal_result = _apply_temporal_arithmetic(operator, left, right)
+    if temporal_result is not _OPERATOR_NOT_HANDLED:
+        return temporal_result
 
     if operator == "*" and left_text is not None:
         if not isinstance(right, int):
@@ -735,11 +931,13 @@ def _apply_in_operator(left: object, right: object) -> bool:
 
 def _apply_equality(operator: str, left: object, right: object) -> bool:
     """Apply equality operators."""
-    left_timestamp = _as_timestamp_comparable(left)
-    right_timestamp = _as_timestamp_comparable(right)
-    if left_timestamp is not None and right_timestamp is not None:
-        left = left_timestamp.start
-        right = right_timestamp.start
+    normalized_left = _normalized_comparable_temporal(left)
+    normalized_right = _normalized_comparable_temporal(right)
+    if normalized_left is not None and normalized_right is not None:
+        left_category, left = normalized_left
+        right_category, right = normalized_right
+        if left_category != right_category:
+            return operator == "!="
     if operator == "==":
         return left == right
     return left != right
@@ -753,31 +951,39 @@ def _apply_boolean(operator: str, left: object, right: object) -> object:
 
 
 def _apply_compare(operator: str, left: object, right: object) -> bool:
-    """Apply numeric, string, or Timestamp comparison operators."""
+    """Apply numeric, string, or temporal comparison operators."""
     if left is None or right is None:
         if operator in {">", "<"}:
             return False
         return left is None and right is None
 
-    left_timestamp = _as_timestamp_comparable(left)
-    right_timestamp = _as_timestamp_comparable(right)
-    is_org_date = left_timestamp is not None and right_timestamp is not None
-    is_numeric = isinstance(left, (int, float)) and isinstance(right, (int, float))
+    normalized_left = _normalized_comparable_temporal(left)
+    normalized_right = _normalized_comparable_temporal(right)
+    is_temporal = normalized_left is not None and normalized_right is not None
+    left_num = _as_numeric_value(left)
+    right_num = _as_numeric_value(right)
+    is_numeric = left_num is not None and right_num is not None
     left_text = _as_string_value(left)
     right_text = _as_string_value(right)
     is_string = left_text is not None and right_text is not None
-    if not is_org_date and not is_numeric and not is_string:
+    if not is_temporal and not is_numeric and not is_string:
         raise QueryRuntimeError(
-            "Comparison operators require numeric, string, or Timestamp operands",
+            "Comparison operators require numeric, string, or temporal operands",
         )
-    if is_org_date:
-        left_date = cast("Timestamp", left_timestamp).start
-        right_date = cast("Timestamp", right_timestamp).start
-        return _apply_compare_datetime(operator, left_date, right_date)
+    if is_temporal:
+        left_category, left_temporal = cast("tuple[str, object]", normalized_left)
+        right_category, right_temporal = cast("tuple[str, object]", normalized_right)
+        if left_category != right_category:
+            raise QueryRuntimeError(
+                "Comparison operators require temporal operands of the same type",
+            )
+        return _apply_compare_temporal(operator, left_temporal, right_temporal)
     if is_numeric:
-        left_value_num = cast("float | int", left)
-        right_value_num = cast("float | int", right)
-        return _apply_compare_numeric(operator, left_value_num, right_value_num)
+        return _apply_compare_numeric(
+            operator,
+            cast("int | float", left_num),
+            cast("int | float", right_num),
+        )
     left_value_str = cast("str", left_text)
     right_value_str = cast("str", right_text)
     return _apply_compare_string(operator, left_value_str, right_value_str)
@@ -822,6 +1028,47 @@ def _apply_compare_datetime(operator: str, left: datetime, right: datetime) -> b
     raise QueryRuntimeError(f"Unsupported comparison operator: {operator}")
 
 
+def _apply_compare_time(operator: str, left: time, right: time) -> bool:
+    """Apply time comparisons."""
+    if operator == ">":
+        return left > right
+    if operator == "<":
+        return left < right
+    if operator == ">=":
+        return left >= right
+    if operator == "<=":
+        return left <= right
+    raise QueryRuntimeError(f"Unsupported comparison operator: {operator}")
+
+
+def _apply_compare_timedelta(operator: str, left: timedelta, right: timedelta) -> bool:
+    """Apply timedelta comparisons."""
+    if operator == ">":
+        return left > right
+    if operator == "<":
+        return left < right
+    if operator == ">=":
+        return left >= right
+    if operator == "<=":
+        return left <= right
+    raise QueryRuntimeError(f"Unsupported comparison operator: {operator}")
+
+
+def _apply_compare_temporal(operator: str, left: object, right: object) -> bool:
+    """Apply same-type temporal comparisons."""
+    if isinstance(left, datetime) and isinstance(right, datetime):
+        return _apply_compare_datetime(operator, left, right)
+    if isinstance(left, date) and isinstance(right, date):
+        return _apply_compare_string(operator, left.isoformat(), right.isoformat())
+    if isinstance(left, time) and isinstance(right, time):
+        return _apply_compare_time(operator, left, right)
+    if isinstance(left, timedelta) and isinstance(right, timedelta):
+        return _apply_compare_timedelta(operator, left, right)
+    if isinstance(left, int) and isinstance(right, int):
+        return _apply_compare_numeric(operator, left, right)
+    raise QueryRuntimeError("Unsupported temporal comparison")
+
+
 def _as_timestamp_comparable(value: object) -> Timestamp | None:
     """Convert Timestamp-like values into Timestamp for comparisons."""
     if isinstance(value, Timestamp):
@@ -851,6 +1098,7 @@ def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext)
         "analyze": _func_analyze,
         "all": _func_all,
         "any": _func_any,
+        "now": _func_now,
         "reverse": _func_reverse,
         "unique": _func_unique,
         "length": _func_length,
@@ -867,16 +1115,27 @@ def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext)
         "int": _func_int,
         "float": _func_float,
         "bool": _func_bool,
+        "date": _func_date,
+        "datetime": _func_datetime,
+        "days": _func_days,
         "ts": _func_ts,
+        "hours": _func_hours,
         "match": _func_match,
+        "minutes": _func_minutes,
+        "months": _func_months,
+        "seconds": _func_seconds,
         "select": _func_select,
         "sort_by": _func_sort_by,
         "join": _func_join,
         "map": _func_map,
         "not": _func_not,
+        "time": _func_time,
+        "timedelta": _func_timedelta,
         "timestamp": _func_timestamp,
         "clock": _func_clock,
         "repeat": _func_repeat,
+        "weeks": _func_weeks,
+        "years": _func_years,
     }
 
     if expr.name in no_arg_functions:
@@ -897,6 +1156,9 @@ def _type_name(value: object) -> str:
     """Return user-facing type name for query values."""
     if value is None:
         return "null"
+    if isinstance(value, CalendarDelta):
+        ## NOTE Timedelta doesn't support years nor months, so we fudge it and pretend that it does.
+        return "timedelta"
     return type(value).__name__
 
 
@@ -995,6 +1257,96 @@ def _as_state_or_none(value: object, field_name: str) -> str | None:
     raise QueryRuntimeError(f"{field_name} value must evaluate to string or null")
 
 
+def _as_int_argument(value: object, function_name: str) -> int:
+    """Convert one argument to integer for temporal constructors."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise QueryRuntimeError(f"{function_name} expects integer count")
+    return value
+
+
+def _parse_iso_datetime(value: object) -> datetime:
+    """Parse ISO datetime from string value."""
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, time.min)
+    text_value = _as_string_value(value)
+    if text_value is None:
+        raise QueryRuntimeError("datetime accepts string, date, and datetime values")
+    try:
+        return datetime.fromisoformat(text_value.replace(" ", "T"))
+    except ValueError as exc:
+        raise QueryRuntimeError(f"Cannot parse datetime: {text_value}") from exc
+
+
+def _parse_iso_time(value: object) -> time:
+    """Parse ISO time from string value."""
+    if isinstance(value, time):
+        return value
+    text_value = _as_string_value(value)
+    if text_value is None:
+        raise QueryRuntimeError("time accepts string and time values")
+    try:
+        return time.fromisoformat(text_value)
+    except ValueError as exc:
+        raise QueryRuntimeError(f"Cannot parse time: {text_value}") from exc
+
+
+def _coerce_to_date(value: object) -> date:
+    """Coerce supported value into date."""
+    org_datetime = _as_org_datetime(value)
+    if org_datetime is not None:
+        return org_datetime.date()
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    raise QueryRuntimeError("date accepts Timestamp-like, date, and datetime values")
+
+
+def _timedelta_from_unit(count: int, unit: str) -> timedelta | CalendarDelta:
+    """Build timedelta-like value for unit token."""
+    duration_units: dict[str, timedelta] = {
+        "w": timedelta(weeks=count),
+        "d": timedelta(days=count),
+        "h": timedelta(hours=count),
+        "min": timedelta(minutes=count),
+        "sec": timedelta(seconds=count),
+    }
+    if unit in duration_units:
+        return duration_units[unit]
+    if unit == "m":
+        return CalendarDelta(months=count)
+    if unit == "y":
+        return CalendarDelta(months=count * 12)
+    raise QueryRuntimeError("timedelta unit must be one of y, m, w, d, h, min, sec")
+
+
+def _unit_helper(
+    stream: Stream,
+    argument: Expr,
+    context: EvalContext,
+    function_name: str,
+    unit: str,
+) -> Stream:
+    """Apply one unary temporal unit helper."""
+    output = _stream()
+    for arguments in _iter_function_argument_values(stream, argument, context):
+        _ensure_arity(arguments, {1}, function_name)
+        output.append(_timedelta_from_unit(_as_int_argument(arguments[0], function_name), unit))
+    return output
+
+
+def _current_datetime() -> datetime:
+    """Return current local datetime for now()."""
+    return datetime.now().astimezone()
+
+
+def _func_now(stream: Stream) -> Stream:
+    """Return current datetime for each input item."""
+    return _stream([_current_datetime() for _item in stream])
+
+
 def _func_type(stream: Stream) -> Stream:
     """Return type names for stream values."""
     return _stream([_type_name(value) for value in stream])
@@ -1049,6 +1401,84 @@ def _func_bool(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
         for value in argument_values:
             output.append(_convert_to_bool(value))
     return output
+
+
+def _func_date(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Coerce argument values into dates."""
+    output = _stream()
+    for item in stream:
+        argument_values = evaluate_expr(argument, _stream([item]), context)
+        for value in argument_values:
+            output.append(_coerce_to_date(value))
+    return output
+
+
+def _func_datetime(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Coerce argument values into datetimes."""
+    output = _stream()
+    for item in stream:
+        argument_values = evaluate_expr(argument, _stream([item]), context)
+        for value in argument_values:
+            output.append(_parse_iso_datetime(value))
+    return output
+
+
+def _func_time(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Coerce argument values into times."""
+    output = _stream()
+    for item in stream:
+        argument_values = evaluate_expr(argument, _stream([item]), context)
+        for value in argument_values:
+            output.append(_parse_iso_time(value))
+    return output
+
+
+def _func_timedelta(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Construct timedelta-like values from count and unit."""
+    output = _stream()
+    for arguments in _iter_function_argument_values(stream, argument, context):
+        _ensure_arity(arguments, {2}, "timedelta")
+        count = _as_int_argument(arguments[0], "timedelta")
+        unit = _as_string_value(arguments[1])
+        if unit is None:
+            raise QueryRuntimeError("timedelta expects string unit")
+        output.append(_timedelta_from_unit(count, unit))
+    return output
+
+
+def _func_weeks(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Return week-based timedelta values."""
+    return _unit_helper(stream, argument, context, "weeks", "w")
+
+
+def _func_days(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Return day-based timedelta values."""
+    return _unit_helper(stream, argument, context, "days", "d")
+
+
+def _func_hours(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Return hour-based timedelta values."""
+    return _unit_helper(stream, argument, context, "hours", "h")
+
+
+def _func_minutes(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Return minute-based timedelta values."""
+    return _unit_helper(stream, argument, context, "minutes", "min")
+
+
+def _func_seconds(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Return second-based timedelta values."""
+    return _unit_helper(stream, argument, context, "seconds", "sec")
+
+
+def _func_months(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Return month-based calendar delta values."""
+    return _unit_helper(stream, argument, context, "months", "m")
+
+
+def _func_years(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
+    """Return year-based calendar delta values."""
+    return _unit_helper(stream, argument, context, "years", "y")
 
 
 def _func_ts(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
@@ -1326,25 +1756,25 @@ def _collection_extreme(value: object, mode: str) -> object:
 
 def _to_comparable_value(value: object) -> tuple[str, ComparableKey]:
     """Convert one value into a typed comparison key."""
-    normalized = value
-    if isinstance(normalized, Clock | Repeat):
-        normalized = normalized.timestamp
-    if isinstance(normalized, Timestamp):
-        normalized = normalized.start
+    numeric_value = _as_numeric_value(value)
+    if numeric_value is not None:
+        return ("number", numeric_value)
 
-    if isinstance(normalized, (int, float)):
-        result: tuple[str, ComparableKey] = ("number", normalized)
-    else:
-        normalized_text = _as_string_value(normalized)
-        if normalized_text is not None:
-            result = ("string", normalized_text)
-        elif isinstance(normalized, datetime):
-            result = ("date", normalized)
-        elif isinstance(normalized, date):
-            result = ("date", datetime(normalized.year, normalized.month, normalized.day))
-        else:
-            raise QueryRuntimeError(f"max/min cannot compare value of type {type(value).__name__}")
-    return result
+    normalized_text = _as_string_value(value)
+    if normalized_text is not None:
+        return ("string", normalized_text)
+
+    temporal_value = _normalized_comparable_temporal(value)
+    if temporal_value is not None:
+        category, normalized = temporal_value
+        if category == "calendar-delta":
+            raise QueryRuntimeError("max/min cannot compare calendar delta values")
+        if isinstance(normalized, (datetime, time, timedelta)):
+            return (category, normalized)
+        if isinstance(normalized, date):
+            return ("date", datetime(normalized.year, normalized.month, normalized.day))
+
+    raise QueryRuntimeError(f"max/min cannot compare value of type {type(value).__name__}")
 
 
 def _is_better_item(
@@ -1372,10 +1802,25 @@ def _is_better_item(
             else candidate_string < current_string
         )
 
+    if category == "datetime":
+        candidate_date = cast("datetime", candidate)
+        current_date = cast("datetime", current)
+        return candidate_date > current_date if mode == "max" else candidate_date < current_date
+
     if category == "date":
         candidate_date = cast("datetime", candidate)
         current_date = cast("datetime", current)
         return candidate_date > current_date if mode == "max" else candidate_date < current_date
+
+    if category == "time":
+        candidate_time = cast("time", candidate)
+        current_time = cast("time", current)
+        return candidate_time > current_time if mode == "max" else candidate_time < current_time
+
+    if category == "timedelta":
+        candidate_delta = cast("timedelta", candidate)
+        current_delta = cast("timedelta", current)
+        return candidate_delta > current_delta if mode == "max" else candidate_delta < current_delta
 
     raise QueryRuntimeError(f"max/min unsupported comparable category: {category}")
 
