@@ -297,6 +297,24 @@ def test_runtime_or_and_operator_semantics() -> None:
     assert result == [("foo", "x", False, True)]
 
 
+def test_runtime_boolean_operators_short_circuit_erroring_rhs() -> None:
+    """and/or should skip RHS evaluation when short-circuiting applies."""
+    result = _execute("true or match(1), false and match(1)", [None], None)
+
+    assert result == [(True, False)]
+
+
+def test_runtime_boolean_operators_short_circuit_per_stream_item(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """and/or should short-circuit RHS independently for each input item."""
+    with caplog.at_level(logging.INFO, logger="org"):
+        result = _execute(".[0][] | ((. == 1) or debug)", [[1, 0]], None)
+
+    assert result == [True, 0]
+    assert [record.getMessage() for record in caplog.records] == ["0"]
+
+
 def test_runtime_type_function() -> None:
     """type should return the type name for each stream value."""
     node = next(iter(node_from_org("* TODO Task\n")))

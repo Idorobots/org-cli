@@ -776,10 +776,32 @@ def _slice_one(base_value: object, start_value: object, end_value: object) -> ob
 
 def _evaluate_binary_op(expr: BinaryOp, stream: Stream, context: EvalContext) -> Stream:
     """Evaluate binary operations over stream values with broadcasting."""
+    if expr.operator in {"and", "or"}:
+        return _evaluate_boolean_binary_op(expr, stream, context)
     left_values = evaluate_expr(expr.left, stream, context)
     right_values = evaluate_expr(expr.right, stream, context)
     pairs = _broadcast(left_values, right_values)
     return _stream([_apply_binary_operator(expr.operator, left, right) for left, right in pairs])
+
+
+def _evaluate_boolean_binary_op(expr: BinaryOp, stream: Stream, context: EvalContext) -> Stream:
+    """Evaluate boolean operators with per-item short-circuit semantics."""
+    output = _stream()
+    for item in stream:
+        left_values = evaluate_expr(expr.left, _stream([item]), context)
+        if expr.operator == "or":
+            if any(bool(value) for value in left_values):
+                output.append(left_values[0] if left_values else None)
+                continue
+        elif not any(bool(value) for value in left_values):
+            output.append(False)
+            continue
+
+        right_values = evaluate_expr(expr.right, _stream([item]), context)
+        left = left_values[0] if left_values else None
+        right = right_values[0] if right_values else None
+        output.append(_apply_boolean(expr.operator, left, right))
+    return output
 
 
 def _apply_binary_operator(operator: str, left: object, right: object) -> object:

@@ -7436,10 +7436,13 @@ datetime(null) -> null
 time(null) -> null
 #+end_example
 
-**** TODO Looks like =and= and =or= are no longer short-circuiting.
+**** DONE Looks like =and= and =or= are no longer short-circuiting.
 :PROPERTIES:
 :capture_time: [2026-05-31 Sun 15:47]
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-31 Sun 18:17]
 :END:
 *** TODO Customizable agenda views                                                          :Config:
 The agenda command should support customizable views in a similar way that the board commands supports them. The configuration file should be extended with a section dedicated to the agenda that allows defining views.
