@@ -1318,6 +1318,23 @@ def test_runtime_temporal_helpers_validate_input_types() -> None:
         _execute('timedelta(1, "fortnight")', [None], None)
 
 
+def test_runtime_temporal_helpers_propagate_null_inputs() -> None:
+    """Selected temporal coercion helpers should return null for null input."""
+    result = _execute(
+        "[ts(null), timestamp(null), date(null), datetime(null), time(null)]",
+        [None],
+        None,
+    )
+
+    assert result == [[None, None, None, None, None]]
+
+
+def test_runtime_clock_constructor_rejects_null_input() -> None:
+    """clock should remain strict even though timestamp parsing now propagates null."""
+    with pytest.raises(QueryRuntimeError):
+        _execute("clock(null)", [None], None)
+
+
 def test_runtime_sort_and_extrema_support_temporal_values() -> None:
     """sort_by, max, and min should support temporal comparable values."""
     sorted_values = _execute(

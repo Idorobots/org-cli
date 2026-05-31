@@ -1191,8 +1191,10 @@ def _ensure_arity(arguments: tuple[object, ...], expected: set[int], function_na
     raise QueryRuntimeError(f"{function_name} expects {allowed} argument(s)")
 
 
-def _parse_timestamp(value: object) -> Timestamp:
+def _parse_timestamp(value: object) -> Timestamp | None:
     """Convert runtime value into a Timestamp object."""
+    if value is None:
+        return None
     if isinstance(value, Timestamp):
         return value
     text_value = _as_string_value(value)
@@ -1209,8 +1211,10 @@ def _parse_timestamp(value: object) -> Timestamp:
             raise QueryRuntimeError(f"Cannot parse timestamp: {text_value}") from parse_exc
 
 
-def _parse_timestamp_source(value: object, function_name: str) -> Timestamp:
+def _parse_timestamp_source(value: object, function_name: str) -> Timestamp | None:
     """Parse one timestamp source string for constructor functions."""
+    if value is None:
+        return None
     text_value = _as_string_value(value)
     if text_value is None:
         raise QueryRuntimeError(f"{function_name} expects 1 argument(s)")
@@ -1264,8 +1268,10 @@ def _as_int_argument(value: object, function_name: str) -> int:
     return value
 
 
-def _parse_iso_datetime(value: object) -> datetime:
+def _parse_iso_datetime(value: object) -> datetime | None:
     """Parse ISO datetime from string value."""
+    if value is None:
+        return None
     if isinstance(value, datetime):
         return value
     if isinstance(value, date):
@@ -1279,8 +1285,10 @@ def _parse_iso_datetime(value: object) -> datetime:
         raise QueryRuntimeError(f"Cannot parse datetime: {text_value}") from exc
 
 
-def _parse_iso_time(value: object) -> time:
+def _parse_iso_time(value: object) -> time | None:
     """Parse ISO time from string value."""
+    if value is None:
+        return None
     if isinstance(value, time):
         return value
     text_value = _as_string_value(value)
@@ -1292,8 +1300,10 @@ def _parse_iso_time(value: object) -> time:
         raise QueryRuntimeError(f"Cannot parse time: {text_value}") from exc
 
 
-def _coerce_to_date(value: object) -> date:
+def _coerce_to_date(value: object) -> date | None:
     """Coerce supported value into date."""
+    if value is None:
+        return None
     org_datetime = _as_org_datetime(value)
     if org_datetime is not None:
         return org_datetime.date()
@@ -1589,7 +1599,10 @@ def _func_clock(stream: Stream, argument: Expr, context: EvalContext) -> Stream:
     output = _stream()
     for arguments in _iter_function_argument_values(stream, argument, context):
         _ensure_arity(arguments, {1}, "clock")
-        output.append(Clock(timestamp=_parse_timestamp_source(arguments[0], "clock")))
+        timestamp_value = _parse_timestamp_source(arguments[0], "clock")
+        if timestamp_value is None:
+            raise QueryRuntimeError("clock expects 1 argument(s)")
+        output.append(Clock(timestamp=timestamp_value))
     return output
 
 
@@ -1599,6 +1612,8 @@ def _func_repeat(stream: Stream, argument: Expr, context: EvalContext) -> Stream
     for arguments in _iter_function_argument_values(stream, argument, context):
         _ensure_arity(arguments, {3, 4}, "repeat")
         start_timestamp = _parse_timestamp(arguments[0])
+        if start_timestamp is None:
+            raise QueryRuntimeError("timestamp values must evaluate to string, Timestamp, or null")
         before = _as_state_or_none(arguments[1], "before")
         after = _as_state_or_none(arguments[2], "after")
 

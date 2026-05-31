@@ -7420,10 +7420,13 @@ select(date(.deadline) == date(now))
 select(let datetime("2025-04-01") as $d in (.deadline.start >= $d and .deadline.start < ($d + months(1)))
 #+end_example
 
-**** TODO Date comparison & coercion functions should work with nulls.
+**** DONE Date comparison & coercion functions should work with nulls.
 :PROPERTIES:
 :capture_time: [2026-05-31 Sun 15:12]
 :context: [[file:~/projects/software/org-cli/VIBES.org::*Spec command][Spec command]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-31 Sun 16:20]
 :END:
 #+begin_example
 ts(null) -> null
@@ -7433,6 +7436,11 @@ datetime(null) -> null
 time(null) -> null
 #+end_example
 
+**** TODO Looks like =and= and =or= are no longer short-circuiting.
+:PROPERTIES:
+:capture_time: [2026-05-31 Sun 15:47]
+:context: 
+:END:
 *** TODO Customizable agenda views                                                          :Config:
 The agenda command should support customizable views in a similar way that the board commands supports them. The configuration file should be extended with a section dedicated to the agenda that allows defining views.
 
@@ -7634,11 +7642,6 @@ Introduce wrappers for the analysis results functions that can be visualized aut
 - =histogram()= - histogram plot
 - =progress()= - progress plot
 
-*** TODO Looks like =and= and =or= are no longer short-circuiting.
-:PROPERTIES:
-:capture_time: [2026-05-31 Sun 15:47]
-:context: 
-:END:
 ** Board command improvements                                                                   :UX:
 *** Board plan command
 Shows long term plan including completeness of tasks that have children and gannt-style chart for execution.
