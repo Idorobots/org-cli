@@ -47,6 +47,7 @@ def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
             custom_with={},
             capture_templates={},
             board_views={},
+            agenda_views={},
         ),
     )
     monkeypatch.setattr(
@@ -104,6 +105,7 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
                     ],
                 ),
             },
+            agenda_views={},
         ),
     )
     monkeypatch.setattr(config, "build_default_map", lambda _defaults: {})

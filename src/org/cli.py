@@ -98,6 +98,8 @@ def main() -> None:
     config.CONFIG_CAPTURE_TEMPLATES.update(loaded_config.capture_templates)
     config.CONFIG_BOARD_VIEWS.clear()
     config.CONFIG_BOARD_VIEWS.update(loaded_config.board_views)
+    config.CONFIG_AGENDA_VIEWS.clear()
+    config.CONFIG_AGENDA_VIEWS.update(loaded_config.agenda_views)
 
     command = typer.main.get_command(app)
     default_map = config.build_default_map(defaults) if defaults else None

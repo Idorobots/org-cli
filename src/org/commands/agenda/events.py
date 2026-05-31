@@ -54,14 +54,12 @@ from org.commands.tasks.common import (
 
 from .layout import (
     AgendaRow,
-    DayRenderInput,
     DayRowModel,
     RenderContext,
-    _build_day_rows,
-    _collect_day_entries,
     _has_specific_time,
     _resolve_agenda_start_date,
     _selected_row_location,
+    build_view_day_model,
     interactive_agenda_renderable,
 )
 
@@ -73,6 +71,7 @@ if TYPE_CHECKING:
     from rich.console import Console
 
     from .command import AgendaArgs
+    from .views import AgendaViewContext
 
 
 logger = logging.getLogger("org")
@@ -96,6 +95,7 @@ class AgendaSession:
     scroll_offset: int
     status_message: str
     search_text: str
+    view_ctx: AgendaViewContext
     search_prompt_previous_text: str | None = None
     show_help_modal: bool = False
     active_prompt: InteractivePromptState | None = None
@@ -113,15 +113,12 @@ def refresh_session(
 
     for day_offset in range(session.days):
         day = session.start_date + timedelta(days=day_offset)
-        entries = _collect_day_entries(
+        day_model = build_view_day_model(
             session.nodes,
             day,
+            session.now,
+            session.view_ctx,
             session.args,
-            include_relative_sections=(day == session.now.date()),
-        )
-        day_model = _build_day_rows(
-            DayRenderInput(day=day, now=session.now, entries=entries),
-            session.render,
         )
         day_models.append(day_model)
         row_locations.extend(
@@ -607,20 +604,15 @@ def _apply_search_text(session: AgendaSession, search_text: str) -> None:
 def create_agenda_session(
     args: AgendaArgs,
     nodes: list[Heading],
-    done_states: list[str],
-    todo_states: list[str],
-    color_enabled: bool,
+    render: RenderContext,
+    view_ctx: AgendaViewContext,
 ) -> AgendaSession:
     """Create interactive session state for agenda."""
     session = AgendaSession(
         args=args,
         all_nodes=list(nodes),
         nodes=nodes,
-        render=RenderContext(
-            color_enabled=color_enabled,
-            done_states=done_states,
-            todo_states=todo_states,
-        ),
+        render=render,
         start_date=_resolve_agenda_start_date(args.date),
         days=args.days,
         now=local_now(),
@@ -630,6 +622,7 @@ def create_agenda_session(
         scroll_offset=0,
         status_message="",
         search_text="",
+        view_ctx=view_ctx,
         show_help_modal=False,
         active_prompt=None,
     )

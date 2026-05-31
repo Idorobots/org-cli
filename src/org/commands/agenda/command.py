@@ -14,6 +14,7 @@ from org.commands.interactive_common import interactive_help_command_text, local
 from org.tui import build_console, processing_status, setup_output
 
 from . import events, layout
+from .views import resolve_view_context
 
 
 logger = logging.getLogger("org")
@@ -62,6 +63,7 @@ class AgendaArgs:
     no_overdue: bool
     no_upcoming: bool
     future_repeats: bool
+    view: str | None
 
 
 def _resolve_tasks_limit(max_results: int | None) -> int:
@@ -85,6 +87,8 @@ def run_agenda(args: AgendaArgs) -> None:
 
     args.max_results = _resolve_tasks_limit(args.max_results)
 
+    view_ctx = resolve_view_context(args)
+
     with processing_status(console, color_enabled):
         nodes, todo_states, done_states = load_and_process_data(args)
 
@@ -98,9 +102,12 @@ def run_agenda(args: AgendaArgs) -> None:
             events.create_agenda_session(
                 args,
                 nodes,
-                done_states,
-                todo_states,
-                color_enabled,
+                layout.RenderContext(
+                    color_enabled=color_enabled,
+                    done_states=done_states,
+                    todo_states=todo_states,
+                ),
+                view_ctx,
             ),
         )
         return
@@ -117,6 +124,7 @@ def run_agenda(args: AgendaArgs) -> None:
                 todo_states=todo_states,
             ),
         ),
+        view_ctx,
     )
 
 
@@ -341,6 +349,12 @@ def register(app: typer.Typer) -> None:
             "--future-repeats/--no-future-repeats",
             help="Include potential future planning repeats in agenda days",
         ),
+        view: str | None = typer.Option(
+            None,
+            "--view",
+            metavar="NAME",
+            help="Agenda view name to use from config (defaults to built-in view)",
+        ),
     ) -> None:
         """Show agenda for one day or a date range."""
         args = AgendaArgs(
@@ -381,6 +395,7 @@ def register(app: typer.Typer) -> None:
             no_overdue=no_overdue,
             no_upcoming=no_upcoming,
             future_repeats=future_repeats,
+            view=view,
         )
         config_module.apply_config_defaults(args)
         config_module.log_applied_config_defaults(args, sys.argv[1:], "agenda")

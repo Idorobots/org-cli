@@ -20,6 +20,11 @@ from org.commands import editor as editor_command
 from org.commands.agenda import command as agenda_command
 from org.commands.agenda import events as agenda_events
 from org.commands.agenda import layout as agenda_layout
+from org.commands.agenda.views import (
+    AgendaViewContext,
+    _compile_view_section_specs,
+    _fallback_agenda_view,
+)
 from org.commands.interactive_common import (
     InputEvent,
     KeypressEvent,
@@ -82,6 +87,7 @@ def _make_args(files: list[str], **overrides: object) -> agenda_command.AgendaAr
         no_overdue=False,
         no_upcoming=False,
         future_repeats=True,
+        view=None,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -109,13 +115,14 @@ def _make_session(
     todo_states: list[str] | None = None,
     color_enabled: bool = False,
 ) -> agenda_events.AgendaSession:
-    return agenda_events.create_agenda_session(
-        args,
-        nodes,
-        ["DONE"] if done_states is None else done_states,
-        ["TODO"] if todo_states is None else todo_states,
-        color_enabled,
+    view = _fallback_agenda_view()
+    view_ctx = AgendaViewContext(section_specs=_compile_view_section_specs(view), name=view.name)
+    render = agenda_layout.RenderContext(
+        color_enabled=color_enabled,
+        done_states=["DONE"] if done_states is None else done_states,
+        todo_states=["TODO"] if todo_states is None else todo_states,
     )
+    return agenda_events.create_agenda_session(args, nodes, render, view_ctx)
 
 
 def _pin_agenda_now(monkeypatch: pytest.MonkeyPatch) -> datetime:
@@ -150,7 +157,6 @@ def test_run_agenda_renders_expected_sections(
     assert "Repeated completion on day" in plain_output
     assert "Overdue scheduled" not in plain_output
     assert "Overdue deadlines" not in plain_output
-    assert "Scheduled without specific time" in plain_output
     assert "Upcoming deadlines (30d)" not in plain_output
     assert "CATEGORY" in plain_output
     assert "TASK" in plain_output
@@ -271,7 +277,7 @@ def test_run_agenda_relative_sections_show_only_today(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
-    """Overdue/upcoming sections should render only for current-day agenda panes."""
+    """Default view should render without overdue/upcoming sections."""
     pinned_now = _pin_agenda_now(monkeypatch)
     today_date = pinned_now.date()
     fixture_path = os.path.join(tmp_path, "agenda_today_relative.org")
@@ -292,9 +298,12 @@ def test_run_agenda_relative_sections_show_only_today(
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
 
-    assert "Overdue scheduled" in output
-    assert "Overdue deadlines" in output
-    assert "Upcoming deadlines (30d)" in output
+    assert "Overdue scheduled" not in output
+    assert "Overdue deadlines" not in output
+    assert "Upcoming deadlines (30d)" not in output
+    assert "Past scheduled" not in output
+    assert "Past deadline" not in output
+    assert "Soon deadline" not in output
 
 
 def test_run_agenda_days_renders_multiple_day_headers(
@@ -319,7 +328,7 @@ def test_run_agenda_multi_day_shows_relative_sections_only_for_today(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
-    """Multi-day agenda should include overdue/upcoming only on today's day pane."""
+    """Multi-day agenda default view should not render overdue/upcoming sections."""
     pinned_now = _pin_agenda_now(monkeypatch)
     today = pinned_now.date()
     fixture_path = os.path.join(tmp_path, "agenda_multiday_relative.org")
@@ -340,9 +349,9 @@ def test_run_agenda_multi_day_shows_relative_sections_only_for_today(
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
 
-    assert output.count("Overdue scheduled") == 1
-    assert output.count("Overdue deadlines") == 1
-    assert output.count("Upcoming deadlines (30d)") == 1
+    assert "Overdue scheduled" not in output
+    assert "Overdue deadlines" not in output
+    assert "Upcoming deadlines (30d)" not in output
 
 
 def test_run_agenda_single_day_default_omits_day_header(
@@ -411,27 +420,27 @@ def test_run_agenda_excludes_completed_untimed_scheduled(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
-    """Untimed scheduled section should omit completed tasks."""
-    fixture_path = os.path.join(tmp_path, "agenda_untimed_done.org")
+    """Timed scheduled section should omit completed tasks when --no-completed is set."""
+    fixture_path = os.path.join(tmp_path, "agenda_completed_filter.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
-            "* DONE Completed untimed\n"
-            "SCHEDULED: <2025-01-15 Wed>\n\n"
-            "* TODO Active untimed\n"
-            "SCHEDULED: <2025-01-15 Wed>\n",
+            "* DONE Completed timed task\n"
+            "SCHEDULED: <2025-01-15 Wed 09:00>\n\n"
+            "* TODO Active timed task\n"
+            "SCHEDULED: <2025-01-15 Wed 10:00>\n",
         )
 
-    args = _make_args([fixture_path], date="2025-01-15")
+    args = _make_args([fixture_path], date="2025-01-15", no_completed=True)
     monkeypatch.setattr(
         sys,
         "argv",
-        ["org", "agenda", "--date", "2025-01-15", fixture_path],
+        ["org", "agenda", "--date", "2025-01-15", "--no-completed", fixture_path],
     )
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
 
-    assert "Active untimed" in output
-    assert "Completed untimed" not in output
+    assert "Active timed task" in output
+    assert "Completed timed task" not in output
 
 
 def test_run_agenda_shows_deadline_untimed_section_before_scheduled_untimed(
@@ -439,14 +448,14 @@ def test_run_agenda_shows_deadline_untimed_section_before_scheduled_untimed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
-    """Untimed deadlines for the selected day should appear before untimed scheduled tasks."""
-    fixture_path = os.path.join(tmp_path, "agenda_deadline_today_untimed.org")
+    """Timed deadline and timed scheduled tasks for the day should both appear in the timeline."""
+    fixture_path = os.path.join(tmp_path, "agenda_deadline_and_scheduled.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
-            "* TODO Due today\n"
-            "DEADLINE: <2025-01-15 Wed>\n\n"
-            "* TODO Scheduled today\n"
-            "SCHEDULED: <2025-01-15 Wed>\n",
+            "* TODO Due today timed\n"
+            "DEADLINE: <2025-01-15 Wed 09:00>\n\n"
+            "* TODO Scheduled today timed\n"
+            "SCHEDULED: <2025-01-15 Wed 10:00>\n",
         )
 
     args = _make_args([fixture_path], date="2025-01-15")
@@ -458,11 +467,9 @@ def test_run_agenda_shows_deadline_untimed_section_before_scheduled_untimed(
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
 
-    assert "Deadlines without specific time" in output
-    assert output.index("Deadlines without specific time") < output.index(
-        "Scheduled without specific time",
-    )
-    assert output.index("Due today") < output.index("Scheduled today")
+    assert "Due today timed" in output
+    assert "Scheduled today timed" in output
+    assert output.index("09:00") < output.index("10:00")
 
 
 def test_run_agenda_deadline_with_time_is_aligned_to_timetable(
@@ -507,7 +514,7 @@ def test_run_agenda_overdue_deadlines_precede_overdue_scheduled(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
-    """Overdue deadlines section should appear before overdue scheduled section."""
+    """Overdue tasks should not appear in the default timeline view."""
     pinned_now = _pin_agenda_now(monkeypatch)
     today = pinned_now.date()
     fixture_path = os.path.join(tmp_path, "agenda_overdue_section_order.org")
@@ -524,7 +531,8 @@ def test_run_agenda_overdue_deadlines_precede_overdue_scheduled(
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
 
-    assert output.index("Overdue deadlines") < output.index("Overdue scheduled")
+    assert "overdue sched" not in output
+    assert "overdue deadline" not in output
 
 
 def test_run_agenda_orders_overdue_and_upcoming_by_age(
@@ -532,20 +540,16 @@ def test_run_agenda_orders_overdue_and_upcoming_by_age(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
-    """Overdue should be oldest-first and upcoming should be soonest-first."""
+    """Timed tasks on the same day should appear in time order in the timeline."""
     pinned_now = _pin_agenda_now(monkeypatch)
     today = pinned_now.date()
     fixture_path = os.path.join(tmp_path, "agenda_ordering.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
-            "* TODO old overdue\n"
-            f"SCHEDULED: <{(today - timedelta(days=10)).isoformat()} Fri>\n\n"
-            "* TODO newer overdue\n"
-            f"SCHEDULED: <{(today - timedelta(days=2)).isoformat()} Fri>\n\n"
-            "* TODO later upcoming\n"
-            f"DEADLINE: <{(today + timedelta(days=7)).isoformat()} Fri>\n\n"
-            "* TODO sooner upcoming\n"
-            f"DEADLINE: <{(today + timedelta(days=2)).isoformat()} Fri>\n",
+            "* TODO later task\n"
+            f"SCHEDULED: <{today.isoformat()} Wed 14:00>\n\n"
+            "* TODO earlier task\n"
+            f"SCHEDULED: <{today.isoformat()} Wed 09:00>\n",
         )
 
     args = _make_args([fixture_path], date=today.isoformat())
@@ -553,8 +557,7 @@ def test_run_agenda_orders_overdue_and_upcoming_by_age(
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
 
-    assert output.index("old overdue") < output.index("newer overdue")
-    assert output.index("sooner upcoming") < output.index("later upcoming")
+    assert output.index("earlier task") < output.index("later task")
 
 
 def test_run_agenda_omits_inactive_planning_timestamps(
@@ -866,7 +869,7 @@ def test_agenda_search_filters_rows_and_clear_restores_rows() -> None:
     all_titles = _visible_agenda_task_titles(session)
 
     assert "Timed agenda task" in all_titles
-    assert "Untimed agenda task" in all_titles
+    assert "Untimed agenda task" not in all_titles
 
     assert agenda_events._handle_keypress_event(session, "/") is True
     assert session.active_prompt is not None
@@ -1502,7 +1505,6 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
         "Timed agenda task",
         "Repeated completion on day",
         "Completed one-off task",
-        "Untimed agenda task",
     ]
     assert session.search_text == ""
     assert session.status_message == "Search cancelled"

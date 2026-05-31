@@ -7420,6 +7420,19 @@ select(date(.deadline) == date(now))
 select(let datetime("2025-04-01") as $d in (.deadline.start >= $d and .deadline.start < ($d + months(1)))
 #+end_example
 
+**** TODO Date comparison & coercion functions should work with nulls.
+:PROPERTIES:
+:capture_time: [2026-05-31 Sun 15:12]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Spec command][Spec command]]
+:END:
+#+begin_example
+ts(null) -> null
+timestamp(null) -> null
+date(null) -> null
+datetime(null) -> null
+time(null) -> null
+#+end_example
+
 *** TODO Customizable agenda views                                                          :Config:
 The agenda command should support customizable views in a similar way that the board commands supports them. The configuration file should be extended with a section dedicated to the agenda that allows defining views.
 
@@ -7474,6 +7487,62 @@ agenda:
           timeline: true
 #+end_src
 
+**** TODO src/org/commands/agenda/layout.py                                                :Cleanup:
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/agenda/layout.py around line 966, near the ~def _render_day_rows(table: Table, day_render: DayRenderInput, render: RenderCon~
+
+#+begin_example
++def _config_style_to_row_style(style: str) -> str:
++    """Convert Rich markup-format style string to a plain row style.
++
++    Strips the outer markup brackets so '[bold white]' becomes 'bold white'.
++    """
++    stripped = style.strip()
++    if stripped.startswith("[") and "]" in stripped:
++        return stripped[1 : stripped.index("]")]
+
+#+end_example
+
+It makes more sense to mandate that the style is just plain style markers not markup.
+**** TODO Tasks with a schedule/deadline should show "in X days" or "X days ago" in the agenda. :Bug:
+:PROPERTIES:
+:capture_time: [2026-05-31 Sun 16:00]
+:context: [[file:~/projects/software/org-cli/.org-cli.yaml::filter: if (.deadline != null) then (date(.deadline) > $date) and (date(.deadline) < ($date + days(30))) else false]]
+:END:
+**** TODO Tasks that don't have a time, but are selected for a =timeline: true= sections should be displayed as regular line items at the end of the list. :Bug:
+:PROPERTIES:
+:capture_time: [2026-05-31 Sun 16:00]
+:context: [[file:~/projects/software/org-cli/.org-cli.yaml::filter: if (.deadline != null) then (date(.deadline) > $date) and (date(.deadline) < ($date + days(30))) else false]]
+:END:
+**** TODO Section names in agenda views should be evaluated as a query that produces a string value.
+:PROPERTIES:
+:capture_time: [2026-05-31 Sun 16:02]
+:context: 
+:END:
+**** TODO tests/commands/test_agenda_command.py                                      :Tests:Cleanup:
+:PROPERTIES:
+:context: 
+:END:
+
+In file tests/commands/test_agenda_command.py around line 301, near the ~def test_run_agenda_relative_sections_show_only_today(~
+
+#+begin_example
+-    assert "Overdue scheduled" in output
+-    assert "Overdue deadlines" in output
+-    assert "Upcoming deadlines (30d)" in output
++    assert "Overdue scheduled" not in output
++    assert "Overdue deadlines" not in output
++    assert "Upcoming deadlines (30d)" not in output
++    assert "Past scheduled" not in output
++    assert "Past deadline" not in output
++    assert "Soon deadline" not in output
+
+#+end_example
+
+This type of a test makes no sense anymore. Please remove these instead of adjusting for inverse checks.
 *** Customizable agenda view columns                                                        :Config:
 - Similar to the superagenda thingie for Emacs
 
@@ -7565,6 +7634,11 @@ Introduce wrappers for the analysis results functions that can be visualized aut
 - =histogram()= - histogram plot
 - =progress()= - progress plot
 
+*** TODO Looks like =and= and =or= are no longer short-circuiting.
+:PROPERTIES:
+:capture_time: [2026-05-31 Sun 15:47]
+:context: 
+:END:
 ** Board command improvements                                                                   :UX:
 *** Board plan command
 Shows long term plan including completeness of tasks that have children and gannt-style chart for execution.

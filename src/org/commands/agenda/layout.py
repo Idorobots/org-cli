@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import org_parser.time as org_time
+import typer
 from rich import box
 from rich.console import Console, Group
 from rich.rule import Rule
@@ -21,6 +22,7 @@ from org.commands.interactive_common import (
     render_interactive_help_modal,
     shift_datetimes_by_unit,
 )
+from org.query_language import EvalContext, QueryRuntimeError, Stream
 from org.tui import (
     heading_title_to_text,
     task_priority_to_text,
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
 
     from .command import AgendaArgs
     from .events import AgendaSession
+    from .views import AgendaSectionSpec, AgendaViewContext
 
 
 _HIGHLIGHT_ROW_STYLE = "on grey23"
@@ -952,6 +955,159 @@ def _render_day_rows(table: Table, day_render: DayRenderInput, render: RenderCon
     return row_count
 
 
+def _config_style_to_row_style(style: str) -> str:
+    """Convert Rich markup-format style string to a plain row style.
+
+    Strips the outer markup brackets so '[bold white]' becomes 'bold white'.
+    """
+    stripped = style.strip()
+    if stripped.startswith("[") and "]" in stripped:
+        return stripped[1 : stripped.index("]")]
+    return stripped
+
+
+def _collect_timed_entries_for_view_nodes(
+    nodes: list[Heading],
+    day: date,
+    *,
+    future_repeats: bool,
+    no_completed: bool,
+) -> list[_TimedEntry]:
+    """Collect timed entries from view-filtered nodes for one day."""
+    timed: list[_TimedEntry] = []
+    for node in nodes:
+        if no_completed and node.is_completed:
+            continue
+        scheduled_timed, _ = _collect_scheduled_entries(node, day, future_repeats=future_repeats)
+        timed.extend(scheduled_timed)
+        deadline_timed, _ = _collect_deadline_entries(
+            node,
+            day,
+            completed=node.is_completed,
+            future_repeats=future_repeats,
+        )
+        timed.extend(deadline_timed)
+        timed.extend(_collect_repeat_timed_entries(node, day, no_completed=no_completed))
+    timed.sort(key=lambda entry: entry.when)
+    return timed
+
+
+def _build_timeline_section_rows(
+    day: date,
+    now: datetime,
+    timed: list[_TimedEntry],
+    section_name: str,
+    style: str,
+) -> list[AgendaRow]:
+    """Build timetable rows for a timeline section."""
+    row_style = _config_style_to_row_style(style)
+    rows: list[AgendaRow] = [AgendaRow(kind="section", day=day, section_label=section_name)]
+    timed_by_hour: dict[int, list[_TimedEntry]] = {hour: [] for hour in range(24)}
+    for entry in timed:
+        timed_by_hour[entry.when.hour].append(entry)
+
+    for hour in range(24):
+        rows.append(AgendaRow(kind="hour_marker", day=day, time_text=f"{hour:02d}:00"))
+        hour_entries = timed_by_hour[hour]
+        is_now_hour = day == now.date() and now.hour == hour
+        now_inserted = False
+        for timed_entry in hour_entries:
+            if is_now_hour and not now_inserted and timed_entry.when.minute > now.minute:
+                rows.append(
+                    AgendaRow(kind="now_marker", day=day, time_text=now.strftime("%H:%M")),
+                )
+                now_inserted = True
+            rows.append(
+                AgendaRow(
+                    kind="task",
+                    day=day,
+                    time_text=timed_entry.when.strftime("%H:%M"),
+                    node=timed_entry.node,
+                    source="scheduled",
+                    style=row_style,
+                    state_override=timed_entry.state_override,
+                ),
+            )
+        if is_now_hour and not now_inserted:
+            rows.append(
+                AgendaRow(kind="now_marker", day=day, time_text=now.strftime("%H:%M")),
+            )
+    return rows
+
+
+def _build_plain_section_rows(
+    day: date,
+    nodes: list[Heading],
+    section_name: str,
+    style: str,
+) -> list[AgendaRow]:
+    """Build plain (non-timeline) task rows for a section."""
+    if not nodes:
+        return []
+    row_style = _config_style_to_row_style(style)
+    rows: list[AgendaRow] = [
+        AgendaRow(kind="section", day=day, section_label=section_name, style=row_style),
+    ]
+    rows.extend(
+        AgendaRow(kind="task", day=day, node=node, source="scheduled", style=row_style)
+        for node in nodes
+    )
+    return rows
+
+
+def _build_view_section_rows(
+    day: date,
+    now: datetime,
+    nodes: list[Heading],
+    spec: AgendaSectionSpec,
+    args: AgendaArgs,
+) -> list[AgendaRow]:
+    """Build agenda rows for one view section."""
+    if spec.timeline:
+        timed = _collect_timed_entries_for_view_nodes(
+            nodes,
+            day,
+            future_repeats=args.future_repeats,
+            no_completed=args.no_completed,
+        )
+        return _build_timeline_section_rows(day, now, timed, spec.name, spec.style)
+    return _build_plain_section_rows(day, nodes, spec.name, spec.style)
+
+
+def _apply_section_query(
+    nodes: list[Heading],
+    spec: AgendaSectionSpec,
+    day: date,
+    view_name: str,
+) -> list[Heading]:
+    """Apply section query against nodes with $date in context, returning matched nodes."""
+    try:
+        results = spec.query(Stream(nodes), EvalContext({"date": day}))
+    except QueryRuntimeError as err:
+        raise typer.BadParameter(
+            f"Agenda filter/order-by query failed (section={spec.name}, view={view_name}): {err}",
+        ) from err
+    return [cast("Heading", node) for node in results]
+
+
+def build_view_day_model(
+    nodes: list[Heading],
+    day: date,
+    now: datetime,
+    view_ctx: AgendaViewContext,
+    args: AgendaArgs,
+) -> DayRowModel:
+    """Build all render rows for one day using view section specs."""
+    rows: list[AgendaRow] = []
+    for spec in view_ctx.section_specs:
+        section_nodes = _apply_section_query(nodes, spec, day, view_ctx.name)
+        rows.extend(_build_view_section_rows(day, now, section_nodes, spec, args))
+    selectable = [
+        idx for idx, row in enumerate(rows) if row.kind == "task" and row.node is not None
+    ]
+    return DayRowModel(day=day, rows=rows, selectable_row_indexes=selectable)
+
+
 def _build_agenda_table(day: date, *, color_enabled: bool) -> Table:
     table = Table(
         expand=True,
@@ -989,7 +1145,11 @@ def _render_row_model(
             render,
         )
     if row.kind == "section":
-        heading = Text(row.section_label, style="bold" if render.color_enabled else "")
+        label = row.section_label
+        if render.color_enabled and "[" in label:
+            heading = Text.from_markup(label)
+        else:
+            heading = Text(label, style="bold" if render.color_enabled else "")
         table.add_row(Text(""), Text(""), heading, Text(""), style=row_style)
         return 1
     if row.kind == "hour_marker":
@@ -1146,25 +1306,28 @@ def interactive_agenda_renderable(console: Console, session: AgendaSession) -> G
     return Group(viewport_table, Rule(style=footer_style), footer_line, prompt_line, status_text)
 
 
-def render_agenda(console: Console, render_input: AgendaRenderInput) -> None:
-    """Render agenda output table."""
+def render_agenda(
+    console: Console,
+    render_input: AgendaRenderInput,
+    view_ctx: AgendaViewContext,
+) -> None:
+    """Render agenda output table using view section specs."""
     start_date = _resolve_agenda_start_date(render_input.args.date)
     rendered_tables: list[Table] = []
     total_rows = 0
     for day_offset in range(render_input.args.days):
         day = start_date + timedelta(days=day_offset)
         table = _build_agenda_table(day, color_enabled=render_input.render.color_enabled)
-        entries = _collect_day_entries(
+        day_model = build_view_day_model(
             render_input.nodes,
             day,
+            render_input.now,
+            view_ctx,
             render_input.args,
-            include_relative_sections=(day == render_input.now.date()),
         )
-        day_rows = _render_day_rows(
-            table,
-            DayRenderInput(day=day, now=render_input.now, entries=entries),
-            render_input.render,
-        )
+        day_rows = 0
+        for row in day_model.rows:
+            day_rows += _render_row_model(table, row, render_input.render, highlighted=False)
         total_rows += day_rows + 2
         rendered_tables.append(table)
     if total_rows > console.height:
