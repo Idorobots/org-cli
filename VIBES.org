@@ -7498,9 +7498,12 @@ agenda:
           timeline: true
 #+end_src
 
-**** TODO src/org/commands/agenda/layout.py                                                :Cleanup:
+**** DONE src/org/commands/agenda/layout.py                                                :Cleanup:
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-31 Sun 19:06]
 :END:
 
 In file src/org/commands/agenda/layout.py around line 966, near the ~def _render_day_rows(table: Table, day_render: DayRenderInput, render: RenderCon~
@@ -7518,24 +7521,33 @@ In file src/org/commands/agenda/layout.py around line 966, near the ~def _render
 #+end_example
 
 It makes more sense to mandate that the style is just plain style markers not markup.
-**** TODO Tasks with a schedule/deadline should show "in X days" or "X days ago" in the agenda. :Bug:
+**** DONE Tasks with a schedule/deadline should show "in X days" or "X days ago" in the agenda. :Bug:
 :PROPERTIES:
 :capture_time: [2026-05-31 Sun 16:00]
 :context: [[file:~/projects/software/org-cli/.org-cli.yaml::filter: if (.deadline != null) then (date(.deadline) > $date) and (date(.deadline) < ($date + days(30))) else false]]
 :END:
-**** TODO Tasks that don't have a time, but are selected for a =timeline: true= sections should be displayed as regular line items at the end of the list. :Bug:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-31 Sun 19:50]
+:END:
+**** DONE Tasks that don't have a time, but are selected for a =timeline: true= sections should be displayed as regular line items at the end of the list. :Bug:
 :PROPERTIES:
 :capture_time: [2026-05-31 Sun 16:00]
 :context: [[file:~/projects/software/org-cli/.org-cli.yaml::filter: if (.deadline != null) then (date(.deadline) > $date) and (date(.deadline) < ($date + days(30))) else false]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-31 Sun 21:51]
 :END:
 **** TODO Section names in agenda views should be evaluated as a query that produces a string value.
 :PROPERTIES:
 :capture_time: [2026-05-31 Sun 16:02]
 :context: 
 :END:
-**** TODO tests/commands/test_agenda_command.py                                      :Tests:Cleanup:
+**** DONE tests/commands/test_agenda_command.py                                      :Tests:Cleanup:
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-31 Sun 21:58]
 :END:
 
 In file tests/commands/test_agenda_command.py around line 301, near the ~def test_run_agenda_relative_sections_show_only_today(~
@@ -7554,6 +7566,41 @@ In file tests/commands/test_agenda_command.py around line 301, near the ~def tes
 #+end_example
 
 This type of a test makes no sense anymore. Please remove these instead of adjusting for inverse checks.
+**** DONE Show agenda date as a header before each day.
+:PROPERTIES:
+:capture_time: [2026-05-31 Sun 18:01]
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-31 Sun 22:16]
+:END:
+
+Additionally, please add a blank line between consecutive days and also before section names.
+
+It seems that the date header is already present, but upon scrolling it goes out of the view. Can the day header be made "sticky"? I.e. when scrolling, the day name should always be displayed at the top, followed by the scrollable section. When there are multiple days in a range, when the next day is in focus, the header should be updated with that date instead.
+
+**** TODO Optional =show= parameter on each section to disable it if not needed.
+:PROPERTIES:
+:capture_time: [2026-05-31 Sun 18:18]
+:context: 
+:END:
+
+Should be executed as a query with the usual context. By default it shold be =true=.
+**** DONE Text wrap and ellipsis in time column should not be needed.
+:PROPERTIES:
+:capture_time: [2026-05-31 Sun 22:14]
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-05-31 Sun 22:37]
+:END:
+
+Instead, size the column width automatically to fit the content. Treat the category and tags columns the same way, the only column that should be ellided is the task title.
+**** TODO There seems to be a performance regression in the agenda when switching to the next/previous date range. :Bug:
+:PROPERTIES:
+:capture_time: [2026-05-31 Sun 22:31]
+:context: 
+:END:
 *** Customizable agenda view columns                                                        :Config:
 - Similar to the superagenda thingie for Emacs
 
@@ -7583,7 +7630,11 @@ agenda:
           align: right
 #+end_src
 
-*** Agenda review/standalone review command
+*** CANCELLED Agenda review/standalone review command
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-05-31 Sun 22:10] \\
+  Can be achieved with customizable views.
+:END:
 A command that shows a summary of work completed over a period of time. Should provide an easy way to archive these tasks in bulk.
 Could be just a view of the agenda itself =org agenda --view review=
 *** Agenda notifications

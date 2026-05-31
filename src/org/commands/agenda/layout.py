@@ -65,6 +65,14 @@ class _RelativeEntry:
 
 
 @dataclass(frozen=True)
+class _ViewTimelineEntries:
+    """Timed and untimed entries selected for one timeline section."""
+
+    timed: list[_TimedEntry]
+    untimed: list[Heading]
+
+
+@dataclass(frozen=True)
 class _DayEntries:
     """Per-day grouped agenda entries."""
 
@@ -148,6 +156,15 @@ class DayRowModel:
     day: date
     rows: list[AgendaRow]
     selectable_row_indexes: list[int]
+
+
+@dataclass(frozen=True)
+class AgendaColumnWidths:
+    """Precomputed agenda column widths across the full rendered dataset."""
+
+    category: int
+    time: int
+    tags: int
 
 
 AGENDA_HELP_ENTRIES = [
@@ -244,9 +261,61 @@ def _resolve_agenda_start_date(raw_date: str | None) -> date:
 
 def _format_relative_days(delta_days: int, *, in_future: bool) -> str:
     """Format relative day offset for agenda time column."""
+    day_label = "day" if delta_days == 1 else "days"
     if in_future:
-        return f"in {delta_days}d"
-    return f"{delta_days}d ago"
+        return f"in {delta_days} {day_label}"
+    return f"{delta_days} {day_label} ago"
+
+
+def _relative_day_text(target_day: date, day: date) -> str:
+    """Return a human-readable relative day label for one target date."""
+    delta_days = (target_day - day).days
+    if delta_days > 0:
+        return _format_relative_days(delta_days, in_future=True)
+    if delta_days < 0:
+        return _format_relative_days(abs(delta_days), in_future=False)
+    return "today"
+
+
+def _day_header_label(day: date) -> str:
+    """Return the rendered day header label."""
+    return day.strftime("%A %Y-%m-%d")
+
+
+def _plain_section_row_details(node: Heading, day: date) -> tuple[str, str]:
+    """Return time label and source for one non-timeline agenda row."""
+    if _is_active_planning_timestamp(node.deadline) and node.deadline is not None:
+        deadline_day = node.deadline.start.date()
+        deadline_source = "deadline_today"
+        if deadline_day > day:
+            deadline_source = "upcoming_deadline"
+        elif deadline_day < day:
+            deadline_source = "overdue_deadline"
+        return _relative_day_text(deadline_day, day), deadline_source
+    if _is_active_planning_timestamp(node.scheduled) and node.scheduled is not None:
+        scheduled_day = node.scheduled.start.date()
+        scheduled_source = "scheduled_untimed"
+        if scheduled_day < day:
+            scheduled_source = "overdue_scheduled"
+        elif _has_specific_time(node.scheduled):
+            scheduled_source = "scheduled"
+        return _relative_day_text(scheduled_day, day), scheduled_source
+    return "", "scheduled"
+
+
+def _has_selected_untimed_planning(node: Heading) -> bool:
+    """Return whether a selected node has an active untimed planning timestamp."""
+    has_untimed_deadline = bool(
+        node.deadline is not None
+        and _is_active_planning_timestamp(node.deadline)
+        and not _has_specific_time(node.deadline),
+    )
+    has_untimed_scheduled = bool(
+        node.scheduled is not None
+        and _is_active_planning_timestamp(node.scheduled)
+        and not _has_specific_time(node.scheduled),
+    )
+    return has_untimed_deadline or has_untimed_scheduled
 
 
 def _category_text(node: Heading) -> Text:
@@ -955,55 +1024,67 @@ def _render_day_rows(table: Table, day_render: DayRenderInput, render: RenderCon
     return row_count
 
 
-def _config_style_to_row_style(style: str) -> str:
-    """Convert Rich markup-format style string to a plain row style.
-
-    Strips the outer markup brackets so '[bold white]' becomes 'bold white'.
-    """
-    stripped = style.strip()
-    if stripped.startswith("[") and "]" in stripped:
-        return stripped[1 : stripped.index("]")]
-    return stripped
+def _timeline_untimed_row_allowed(source: str, args: AgendaArgs) -> bool:
+    """Return whether one untimed timeline row should be rendered."""
+    return not (
+        (args.no_overdue and source in {"overdue_deadline", "overdue_scheduled"})
+        or (args.no_upcoming and source == "upcoming_deadline")
+    )
 
 
-def _collect_timed_entries_for_view_nodes(
+def _collect_timeline_entries_for_view_nodes(
     nodes: list[Heading],
     day: date,
     *,
-    future_repeats: bool,
-    no_completed: bool,
-) -> list[_TimedEntry]:
-    """Collect timed entries from view-filtered nodes for one day."""
+    args: AgendaArgs,
+) -> _ViewTimelineEntries:
+    """Collect timed and untimed entries from view-filtered nodes for one day."""
     timed: list[_TimedEntry] = []
+    untimed: list[Heading] = []
     for node in nodes:
-        if no_completed and node.is_completed:
+        if args.no_completed and node.is_completed:
             continue
-        scheduled_timed, _ = _collect_scheduled_entries(node, day, future_repeats=future_repeats)
+        scheduled_timed, _scheduled_untimed = _collect_scheduled_entries(
+            node,
+            day,
+            future_repeats=args.future_repeats,
+        )
         timed.extend(scheduled_timed)
-        deadline_timed, _ = _collect_deadline_entries(
+        deadline_timed, _deadline_untimed = _collect_deadline_entries(
             node,
             day,
             completed=node.is_completed,
-            future_repeats=future_repeats,
+            future_repeats=args.future_repeats,
         )
         timed.extend(deadline_timed)
-        timed.extend(_collect_repeat_timed_entries(node, day, no_completed=no_completed))
+        repeat_timed = _collect_repeat_timed_entries(
+            node,
+            day,
+            no_completed=args.no_completed,
+        )
+        timed.extend(repeat_timed)
+        if scheduled_timed or deadline_timed or repeat_timed:
+            continue
+        if not _has_selected_untimed_planning(node):
+            continue
+        _, source = _plain_section_row_details(node, day)
+        if _timeline_untimed_row_allowed(source, args):
+            untimed.append(node)
     timed.sort(key=lambda entry: entry.when)
-    return timed
+    return _ViewTimelineEntries(timed=timed, untimed=untimed)
 
 
 def _build_timeline_section_rows(
     day: date,
     now: datetime,
-    timed: list[_TimedEntry],
+    entries: _ViewTimelineEntries,
     section_name: str,
     style: str,
 ) -> list[AgendaRow]:
     """Build timetable rows for a timeline section."""
-    row_style = _config_style_to_row_style(style)
     rows: list[AgendaRow] = [AgendaRow(kind="section", day=day, section_label=section_name)]
     timed_by_hour: dict[int, list[_TimedEntry]] = {hour: [] for hour in range(24)}
-    for entry in timed:
+    for entry in entries.timed:
         timed_by_hour[entry.when.hour].append(entry)
 
     for hour in range(24):
@@ -1024,7 +1105,7 @@ def _build_timeline_section_rows(
                     time_text=timed_entry.when.strftime("%H:%M"),
                     node=timed_entry.node,
                     source="scheduled",
-                    style=row_style,
+                    style=style,
                     state_override=timed_entry.state_override,
                 ),
             )
@@ -1032,6 +1113,18 @@ def _build_timeline_section_rows(
             rows.append(
                 AgendaRow(kind="now_marker", day=day, time_text=now.strftime("%H:%M")),
             )
+    for node in entries.untimed:
+        time_text, source = _plain_section_row_details(node, day)
+        rows.append(
+            AgendaRow(
+                kind="task",
+                day=day,
+                node=node,
+                time_text=time_text,
+                source=source,
+                style=style,
+            ),
+        )
     return rows
 
 
@@ -1044,14 +1137,21 @@ def _build_plain_section_rows(
     """Build plain (non-timeline) task rows for a section."""
     if not nodes:
         return []
-    row_style = _config_style_to_row_style(style)
     rows: list[AgendaRow] = [
-        AgendaRow(kind="section", day=day, section_label=section_name, style=row_style),
+        AgendaRow(kind="section", day=day, section_label=section_name, style=style),
     ]
-    rows.extend(
-        AgendaRow(kind="task", day=day, node=node, source="scheduled", style=row_style)
-        for node in nodes
-    )
+    for node in nodes:
+        time_text, source = _plain_section_row_details(node, day)
+        rows.append(
+            AgendaRow(
+                kind="task",
+                day=day,
+                node=node,
+                time_text=time_text,
+                source=source,
+                style=style,
+            ),
+        )
     return rows
 
 
@@ -1064,13 +1164,12 @@ def _build_view_section_rows(
 ) -> list[AgendaRow]:
     """Build agenda rows for one view section."""
     if spec.timeline:
-        timed = _collect_timed_entries_for_view_nodes(
+        timeline_entries = _collect_timeline_entries_for_view_nodes(
             nodes,
             day,
-            future_repeats=args.future_repeats,
-            no_completed=args.no_completed,
+            args=args,
         )
-        return _build_timeline_section_rows(day, now, timed, spec.name, spec.style)
+        return _build_timeline_section_rows(day, now, timeline_entries, spec.name, spec.style)
     return _build_plain_section_rows(day, nodes, spec.name, spec.style)
 
 
@@ -1098,10 +1197,16 @@ def build_view_day_model(
     args: AgendaArgs,
 ) -> DayRowModel:
     """Build all render rows for one day using view section specs."""
-    rows: list[AgendaRow] = []
+    rows: list[AgendaRow] = [
+        AgendaRow(kind="day_header", day=day, section_label=_day_header_label(day)),
+    ]
     for spec in view_ctx.section_specs:
         section_nodes = _apply_section_query(nodes, spec, day, view_ctx.name)
-        rows.extend(_build_view_section_rows(day, now, section_nodes, spec, args))
+        section_rows = _build_view_section_rows(day, now, section_nodes, spec, args)
+        if not section_rows:
+            continue
+        rows.append(AgendaRow(kind="spacer", day=day))
+        rows.extend(section_rows)
     selectable = [
         idx for idx, row in enumerate(rows) if row.kind == "task" and row.node is not None
     ]
@@ -1109,6 +1214,23 @@ def build_view_day_model(
 
 
 def _build_agenda_table(day: date, *, color_enabled: bool) -> Table:
+    return _build_agenda_table_with_widths(
+        day,
+        widths=AgendaColumnWidths(
+            category=len("CATEGORY"),
+            time=len(day.strftime("%Y-%m-%d")),
+            tags=4,
+        ),
+        color_enabled=color_enabled,
+    )
+
+
+def _build_agenda_table_with_widths(
+    day: date,
+    *,
+    widths: AgendaColumnWidths,
+    color_enabled: bool,
+) -> Table:
     table = Table(
         expand=True,
         box=box.SIMPLE_HEAD,
@@ -1117,10 +1239,10 @@ def _build_agenda_table(day: date, *, color_enabled: bool) -> Table:
         show_lines=False,
         row_styles=["", "on grey11"],
     )
-    table.add_column("CATEGORY", min_width=8, no_wrap=True)
-    table.add_column(day.strftime("%Y-%m-%d"), width=10, no_wrap=True)
-    table.add_column("TASK", ratio=1)
-    table.add_column("TAGS", min_width=8, justify="right", no_wrap=True)
+    table.add_column("CATEGORY", width=widths.category, no_wrap=True)
+    table.add_column(day.strftime("%Y-%m-%d"), width=widths.time, no_wrap=True)
+    table.add_column("TASK", ratio=1, no_wrap=True, overflow="ellipsis")
+    table.add_column("TAGS", width=widths.tags, justify="right", no_wrap=True)
     return table
 
 
@@ -1144,14 +1266,25 @@ def _render_row_model(
             ),
             render,
         )
-    if row.kind == "section":
-        label = row.section_label
-        if render.color_enabled and "[" in label:
-            heading = Text.from_markup(label)
-        else:
-            heading = Text(label, style="bold" if render.color_enabled else "")
+    return _render_non_task_row(table, row, render, row_style)
+
+
+def _render_non_task_row(
+    table: Table,
+    row: AgendaRow,
+    render: RenderContext,
+    row_style: str,
+) -> int:
+    """Render one non-task agenda row."""
+    if row.kind == "day_header":
+        heading = Text(row.section_label, style="bold" if render.color_enabled else "")
         table.add_row(Text(""), Text(""), heading, Text(""), style=row_style)
         return 1
+    if row.kind == "spacer":
+        table.add_row(Text(""), Text(""), Text(""), Text(""), style=row_style)
+        return 1
+    if row.kind == "section":
+        return _render_section_row(table, row, render, row_style)
     if row.kind == "hour_marker":
         table.add_row(
             Text(""),
@@ -1173,16 +1306,28 @@ def _render_row_model(
     return 0
 
 
+def _render_section_row(
+    table: Table,
+    row: AgendaRow,
+    render: RenderContext,
+    row_style: str,
+) -> int:
+    """Render one section row."""
+    label = row.section_label
+    if render.color_enabled and "[" in label:
+        heading = Text.from_markup(label)
+    else:
+        heading = Text(label, style="bold" if render.color_enabled else "")
+    table.add_row(Text(""), Text(""), heading, Text(""), style=row_style)
+    return 1
+
+
 def _build_interactive_rows(session: AgendaSession) -> list[ViewportRow]:
     rows: list[ViewportRow] = []
     for day_index, day_model in enumerate(session.day_models):
-        rows.append(
-            ViewportRow(kind="day_header", day=day_model.day, agenda_row=None, location=None),
-        )
-        rows.append(
-            ViewportRow(kind="day_rule", day=day_model.day, agenda_row=None, location=None),
-        )
         for row_index, agenda_row in enumerate(day_model.rows):
+            if _hide_interactive_day_row(day_index, row_index, agenda_row):
+                continue
             rows.append(
                 ViewportRow(
                     kind="agenda",
@@ -1208,6 +1353,13 @@ def _build_interactive_rows(session: AgendaSession) -> list[ViewportRow]:
     return rows
 
 
+def _hide_interactive_day_row(day_index: int, row_index: int, row: AgendaRow) -> bool:
+    """Return whether one day-model row is hidden from the interactive viewport."""
+    return day_index == 0 and (
+        row.kind == "day_header" or (row_index == 1 and row.kind == "spacer")
+    )
+
+
 def _selected_viewport_row_index(
     rows: list[ViewportRow],
     selected: tuple[int, int] | None,
@@ -1221,12 +1373,38 @@ def _selected_viewport_row_index(
 
 
 def _build_interactive_viewport_table() -> Table:
+    return _build_interactive_viewport_table_with_widths(
+        AgendaColumnWidths(category=len("CATEGORY"), time=10, tags=4),
+    )
+
+
+def _build_interactive_viewport_table_with_widths(widths: AgendaColumnWidths) -> Table:
     table = Table(expand=True, box=None, show_header=False, show_lines=False, pad_edge=False)
-    table.add_column(min_width=8, no_wrap=True, overflow="ellipsis")
-    table.add_column(width=10, no_wrap=True, overflow="ellipsis")
+    table.add_column(width=widths.category, no_wrap=True)
+    table.add_column(width=widths.time, no_wrap=True)
     table.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
-    table.add_column(min_width=8, justify="right", no_wrap=True, overflow="ellipsis")
+    table.add_column(width=widths.tags, justify="right", no_wrap=True)
     return table
+
+
+def _agenda_column_widths(
+    day_models: list[DayRowModel],
+    render: RenderContext,
+    *,
+    day_header_width: int,
+) -> AgendaColumnWidths:
+    """Compute agenda column widths from all rendered day models."""
+    category_width = len("CATEGORY")
+    time_width = max(len("TIME"), day_header_width)
+    tags_width = len("TAGS")
+    for day_model in day_models:
+        for row in day_model.rows:
+            if row.kind != "task" or row.node is None:
+                continue
+            category_width = max(category_width, _category_text(row.node).cell_len)
+            time_width = max(time_width, len(row.time_text))
+            tags_width = max(tags_width, _tags_text(row.node, render.color_enabled).cell_len)
+    return AgendaColumnWidths(category=category_width, time=time_width, tags=tags_width)
 
 
 def _render_viewport_row(
@@ -1235,17 +1413,8 @@ def _render_viewport_row(
     session: AgendaSession,
     selected_location: tuple[int, int] | None,
 ) -> None:
-    if row.kind in {"day_rule", "spacer"}:
+    if row.kind == "spacer":
         table.add_row(Text(""), Text(""), Text(""), Text(""))
-        return
-    if row.kind == "day_header":
-        bold_style = "bold" if session.render.color_enabled else ""
-        table.add_row(
-            Text(""),
-            Text(""),
-            Text(row.day.strftime("%A %Y-%m-%d"), style=bold_style),
-            Text(""),
-        )
         return
     if row.agenda_row is None:
         return
@@ -1267,23 +1436,29 @@ def interactive_agenda_renderable(console: Console, session: AgendaSession) -> G
             ),
         )
     rows = _build_interactive_rows(session)
-    viewport_height = max(5, console.size.height - 3)
+    widths = _agenda_column_widths(
+        session.day_models,
+        session.render,
+        day_header_width=len(session.start_date.strftime("%Y-%m-%d")),
+    )
+    viewport_height = max(3, console.size.height - 5)
     selected_row = _selected_viewport_row_index(rows, _selected_row_location(session))
     max_offset = max(0, len(rows) - viewport_height)
     session.scroll_offset = min(max(session.scroll_offset, 0), max_offset)
-    if selected_row is not None:
-        if selected_row < session.scroll_offset:
-            session.scroll_offset = selected_row
-        elif selected_row >= session.scroll_offset + viewport_height:
-            session.scroll_offset = selected_row - viewport_height + 1
-        session.scroll_offset = min(max(session.scroll_offset, 0), max_offset)
+    session.scroll_offset = _adjust_scroll_offset(
+        session.scroll_offset,
+        selected_row,
+        viewport_height,
+        max_offset,
+    )
     window = rows[session.scroll_offset : session.scroll_offset + viewport_height]
     selected_location = _selected_row_location(session)
-    viewport_table = _build_interactive_viewport_table()
+    viewport_table = _build_interactive_viewport_table_with_widths(widths)
     for row in window:
         _render_viewport_row(viewport_table, row, session, selected_location)
     for _ in range(viewport_height - len(window)):
         viewport_table.add_row(Text(""), Text(""), Text(""), Text(""))
+    sticky_day = _resolve_sticky_day(session, rows)
     end_line = min(session.scroll_offset + viewport_height, len(rows))
     total_lines = max(len(rows), 1)
     search_text = session.search_text or "-"
@@ -1301,9 +1476,58 @@ def interactive_agenda_renderable(console: Console, session: AgendaSession) -> G
         Text(INTERACTIVE_HELP_FOOTER_HINT, style=footer_style, no_wrap=True, overflow="ellipsis"),
     )
     status_text = Text(status, style=footer_style, no_wrap=True, overflow="ellipsis")
+    sticky_header = Text(
+        _day_header_label(sticky_day),
+        style="bold" if session.render.color_enabled else "",
+        no_wrap=True,
+        overflow="ellipsis",
+    )
+    header_rule = Rule(style=footer_style)
     if prompt_line is None:
-        return Group(viewport_table, Rule(style=footer_style), footer_line, status_text)
-    return Group(viewport_table, Rule(style=footer_style), footer_line, prompt_line, status_text)
+        return Group(
+            sticky_header,
+            header_rule,
+            viewport_table,
+            Rule(style=footer_style),
+            footer_line,
+            status_text,
+        )
+    return Group(
+        sticky_header,
+        header_rule,
+        viewport_table,
+        Rule(style=footer_style),
+        footer_line,
+        prompt_line,
+        status_text,
+    )
+
+
+def _adjust_scroll_offset(
+    scroll_offset: int,
+    selected_row: int | None,
+    viewport_height: int,
+    max_offset: int,
+) -> int:
+    """Keep the selected row visible within the viewport."""
+    adjusted_offset = min(max(scroll_offset, 0), max_offset)
+    if selected_row is None:
+        return adjusted_offset
+    if selected_row < adjusted_offset:
+        adjusted_offset = selected_row
+    elif selected_row >= adjusted_offset + viewport_height:
+        adjusted_offset = selected_row - viewport_height + 1
+    return min(max(adjusted_offset, 0), max_offset)
+
+
+def _resolve_sticky_day(session: AgendaSession, rows: list[ViewportRow]) -> date:
+    """Resolve the sticky interactive day header from selection or visible rows."""
+    selected_location = _selected_row_location(session)
+    if selected_location is not None:
+        return session.day_models[selected_location[0]].day
+    if rows:
+        return rows[min(session.scroll_offset, len(rows) - 1)].day
+    return session.start_date
 
 
 def render_agenda(
@@ -1315,15 +1539,29 @@ def render_agenda(
     start_date = _resolve_agenda_start_date(render_input.args.date)
     rendered_tables: list[Table] = []
     total_rows = 0
+    day_models: list[DayRowModel] = []
     for day_offset in range(render_input.args.days):
         day = start_date + timedelta(days=day_offset)
-        table = _build_agenda_table(day, color_enabled=render_input.render.color_enabled)
         day_model = build_view_day_model(
             render_input.nodes,
             day,
             render_input.now,
             view_ctx,
             render_input.args,
+        )
+        day_models.append(day_model)
+    widths = _agenda_column_widths(
+        day_models,
+        render_input.render,
+        day_header_width=max(
+            len(day.strftime("%Y-%m-%d")) for day in (model.day for model in day_models)
+        ),
+    )
+    for day_model in day_models:
+        table = _build_agenda_table_with_widths(
+            day_model.day,
+            widths=widths,
+            color_enabled=render_input.render.color_enabled,
         )
         day_rows = 0
         for row in day_model.rows:

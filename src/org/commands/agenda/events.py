@@ -57,6 +57,7 @@ from .layout import (
     DayRowModel,
     RenderContext,
     _has_specific_time,
+    _hide_interactive_day_row,
     _resolve_agenda_start_date,
     _selected_row_location,
     build_view_day_model,
@@ -122,7 +123,9 @@ def refresh_session(
         )
         day_models.append(day_model)
         row_locations.extend(
-            (len(day_models) - 1, row_index) for row_index in range(len(day_model.rows))
+            (len(day_models) - 1, row_index)
+            for row_index, row in enumerate(day_model.rows)
+            if not _hide_interactive_day_row(len(day_models) - 1, row_index, row)
         )
 
     session.day_models = day_models

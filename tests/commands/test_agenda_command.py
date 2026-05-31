@@ -155,9 +155,12 @@ def test_run_agenda_renders_expected_sections(
     assert "2025-01-15" in plain_output
     assert "Timed agenda task" in plain_output
     assert "Repeated completion on day" in plain_output
-    assert "Overdue scheduled" not in plain_output
     assert "Overdue deadlines" not in plain_output
     assert "Upcoming deadlines (30d)" not in plain_output
+    assert "Overdue scheduled task" in plain_output
+    assert "Overdue deadline task" in plain_output
+    assert "Upcoming deadline task" in plain_output
+    assert "Untimed agenda task" in plain_output
     assert "CATEGORY" in plain_output
     assert "TASK" in plain_output
 
@@ -190,8 +193,6 @@ def test_run_agenda_no_overdue_hides_overdue_sections(
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
 
-    assert "Overdue scheduled" not in output
-    assert "Overdue deadlines" not in output
     assert "Overdue scheduled task" not in output
     assert "Overdue deadline task" not in output
 
@@ -272,45 +273,11 @@ def test_run_agenda_no_future_repeats_hides_projected_repeats(
     assert "Repeat scheduled" not in output
 
 
-def test_run_agenda_relative_sections_show_only_today(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: os.PathLike[str],
-) -> None:
-    """Default view should render without overdue/upcoming sections."""
-    pinned_now = _pin_agenda_now(monkeypatch)
-    today_date = pinned_now.date()
-    fixture_path = os.path.join(tmp_path, "agenda_today_relative.org")
-    with open(fixture_path, "w", encoding="utf-8") as handle:
-        handle.write(
-            "* TODO Past scheduled\n"
-            f"SCHEDULED: <{(today_date - timedelta(days=2)).isoformat()} Mon>\n\n"
-            "* TODO Past deadline\n"
-            f"DEADLINE: <{(today_date - timedelta(days=1)).isoformat()} Tue>\n\n"
-            "* TODO Soon deadline\n"
-            f"DEADLINE: <{(today_date + timedelta(days=3)).isoformat()} Fri>\n",
-        )
-
-    today = today_date.isoformat()
-    args = _make_args([fixture_path], date=today)
-
-    monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", today])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
-
-    assert "Overdue scheduled" not in output
-    assert "Overdue deadlines" not in output
-    assert "Upcoming deadlines (30d)" not in output
-    assert "Past scheduled" not in output
-    assert "Past deadline" not in output
-    assert "Soon deadline" not in output
-
-
 def test_run_agenda_days_renders_multiple_day_headers(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Agenda should render one dated section per day in the requested range."""
+    """Agenda should render one weekday/date header per day in the requested range."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15", days=2)
 
@@ -319,46 +286,15 @@ def test_run_agenda_days_renders_multiple_day_headers(
     output = capsys.readouterr().out
     plain_output = output.replace("…", "")
 
-    assert "2025-01-15" in plain_output
-    assert "2025-01-16" in plain_output
-
-
-def test_run_agenda_multi_day_shows_relative_sections_only_for_today(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: os.PathLike[str],
-) -> None:
-    """Multi-day agenda default view should not render overdue/upcoming sections."""
-    pinned_now = _pin_agenda_now(monkeypatch)
-    today = pinned_now.date()
-    fixture_path = os.path.join(tmp_path, "agenda_multiday_relative.org")
-    with open(fixture_path, "w", encoding="utf-8") as handle:
-        handle.write(
-            "* TODO alpha\n"
-            f"SCHEDULED: <{(today - timedelta(days=4)).isoformat()} Mon>\n\n"
-            "* TODO beta\n"
-            f"DEADLINE: <{(today - timedelta(days=2)).isoformat()} Tue>\n\n"
-            "* TODO gamma\n"
-            f"DEADLINE: <{(today + timedelta(days=5)).isoformat()} Fri>\n",
-        )
-
-    start = (today - timedelta(days=1)).isoformat()
-    args = _make_args([fixture_path], date=start, days=3)
-
-    monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", start, "--days", "3"])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
-
-    assert "Overdue scheduled" not in output
-    assert "Overdue deadlines" not in output
-    assert "Upcoming deadlines (30d)" not in output
+    assert "Wednesday 2025-01-15" in plain_output
+    assert "Thursday 2025-01-16" in plain_output
 
 
 def test_run_agenda_single_day_default_omits_day_header(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Single-day agenda with default date should still render day header row."""
+    """Single-day agenda should render a weekday/date header row."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path])
 
@@ -366,8 +302,10 @@ def test_run_agenda_single_day_default_omits_day_header(
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
     plain_output = output.replace("…", "")
+    expected_day_header = local_now().strftime("%A %Y-%m-%d")
 
     assert "CATEGORY" in plain_output
+    assert expected_day_header in plain_output
 
 
 def test_run_agenda_hides_repeat_prefix(
@@ -531,8 +469,8 @@ def test_run_agenda_overdue_deadlines_precede_overdue_scheduled(
     agenda_command.run_agenda(args)
     output = capsys.readouterr().out
 
-    assert "overdue sched" not in output
-    assert "overdue deadline" not in output
+    assert "overdue sched" in output
+    assert "overdue deadline" in output
 
 
 def test_run_agenda_orders_overdue_and_upcoming_by_age(
@@ -558,6 +496,178 @@ def test_run_agenda_orders_overdue_and_upcoming_by_age(
     output = capsys.readouterr().out
 
     assert output.index("earlier task") < output.index("later task")
+
+
+def test_run_agenda_plain_view_rows_show_relative_day_labels(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Non-timeline agenda sections should show relative planning day labels."""
+    fixture_path = os.path.join(tmp_path, "agenda_relative_plain_view.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write(
+            "* TODO Overdue scheduled\n"
+            "SCHEDULED: <2025-01-13 Mon>\n\n"
+            "* TODO Due today\n"
+            "DEADLINE: <2025-01-15 Wed>\n\n"
+            "* TODO Upcoming deadline\n"
+            "DEADLINE: <2025-01-18 Sat>\n",
+        )
+
+    config_module.CONFIG_AGENDA_VIEWS.clear()
+    config_module.CONFIG_AGENDA_VIEWS["plain"] = config_module.AgendaViewConfig(
+        name="plain",
+        sections=[
+            config_module.AgendaSectionConfig(
+                name="Planning",
+                filter=".scheduled != null or .deadline != null",
+                order_by=None,
+                style="white",
+                timeline=False,
+            ),
+        ],
+    )
+    args = _make_args([fixture_path], date="2025-01-15", view="plain")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "agenda", "--date", "2025-01-15", "--view", "plain", fixture_path],
+    )
+    agenda_command.run_agenda(args)
+    output = capsys.readouterr().out
+
+    assert "2 days ago" in output
+    assert "today" in output
+    assert "in 3 days" in output
+
+
+def test_build_view_day_model_plain_rows_choose_matching_planning_source() -> None:
+    """Plain agenda rows should keep the planning source that matches their relative label."""
+    root = org_parser.loads(
+        "* TODO Deadline row\nDEADLINE: <2025-01-18 Sat>\n\n"
+        "* TODO Scheduled row\nSCHEDULED: <2025-01-13 Mon>\n",
+    )
+    nodes = list(root)
+    view = config_module.AgendaViewConfig(
+        name="plain",
+        sections=[
+            config_module.AgendaSectionConfig(
+                name="Planning",
+                filter=".scheduled != null or .deadline != null",
+                order_by=None,
+                style="white",
+                timeline=False,
+            ),
+        ],
+    )
+    day_model = agenda_layout.build_view_day_model(
+        nodes,
+        datetime(2025, 1, 15).date(),
+        datetime(2025, 1, 15, 12, 0),
+        AgendaViewContext(section_specs=_compile_view_section_specs(view), name=view.name),
+        _make_args(["dummy.org"], date="2025-01-15"),
+    )
+
+    task_rows = [row for row in day_model.rows if row.kind == "task" and row.node is not None]
+    task_row_details = []
+    for row in task_rows:
+        node = row.node
+        assert node is not None
+        task_row_details.append((node.title_text.strip(), row.time_text, row.source))
+    assert task_row_details == [
+        ("Deadline row", "in 3 days", "upcoming_deadline"),
+        ("Scheduled row", "2 days ago", "overdue_scheduled"),
+    ]
+
+
+def test_run_agenda_timeline_view_appends_selected_untimed_tasks(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: os.PathLike[str],
+) -> None:
+    """Timeline sections should append selected untimed planning rows after the hour grid."""
+    fixture_path = os.path.join(tmp_path, "agenda_timeline_untimed_view.org")
+    with open(fixture_path, "w", encoding="utf-8") as handle:
+        handle.write(
+            "* TODO Timed task\n"
+            "SCHEDULED: <2025-01-15 Wed 09:30>\n\n"
+            "* TODO Untimed task\n"
+            "SCHEDULED: <2025-01-15 Wed>\n",
+        )
+
+    config_module.CONFIG_AGENDA_VIEWS.clear()
+    config_module.CONFIG_AGENDA_VIEWS["timeline"] = config_module.AgendaViewConfig(
+        name="timeline",
+        sections=[
+            config_module.AgendaSectionConfig(
+                name="Agenda",
+                filter=".scheduled != null",
+                order_by=None,
+                style="white",
+                timeline=True,
+            ),
+        ],
+    )
+    args = _make_args([fixture_path], date="2025-01-15", view="timeline")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["org", "agenda", "--date", "2025-01-15", "--view", "timeline", fixture_path],
+    )
+    agenda_command.run_agenda(args)
+    output = capsys.readouterr().out
+
+    assert "09:30" in output
+    assert "Timed task" in output
+    assert "today" in output
+    assert "Untimed task" in output
+    assert output.index("Timed task") < output.index("Untimed task")
+
+
+def test_build_view_day_model_timeline_rows_append_untimed_with_deadline_precedence() -> None:
+    """Timeline sections should append untimed rows after hour markers with deadline precedence."""
+    root = org_parser.loads(
+        "* TODO Timed row\nSCHEDULED: <2025-01-15 Wed 09:30>\n\n"
+        "* TODO Untimed deadline row\nDEADLINE: <2025-01-18 Sat>\n\n"
+        "* TODO Untimed scheduled row\nSCHEDULED: <2025-01-13 Mon>\n\n"
+        "* TODO Both row\nSCHEDULED: <2025-01-14 Tue>\nDEADLINE: <2025-01-17 Fri>\n",
+    )
+    nodes = list(root)
+    view = config_module.AgendaViewConfig(
+        name="timeline",
+        sections=[
+            config_module.AgendaSectionConfig(
+                name="Agenda",
+                filter=".scheduled != null or .deadline != null",
+                order_by=None,
+                style="white",
+                timeline=True,
+            ),
+        ],
+    )
+    day_model = agenda_layout.build_view_day_model(
+        nodes,
+        datetime(2025, 1, 15).date(),
+        datetime(2025, 1, 15, 12, 0),
+        AgendaViewContext(section_specs=_compile_view_section_specs(view), name=view.name),
+        _make_args(["dummy.org"], date="2025-01-15"),
+    )
+
+    task_rows = [row for row in day_model.rows if row.kind == "task" and row.node is not None]
+    task_row_details = []
+    for row in task_rows:
+        node = row.node
+        assert node is not None
+        task_row_details.append((node.title_text.strip(), row.time_text, row.source))
+    assert task_row_details == [
+        ("Timed row", "09:30", "scheduled"),
+        ("Untimed deadline row", "in 3 days", "upcoming_deadline"),
+        ("Untimed scheduled row", "2 days ago", "overdue_scheduled"),
+        ("Both row", "in 2 days", "upcoming_deadline"),
+    ]
 
 
 def test_run_agenda_omits_inactive_planning_timestamps(
@@ -809,6 +919,18 @@ def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:
     assert session.selected_row_index == start
 
 
+def test_interactive_row_locations_skip_hidden_first_day_rows() -> None:
+    """Interactive selection should not include the hidden first day header/spacer rows."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15")
+    root = org_parser.load(fixture_path)
+    session = _make_session(args, list(root))
+
+    assert (0, 0) not in session.row_locations
+    assert (0, 1) not in session.row_locations
+    assert session.row_locations[0] == (0, 2)
+
+
 def test_timeout_event_refreshes_now_marker_when_minute_changes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -869,7 +991,7 @@ def test_agenda_search_filters_rows_and_clear_restores_rows() -> None:
     all_titles = _visible_agenda_task_titles(session)
 
     assert "Timed agenda task" in all_titles
-    assert "Untimed agenda task" not in all_titles
+    assert "Untimed agenda task" in all_titles
 
     assert agenda_events._handle_keypress_event(session, "/") is True
     assert session.active_prompt is not None
@@ -1505,6 +1627,10 @@ def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
         "Timed agenda task",
         "Repeated completion on day",
         "Completed one-off task",
+        "Untimed agenda task",
+        "Overdue scheduled task",
+        "Overdue deadline task",
+        "Upcoming deadline task",
     ]
     assert session.search_text == ""
     assert session.status_message == "Search cancelled"
@@ -1563,6 +1689,7 @@ def test_interactive_renderable_footer_is_two_lines_without_status() -> None:
     lines = buffer.getvalue().splitlines()
 
     assert len(lines) == 24
+    assert lines[0].strip() == "Wednesday 2025-01-15"
     assert lines[-2].startswith("Lines ")
     assert "Type ? for help" in lines[-2]
     assert lines[-1] == ""
@@ -1582,9 +1709,54 @@ def test_interactive_renderable_footer_is_two_lines_with_status_on_narrow_width(
     lines = buffer.getvalue().splitlines()
 
     assert len(lines) == 24
+    assert lines[0].strip() == "Wednesday 2025-01-15"
     assert lines[-2].startswith("Lines ")
     assert "Type ? for help" in lines[-2]
     assert lines[-1] == "Unsupported key: x"
+
+
+def test_interactive_renderable_updates_sticky_day_header_for_selected_day() -> None:
+    """Interactive render should update the sticky day header when selection moves days."""
+    fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+    args = _make_args([fixture_path], date="2025-01-15", days=2)
+    root = org_parser.load(fixture_path)
+    session = _make_session(args, list(root))
+    session.selected_row_index = next(
+        index
+        for index, (day_index, row_index) in enumerate(session.row_locations)
+        if day_index == 1 and session.day_models[day_index].rows[row_index].kind == "task"
+    )
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=160, height=24)
+
+    console.print(agenda_layout.interactive_agenda_renderable(console, session))
+    lines = buffer.getvalue().splitlines()
+
+    assert lines[0].strip() == "Thursday 2025-01-16"
+
+
+def test_interactive_renderable_uses_full_dataset_column_widths() -> None:
+    """Interactive agenda column widths should be based on all rendered day models."""
+    root = org_parser.loads(
+        "#+CATEGORY: short\n"
+        "* TODO Day one\n"
+        "SCHEDULED: <2025-01-15 Wed 09:30>\n\n"
+        "#+CATEGORY: very-long-category\n"
+        "* TODO Day two\n"
+        "SCHEDULED: <2025-01-16 Thu>\n"
+        ":TAGONE:TAGTWO:\n",
+    )
+    args = _make_args(["dummy.org"], date="2025-01-15", days=2)
+    session = _make_session(args, list(root), color_enabled=False)
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=False, width=120, height=24)
+
+    console.print(agenda_layout.interactive_agenda_renderable(console, session))
+    output = buffer.getvalue()
+
+    assert "very-long-category" not in output
+    assert "short" in output
+    assert "09:30" in output
 
 
 def test_handle_interactive_key_question_toggles_help_modal() -> None:
