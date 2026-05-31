@@ -7596,10 +7596,21 @@ Should be executed as a query with the usual context. By default it shold be =tr
 :END:
 
 Instead, size the column width automatically to fit the content. Treat the category and tags columns the same way, the only column that should be ellided is the task title.
-**** TODO There seems to be a performance regression in the agenda when switching to the next/previous date range. :Bug:
+**** DONE There seems to be a performance regression in the agenda when switching to the next/previous date range. :Bug:
 :PROPERTIES:
 :capture_time: [2026-05-31 Sun 22:31]
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-01 Mon 00:09]
+:END:
+**** DONE Clean up old =_collect_day_entries()= path entirely.
+:PROPERTIES:
+:capture_time: [2026-06-01 Mon 00:02]
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-01 Mon 00:09]
 :END:
 *** Customizable agenda view columns                                                        :Config:
 - Similar to the superagenda thingie for Emacs
@@ -7640,7 +7651,6 @@ Could be just a view of the agenda itself =org agenda --view review=
 *** Agenda notifications
 =--notify= and =agenda.notify-command= setting to send reminders about scheduled tasks that are about to start.
 *** Tasks that span multiple hours should be shown as a block in the agenda view.
-
 *** Agenda plan action
 Interactively ask what needs to be done today, use a configurable scenario:
 

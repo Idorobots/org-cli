@@ -53,11 +53,13 @@ from org.commands.tasks.common import (
 )
 
 from .layout import (
+    AgendaColumnWidths,
     AgendaRow,
     DayRowModel,
     RenderContext,
+    ViewportRow,
     _has_specific_time,
-    _hide_interactive_day_row,
+    _interactive_artifacts,
     _resolve_agenda_start_date,
     _selected_row_location,
     build_view_day_model,
@@ -91,6 +93,8 @@ class AgendaSession:
     days: int
     now: datetime
     day_models: list[DayRowModel]
+    interactive_rows: list[ViewportRow]
+    column_widths: AgendaColumnWidths
     row_locations: list[tuple[int, int]]
     selected_row_index: int
     scroll_offset: int
@@ -110,7 +114,6 @@ def refresh_session(
     """Recompute day row models and restore selection when possible."""
     session.now = local_now()
     day_models: list[DayRowModel] = []
-    row_locations: list[tuple[int, int]] = []
 
     for day_offset in range(session.days):
         day = session.start_date + timedelta(days=day_offset)
@@ -122,28 +125,26 @@ def refresh_session(
             session.args,
         )
         day_models.append(day_model)
-        row_locations.extend(
-            (len(day_models) - 1, row_index)
-            for row_index, row in enumerate(day_model.rows)
-            if not _hide_interactive_day_row(len(day_models) - 1, row_index, row)
-        )
 
     session.day_models = day_models
-    session.row_locations = row_locations
-    if not row_locations:
+    session.row_locations, session.interactive_rows, session.column_widths = _interactive_artifacts(
+        day_models,
+        session.render,
+    )
+    if not session.row_locations:
         session.selected_row_index = 0
         return
 
     preserved_node = resolve_heading_locator(session.nodes, preserve_identity)
     if preserved_node is not None:
-        for idx, (day_index, row_index) in enumerate(row_locations):
+        for idx, (day_index, row_index) in enumerate(session.row_locations):
             row = day_models[day_index].rows[row_index]
             if row.node is preserved_node:
                 session.selected_row_index = idx
                 return
 
-    if session.selected_row_index >= len(row_locations):
-        session.selected_row_index = len(row_locations) - 1
+    if session.selected_row_index >= len(session.row_locations):
+        session.selected_row_index = len(session.row_locations) - 1
     session.selected_row_index = max(session.selected_row_index, 0)
 
 
@@ -620,6 +621,8 @@ def create_agenda_session(
         days=args.days,
         now=local_now(),
         day_models=[],
+        interactive_rows=[],
+        column_widths=AgendaColumnWidths(category=8, time=10, tags=4),
         row_locations=[],
         selected_row_index=0,
         scroll_offset=0,

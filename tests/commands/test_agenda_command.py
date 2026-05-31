@@ -138,7 +138,7 @@ def test_run_agenda_renders_expected_sections(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Agenda should render timetable and all section groups for the selected day."""
+    """Agenda should render the current view-based agenda for the selected day."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
     args.max_results = sys.maxsize
@@ -415,7 +415,7 @@ def test_run_agenda_deadline_with_time_is_aligned_to_timetable(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
-    """Deadline with specific time on selected day should be in hourly timetable rows."""
+    """Timed deadlines should render in the current timeline rows."""
     fixture_path = os.path.join(tmp_path, "agenda_deadline_today_timed.org")
     with open(fixture_path, "w", encoding="utf-8") as handle:
         handle.write(
@@ -429,7 +429,6 @@ def test_run_agenda_deadline_with_time_is_aligned_to_timetable(
 
     assert "09:30" in output
     assert "Timed due" in output
-    assert "Deadlines without specific time" not in output
 
 
 def test_run_agenda_untimed_scheduled_omits_all_day_label(
@@ -1411,7 +1410,7 @@ def test_handle_interactive_key_a_uses_now_marker_time(
 
 
 def test_handle_interactive_key_a_on_non_timetable_row_reports_blocked() -> None:
-    """a outside timetable rows should be blocked with a status message."""
+    """a on non-timed rows should be blocked with a status message."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
     root = org_parser.load(fixture_path)
