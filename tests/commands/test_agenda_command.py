@@ -290,7 +290,7 @@ def test_run_agenda_days_renders_multiple_day_headers(
     assert "Thursday 2025-01-16" in plain_output
 
 
-def test_run_agenda_single_day_default_omits_day_header(
+def test_run_agenda_single_day_default_shows_day_header(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -381,7 +381,7 @@ def test_run_agenda_excludes_completed_untimed_scheduled(
     assert "Completed timed task" not in output
 
 
-def test_run_agenda_shows_deadline_untimed_section_before_scheduled_untimed(
+def test_run_agenda_timed_deadline_and_scheduled_tasks_appear_in_time_order(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
@@ -446,7 +446,7 @@ def test_run_agenda_untimed_scheduled_omits_all_day_label(
     assert "all day" not in output
 
 
-def test_run_agenda_overdue_deadlines_precede_overdue_scheduled(
+def test_run_agenda_default_view_shows_overdue_scheduled_and_deadline_tasks(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
@@ -472,7 +472,7 @@ def test_run_agenda_overdue_deadlines_precede_overdue_scheduled(
     assert "overdue deadline" in output
 
 
-def test_run_agenda_orders_overdue_and_upcoming_by_age(
+def test_run_agenda_same_day_timed_tasks_are_ordered_by_time(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],

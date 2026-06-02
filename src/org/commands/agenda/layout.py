@@ -701,18 +701,6 @@ def build_view_day_model(
     return DayRowModel(day=day, rows=rows, selectable_row_indexes=selectable)
 
 
-def _build_agenda_table(day: date, *, color_enabled: bool) -> Table:
-    return _build_agenda_table_with_widths(
-        day,
-        widths=AgendaColumnWidths(
-            category=len("CATEGORY"),
-            time=len(day.strftime("%Y-%m-%d")),
-            tags=4,
-        ),
-        color_enabled=color_enabled,
-    )
-
-
 def _build_agenda_table_with_widths(
     day: date,
     *,
@@ -810,37 +798,6 @@ def _render_section_row(
     return 1
 
 
-def _build_interactive_rows(session: AgendaSession) -> list[ViewportRow]:
-    rows: list[ViewportRow] = []
-    for day_index, day_model in enumerate(session.day_models):
-        for row_index, agenda_row in enumerate(day_model.rows):
-            if _hide_interactive_day_row(day_index, row_index, agenda_row):
-                continue
-            rows.append(
-                ViewportRow(
-                    kind="agenda",
-                    day=day_model.day,
-                    agenda_row=AgendaRow(
-                        kind=agenda_row.kind,
-                        day=agenda_row.day,
-                        time_text=agenda_row.time_text,
-                        section_label=agenda_row.section_label,
-                        node=agenda_row.node,
-                        source=agenda_row.source,
-                        style=agenda_row.style,
-                        prefix=agenda_row.prefix,
-                        state_override=agenda_row.state_override,
-                    ),
-                    location=(day_index, row_index),
-                ),
-            )
-        if day_index != len(session.day_models) - 1:
-            rows.append(
-                ViewportRow(kind="spacer", day=day_model.day, agenda_row=None, location=None),
-            )
-    return rows
-
-
 def _interactive_artifacts(
     day_models: list[DayRowModel],
     render: RenderContext,
@@ -918,12 +875,6 @@ def _selected_viewport_row_index(
         if row.location == selected:
             return idx
     return None
-
-
-def _build_interactive_viewport_table() -> Table:
-    return _build_interactive_viewport_table_with_widths(
-        AgendaColumnWidths(category=len("CATEGORY"), time=10, tags=4),
-    )
 
 
 def _build_interactive_viewport_table_with_widths(widths: AgendaColumnWidths) -> Table:
