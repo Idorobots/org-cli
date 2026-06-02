@@ -7341,9 +7341,13 @@ Please don't leave unused arguments in functions, if an argument is no longer ne
 The timestamp advancement should only be used if the new state is a completed state. In such a case, the state should be updated to the first TODO state defined for the document, a logbook repeat should be added to the task (`State {node.todo} to {new_state}`) and the repeaters should be advanced according to its rules.
 
 ** Codebase improvements                                                                   :Cleanup:
-*** Extract the =stats= command wrapper into a separate module
+*** DONE Extract the =stats= command wrapper into a separate module
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-02 Tue 20:06]
+:END:
+Organize it the same as the other commands (most recentry modified: agenda, board and tasks list).
+
 *** Refactor the task CRUD utils into a separate module re-used by all the commands
-*** Refactor config handling so that no global state is mutated
 *** Avoid using =getattr= and =setattr= like the plague
 Refactor all places that currently use either of these functions so that the concrete type is known and concrete field is accessed.
 Introduce linter rules that make sure these function cannot be used.
@@ -7351,8 +7355,6 @@ Introduce linter rules that make sure these function cannot be used.
 *** Use Textual for better TUI organization
 - Selection for prompts
 - Sparkline for freequency plots
-*** Config handling is too generic
-Split config handling to be per-command and have the config file reflect that.
 *** REWORKED Interactive loop refactor
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-05-26 Tue 21:27]
@@ -7762,6 +7764,9 @@ Shows long term plan including completeness of tasks that have children and gann
 - Set workflow states, etc automatically.
 - Lint/Format files
 **** Check for file errors and log them
+*** Config handling is too generic
+Split config handling to be per-command and have the config file reflect that.
+*** Refactor config handling so that no global state is mutated
 ** Dashboard command
 - Reads a dashboard config and shows a visualization on a server.
 - Tabbed views for the agenda, board, backlog and stats

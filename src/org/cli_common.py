@@ -44,9 +44,19 @@ if TYPE_CHECKING:
 
 MAP: dict[str, str] = {}
 
+DEFAULT_VERBOSE: dict[str, bool] = {"value": False}
+
 logger = logging.getLogger("org")
 
 TAGS: set[str] = set()
+
+
+def resolve_verbose(verbose: bool | None) -> bool:
+    """Resolve effective verbose setting from CLI flag and config defaults."""
+    if verbose is None:
+        return DEFAULT_VERBOSE["value"]
+    return verbose
+
 
 HEADING = {
     "the",

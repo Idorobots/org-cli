@@ -7,11 +7,9 @@ import sys
 import typer
 
 from org import config, logging_config
-from org.commands import agenda
+from org.cli_common import DEFAULT_VERBOSE, resolve_verbose
+from org.commands import agenda, stats
 from org.commands import board as board_command
-from org.commands.stats import all as stats_all
-from org.commands.stats import groups, tags
-from org.commands.stats import summary as stats_summary
 from org.commands.tasks import command as tasks_command
 
 
@@ -19,19 +17,6 @@ app = typer.Typer(
     help="Analyze Emacs Org-mode archive files for task statistics.",
     no_args_is_help=True,
 )
-stats_app = typer.Typer(
-    help="Analyze Org-mode archive files for task statistics.",
-    no_args_is_help=True,
-)
-
-
-DEFAULT_VERBOSE: dict[str, bool] = {"value": False}
-
-
-def _resolve_verbose(verbose: bool | None) -> bool:
-    if verbose is None:
-        return DEFAULT_VERBOSE["value"]
-    return verbose
 
 
 @app.callback()
@@ -46,32 +31,12 @@ def main_callback(
     """Global CLI options."""
     if verbose is None and not DEFAULT_VERBOSE["value"]:
         return
-    logging_config.configure_logging(_resolve_verbose(verbose))
+    logging_config.configure_logging(resolve_verbose(verbose))
 
-
-@stats_app.callback()
-def stats_callback(
-    verbose: bool | None = typer.Option(
-        None,
-        "--verbose",
-        "-v",
-        help="Enable verbose logging output",
-    ),
-) -> None:
-    """Global stats CLI options."""
-    if verbose is None and not DEFAULT_VERBOSE["value"]:
-        return
-    logging_config.configure_logging(_resolve_verbose(verbose))
-
-
-stats_all.register(stats_app)
-groups.register(stats_app)
-stats_summary.register(stats_app)
-tags.register(stats_app)
 
 agenda.register(app)
 board_command.register(app)
-app.add_typer(stats_app, name="stats")
+stats.register(app)
 tasks_command.register(app)
 
 
