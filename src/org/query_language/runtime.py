@@ -16,7 +16,7 @@ from collections.abc import (
     Sequence as CollectionSequence,
 )
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
 from itertools import product
 from math import trunc
@@ -790,17 +790,16 @@ def _evaluate_boolean_binary_op(expr: BinaryOp, stream: Stream, context: EvalCon
     for item in stream:
         left_values = evaluate_expr(expr.left, _stream([item]), context)
         if expr.operator == "or":
-            if any(bool(value) for value in left_values):
-                output.append(left_values[0] if left_values else None)
+            if len(left_values) == 1 and bool(left_values[0]):
+                output.append(left_values[0])
                 continue
-        elif not any(bool(value) for value in left_values):
+        elif len(left_values) == 1 and not bool(left_values[0]):
             output.append(False)
             continue
 
         right_values = evaluate_expr(expr.right, _stream([item]), context)
-        left = left_values[0] if left_values else None
-        right = right_values[0] if right_values else None
-        output.append(_apply_boolean(expr.operator, left, right))
+        pairs = _broadcast(left_values, right_values)
+        output.extend(_apply_boolean(expr.operator, left, right) for left, right in pairs)
     return output
 
 
@@ -1371,7 +1370,7 @@ def _unit_helper(
 
 def _current_datetime() -> datetime:
     """Return current local datetime for now()."""
-    return datetime.now().astimezone()
+    return datetime.now(tz=UTC).astimezone().replace(tzinfo=None)
 
 
 def _func_now(stream: Stream) -> Stream:

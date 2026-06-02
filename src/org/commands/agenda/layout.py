@@ -592,7 +592,7 @@ def _build_timeline_section_rows(
                     day=day,
                     time_text=timed_entry.when.strftime("%H:%M"),
                     node=timed_entry.node,
-                    source="scheduled",
+                    source=timed_entry.kind,
                     style=style,
                     state_override=timed_entry.state_override,
                 ),

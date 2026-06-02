@@ -273,7 +273,7 @@ def _shift_planning_for_row(
     node = row.node
     if node is None:
         return None, "Action available only on task rows"
-    deadline_sources = {"overdue_deadline", "upcoming_deadline", "deadline_today"}
+    deadline_sources = {"deadline", "overdue_deadline", "upcoming_deadline", "deadline_today"}
     scheduled_sources = {"scheduled", "repeat", "overdue_scheduled", "scheduled_untimed"}
     timestamp: Timestamp | None = None
     field_name = ""
@@ -314,7 +314,7 @@ def shift_planning_time_for_row(
     if row.source == "scheduled":
         timestamp = node.scheduled
         field_name = "scheduled"
-    elif row.source == "deadline_today":
+    elif row.source in {"deadline", "deadline_today"}:
         timestamp = node.deadline
         field_name = "deadline"
     if timestamp is None:
@@ -522,7 +522,12 @@ def _timetable_schedule_for_selected_row(session: AgendaSession) -> Timestamp | 
     row = selected_row(session)
     if row is None:
         return None
-    if row.kind == "task" and row.source not in {"scheduled", "deadline_today", "repeat"}:
+    if row.kind == "task" and row.source not in {
+        "scheduled",
+        "deadline",
+        "deadline_today",
+        "repeat",
+    }:
         return None
     if row.kind not in {"task", "hour_marker", "now_marker"}:
         return None

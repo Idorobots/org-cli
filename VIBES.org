@@ -7444,7 +7444,10 @@ time(null) -> null
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-05-31 Sun 18:17]
 :END:
-*** TODO Customizable agenda views                                                          :Config:
+*** REWORKED Customizable agenda views                                                      :Config:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-06-01 Mon 22:39]
+:END:
 The agenda command should support customizable views in a similar way that the board commands supports them. The configuration file should be extended with a section dedicated to the agenda that allows defining views.
 
 Each view should have a name and an ordered list of sections.
@@ -7537,10 +7540,14 @@ It makes more sense to mandate that the style is just plain style markers not ma
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-05-31 Sun 21:51]
 :END:
-**** TODO Section names in agenda views should be evaluated as a query that produces a string value.
+**** CANCELLED Section names in agenda views should be evaluated as a query that produces a string value.
 :PROPERTIES:
 :capture_time: [2026-05-31 Sun 16:02]
 :context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-06-01 Mon 09:46] \\
+  Not that useful.
 :END:
 **** DONE tests/commands/test_agenda_command.py                                      :Tests:Cleanup:
 :PROPERTIES:
@@ -7579,10 +7586,14 @@ Additionally, please add a blank line between consecutive days and also before s
 
 It seems that the date header is already present, but upon scrolling it goes out of the view. Can the day header be made "sticky"? I.e. when scrolling, the day name should always be displayed at the top, followed by the scrollable section. When there are multiple days in a range, when the next day is in focus, the header should be updated with that date instead.
 
-**** TODO Optional =show= parameter on each section to disable it if not needed.
+**** CANCELLED Optional =show= parameter on each section to disable it if not needed.
 :PROPERTIES:
 :capture_time: [2026-05-31 Sun 18:18]
 :context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-06-01 Mon 09:54] \\
+  Already done when there are no tasks in a section, so can be achieved with a proper filter.
 :END:
 
 Should be executed as a query with the usual context. By default it shold be =true=.

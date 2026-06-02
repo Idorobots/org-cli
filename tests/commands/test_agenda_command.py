@@ -1806,6 +1806,23 @@ def test_shift_planning_time_for_row_shifts_timed_scheduled_by_one_hour() -> Non
     assert str(timestamp).startswith("<2025-01-15 Wed 11:30")
 
 
+def test_shift_planning_time_for_row_shifts_timed_deadline_by_one_hour() -> None:
+    """Shifting timed deadline rows by hour should mutate deadline timestamp time."""
+    root = org_parser.loads("* TODO X\nDEADLINE: <2025-01-15 Wed 10:30>\n")
+    heading = next(iter(root))
+    row = agenda_layout.AgendaRow(
+        kind="task",
+        day=datetime(2025, 1, 15).date(),
+        node=heading,
+        source="deadline",
+    )
+
+    timestamp, status = agenda_events.shift_planning_time_for_row(row, hour_delta=1)
+    assert timestamp is not None
+    assert status == "Shifted deadline forward by 1 hour"
+    assert str(timestamp).startswith("<2025-01-15 Wed 11:30")
+
+
 def test_shift_planning_time_for_row_rejects_non_timed_rows() -> None:
     """Hour shifting should reject non-timed or non-planning row sources."""
     root = org_parser.loads("* TODO X\nSCHEDULED: <2025-01-15 Wed>\n")
@@ -1820,3 +1837,47 @@ def test_shift_planning_time_for_row_rejects_non_timed_rows() -> None:
     timestamp, status = agenda_events.shift_planning_time_for_row(row, hour_delta=-1)
     assert timestamp is None
     assert status == "Time shifting is available only for timed scheduled/deadline rows"
+
+
+def test_build_timeline_section_rows_preserves_timed_entry_sources() -> None:
+    """Timeline rows should retain scheduled, deadline, and repeat sources."""
+    root = org_parser.loads(
+        """* TODO Scheduled
+* TODO Deadline
+* TODO Repeated
+""",
+    )
+    assert root is not None
+    scheduled, deadline, repeated = list(root)
+    day = datetime(2025, 1, 15).date()
+    entries = agenda_layout._ViewTimelineEntries(
+        timed=[
+            agenda_layout._TimedEntry(
+                node=scheduled,
+                when=datetime(2025, 1, 15, 9, 0),
+                kind="scheduled",
+            ),
+            agenda_layout._TimedEntry(
+                node=deadline,
+                when=datetime(2025, 1, 15, 10, 0),
+                kind="deadline",
+            ),
+            agenda_layout._TimedEntry(
+                node=repeated,
+                when=datetime(2025, 1, 15, 11, 0),
+                kind="repeat",
+            ),
+        ],
+        untimed=[],
+    )
+
+    rows = agenda_layout._build_timeline_section_rows(
+        day,
+        datetime(2025, 1, 15, 12, 0),
+        entries,
+        "Section",
+        "",
+    )
+
+    task_sources = [row.source for row in rows if row.kind == "task"]
+    assert task_sources == ["scheduled", "deadline", "repeat"]

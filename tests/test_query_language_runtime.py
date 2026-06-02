@@ -62,7 +62,7 @@ def test_runtime_select_not_null_todo_filters_missing_values() -> None:
     """Comparing against null should treat missing todo as null."""
     nodes = [*node_from_org("* DONE Keep\n* Plain\n")]
     result = _execute(".[] | select(.todo != null) | .title_text", nodes, None)
-    assert result == ["Keep"]
+    assert [title.strip() for title in cast("list[str]", result)] == ["Keep"]
 
 
 def test_runtime_reverse_and_index() -> None:
@@ -313,6 +313,44 @@ def test_runtime_boolean_operators_short_circuit_per_stream_item(
 
     assert result == [True, 0]
     assert [record.getMessage() for record in caplog.records] == ["0"]
+
+
+def test_runtime_boolean_operators_preserve_stream_valued_rhs_results() -> None:
+    """Boolean operators should keep broadcast semantics for stream-valued subqueries."""
+    nodes = [
+        *node_from_org(
+            """* TODO Keep :baz:bar:
+* TODO Drop :baz:
+""",
+        ),
+    ]
+
+    result = _execute(
+        '.[] | select(.tags[] == "foo" or .tags[] == "bar") | .title_text',
+        nodes,
+        None,
+    )
+
+    assert [title.strip() for title in cast("list[str]", result)] == ["Keep"]
+
+
+def test_runtime_boolean_operators_preserve_stream_valued_and_results() -> None:
+    """and should broadcast against stream-valued subqueries instead of collapsing them."""
+    nodes = [
+        *node_from_org(
+            """* TODO Keep :baz:bar:
+* TODO Drop :baz:
+""",
+        ),
+    ]
+
+    result = _execute(
+        '.[] | select((.todo == "TODO") and (.tags[] == "bar")) | .title_text',
+        nodes,
+        None,
+    )
+
+    assert [title.strip() for title in cast("list[str]", result)] == ["Keep"]
 
 
 def test_runtime_type_function() -> None:
@@ -1230,6 +1268,27 @@ def test_runtime_now_function_returns_datetime(monkeypatch: pytest.MonkeyPatch) 
 
     result = _execute("now", [None], None)
     assert result == [fixed_now]
+
+
+def test_runtime_now_comparisons_use_native_local_datetime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """now should compare cleanly against org datetimes as a naive local datetime."""
+    fixed_now = datetime(2025, 4, 15, 9, 0, 0)
+    monkeypatch.setattr(runtime_module, "_current_datetime", lambda: fixed_now)
+    nodes = [
+        *node_from_org(
+            """* TODO Earlier
+DEADLINE: <2025-04-15 Tue 08:00>
+* TODO Later
+DEADLINE: <2025-04-15 Tue 10:00>
+""",
+        ),
+    ]
+
+    result = _execute(".[] | select(.deadline.start < now) | .title_text", nodes, None)
+
+    assert result == ["Earlier"]
 
 
 def test_runtime_temporal_comparisons_support_same_type_values() -> None:
