@@ -49,8 +49,6 @@ if TYPE_CHECKING:
 class QueryOutputFormatter(Protocol):
     """Formatter interface for the query command."""
 
-    include_filenames: bool
-
     def prepare(
         self,
         values: list[object],
@@ -82,8 +80,6 @@ def _format_org_block(value: object) -> str:
 
 class OrgQueryOutputFormatter:
     """Org output formatter for query command."""
-
-    include_filenames = True
 
     def prepare(
         self,
@@ -145,8 +141,6 @@ class OrgQueryOutputFormatter:
 class PandocQueryOutputFormatter:
     """Pandoc-based output formatter for query command."""
 
-    include_filenames = False
-
     def __init__(self, output_format: str, pandoc_args: str | None) -> None:
         """Initialize formatter options for pandoc-based rendering."""
         self.output_format = output_format
@@ -177,8 +171,6 @@ class PandocQueryOutputFormatter:
 
 class JsonQueryOutputFormatter:
     """JSON output formatter for query command."""
-
-    include_filenames = False
 
     def prepare(
         self,

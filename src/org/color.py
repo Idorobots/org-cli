@@ -63,19 +63,6 @@ def bright_white(text: str, enabled: bool) -> str:
     return colorize(text, "bold white", enabled)
 
 
-def white(text: str, enabled: bool) -> str:
-    """Apply white color to text (default, usually no-op).
-
-    Args:
-        text: Text to colorize
-        enabled: Whether coloring is enabled
-
-    Returns:
-        Colored text if enabled, original text otherwise
-    """
-    return colorize(text, "white", enabled)
-
-
 def dim_white(text: str, enabled: bool) -> str:
     """Apply dim white color to text.
 
@@ -100,58 +87,6 @@ def magenta(text: str, enabled: bool) -> str:
         Colored text if enabled, original text otherwise
     """
     return colorize(text, "magenta", enabled)
-
-
-def green(text: str, enabled: bool) -> str:
-    """Apply green color to text.
-
-    Args:
-        text: Text to colorize
-        enabled: Whether coloring is enabled
-
-    Returns:
-        Colored text if enabled, original text otherwise
-    """
-    return colorize(text, "green", enabled)
-
-
-def bright_green(text: str, enabled: bool) -> str:
-    """Apply bright green color to text.
-
-    Args:
-        text: Text to colorize
-        enabled: Whether coloring is enabled
-
-    Returns:
-        Colored text if enabled, original text otherwise
-    """
-    return colorize(text, "bold green", enabled)
-
-
-def bright_red(text: str, enabled: bool) -> str:
-    """Apply bright red color to text.
-
-    Args:
-        text: Text to colorize
-        enabled: Whether coloring is enabled
-
-    Returns:
-        Colored text if enabled, original text otherwise
-    """
-    return colorize(text, "bold red", enabled)
-
-
-def bright_yellow(text: str, enabled: bool) -> str:
-    """Apply bright yellow color to text.
-
-    Args:
-        text: Text to colorize
-        enabled: Whether coloring is enabled
-
-    Returns:
-        Colored text if enabled, original text otherwise
-    """
-    return colorize(text, "bold yellow", enabled)
 
 
 def bright_blue(text: str, enabled: bool) -> str:

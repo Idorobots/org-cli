@@ -14,7 +14,6 @@ from rich.syntax import Syntax
 from org import config as config_module
 from org.cli_common import load_and_process_data
 from org.commands.interactive_common import interactive_help_command_text, interactive_loop
-from org.commands.search_common import filter_nodes_by_search
 from org.output_format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
@@ -117,8 +116,6 @@ class _TasksListSessionData:
 class TasksListOutputFormatter(Protocol):
     """Formatter interface for the tasks list command."""
 
-    include_filenames: bool
-
     def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
         """Prepare tasks list output for rendering."""
         ...
@@ -169,8 +166,6 @@ def _prepare_detailed_task_list(nodes: list[Heading], out_theme: str) -> Prepare
 class OrgTasksListOutputFormatter:
     """Org output formatter for tasks list command."""
 
-    include_filenames = True
-
     def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
         """Prepare tasks list output in org or short-list form."""
         if not data.nodes:
@@ -204,8 +199,6 @@ class OrgTasksListOutputFormatter:
 class PandocTasksListOutputFormatter:
     """Pandoc-based output formatter for tasks list command."""
 
-    include_filenames = False
-
     def __init__(self, output_format: str, pandoc_args: str | None) -> None:
         """Initialize formatter options for pandoc-based task rendering."""
         self.output_format = output_format
@@ -234,8 +227,6 @@ class PandocTasksListOutputFormatter:
 
 class JsonTasksListOutputFormatter:
     """JSON output formatter for tasks list command."""
-
-    include_filenames = False
 
     def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
         """Prepare tasks list output as JSON."""
@@ -352,11 +343,6 @@ def _run_tasks_list_static(
         return
 
     print_prepared_output(console, prepared_output)
-
-
-def _filter_nodes_by_search(nodes: list[Heading], search_text: str) -> list[Heading]:
-    """Filter nodes by case-insensitive substring match over one node's own text."""
-    return filter_nodes_by_search(nodes, search_text)
 
 
 def _run_tasks_list_interactive(

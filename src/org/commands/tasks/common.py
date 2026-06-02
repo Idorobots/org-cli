@@ -96,17 +96,6 @@ def iter_descendants(heading: Heading) -> list[Heading]:
     return descendants
 
 
-def apply_subtree_level(heading: Heading, new_level: int) -> None:
-    """Apply heading level and shift descendants by the same delta."""
-    level_delta = new_level - heading.level
-    if level_delta == 0:
-        return
-
-    heading.level = new_level
-    for descendant in iter_descendants(heading):
-        descendant.level += level_delta
-
-
 def normalize_selector(value: str | None, option_name: str) -> str | None:
     """Normalize optional selector value and reject blank strings."""
     if value is None:

@@ -301,8 +301,6 @@ def test_run_tasks_list_markdown_pandoc_error_is_usage_error(
     """Markdown formatter failures should be surfaced as CLI usage errors."""
 
     class _FailingFormatter:
-        include_filenames = False
-
         def prepare(self, data: object) -> object:
             del data
             raise OutputFormatError("pandoc missing")

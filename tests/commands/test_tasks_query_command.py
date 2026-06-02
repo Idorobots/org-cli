@@ -295,8 +295,6 @@ def test_run_query_markdown_pandoc_error_is_usage_error(monkeypatch: pytest.Monk
     """Markdown formatter failures should be surfaced as CLI usage errors."""
 
     class _FailingFormatter:
-        include_filenames = False
-
         def prepare(
             self,
             values: list[object],

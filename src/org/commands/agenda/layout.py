@@ -113,7 +113,6 @@ class DayRowModel:
 
     day: date
     rows: list[AgendaRow]
-    selectable_row_indexes: list[int]
 
 
 @dataclass(frozen=True)
@@ -695,10 +694,7 @@ def build_view_day_model(
             continue
         rows.append(AgendaRow(kind="spacer", day=day))
         rows.extend(section_rows)
-    selectable = [
-        idx for idx, row in enumerate(rows) if row.kind == "task" and row.node is not None
-    ]
-    return DayRowModel(day=day, rows=rows, selectable_row_indexes=selectable)
+    return DayRowModel(day=day, rows=rows)
 
 
 def _build_agenda_table_with_widths(

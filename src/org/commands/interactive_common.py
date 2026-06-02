@@ -18,11 +18,8 @@ from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
-from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
-
-from org.output_format import DEFAULT_OUTPUT_THEME
 
 
 if TYPE_CHECKING:
@@ -918,16 +915,3 @@ def detail_org_block(node: Heading) -> str:
     filename = node.document.filename or "unknown"
     node_text = node.render().rstrip()
     return f"# {filename}\n{node_text}" if node_text else f"# {filename}"
-
-
-def open_task_detail_in_pager(console: Console, node: Heading, *, color_enabled: bool) -> None:
-    """Open task detail in pager with Org syntax highlighting."""
-    detail = Syntax(
-        detail_org_block(node),
-        "org",
-        theme=DEFAULT_OUTPUT_THEME,
-        line_numbers=False,
-        word_wrap=True,
-    )
-    with console.pager(styles=color_enabled):
-        console.print(detail)
