@@ -73,6 +73,7 @@ CONFIG_CUSTOM_ORDER_BY: dict[str, str] = {}
 CONFIG_CUSTOM_WITH: dict[str, str] = {}
 CONFIG_CAPTURE_TEMPLATES: dict[str, dict[str, str]] = {}
 CONFIG_BOARD_VIEWS: dict[str, BoardViewConfig] = {}
+CONFIG_AGENDA_VIEWS: dict[str, AgendaViewConfig] = {}
 
 
 DEST_TO_OPTION_NAME: dict[str, str] = {
@@ -231,6 +232,7 @@ class LoadedCliConfig:
     custom_with: dict[str, str]
     capture_templates: dict[str, dict[str, str]]
     board_views: dict[str, BoardViewConfig]
+    agenda_views: dict[str, AgendaViewConfig]
 
 
 @dataclass(frozen=True)
@@ -248,6 +250,25 @@ class BoardViewConfig:
 
     name: str
     columns: list[BoardColumnConfig]
+
+
+@dataclass(frozen=True)
+class AgendaSectionConfig:
+    """One configured agenda section."""
+
+    name: str
+    filter: str
+    order_by: str | None = None
+    style: str = ""
+    timeline: bool = False
+
+
+@dataclass(frozen=True)
+class AgendaViewConfig:
+    """One configured agenda view."""
+
+    name: str
+    sections: list[AgendaSectionConfig]
 
 
 class StatsDefaultMap(TypedDict):
@@ -573,6 +594,7 @@ def parse_config_sections(
         dict[str, str],
         dict[str, dict[str, str]],
         dict[str, BoardViewConfig],
+        dict[str, AgendaViewConfig],
     ]
     | None
 ):
@@ -595,7 +617,7 @@ def parse_config_sections(
         }
       }
     """
-    allowed_keys = {"defaults", "filter", "order-by", "with", "capture", "board"}
+    allowed_keys = {"defaults", "filter", "order-by", "with", "capture", "board", "agenda"}
     defaults_section = raw_config.get("defaults", {})
     filter_section = raw_config.get("filter", {})
     order_by_section = raw_config.get("order-by", {})
@@ -622,6 +644,13 @@ def parse_config_sections(
             return None
         board_views = parsed_board_views
 
+    agenda_views: dict[str, AgendaViewConfig] = {}
+    if "agenda" in raw_config:
+        parsed_agenda_views = parse_agenda_section(raw_config["agenda"])
+        if parsed_agenda_views is None:
+            return None
+        agenda_views = parsed_agenda_views
+
     return (
         cast("dict[str, object]", defaults_section),
         cast("dict[str, str]", filter_section),
@@ -629,6 +658,7 @@ def parse_config_sections(
         cast("dict[str, str]", with_section),
         capture_templates,
         board_views,
+        agenda_views,
     )
 
 
@@ -719,6 +749,103 @@ def parse_board_column(value: object) -> BoardColumnConfig | None:
         name=cast("str", name_value),
         filter=cast("str", filter_value),
         order_by=cast("str | None", order_by_value),
+    )
+
+
+def parse_agenda_section(value: object) -> dict[str, AgendaViewConfig] | None:
+    """Parse agenda section from top-level config value."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_agenda_keys = {"views"}
+    if any(key not in allowed_agenda_keys for key in value):
+        return None
+    if "views" not in value:
+        return None
+
+    return parse_agenda_views(value.get("views"))
+
+
+def parse_agenda_views(value: object) -> dict[str, AgendaViewConfig] | None:
+    """Parse agenda views list into a keyed map by view name."""
+    if not isinstance(value, list):
+        return None
+
+    parsed_views: dict[str, AgendaViewConfig] = {}
+    for view_value in value:
+        parsed_view = parse_agenda_view(view_value)
+        if parsed_view is None:
+            return None
+        if parsed_view.name in parsed_views:
+            return None
+        parsed_views[parsed_view.name] = parsed_view
+
+    return parsed_views
+
+
+def parse_agenda_view(value: object) -> AgendaViewConfig | None:
+    """Parse one agenda view object."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_view_keys = {"name", "sections"}
+    if any(key not in allowed_view_keys for key in value):
+        return None
+
+    name_value = value.get("name")
+    if not isinstance(name_value, str) or not name_value.strip():
+        return None
+
+    sections_value = value.get("sections")
+    if not isinstance(sections_value, list) or not sections_value:
+        return None
+
+    parsed_sections: list[AgendaSectionConfig] = []
+    for section_value in sections_value:
+        parsed_section = parse_agenda_section_config(section_value)
+        if parsed_section is None:
+            return None
+        parsed_sections.append(parsed_section)
+
+    return AgendaViewConfig(name=name_value, sections=parsed_sections)
+
+
+def parse_agenda_section_config(value: object) -> AgendaSectionConfig | None:
+    """Parse one agenda section config object."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_section_keys = {"name", "filter", "order-by", "style", "timeline"}
+    if any(key not in allowed_section_keys for key in value):
+        return None
+
+    name_value = value.get("name")
+    filter_value = value.get("filter")
+    order_by_value = value.get("order-by")
+    style_value = value.get("style", "")
+    timeline_value = value.get("timeline", False)
+
+    section_is_valid = (
+        isinstance(name_value, str)
+        and bool(name_value.strip())
+        and isinstance(filter_value, str)
+        and bool(filter_value.strip())
+        and (
+            order_by_value is None
+            or (isinstance(order_by_value, str) and bool(order_by_value.strip()))
+        )
+        and isinstance(style_value, str)
+        and isinstance(timeline_value, bool)
+    )
+    if not section_is_valid:
+        return None
+
+    return AgendaSectionConfig(
+        name=cast("str", name_value),
+        filter=cast("str", filter_value),
+        order_by=cast("str | None", order_by_value),
+        style=cast("str", style_value),
+        timeline=timeline_value,
     )
 
 
@@ -931,6 +1058,7 @@ def load_cli_config(argv: list[str]) -> LoadedCliConfig:
         custom_with,
         capture_templates,
         board_views,
+        agenda_views,
     ) = config_sections
 
     config_defaults = build_config_defaults(defaults_config)
@@ -958,6 +1086,7 @@ def load_cli_config(argv: list[str]) -> LoadedCliConfig:
         custom_with=custom_with,
         capture_templates=capture_templates,
         board_views=board_views,
+        agenda_views=agenda_views,
     )
 
 

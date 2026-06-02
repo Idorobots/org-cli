@@ -53,15 +53,16 @@ from org.commands.tasks.common import (
 )
 
 from .layout import (
+    AgendaColumnWidths,
     AgendaRow,
-    DayRenderInput,
     DayRowModel,
     RenderContext,
-    _build_day_rows,
-    _collect_day_entries,
+    ViewportRow,
     _has_specific_time,
+    _interactive_artifacts,
     _resolve_agenda_start_date,
     _selected_row_location,
+    build_view_day_model,
     interactive_agenda_renderable,
 )
 
@@ -73,6 +74,7 @@ if TYPE_CHECKING:
     from rich.console import Console
 
     from .command import AgendaArgs
+    from .views import AgendaViewContext
 
 
 logger = logging.getLogger("org")
@@ -91,11 +93,14 @@ class AgendaSession:
     days: int
     now: datetime
     day_models: list[DayRowModel]
+    interactive_rows: list[ViewportRow]
+    column_widths: AgendaColumnWidths
     row_locations: list[tuple[int, int]]
     selected_row_index: int
     scroll_offset: int
     status_message: str
     search_text: str
+    view_ctx: AgendaViewContext
     search_prompt_previous_text: str | None = None
     show_help_modal: bool = False
     active_prompt: InteractivePromptState | None = None
@@ -109,41 +114,37 @@ def refresh_session(
     """Recompute day row models and restore selection when possible."""
     session.now = local_now()
     day_models: list[DayRowModel] = []
-    row_locations: list[tuple[int, int]] = []
 
     for day_offset in range(session.days):
         day = session.start_date + timedelta(days=day_offset)
-        entries = _collect_day_entries(
+        day_model = build_view_day_model(
             session.nodes,
             day,
+            session.now,
+            session.view_ctx,
             session.args,
-            include_relative_sections=(day == session.now.date()),
-        )
-        day_model = _build_day_rows(
-            DayRenderInput(day=day, now=session.now, entries=entries),
-            session.render,
         )
         day_models.append(day_model)
-        row_locations.extend(
-            (len(day_models) - 1, row_index) for row_index in range(len(day_model.rows))
-        )
 
     session.day_models = day_models
-    session.row_locations = row_locations
-    if not row_locations:
+    session.row_locations, session.interactive_rows, session.column_widths = _interactive_artifacts(
+        day_models,
+        session.render,
+    )
+    if not session.row_locations:
         session.selected_row_index = 0
         return
 
     preserved_node = resolve_heading_locator(session.nodes, preserve_identity)
     if preserved_node is not None:
-        for idx, (day_index, row_index) in enumerate(row_locations):
+        for idx, (day_index, row_index) in enumerate(session.row_locations):
             row = day_models[day_index].rows[row_index]
             if row.node is preserved_node:
                 session.selected_row_index = idx
                 return
 
-    if session.selected_row_index >= len(row_locations):
-        session.selected_row_index = len(row_locations) - 1
+    if session.selected_row_index >= len(session.row_locations):
+        session.selected_row_index = len(session.row_locations) - 1
     session.selected_row_index = max(session.selected_row_index, 0)
 
 
@@ -272,7 +273,7 @@ def _shift_planning_for_row(
     node = row.node
     if node is None:
         return None, "Action available only on task rows"
-    deadline_sources = {"overdue_deadline", "upcoming_deadline", "deadline_today"}
+    deadline_sources = {"deadline", "overdue_deadline", "upcoming_deadline", "deadline_today"}
     scheduled_sources = {"scheduled", "repeat", "overdue_scheduled", "scheduled_untimed"}
     timestamp: Timestamp | None = None
     field_name = ""
@@ -313,7 +314,7 @@ def shift_planning_time_for_row(
     if row.source == "scheduled":
         timestamp = node.scheduled
         field_name = "scheduled"
-    elif row.source == "deadline_today":
+    elif row.source in {"deadline", "deadline_today"}:
         timestamp = node.deadline
         field_name = "deadline"
     if timestamp is None:
@@ -521,7 +522,12 @@ def _timetable_schedule_for_selected_row(session: AgendaSession) -> Timestamp | 
     row = selected_row(session)
     if row is None:
         return None
-    if row.kind == "task" and row.source not in {"scheduled", "deadline_today", "repeat"}:
+    if row.kind == "task" and row.source not in {
+        "scheduled",
+        "deadline",
+        "deadline_today",
+        "repeat",
+    }:
         return None
     if row.kind not in {"task", "hour_marker", "now_marker"}:
         return None
@@ -607,29 +613,27 @@ def _apply_search_text(session: AgendaSession, search_text: str) -> None:
 def create_agenda_session(
     args: AgendaArgs,
     nodes: list[Heading],
-    done_states: list[str],
-    todo_states: list[str],
-    color_enabled: bool,
+    render: RenderContext,
+    view_ctx: AgendaViewContext,
 ) -> AgendaSession:
     """Create interactive session state for agenda."""
     session = AgendaSession(
         args=args,
         all_nodes=list(nodes),
         nodes=nodes,
-        render=RenderContext(
-            color_enabled=color_enabled,
-            done_states=done_states,
-            todo_states=todo_states,
-        ),
+        render=render,
         start_date=_resolve_agenda_start_date(args.date),
         days=args.days,
         now=local_now(),
         day_models=[],
+        interactive_rows=[],
+        column_widths=AgendaColumnWidths(category=8, time=10, tags=4),
         row_locations=[],
         selected_row_index=0,
         scroll_offset=0,
         status_message="",
         search_text="",
+        view_ctx=view_ctx,
         show_help_modal=False,
         active_prompt=None,
     )

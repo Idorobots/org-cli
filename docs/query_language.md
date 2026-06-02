@@ -242,8 +242,13 @@ Examples below are minimal and syntactically valid. Output is shown as query-val
 
 - `==`, `!=`, `>`, `<`, `>=`, `<=`
 - Numeric and string operands compare directly.
-- When both operands are org date values (`Timestamp`, `Clock`, `Repeat`),
-  comparisons use their `start` values.
+- Temporal comparisons are supported for same-type operands:
+  - `datetime`
+  - `date`
+  - `time`
+  - `timedelta`
+- Org date values (`Timestamp`, `Clock`, `Repeat`) compare by their `start` values, so these wrappers can
+  be compared with each other.
 - For ordering operators with `null`:
   - `a > null`, `a < null`, `null > a`, `null < a` are always `false`
   - `a >= null` and `a <= null` are `true` only when both sides are `null`
@@ -253,6 +258,8 @@ Examples below are minimal and syntactically valid. Output is shown as query-val
 2 <= 2                => true
 .todo == "DONE"       => true/false per item
 timestamp("<2025-01-02 Thu>") < clock("<2025-01-03 Fri>") => true
+datetime("2025-04-02") > datetime("2025-04-01") => true
+time("10:30:00") < time("11:00:00") => true
 timestamp("<2025-01-02 Thu>") > null => false
 null <= null => true
 1 >= null => false
@@ -305,8 +312,20 @@ null or "x" => "x"
 - `"foo" + "bar"` => `"foobar"`
 - Collection append/concat: `[1,2] + 3` => `[1,2,3]`, `[1,2] + [3]` => `[1,2,3]`
 - Collection subtraction: `[1,2,2,3] - 2` => `[1,3]`, `[1,2,3] - [2,3]` => `[1]`
+- Temporal arithmetic supports a temporal base value with a timedelta-like value:
+  - `datetime`, `date`, org date wrappers (`Timestamp`, `Clock`, `Repeat`) support `+` and `-`
+  - `time` supports only hour/minute/second offsets
+  - `timedelta` supports `+` and `-` with other `timedelta` values
+  - `months(...)` and `years(...)` are calendar deltas with month-end clamping semantics
 
 Collection `+`/`-` preserve left-hand collection type (`list`, `tuple`, `set`).
+
+```text
+datetime("2025-04-01T10:00:00") + days(2) => 2025-04-03 10:00:00
+date(datetime("2025-04-01T10:00:00")) + weeks(1) => 2025-04-08
+time("10:00:00") + minutes(30) => 10:30:00
+timestamp("<2025-04-01 Tue 10:00>") + days(2) => <2025-04-03 Thu 10:00>
+```
 
 ## 6) Functions reference
 
@@ -352,6 +371,83 @@ float("3.14")
 
 ```text
 bool("true")
+```
+
+### `now`
+
+- No args.
+- Returns the current local `datetime` value.
+
+```text
+now
+```
+
+### `date(subquery)`
+
+- Coerces each argument value to `date`.
+- Accepts org date wrappers (`Timestamp`, `Clock`, `Repeat`), `datetime`, and `date`.
+
+```text
+date(.deadline)
+date(now)
+```
+
+### `datetime(subquery)`
+
+- Coerces each argument value to `datetime`.
+- Accepts ISO-format strings, `date`, and `datetime`.
+- `date` values become midnight datetimes.
+
+```text
+datetime("2025-04-01")
+datetime(date(now))
+```
+
+### `time(subquery)`
+
+- Coerces each argument value to `time`.
+- Accepts ISO-format strings and existing `time` values.
+
+```text
+time("10:30:00")
+```
+
+### `timedelta(count, unit)`
+
+- Constructs a timedelta-like value from integer `count` and string `unit`.
+- Supported units:
+  - `"y"` years
+  - `"m"` months
+  - `"w"` weeks
+  - `"d"` days
+  - `"h"` hours
+  - `"min"` minutes
+  - `"sec"` seconds
+- `"y"` and `"m"` create calendar deltas intended for temporal arithmetic.
+
+```text
+timedelta(2, "d")
+timedelta(1, "m")
+```
+
+### `weeks(subquery)` / `days(subquery)` / `hours(subquery)` / `minutes(subquery)` / `seconds(subquery)`
+
+- Each accepts one integer argument and returns a `timedelta`.
+
+```text
+days(2)
+hours(12)
+```
+
+### `months(subquery)` / `years(subquery)`
+
+- Each accepts one integer argument and returns a calendar delta.
+- When applied to `datetime`, `date`, or org date wrappers, month/year shifts clamp invalid day values to the
+  last valid day of the target month.
+
+```text
+months(1)
+years(2)
 ```
 
 ### `ts(subquery)`
@@ -429,7 +525,7 @@ sum                    # [1,2,3] => 6
 ### `max` / `min`
 
 - No args.
-- Expects collection with comparable values of one category (numbers, strings, dates).
+- Expects collection with comparable values of one category (numbers, strings, `datetime`, `date`, `time`, `timedelta`).
 - Ignores `null` entries.
 - For empty collections or all-`null` values returns `null`.
 
@@ -498,7 +594,7 @@ any                    # [false,true] => true
 ### `type`
 
 - No args.
-- Emits runtime type name (`null`, `int`, `str`, `Heading`, `Timestamp`, ...).
+- Emits runtime type name (`null`, `int`, `str`, `Heading`, `Timestamp`, `datetime`, `timedelta`, ...).
 
 ```text
 .[] | type             # [null,1,"x"] => ["null","int","str"]
@@ -590,6 +686,7 @@ The resulting `AnalysisResult` exposes these fields via dot-access:
 Runtime values accepted/produced include:
 
 - Scalars: `null`, `bool`, `int`, `float`, `str`
+- Temporal values: `datetime`, `date`, `time`, `timedelta`
 - Collections: `list`, `tuple`, `set`, `dict`
 - Org values: `Heading`, `Document`, `Timestamp`, `Clock`, `Repeat`
 - Analysis values: `AnalysisResult`, `Tag`, `Group`, `TimeRange`, `Histogram`
@@ -637,4 +734,13 @@ Notes:
 
 # find most recently modified tasks
 .[][] | sort_by(.repeats + .deadline + .closed + .scheduled | max) | .title_text
+
+# same time, two days from now
+now + days(2)
+
+# find all tasks with deadline today
+.[] | select(date(.deadline) == date(now))
+
+# find all tasks with deadline in a month range
+.[] | select(let datetime("2025-04-01") as $d in (.deadline.start >= $d and .deadline.start < ($d + months(1))))
 ```
