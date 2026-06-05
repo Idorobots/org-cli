@@ -7,7 +7,7 @@ import os
 import sys
 from contextlib import contextmanager
 from io import StringIO
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import click
 import pytest
@@ -17,16 +17,11 @@ from rich.console import Console
 from org import config as config_module
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
-from org.commands.interactive_common import (
-    KeypressEvent,
-    handle_active_prompt_event,
-    heading_locator,
-)
+from org.commands.interactive_common import heading_locator
 from org.commands.search_common import filter_nodes_by_search
 from org.commands.tasks import capture as capture_command
 from org.commands.tasks.list import command as tasks_list
 from org.commands.tasks.list import events as tasks_list_events
-from org.commands.tasks.list import layout as tasks_list_layout
 from org.histogram import visual_len
 from org.output_format import OutputFormat, OutputFormatError
 from tests.conftest import node_from_org
@@ -37,7 +32,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from org_parser.document import Document, Heading
-    from rich.live import Live
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
@@ -622,7 +616,6 @@ def test_run_tasks_list_uses_interactive_mode_when_tty_and_not_blocked(
     called = {"interactive": False}
 
     def _fake_interactive(
-        _console: Console,
         _args: tasks_list.ListArgs,
         data: object,
     ) -> None:
@@ -753,108 +746,10 @@ def test_filter_nodes_by_search_handles_non_string_property_values() -> None:
     assert [item.title_text for item in matches] == ["Parent"]
 
 
-def test_handle_interactive_key_mouse_wheel_moves_selection() -> None:
-    """Mouse wheel key tokens should move interactive selection."""
-    nodes = node_from_org("* TODO A\n* TODO B\n")
-    session = _make_session(nodes)
-    assert tasks_list_events._handle_keypress_event(session, "WHEEL-DOWN") is True
-    assert session.selected_index == 1
-    assert tasks_list_events._handle_keypress_event(session, "WHEEL-UP") is True
-    assert session.selected_index == 0
-
-
-def test_interactive_rows_counter_tracks_selected_row_while_scrolling() -> None:
-    """Rows counter should follow selected row index in both directions."""
-    nodes = node_from_org("* TODO A\n* TODO B\n* TODO C\n")
-    session = _make_session(nodes)
-    session.selected_index = 1
-    total_rows = len(session.visible_nodes)
-
-    down_capture = StringIO()
-    down_console = Console(
-        file=down_capture,
-        force_terminal=False,
-        width=80,
-        height=8,
-        no_color=True,
-    )
-    down_console.print(tasks_list_layout.interactive_tasks_list_renderable(down_console, session))
-    assert f"Rows 2/{total_rows}" in down_capture.getvalue()
-    assert "Type ? for help" in down_capture.getvalue()
-
-    session.selected_index = 0
-    up_capture = StringIO()
-    up_console = Console(file=up_capture, force_terminal=False, width=80, height=8, no_color=True)
-    up_console.print(tasks_list_layout.interactive_tasks_list_renderable(up_console, session))
-    assert f"Rows 1/{total_rows}" in up_capture.getvalue()
-    assert "Type ? for help" in up_capture.getvalue()
-
-
-def test_handle_interactive_key_question_toggles_help_modal() -> None:
-    """Question mark should open help modal and next key should close it."""
-    nodes = node_from_org("* TODO A\n")
-    session = _make_session(nodes)
-
-    assert tasks_list_events._handle_keypress_event(session, "?") is True
-    assert session.show_help_modal is True
-
-    assert tasks_list_events._handle_keypress_event(session, "ENTER") is True
-    assert session.show_help_modal is False
-
-
-def test_interactive_renderable_shows_help_panel() -> None:
-    """Help modal should render key bindings panel in task list."""
-    nodes = node_from_org("* TODO A\n")
-    session = _make_session(nodes)
-    session.show_help_modal = True
-    buffer = StringIO()
-    console = Console(file=buffer, force_terminal=False, width=100, height=12, no_color=True)
-
-    console.print(tasks_list_layout.interactive_tasks_list_renderable(console, session))
-    output = buffer.getvalue()
-
-    assert "Key bindings" in output
-    assert "Type ? for help" not in output
-
-
-def test_interactive_task_row_reuses_static_line_format_with_level_prefix_and_tag_alignment() -> (
-    None
-):
-    """Interactive rows should keep static format including stars and right-aligned tags."""
-    nodes = node_from_org("* TODO Task title :alpha:beta:\n")
-    session = _make_session(nodes)
-
-    row = tasks_list_layout.build_task_row_text(nodes[0], session, line_width=80)
-
-    assert "* TODO" in row.plain
-    assert row.plain.rstrip().endswith(":alpha:beta:")
-    assert visual_len(row.plain) == 80
-
-
-def test_interactive_task_row_parses_color_markup_without_literal_tags() -> None:
-    """Interactive colored row should render markup instead of showing markup literals."""
-    nodes = node_from_org("* DONE Task title\n")
-    session = _make_session(nodes, color_enabled=True)
-
-    row = tasks_list_layout.build_task_row_text(nodes[0], session, line_width=80)
-
-    assert "[dim white]" not in row.plain
-    assert "[/]" not in row.plain
-
-
-def test_handle_interactive_key_unsupported_sets_status_and_continues() -> None:
-    """Unsupported key should set status message without exiting interactive mode."""
-    nodes = node_from_org("* TODO A\n")
-    session = _make_session(nodes)
-    key = "UNSUPPORTED-ESC:1b5b3939397e"
-    assert tasks_list_events._handle_keypress_event(session, key) is True
-    assert session.status_message == f"Unsupported key: {key}"
-
-
-def test_handle_interactive_key_enter_edits_selected_task(
+def test_edit_selected_task_in_external_editor_sets_no_changes_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Enter should trigger external-editor task editing on selected row."""
+    """Editing the selected task should report when nothing changed."""
     nodes = node_from_org("* TODO A\n")
     session = _make_session(nodes)
 
@@ -863,11 +758,11 @@ def test_handle_interactive_key_enter_edits_selected_task(
 
     monkeypatch.setattr(tasks_list_events, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    assert tasks_list_events._handle_keypress_event(session, "ENTER") is True
+    tasks_list_events.edit_selected_task_in_external_editor(session)
     assert session.status_message == "No changes."
 
 
-def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after_changed_edit(
+def test_edit_selected_task_in_external_editor_reloads_using_selected_node_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Changed edit should reload using the originally selected session node identity."""
@@ -892,15 +787,15 @@ def test_handle_interactive_key_enter_reloads_using_selected_node_identity_after
     monkeypatch.setattr(tasks_list_events, "edit_heading_subtree_in_external_editor", _fake_edit)
     monkeypatch.setattr(tasks_list_events, "reload_session_nodes", _fake_reload)
 
-    assert tasks_list_events._handle_keypress_event(session, "ENTER") is True
+    tasks_list_events.edit_selected_task_in_external_editor(session)
     assert reloaded_identity == heading_locator(source_node)
     assert session.status_message == "Task updated"
 
 
-def test_handle_interactive_key_dollar_archives_selected_task(
+def test_archive_selected_task_archives_selected_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """$ should archive selected task using shared archive helper."""
+    """Archiving should use the shared archive helper and refresh status."""
     nodes = node_from_org("* TODO A\n")
     session = _make_session(nodes)
 
@@ -932,14 +827,14 @@ def test_handle_interactive_key_dollar_archives_selected_task(
         lambda _session, _identity: True,
     )
 
-    assert tasks_list_events._handle_keypress_event(session, "$") is True
+    tasks_list_events.archive_selected_task(session)
     assert session.status_message == "Task archived"
 
 
-def test_handle_interactive_key_a_captures_task_and_reloads(
+def test_apply_capture_task_captures_task_and_reloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """a should prompt for template then capture and reload list session."""
+    """Capturing should reload the list session with the captured task identity."""
     nodes = node_from_org("* TODO A\n")
     session = _make_session(nodes)
     captured_node = node_from_org("* TODO Captured\n")[0]
@@ -962,7 +857,7 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
 
     def _fake_reload(
         current_session: tasks_list_events.TasksListSession,
-        preserve_identity: tuple[str, str, str, int | None] | None,
+        preserve_identity: object,
     ) -> bool:
         reload_args["session"] = current_session
         reload_args["identity"] = preserve_identity
@@ -970,198 +865,42 @@ def test_handle_interactive_key_a_captures_task_and_reloads(
 
     monkeypatch.setattr(tasks_list_events, "reload_session_nodes", _fake_reload)
 
-    assert tasks_list_events._handle_keypress_event(session, "a") is True
-    assert session.active_prompt is not None
-    session.active_prompt.prompt.value = "1"
-    keep_open = session.active_prompt.submit_callback()
-    assert keep_open is False
+    tasks_list_events.apply_capture_task(session, "quick")
     assert reload_args["session"] is session
     assert reload_args["identity"] == heading_locator(captured_node)
     assert session.status_message == "Task captured"
 
 
-def test_handle_interactive_key_a_capture_blank_input_cancels(
+def test_apply_capture_task_reports_keyboard_interrupt_as_cancelled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """a should close prompt with cancel status on blank template input."""
+    """Capture should report keyboard interruption as cancellation."""
     nodes = node_from_org("* TODO A\n")
     session = _make_session(nodes)
-    monkeypatch.setattr(
-        config_module,
-        "CONFIG_CAPTURE_TEMPLATES",
-        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
-    )
 
-    assert tasks_list_events._handle_keypress_event(session, "a") is True
-    assert session.active_prompt is not None
-    session.active_prompt.prompt.value = ""
-    keep_open = session.active_prompt.submit_callback()
-    assert keep_open is False
+    def _raise_interrupt(_args: object) -> object:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(tasks_list_events, "capture_task", _raise_interrupt)
+
+    tasks_list_events.apply_capture_task(session, "quick")
     assert session.status_message == "Capture cancelled"
 
 
-def test_handle_interactive_key_a_capture_invalid_shortcut_keeps_prompt_open(
+def test_apply_capture_task_reports_bad_parameter_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """a should keep capture prompt open for invalid template shortcuts."""
+    """Capture should surface `BadParameter` errors in session status."""
     nodes = node_from_org("* TODO A\n")
     session = _make_session(nodes)
-    monkeypatch.setattr(
-        config_module,
-        "CONFIG_CAPTURE_TEMPLATES",
-        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
-    )
 
-    assert tasks_list_events._handle_keypress_event(session, "a") is True
-    assert session.active_prompt is not None
-    session.active_prompt.prompt.value = "99"
-    keep_open = session.active_prompt.submit_callback()
+    def _raise_bad_parameter(_args: object) -> object:
+        raise typer.BadParameter("Invalid capture template shortcut")
 
-    assert keep_open is True
+    monkeypatch.setattr(tasks_list_events, "capture_task", _raise_bad_parameter)
+
+    tasks_list_events.apply_capture_task(session, "quick")
     assert session.status_message == "Invalid capture template shortcut"
-
-
-def test_handle_interactive_key_a_without_templates_reports_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """a should report a clear status when no capture templates are configured."""
-    nodes = node_from_org("* TODO A\n")
-    session = _make_session(nodes)
-    monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {})
-
-    assert tasks_list_events._handle_keypress_event(session, "a") is True
-    assert session.active_prompt is None
-    assert session.status_message == "No capture templates configured"
-
-
-def test_prompt_submit_capture_stops_and_restarts_live(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Prompt submission should pause live rendering for capture action."""
-    nodes = node_from_org("* TODO A\n")
-    session = _make_session(nodes)
-    monkeypatch.setattr(
-        config_module,
-        "CONFIG_CAPTURE_TEMPLATES",
-        {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
-    )
-    tasks_list_events._handle_keypress_event(session, "a")
-    assert session.active_prompt is not None
-    session.active_prompt.prompt.value = "1"
-
-    captured_node = node_from_org("* TODO Captured\n")[0]
-    monkeypatch.setattr(
-        tasks_list_events,
-        "capture_task",
-        lambda _args: capture_command.TasksCaptureResult(
-            template_name="quick",
-            heading=captured_node,
-            document=captured_node.document,
-        ),
-    )
-    monkeypatch.setattr(
-        tasks_list_events,
-        "reload_session_nodes",
-        lambda _session, _identity: True,
-    )
-    events: list[str] = []
-
-    class _LiveStub:
-        console = Console(file=StringIO(), force_terminal=False, width=120, height=24)
-
-        def stop(self) -> None:
-            events.append("stop")
-
-        def start(self) -> None:
-            events.append("start")
-
-        def update(self, _renderable: object, refresh: bool) -> None:
-            assert refresh is True
-            events.append("update")
-
-    class _InputControllerStub:
-        def suspend_live(self, live: Live) -> None:
-            events.append("input-stop")
-            live.stop()
-
-        def resume_live(self, live: Live) -> None:
-            live.start()
-            events.append("input-start")
-
-    live = cast("Live", _LiveStub())
-    controller = cast("Any", _InputControllerStub())
-
-    def _run_prompt_external(callback: object) -> None:
-        controller.suspend_live(live)
-        try:
-            cast("Any", callback)()
-        finally:
-            controller.resume_live(live)
-
-    session.run_external = _run_prompt_external
-
-    consumed = handle_active_prompt_event(session, KeypressEvent("ENTER"))
-    live.update(
-        tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
-        refresh=True,
-    )
-
-    assert consumed is True
-    assert events == ["input-stop", "stop", "start", "input-start", "update"]
-
-
-def test_search_prompt_live_updates_and_escape_reverts_search() -> None:
-    """Search prompt should live-update results and ESC should restore prior filter."""
-    nodes = node_from_org("* TODO Alpha\n* TODO Beta\n")
-    session = _make_session(nodes)
-    assert tasks_list_events._handle_keypress_event(session, "/") is True
-    assert session.active_prompt is not None
-
-    events: list[str] = []
-
-    class _LiveStub:
-        console = Console(file=StringIO(), force_terminal=False, width=120, height=24)
-
-        def stop(self) -> None:
-            events.append("stop")
-
-        def start(self) -> None:
-            events.append("start")
-
-        def update(self, _renderable: object, refresh: bool) -> None:
-            assert refresh is True
-            events.append("update")
-
-    class _InputControllerStub:
-        def suspend_live(self, live: Live) -> None:
-            events.append("input-stop")
-            live.stop()
-
-        def resume_live(self, live: Live) -> None:
-            live.start()
-            events.append("input-start")
-
-    live = cast("Live", _LiveStub())
-    consumed = handle_active_prompt_event(session, KeypressEvent("b"))
-    live.update(
-        tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
-        refresh=True,
-    )
-
-    assert consumed is True
-    assert [node.title_text for node in session.visible_nodes] == ["Beta"]
-    assert session.search_text == "b"
-    assert session.status_message == "1 matches"
-
-    consumed = handle_active_prompt_event(session, KeypressEvent("ESC"))
-    live.update(
-        tasks_list_layout.interactive_tasks_list_renderable(live.console, session),
-        refresh=True,
-    )
-
-    assert consumed is True
-    assert [node.title_text for node in session.visible_nodes] == ["Alpha", "Beta"]
-    assert session.search_text == ""
-    assert session.status_message == "Search cancelled"
-    assert events == ["update", "update"]
 
 
 def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.MonkeyPatch) -> None:

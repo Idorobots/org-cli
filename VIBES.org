@@ -7340,7 +7340,7 @@ Please don't leave unused arguments in functions, if an argument is no longer ne
 *** Mark as completed should respect repeaters
 The timestamp advancement should only be used if the new state is a completed state. In such a case, the state should be updated to the first TODO state defined for the document, a logbook repeat should be added to the task (`State {node.todo} to {new_state}`) and the repeaters should be advanced according to its rules.
 
-** Codebase improvements                                                                   :Cleanup:
+** TODO Codebase improvements                                                              :Cleanup:
 *** DONE Extract the =stats= command wrapper into a separate module
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-06-02 Tue 20:06]
@@ -7357,6 +7357,41 @@ Refine the plan in @plans/textual-migration.md to better reflect the current sta
 Focus on just the TUI organization & input handling aspects, we'll handle widgets etc later.
 
 Implement the plan from @plans/textual-migration.md
+**** DONE Broken input/modals
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 11:14]
+:END:
+The help modal (key binding: ?) doesn't show the bindings, just a blank screen. The input prompt doesn't display the text that's being written, nor any message such as "Search term" or similar.
+
+**** DONE Broken modal lifecycle
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 11:14]
+:END:
+Modals that can be cancelled with the Esc key, also cause the whole app to exit. These should only close the modal. The exception should be the key-bindings modal - when any button is pressed, it should close the modal and apply that binding to the underlying screen. The modal should be updated to have a clear title (same as the other input modals) that says "Key bindings". The final line that says "Press any key to return" should be removed.
+
+**** TODO src/org/commands/tasks/list/command.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/tasks/list/command.py around line 375, near the ~def _run_tasks_list_interactive(~
+
+#+begin_example
++    del console
++    run_tasks_list_app(args, data)
+
+#+end_example
+
+It's better to refactor the function call sites not to pass the =console= there.
+
+**** DONE Put CSS into a separate file for better organization
+:PROPERTIES:
+:capture_time: [2026-06-05 Fri 11:13]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*src/org/commands/tasks/list/command.py][src/org/commands/tasks/list/command.py]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 11:20]
+:END:
 *** Use Textual widgets for better TUI organization
 - Selection for prompts
 - Sparkline for freequency plots

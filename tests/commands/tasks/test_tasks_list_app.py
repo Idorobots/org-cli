@@ -1,0 +1,183 @@
+"""App tests for the tasks list command."""
+
+from __future__ import annotations
+
+import asyncio
+from typing import TYPE_CHECKING, Any, cast
+
+from textual.widgets import Input, Static
+
+from org.commands.tasks.list import command as tasks_list
+from org.commands.tasks.list.app import TasksListApp
+from tests.commands.tasks.test_tasks_list import make_list_args
+from tests.conftest import node_from_org
+
+
+if TYPE_CHECKING:
+    import pytest
+    from org_parser.document import Heading
+
+
+def _make_session_data(nodes: list[Heading]) -> tasks_list._TasksListSessionData:
+    return tasks_list._TasksListSessionData(
+        nodes=nodes,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        color_enabled=False,
+    )
+
+
+def test_tasks_list_app_moves_selection_with_arrow_keys() -> None:
+    """Arrow-key navigation should update the selected task row."""
+
+    async def _run() -> None:
+        nodes = node_from_org("* TODO A\n* TODO B\n")
+        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+
+        async with app.run_test() as pilot:
+            await pilot.press("down")
+            await pilot.pause()
+            assert app.session.selected_index == 1
+
+            await pilot.press("up")
+            await pilot.pause()
+            assert app.session.selected_index == 0
+
+    asyncio.run(_run())
+
+
+def test_tasks_list_app_search_prompt_filters_results_live() -> None:
+    """Search prompt should update visible tasks through Textual input flow."""
+
+    async def _run() -> None:
+        nodes = node_from_org("* TODO Alpha\nBody\n* TODO Beta\nOther\n")
+        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+
+        async with app.run_test() as pilot:
+            await pilot.press("slash")
+            await pilot.pause()
+
+            prompt_input = app.screen.query_one(Input)
+            assert prompt_input.value == ""
+
+            await pilot.press("a", "l", "p", "h", "a")
+            await pilot.pause()
+            assert app.session.search_text == "alpha"
+            assert [node.title_text for node in app.session.visible_nodes] == ["Alpha"]
+
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.session.search_text == "alpha"
+            assert [node.title_text for node in app.session.visible_nodes] == ["Alpha"]
+
+    asyncio.run(_run())
+
+
+def test_tasks_list_app_help_modal_shows_key_bindings() -> None:
+    """Help modal should stay open and show key binding text."""
+
+    async def _run() -> None:
+        nodes = node_from_org("* TODO Alpha\n")
+        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+
+        async with app.run_test() as pilot:
+            await pilot.press("question_mark")
+            await pilot.pause()
+
+            help_title = app.screen.query_one("#help-title", Static)
+            help_content = app.screen.query_one("#help-content", Static)
+            title_rendered = cast("Any", help_title).render()
+            rendered = cast("Any", help_content).render()
+            title_text = getattr(title_rendered, "plain", str(title_rendered))
+            plain_text = getattr(rendered, "plain", str(rendered))
+            assert title_text == "Key bindings"
+            assert "Key bindings:" not in plain_text
+            assert "Esc/q" in plain_text
+
+    asyncio.run(_run())
+
+
+def test_tasks_list_app_search_prompt_shows_label() -> None:
+    """Search prompt should display its label when opened."""
+
+    async def _run() -> None:
+        nodes = node_from_org("* TODO Alpha\n")
+        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+
+        async with app.run_test() as pilot:
+            await pilot.press("slash")
+            await pilot.pause()
+
+            prompt_label = app.screen.query_one("#prompt-label", Static)
+            rendered = cast("Any", prompt_label).render()
+            plain_text = getattr(rendered, "plain", str(rendered))
+            assert "Search text" in plain_text
+
+    asyncio.run(_run())
+
+
+def test_tasks_list_app_escape_cancels_prompt_without_exiting() -> None:
+    """Escape should dismiss the prompt modal without triggering app quit."""
+
+    async def _run() -> None:
+        nodes = node_from_org("* TODO Alpha\n* TODO Beta\n")
+        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+
+        async with app.run_test() as pilot:
+            await pilot.press("slash")
+            await pilot.pause()
+            assert app.screen.query_one("#prompt-label", Static) is not None
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert app.is_running
+            assert app.session.status_message == "Search cancelled"
+            assert app.screen.query_one("#tasks-body", Static) is not None
+
+    asyncio.run(_run())
+
+
+def test_tasks_list_app_help_modal_applies_key_to_underlying_screen() -> None:
+    """Help modal should close and forward the pressed key to the app."""
+
+    async def _run() -> None:
+        nodes = node_from_org("* TODO Alpha\n* TODO Beta\n")
+        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+
+        async with app.run_test() as pilot:
+            await pilot.press("question_mark")
+            await pilot.pause()
+            assert app.screen.query_one("#help-content", Static) is not None
+
+            await pilot.press("down")
+            await pilot.pause()
+
+            assert app.session.selected_index == 1
+            assert app.screen.query_one("#tasks-body", Static) is not None
+
+    asyncio.run(_run())
+
+
+def test_run_tasks_list_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Interactive tasks list path should delegate to the Textual app runner."""
+    nodes = node_from_org("* TODO Alpha\n")
+    data = _make_session_data(nodes)
+    called = {"value": False}
+
+    def _fake_run(
+        args: tasks_list.ListArgs,
+        session_data: tasks_list._TasksListSessionData,
+    ) -> None:
+        called["value"] = True
+        assert args.files == []
+        assert session_data.nodes == nodes
+
+    monkeypatch.setattr("org.commands.tasks.list.command.run_tasks_list_app", _fake_run)
+
+    tasks_list._run_tasks_list_interactive(
+        make_list_args([]),
+        data,
+    )
+
+    assert called["value"] is True

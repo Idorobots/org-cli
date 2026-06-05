@@ -12,18 +12,10 @@ from org.cli_common import load_and_process_data
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_common import (
-    FooterPromptState,
     HeadingLocator,
-    InputEvent,
-    InteractiveEvent,
     InteractiveHelpEntry,
-    InteractivePromptState,
-    TimeoutEvent,
     advance_timestamp_by_repeater,
     append_repeat_transition,
-    apply_help_modal_key,
-    create_interactive_prompt_state,
-    handle_active_prompt_event,
     heading_locator,
     local_now,
     resolve_heading_locator,
@@ -33,25 +25,15 @@ from org.commands.search_common import filter_nodes_by_search
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import (
     PlanningTimestampField,
-    PromptActionConfig,
-    capture_template_prompt_config,
-    configured_capture_template_names,
     planning_field_label,
-    planning_prompt_config,
     replace_heading_tags_from_csv,
     replace_planning_timestamp_from_raw,
-    resolve_capture_template_selection,
-    resolve_todo_state_selection,
     save_document,
-    state_selection_prompt_config,
-    tags_prompt_config,
     todo_states_for_heading,
 )
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from org_parser.document import Document, Heading
 
     from .command import ListArgs, _TasksListSessionData
@@ -74,10 +56,6 @@ class TasksListSession:
     scroll_offset: int
     status_message: str
     search_text: str
-    search_prompt_previous_text: str | None = None
-    show_help_modal: bool = False
-    active_prompt: InteractivePromptState | None = None
-    run_external: Callable[[Callable[[], None]], None] | None = None
 
 
 TASKS_LIST_HELP_ENTRIES = [
@@ -427,274 +405,6 @@ def create_tasks_list_session(args: ListArgs, data: _TasksListSessionData) -> Ta
         scroll_offset=0,
         status_message="",
         search_text="",
-        show_help_modal=False,
-        active_prompt=None,
-        run_external=None,
     )
     ensure_selection_bounds(session)
     return session
-
-
-def _activate_prompt(
-    session: TasksListSession,
-    config: PromptActionConfig,
-    *,
-    submit_value: Callable[[str], bool],
-    preview_value: Callable[[str], None] | None = None,
-    cancel: Callable[[], None] | None = None,
-) -> None:
-    """Attach one active footer prompt to the tasks list session."""
-    session.active_prompt = create_interactive_prompt_state(
-        config,
-        submit_value=submit_value,
-        preview_value=preview_value,
-        cancel=cancel,
-    )
-
-
-def _activate_capture_prompt(session: TasksListSession) -> None:
-    """Activate capture-template prompt when templates are configured."""
-    template_names = configured_capture_template_names()
-    if not template_names:
-        session.status_message = "No capture templates configured"
-        return
-
-    config = capture_template_prompt_config()
-
-    def _submit(value: str) -> bool:
-        value = value.strip()
-        template_name = resolve_capture_template_selection(value, template_names)
-        if template_name is None and not value:
-            session.status_message = config.cancel_status
-            return False
-        if template_name is None:
-            session.status_message = config.invalid_status
-            return True
-        _run_external(session, lambda: apply_capture_task(session, template_name))
-        return False
-
-    _activate_prompt(session, config, submit_value=_submit)
-
-
-def _activate_search_prompt(session: TasksListSession) -> None:
-    """Activate search prompt and preserve current search text for cancellation."""
-    session.search_prompt_previous_text = session.search_text
-    config = PromptActionConfig(
-        prompt=FooterPromptState(label="Search text (blank clears)"),
-        cancel_status="Search cancelled",
-        invalid_status="Invalid search input",
-    )
-
-    def _submit(value: str) -> bool:
-        session.search_prompt_previous_text = None
-        apply_search_text(session, value.strip())
-        return False
-
-    def _preview(value: str) -> None:
-        apply_search_text(session, value.strip())
-
-    def _cancel() -> None:
-        previous_text = session.search_prompt_previous_text or ""
-        session.search_prompt_previous_text = None
-        apply_search_text(session, previous_text)
-        session.status_message = config.cancel_status
-
-    _activate_prompt(
-        session,
-        config,
-        submit_value=_submit,
-        preview_value=_preview,
-        cancel=_cancel,
-    )
-
-
-def _activate_tags_prompt(session: TasksListSession) -> None:
-    """Activate tags editing prompt for the selected task."""
-    if selected_node(session) is None:
-        session.status_message = "Action available only on task rows"
-        return
-
-    config = tags_prompt_config()
-
-    def _submit(value: str) -> bool:
-        apply_tags_edit(session, value)
-        return False
-
-    _activate_prompt(session, config, submit_value=_submit)
-
-
-def _activate_planning_prompt(session: TasksListSession, field: PlanningTimestampField) -> None:
-    """Activate one planning timestamp prompt for the selected task."""
-    if selected_node(session) is None:
-        session.status_message = "Action available only on task rows"
-        return
-
-    config = planning_prompt_config(field)
-
-    def _submit(value: str) -> bool:
-        apply_planning_timestamp_edit(session, field=field, raw_timestamp=value)
-        return False
-
-    _activate_prompt(session, config, submit_value=_submit)
-
-
-def _activate_state_selection_prompt(session: TasksListSession, states: list[str]) -> None:
-    """Activate TODO-state selection prompt for the selected task."""
-    config = state_selection_prompt_config(states)
-
-    def _submit(value: str) -> bool:
-        value = value.strip()
-        selected_state = resolve_todo_state_selection(value, states)
-        if selected_state is None and not value:
-            session.status_message = config.cancel_status
-            return False
-        if selected_state is None:
-            session.status_message = config.invalid_status
-            return True
-        apply_state_change_with_value(session, selected_state)
-        return False
-
-    _activate_prompt(session, config, submit_value=_submit)
-
-
-def _handle_capture_prompt_activation(session: TasksListSession) -> None:
-    _activate_capture_prompt(session)
-
-
-def _handle_search_prompt_activation(session: TasksListSession) -> None:
-    _activate_search_prompt(session)
-
-
-def _handle_state_prompt_activation(session: TasksListSession) -> None:
-    status_message = can_activate_state_prompt(session)
-    if status_message is not None:
-        session.status_message = status_message
-        return
-    _activate_state_selection_prompt(session, state_choices_for_selected_node(session))
-
-
-def _handle_tags_prompt_activation(session: TasksListSession) -> None:
-    _activate_tags_prompt(session)
-
-
-def _handle_scheduled_prompt_activation(session: TasksListSession) -> None:
-    _activate_planning_prompt(session, "scheduled")
-
-
-def _handle_deadline_prompt_activation(session: TasksListSession) -> None:
-    _activate_planning_prompt(session, "deadline")
-
-
-def _handle_closed_prompt_activation(session: TasksListSession) -> None:
-    _activate_planning_prompt(session, "closed")
-
-
-def _handle_help_modal_event(session: TasksListSession, event: InteractiveEvent) -> bool:
-    if not session.show_help_modal:
-        return False
-    if not isinstance(event, TimeoutEvent):
-        session.show_help_modal = False
-    return True
-
-
-def _handle_navigation_key(session: TasksListSession, key: str) -> bool:
-    handler = {
-        "n": lambda: move_selection(session, 1),
-        "DOWN": lambda: move_selection(session, 1),
-        "WHEEL-DOWN": lambda: move_selection(session, 1),
-        "p": lambda: move_selection(session, -1),
-        "UP": lambda: move_selection(session, -1),
-        "WHEEL-UP": lambda: move_selection(session, -1),
-    }.get(key)
-    if handler is None:
-        return False
-    handler()
-    return True
-
-
-def _handle_mutation_key(
-    session: TasksListSession,
-    key: str,
-    run_external: Callable[[Callable[[], None]], None],
-) -> bool:
-    handler = {
-        "ENTER": lambda: run_external(lambda: edit_selected_task_in_external_editor(session)),
-        "$": lambda: archive_selected_task(session),
-        "x": lambda: clear_search(session),
-        "S-UP": lambda: apply_priority_shift(session, increase=True),
-        "S-DOWN": lambda: apply_priority_shift(session, increase=False),
-    }.get(key)
-    if handler is None:
-        return False
-    handler()
-    return True
-
-
-def _handle_prompt_activation_key(
-    session: TasksListSession,
-    key: str,
-    _run_external_callback: Callable[[Callable[[], None]], None],
-) -> bool:
-    handler = {
-        "a": _handle_capture_prompt_activation,
-        "/": _handle_search_prompt_activation,
-        "t": _handle_state_prompt_activation,
-        "g": _handle_tags_prompt_activation,
-        "s": _handle_scheduled_prompt_activation,
-        "d": _handle_deadline_prompt_activation,
-        "c": _handle_closed_prompt_activation,
-    }.get(key)
-    if handler is None:
-        return False
-    handler(session)
-    return True
-
-
-def _handle_keypress_event(
-    session: TasksListSession,
-    key: str,
-    run_external: Callable[[Callable[[], None]], None] | None = None,
-) -> bool:
-    effective_run_external = passthrough_run_external if run_external is None else run_external
-    consumed, next_help_modal = apply_help_modal_key(key, show_help_modal=session.show_help_modal)
-    session.show_help_modal = next_help_modal
-    if consumed:
-        return True
-    if key in {"q", "ESC"}:
-        return False
-    if _handle_navigation_key(session, key):
-        return True
-    if _handle_mutation_key(session, key, effective_run_external):
-        return True
-    if _handle_prompt_activation_key(session, key, effective_run_external):
-        return True
-    if key and key != "IGNORE":
-        session.status_message = f"Unsupported key: {key}"
-    return True
-
-
-def passthrough_run_external(callback: Callable[[], None]) -> None:
-    """Run an external callback immediately."""
-    callback()
-
-
-def _run_external(session: TasksListSession, callback: Callable[[], None]) -> None:
-    runner = session.run_external or passthrough_run_external
-    runner(callback)
-
-
-def handle_interactive_event(
-    session: TasksListSession,
-    event: InteractiveEvent,
-    run_external: Callable[[Callable[[], None]], None],
-) -> bool:
-    """Handle one tasks-list interactive event."""
-    if _handle_help_modal_event(session, event):
-        return True
-    if session.active_prompt is not None:
-        return handle_active_prompt_event(session, event)
-    if isinstance(event, TimeoutEvent):
-        return True
-    if isinstance(event, InputEvent):
-        return True
-    return _handle_keypress_event(session, event.key, run_external)

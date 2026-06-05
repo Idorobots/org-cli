@@ -13,7 +13,7 @@ from rich.syntax import Syntax
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
-from org.commands.interactive_common import interactive_help_command_text, interactive_loop
+from org.commands.interactive_common import interactive_help_command_text
 from org.output_format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
@@ -37,12 +37,11 @@ from org.tui import (
     setup_output,
 )
 
-from . import events, layout
+from . import events
+from .app import run_tasks_list_app
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from org_parser.document import Heading
     from rich.console import Console
 
@@ -346,32 +345,15 @@ def _run_tasks_list_static(
 
 
 def _run_tasks_list_interactive(
-    console: Console,
     args: ListArgs,
     data: _TasksListSessionData,
 ) -> None:
-    """Run interactive tasks-list UI session."""
+    """Run interactive tasks-list UI session via Textual."""
     if not data.nodes:
+        console = build_console(data.color_enabled, args.width)
         console.print("No results", markup=False)
         return
-
-    session = events.create_tasks_list_session(args, data)
-
-    run_external: list[Callable[[Callable[[], None]], None]] = [events.passthrough_run_external]
-
-    def _bind_run_external(callback: Callable[[Callable[[], None]], None]) -> None:
-        run_external[0] = callback
-        session.run_external = callback
-
-    session.run_external = run_external[0]
-
-    interactive_loop(
-        console=console,
-        render=lambda: layout.interactive_tasks_list_renderable(console, session),
-        on_event=lambda event: events.handle_interactive_event(session, event, run_external[0]),
-        bind_run_external=_bind_run_external,
-        timeout_seconds=None,
-    )
+    run_tasks_list_app(args, data)
 
 
 def _is_cli_option_present(argv: list[str], option: str) -> bool:
@@ -410,7 +392,7 @@ def run_tasks_list(args: ListArgs) -> None:
     )
 
     if not _effective_noninteractive_mode(args):
-        _run_tasks_list_interactive(console, args, session_data)
+        _run_tasks_list_interactive(args, session_data)
         return
 
     _run_tasks_list_static(console, args, session_data)
