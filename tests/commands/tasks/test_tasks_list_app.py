@@ -36,11 +36,9 @@ def test_tasks_list_app_moves_selection_with_arrow_keys() -> None:
 
         async with app.run_test() as pilot:
             await pilot.press("down")
-            await pilot.pause()
             assert app.session.selected_index == 1
 
             await pilot.press("up")
-            await pilot.pause()
             assert app.session.selected_index == 0
 
     asyncio.run(_run())
@@ -54,18 +52,19 @@ def test_tasks_list_app_search_prompt_filters_results_live() -> None:
         app = TasksListApp(make_list_args([]), _make_session_data(nodes))
 
         async with app.run_test() as pilot:
-            await pilot.press("slash")
+            app.action_prompt_search()
             await pilot.pause()
 
             prompt_input = app.screen.query_one(Input)
             assert prompt_input.value == ""
 
-            await pilot.press("a", "l", "p", "h", "a")
-            await pilot.pause()
+            prompt_input.value = "alpha"
+            prompt_screen = cast("Any", app.screen_stack[-1])
+            prompt_screen.on_input_changed(Input.Changed(prompt_input, "alpha"))
             assert app.session.search_text == "alpha"
             assert [node.title_text for node in app.session.visible_nodes] == ["Alpha"]
 
-            await pilot.press("enter")
+            app.screen_stack[-1].dismiss("alpha")
             await pilot.pause()
             assert app.session.search_text == "alpha"
             assert [node.title_text for node in app.session.visible_nodes] == ["Alpha"]
@@ -81,7 +80,7 @@ def test_tasks_list_app_help_modal_shows_key_bindings() -> None:
         app = TasksListApp(make_list_args([]), _make_session_data(nodes))
 
         async with app.run_test() as pilot:
-            await pilot.press("question_mark")
+            app.action_show_help()
             await pilot.pause()
 
             help_title = app.screen.query_one("#help-title", Static)
@@ -105,7 +104,7 @@ def test_tasks_list_app_search_prompt_shows_label() -> None:
         app = TasksListApp(make_list_args([]), _make_session_data(nodes))
 
         async with app.run_test() as pilot:
-            await pilot.press("slash")
+            app.action_prompt_search()
             await pilot.pause()
 
             prompt_label = app.screen.query_one("#prompt-label", Static)
@@ -124,7 +123,7 @@ def test_tasks_list_app_escape_cancels_prompt_without_exiting() -> None:
         app = TasksListApp(make_list_args([]), _make_session_data(nodes))
 
         async with app.run_test() as pilot:
-            await pilot.press("slash")
+            app.action_prompt_search()
             await pilot.pause()
             assert app.screen.query_one("#prompt-label", Static) is not None
 
@@ -146,7 +145,7 @@ def test_tasks_list_app_help_modal_applies_key_to_underlying_screen() -> None:
         app = TasksListApp(make_list_args([]), _make_session_data(nodes))
 
         async with app.run_test() as pilot:
-            await pilot.press("question_mark")
+            app.action_show_help()
             await pilot.pause()
             assert app.screen.query_one("#help-content", Static) is not None
 

@@ -7438,10 +7438,13 @@ Filename: /home/k/projects/software/org-cli/tests/commands/tasks/test_tasks_capt
 #+end_example
 
 Please don't rely on the .org-cli.yaml file present in the repository in tests. Substritute a temporary file if the configuration is needed.
-**** TODO The test suite is a lot slower after the Textual rewrite
+**** DONE The test suite is a lot slower after the Textual rewrite
 :PROPERTIES:
 :capture_time: [2026-06-05 Fri 13:19]
 :context: [[file:~/projects/software/org-cli/VIBES.org::*Code review comment][Code review comment]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-06 Sat 16:04]
 :END:
 It used to be under 8 seconds. Please identify the slow tests and update them to run faster.
 *** Use Textual widgets for better TUI organization

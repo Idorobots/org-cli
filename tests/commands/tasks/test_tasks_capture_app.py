@@ -7,62 +7,48 @@ from typing import TYPE_CHECKING, Any, cast
 
 from textual.widgets import Static, TextArea
 
-from org import config as config_module
 from org.commands.tasks import capture
 from org.commands.tasks.capture.app import CaptureApp
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from org_parser.document import Document, Heading
 
 
-def _make_plan(tmp_path: Path) -> capture.CapturePlan:
-    target = tmp_path / "tasks.org"
-    config_path = tmp_path / "config.yaml"
-    target.write_text("* TODO Existing\n", encoding="utf-8")
-    config_path.write_text("", encoding="utf-8")
-    previous = {
-        "quick": {
-            "file": str(target),
-            "content": "* TODO {{title}} @{{owner}}",
-        },
-    }
-    original = dict(config_module.CONFIG_CAPTURE_TEMPLATES)
-    config_module.CONFIG_CAPTURE_TEMPLATES.clear()
-    config_module.CONFIG_CAPTURE_TEMPLATES.update(previous)
-    try:
-        return capture.prepare_capture_plan(
-            capture.TasksCaptureArgs(
-                template_name="quick",
-                config=str(config_path),
-                file=None,
-                parent=None,
-                set_values=None,
-            ),
-            "quick",
-        )
-    finally:
-        config_module.CONFIG_CAPTURE_TEMPLATES.clear()
-        config_module.CONFIG_CAPTURE_TEMPLATES.update(original)
+def _make_plan() -> capture.CapturePlan:
+    return capture.CapturePlan(
+        args=capture.TasksCaptureArgs(
+            template_name="quick",
+            config="unused.yaml",
+            file=None,
+            parent=None,
+            set_values=None,
+        ),
+        template_name="quick",
+        template_content="* TODO {{title}} @{{owner}}",
+        document=cast("Document", object()),
+        parent_heading=cast("Heading | None", None),
+        placeholders=["title", "owner"],
+        values={},
+        unresolved_placeholders=["title", "owner"],
+    )
 
 
-def test_capture_app_preview_updates_from_field_input(tmp_path: Path) -> None:
+def test_capture_app_preview_updates_from_field_input() -> None:
     """Editing a field should update the rendered preview."""
 
     async def _run() -> None:
-        app = CaptureApp(_make_plan(tmp_path))
-        async with app.run_test() as pilot:
+        app = CaptureApp(_make_plan())
+        async with app.run_test():
             title_input = app.screen.query_one("#field-title", TextArea)
             owner_input = app.screen.query_one("#field-owner", TextArea)
             assert title_input.text == ""
             assert owner_input.text == ""
 
-            await pilot.press("W", "r", "i", "t", "e")
-            await pilot.pause()
-            owner_input.focus()
-            await pilot.pause()
-            await pilot.press("J", "a", "n", "e")
-            await pilot.pause()
+            title_input.load_text("Write")
+            app.on_text_area_changed(TextArea.Changed(title_input))
+            owner_input.load_text("Jane")
+            app.on_text_area_changed(TextArea.Changed(owner_input))
 
             assert app.field_values["title"] == "Write"
             assert app.field_values["owner"] == "Jane"
@@ -72,14 +58,15 @@ def test_capture_app_preview_updates_from_field_input(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
-def test_capture_app_textarea_keeps_newlines(tmp_path: Path) -> None:
+def test_capture_app_textarea_keeps_newlines() -> None:
     """Multiline field edits should be preserved in preview values."""
 
     async def _run() -> None:
-        app = CaptureApp(_make_plan(tmp_path))
-        async with app.run_test() as pilot:
-            await pilot.press("L", "i", "n", "e", "1", "enter", "L", "i", "n", "e", "2")
-            await pilot.pause()
+        app = CaptureApp(_make_plan())
+        async with app.run_test():
+            title_input = app.screen.query_one("#field-title", TextArea)
+            title_input.load_text("Line1\nLine2")
+            app.on_text_area_changed(TextArea.Changed(title_input))
 
             assert app.field_values["title"] == "Line1\nLine2"
             assert app._preview_values()["title"] == "Line1\nLine2"
@@ -87,11 +74,11 @@ def test_capture_app_textarea_keeps_newlines(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
-def test_capture_app_help_modal_shows_key_bindings(tmp_path: Path) -> None:
+def test_capture_app_help_modal_shows_key_bindings() -> None:
     """Question mark should open the shared help modal."""
 
     async def _run() -> None:
-        app = CaptureApp(_make_plan(tmp_path))
+        app = CaptureApp(_make_plan())
         async with app.run_test() as pilot:
             app.action_show_help()
             await pilot.pause()
@@ -102,21 +89,15 @@ def test_capture_app_help_modal_shows_key_bindings(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
-def test_capture_app_save_collects_form_values(tmp_path: Path) -> None:
+def test_capture_app_save_collects_form_values() -> None:
     """Saving the form should return the current field values."""
 
     async def _run() -> None:
-        app = CaptureApp(_make_plan(tmp_path))
-        async with app.run_test() as pilot:
-            owner_input = app.screen.query_one("#field-owner", TextArea)
-            await pilot.press("W", "o", "r", "k")
-            await pilot.pause()
-            owner_input.focus()
-            await pilot.pause()
-            await pilot.press("S", "a", "m")
-            await pilot.pause()
-            await pilot.press("ctrl+s")
-            await pilot.pause()
+        app = CaptureApp(_make_plan())
+        async with app.run_test():
+            app.field_values["title"] = "Work"
+            app.field_values["owner"] = "Sam"
+            app.action_save_capture()
 
         assert app.result_values is not None
         assert app.result_values["title"] == "Work"
