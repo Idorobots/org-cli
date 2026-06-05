@@ -7352,7 +7352,12 @@ Organize it the same as the other commands (most recentry modified: agenda, boar
 Refactor all places that currently use either of these functions so that the concrete type is known and concrete field is accessed.
 Introduce linter rules that make sure these function cannot be used.
 *** Avoid monkey patching in tests
-*** Use Textual for better TUI organization
+*** TODO Textual for app organization & input handling
+Refine the plan in @plans/textual-migration.md to better reflect the current state of the codebase.
+Focus on just the TUI organization & input handling aspects, we'll handle widgets etc later.
+
+Implement the plan from @plans/textual-migration.md
+*** Use Textual widgets for better TUI organization
 - Selection for prompts
 - Sparkline for freequency plots
 *** REWORKED Interactive loop refactor
