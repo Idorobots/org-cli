@@ -1,0 +1,63 @@
+Screen {
+    layout: vertical;
+}
+
+#capture-title {
+    margin-bottom: 1;
+}
+
+#capture-body {
+    height: 1fr;
+}
+
+#capture-preview-panel {
+    width: 1fr;
+    padding-right: 1;
+}
+
+#preview-title {
+    margin-bottom: 1;
+}
+
+#capture-form {
+    width: 40%;
+    min-width: 32;
+    height: 1fr;
+}
+
+#capture-fields {
+    height: 1fr;
+    overflow-y: auto;
+}
+
+.field-label {
+    margin-top: 1;
+}
+
+.field-input {
+    height: auto;
+    min-height: 3;
+    max-height: 8;
+}
+
+#capture-preview {
+    height: 1fr;
+    border: round $primary;
+    padding: 1;
+}
+
+#capture-buttons {
+    margin-top: 1;
+    width: 100%;
+    align-horizontal: center;
+    height: auto;
+}
+
+#capture-buttons Button {
+    width: 16;
+}
+
+#capture-status {
+    height: auto;
+    margin-top: 1;
+}

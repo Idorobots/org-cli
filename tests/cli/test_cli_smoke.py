@@ -18,9 +18,20 @@ FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 def test_cli_summary_smoke() -> None:
     """Ensure summary command runs via python -m org."""
     fixture_path = os.path.join(FIXTURES_DIR, "single_task.org")
+    config_path = os.path.join(FIXTURES_DIR, "empty-config.yaml")
 
     result = subprocess.run(
-        [sys.executable, "-m", "org", "stats", "all", "--no-color", fixture_path],
+        [
+            sys.executable,
+            "-m",
+            "org",
+            "stats",
+            "all",
+            "--config",
+            config_path,
+            "--no-color",
+            fixture_path,
+        ],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -34,6 +45,7 @@ def test_cli_summary_multiple_files_smoke() -> None:
     """Ensure multiple files are processed via CLI."""
     fixture1 = os.path.join(FIXTURES_DIR, "simple.org")
     fixture2 = os.path.join(FIXTURES_DIR, "single_task.org")
+    config_path = os.path.join(FIXTURES_DIR, "empty-config.yaml")
 
     result = subprocess.run(
         [
@@ -43,6 +55,8 @@ def test_cli_summary_multiple_files_smoke() -> None:
             "--verbose",
             "stats",
             "all",
+            "--config",
+            config_path,
             "--no-color",
             fixture1,
             fixture2,

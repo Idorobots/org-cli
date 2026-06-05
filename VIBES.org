@@ -7369,9 +7369,12 @@ The help modal (key binding: ?) doesn't show the bindings, just a blank screen. 
 :END:
 Modals that can be cancelled with the Esc key, also cause the whole app to exit. These should only close the modal. The exception should be the key-bindings modal - when any button is pressed, it should close the modal and apply that binding to the underlying screen. The modal should be updated to have a clear title (same as the other input modals) that says "Key bindings". The final line that says "Press any key to return" should be removed.
 
-**** TODO src/org/commands/tasks/list/command.py
+**** DONE src/org/commands/tasks/list/command.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 11:35]
 :END:
 
 In file src/org/commands/tasks/list/command.py around line 375, near the ~def _run_tasks_list_interactive(~
@@ -7392,6 +7395,55 @@ It's better to refactor the function call sites not to pass the =console= there.
 :LOGBOOK:
 - State "DONE"       from "TODO"       [2026-06-05 Fri 11:20]
 :END:
+**** DONE Tasks capture preview should be on the left of the form.
+:PROPERTIES:
+:CAPTURE_TIME: <2026-06-05 Fri 12:03>
+:ID: Vibes-490
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 13:17]
+:END:
+
+Instead of using two columns, please move the task preview panel to the left of the screen and the form to the right.
+The inputs should support newlines (enter key). The save/cancel buttons should be center-aligned underr the form, but on the same line.
+
+Ideally, the form itself should be part of the preview (as-in, the task preview is displayed as the main panel, with input boxes in place of the placeholders.)
+
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 13:22]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/tests/commands/tasks/test_tasks_capture_app.py::capture.TasksCaptureArgs(
+ template_name="quick",
+ config=".org-cli.yaml",
+ file=None,
+ parent=None,
+ set_values=None,
+ ),
+ "quick",]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/tests/commands/tasks/test_tasks_capture_app.py
+
+#+begin_example
+            capture.TasksCaptureArgs(
+                template_name="quick",
+                config=".org-cli.yaml",
+                file=None,
+                parent=None,
+                set_values=None,
+            ),
+            "quick",
+#+end_example
+
+Please don't rely on the .org-cli.yaml file present in the repository in tests. Substritute a temporary file if the configuration is needed.
+**** TODO The test suite is a lot slower after the Textual rewrite
+:PROPERTIES:
+:capture_time: [2026-06-05 Fri 13:19]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Code review comment][Code review comment]]
+:END:
+It used to be under 8 seconds. Please identify the slow tests and update them to run faster.
 *** Use Textual widgets for better TUI organization
 - Selection for prompts
 - Sparkline for freequency plots
