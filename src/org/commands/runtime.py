@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from contextlib import nullcontext
 from typing import TYPE_CHECKING, cast
 
 from rich.text import Text
 from textual import events as textual_events
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.containers import Container
 from textual.screen import ModalScreen
 from textual.widgets import Input, Static
@@ -124,10 +123,11 @@ class CommandApp(App[None]):
     def suspend_for_external(self, callback: Callable[[], None]) -> None:
         """Suspend the app when possible around one blocking callback."""
         suspend = getattr(self, "suspend", None)
-        context_manager: AbstractContextManager[object]
         if callable(suspend):
-            context_manager = cast("AbstractContextManager[object]", suspend())
+            try:
+                with cast("AbstractContextManager[object]", suspend()):
+                    callback()
+            except SuspendNotSupported:
+                callback()
         else:
-            context_manager = nullcontext()
-        with context_manager:
             callback()

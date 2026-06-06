@@ -47,13 +47,18 @@ def test_get_state_color_done_and_cancelled() -> None:
 
 
 def test_get_state_color_todo_and_unknown() -> None:
-    """TODO/empty states should be dim white, unknown should be yellow."""
+    """TODO and empty states should be bold gray, and unknown states should be yellow."""
     done_states = ["DONE"]
     todo_states = ["TODO"]
 
-    assert color.get_state_color("TODO", done_states, todo_states, True) == "dim white"
-    assert color.get_state_color("", done_states, todo_states, True) == "dim white"
+    assert color.get_state_color("TODO", done_states, todo_states, True) == "bold bright_black"
+    assert color.get_state_color("", done_states, todo_states, True) == "bold bright_black"
     assert color.get_state_color("BLOCKED", done_states, todo_states, True) == "bold yellow"
+
+
+def test_get_state_color_suspended_is_yellow() -> None:
+    """SUSPENDED should use the shared yellow state style."""
+    assert color.get_state_color("SUSPENDED", ["DONE"], ["TODO"], True) == "bold yellow"
 
 
 def test_get_state_color_disabled_returns_empty() -> None:

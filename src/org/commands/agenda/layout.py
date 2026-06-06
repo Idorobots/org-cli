@@ -9,17 +9,12 @@ from typing import TYPE_CHECKING, cast
 import org_parser.time as org_time
 import typer
 from rich import box
-from rich.console import Console, Group
-from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
 from org.commands.interactive_common import (
-    INTERACTIVE_HELP_FOOTER_HINT,
     InteractiveHelpEntry,
-    build_footer_prompt_text,
     local_now,
-    render_interactive_help_modal,
     shift_datetimes_by_unit,
 )
 from org.query_language import EvalContext, QueryRuntimeError, Stream
@@ -34,6 +29,7 @@ from org.validation import parse_date_argument
 
 if TYPE_CHECKING:
     from org_parser.document import Heading
+    from rich.console import Console
 
     from .command import AgendaArgs
     from .events import AgendaSession
@@ -187,7 +183,7 @@ class ViewportRow:
     location: tuple[int, int] | None
 
 
-def _has_specific_time(timestamp: Timestamp) -> bool:
+def has_specific_time(timestamp: Timestamp) -> bool:
     """Return whether an org timestamp includes an explicit start time."""
     return timestamp.start_hour is not None
 
@@ -197,7 +193,7 @@ def _is_active_planning_timestamp(timestamp: Timestamp | None) -> bool:
     return bool(timestamp is not None and timestamp.is_active)
 
 
-def _resolve_agenda_start_date(raw_date: str | None) -> date:
+def resolve_agenda_start_date(raw_date: str | None) -> date:
     """Resolve agenda start date from --date or today's date."""
     if raw_date is None:
         return local_now().date()
@@ -242,7 +238,7 @@ def _plain_section_row_details(node: Heading, day: date) -> tuple[str, str]:
         scheduled_source = "scheduled_untimed"
         if scheduled_day < day:
             scheduled_source = "overdue_scheduled"
-        elif _has_specific_time(node.scheduled):
+        elif has_specific_time(node.scheduled):
             scheduled_source = "scheduled"
         return _relative_day_text(scheduled_day, day), scheduled_source
     return "", "scheduled"
@@ -253,12 +249,12 @@ def _has_selected_untimed_planning(node: Heading) -> bool:
     has_untimed_deadline = bool(
         node.deadline is not None
         and _is_active_planning_timestamp(node.deadline)
-        and not _has_specific_time(node.deadline),
+        and not has_specific_time(node.deadline),
     )
     has_untimed_scheduled = bool(
         node.scheduled is not None
         and _is_active_planning_timestamp(node.scheduled)
-        and not _has_specific_time(node.scheduled),
+        and not has_specific_time(node.scheduled),
     )
     return has_untimed_deadline or has_untimed_scheduled
 
@@ -421,7 +417,7 @@ def _collect_repeat_timed_entries(
     for repeat in repeats:
         if repeat.timestamp.start.date() != day:
             continue
-        if _has_specific_time(repeat.timestamp):
+        if has_specific_time(repeat.timestamp):
             timed.append(
                 _TimedEntry(
                     node=node,
@@ -449,7 +445,7 @@ def _collect_scheduled_entries(
     ):
         return timed, untimed
 
-    if _has_specific_time(node.scheduled):
+    if has_specific_time(node.scheduled):
         timed.append(_TimedEntry(node=node, when=node.scheduled.start, kind="scheduled"))
     else:
         untimed.append(node)
@@ -471,7 +467,7 @@ def _collect_deadline_entries(
     if not _planning_matches_day(node.deadline, day, future_repeats=future_repeats):
         return timed, untimed
 
-    if _has_specific_time(node.deadline):
+    if has_specific_time(node.deadline):
         timed.append(_TimedEntry(node=node, when=node.deadline.start, kind="deadline"))
     else:
         untimed.append(node)
@@ -487,7 +483,135 @@ def _merge_row_style(base_style: str, *, highlighted: bool) -> str:
     return _HIGHLIGHT_ROW_STYLE
 
 
-def _selected_row_location(session: AgendaSession) -> tuple[int, int] | None:
+def _cell_padding(cell: Text, width: int, *, justify: str = "left") -> Text:
+    """Return one padded text cell clipped to the requested display width."""
+    padded = cell.copy()
+    padded.no_wrap = True
+    padded.overflow = "ellipsis"
+    padded.truncate(max(width, 0), overflow="ellipsis")
+    remaining = max(width - padded.cell_len, 0)
+    if remaining == 0:
+        return padded
+    spacing = Text(" " * remaining)
+    if justify == "right":
+        spacing.append_text(padded)
+        return spacing
+    padded.append(" " * remaining)
+    return padded
+
+
+def viewport_task_width(widths: AgendaColumnWidths, line_width: int) -> int:
+    """Return the available task-column width for one interactive viewport row."""
+    reserved_width = widths.category + widths.time + widths.tags + 3
+    return max(10, line_width - reserved_width)
+
+
+def _render_viewport_task_text(
+    agenda_row: AgendaRow,
+    render: RenderContext,
+    widths: AgendaColumnWidths,
+    *,
+    line: Text,
+    line_width: int,
+) -> None:
+    """Render one interactive task row into the provided line."""
+    node = agenda_row.node
+    if node is None:
+        return
+    task_width = viewport_task_width(widths, line_width)
+    line.append_text(_cell_padding(_category_text(node), widths.category))
+    line.append(" ")
+    line.append_text(_cell_padding(Text(agenda_row.time_text), widths.time))
+    line.append(" ")
+    line.append_text(
+        _cell_padding(
+            _heading_text(
+                node,
+                render=render,
+                prefix=agenda_row.prefix,
+                state_override=agenda_row.state_override,
+            ),
+            task_width,
+        ),
+    )
+    line.append(" ")
+    line.append_text(
+        _cell_padding(
+            _tags_text(node, render.color_enabled),
+            widths.tags,
+            justify="right",
+        ),
+    )
+
+
+def _render_viewport_non_task_text(
+    agenda_row: AgendaRow,
+    render: RenderContext,
+    widths: AgendaColumnWidths,
+    *,
+    line: Text,
+) -> None:
+    """Render one non-task interactive row into the provided line."""
+    if agenda_row.kind == "day_header":
+        line.append(agenda_row.section_label, style="bold" if render.color_enabled else "")
+        return
+    if agenda_row.kind == "section":
+        if render.color_enabled and "[" in agenda_row.section_label:
+            line.append_text(Text.from_markup(agenda_row.section_label))
+        else:
+            line.append(agenda_row.section_label, style="bold" if render.color_enabled else "")
+        return
+    if agenda_row.kind == "hour_marker":
+        line.append(" " * (widths.category + 1))
+        line.append_text(_cell_padding(Text(agenda_row.time_text), widths.time))
+        line.append(" ")
+        line.append("---------------", style="dim")
+        return
+    if agenda_row.kind == "now_marker":
+        line.append(" " * (widths.category + 1))
+        line.append_text(_cell_padding(Text(agenda_row.time_text), widths.time))
+        line.append(" ")
+        line.append(
+            "------ NOW ------",
+            style="bold yellow" if render.color_enabled else "",
+        )
+
+
+def render_viewport_row_text(
+    row: ViewportRow,
+    render: RenderContext,
+    widths: AgendaColumnWidths,
+    *,
+    line_width: int,
+    highlighted: bool,
+) -> Text:
+    """Render one interactive viewport row as a single-line Textual-friendly text object."""
+    if row.kind == "spacer":
+        return Text("")
+
+    agenda_row = row.agenda_row
+    if agenda_row is None:
+        return Text("")
+
+    line = Text(no_wrap=True, overflow="ellipsis", style=agenda_row.style or "")
+
+    if agenda_row.kind == "task":
+        _render_viewport_task_text(
+            agenda_row,
+            render,
+            widths,
+            line=line,
+            line_width=line_width,
+        )
+    else:
+        _render_viewport_non_task_text(agenda_row, render, widths, line=line)
+
+    if highlighted:
+        line.stylize(_HIGHLIGHT_ROW_STYLE)
+    return line
+
+
+def selected_row_location(session: AgendaSession) -> tuple[int, int] | None:
     """Return selected day/row indexes or None when no rows exist."""
     if not session.row_locations:
         return None
@@ -794,7 +918,7 @@ def _render_section_row(
     return 1
 
 
-def _interactive_artifacts(
+def build_interactive_artifacts(
     day_models: list[DayRowModel],
     render: RenderContext,
 ) -> tuple[list[tuple[int, int]], list[ViewportRow], AgendaColumnWidths]:
@@ -921,79 +1045,6 @@ def _render_viewport_row(
     )
 
 
-def interactive_agenda_renderable(console: Console, session: AgendaSession) -> Group:
-    """Build scrollable interactive agenda renderable with fixed footer controls."""
-    if session.show_help_modal:
-        return Group(
-            render_interactive_help_modal(
-                AGENDA_HELP_ENTRIES,
-                color_enabled=session.render.color_enabled,
-            ),
-        )
-    rows = session.interactive_rows
-    widths = session.column_widths
-    viewport_height = max(3, console.size.height - 5)
-    selected_row = _selected_viewport_row_index(rows, _selected_row_location(session))
-    max_offset = max(0, len(rows) - viewport_height)
-    session.scroll_offset = min(max(session.scroll_offset, 0), max_offset)
-    session.scroll_offset = _adjust_scroll_offset(
-        session.scroll_offset,
-        selected_row,
-        viewport_height,
-        max_offset,
-    )
-    window = rows[session.scroll_offset : session.scroll_offset + viewport_height]
-    selected_location = _selected_row_location(session)
-    viewport_table = _build_interactive_viewport_table_with_widths(widths)
-    for row in window:
-        _render_viewport_row(viewport_table, row, session, selected_location)
-    for _ in range(viewport_height - len(window)):
-        viewport_table.add_row(Text(""), Text(""), Text(""), Text(""))
-    sticky_day = _resolve_sticky_day(session, rows)
-    end_line = min(session.scroll_offset + viewport_height, len(rows))
-    total_lines = max(len(rows), 1)
-    search_text = session.search_text or "-"
-    scroll_text = f"Lines {end_line}/{total_lines} | Search: {search_text}"
-    prompt_line = None
-    if session.active_prompt is not None:
-        prompt_line = build_footer_prompt_text(session.active_prompt.prompt)
-    status = session.status_message or ""
-    footer_style = "dim" if session.render.color_enabled else ""
-    footer_line = Table.grid(expand=True)
-    footer_line.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
-    footer_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
-    footer_line.add_row(
-        Text(scroll_text, style=footer_style, no_wrap=True, overflow="ellipsis"),
-        Text(INTERACTIVE_HELP_FOOTER_HINT, style=footer_style, no_wrap=True, overflow="ellipsis"),
-    )
-    status_text = Text(status, style=footer_style, no_wrap=True, overflow="ellipsis")
-    sticky_header = Text(
-        _day_header_label(sticky_day),
-        style="bold" if session.render.color_enabled else "",
-        no_wrap=True,
-        overflow="ellipsis",
-    )
-    header_rule = Rule(style=footer_style)
-    if prompt_line is None:
-        return Group(
-            sticky_header,
-            header_rule,
-            viewport_table,
-            Rule(style=footer_style),
-            footer_line,
-            status_text,
-        )
-    return Group(
-        sticky_header,
-        header_rule,
-        viewport_table,
-        Rule(style=footer_style),
-        footer_line,
-        prompt_line,
-        status_text,
-    )
-
-
 def _adjust_scroll_offset(
     scroll_offset: int,
     selected_row: int | None,
@@ -1013,12 +1064,30 @@ def _adjust_scroll_offset(
 
 def _resolve_sticky_day(session: AgendaSession, rows: list[ViewportRow]) -> date:
     """Resolve the sticky interactive day header from selection or visible rows."""
-    selected_location = _selected_row_location(session)
+    selected_location = selected_row_location(session)
     if selected_location is not None:
         return session.day_models[selected_location[0]].day
     if rows:
         return rows[min(session.scroll_offset, len(rows) - 1)].day
     return session.start_date
+
+
+def sticky_day(session: AgendaSession) -> date:
+    """Return the current sticky day for the interactive agenda viewport."""
+    return _resolve_sticky_day(session, session.interactive_rows)
+
+
+def sync_scroll_offset(session: AgendaSession, viewport_height: int) -> None:
+    """Clamp and adjust scroll offset to keep the current selection visible."""
+    rows = session.interactive_rows
+    selected_row = _selected_viewport_row_index(rows, selected_row_location(session))
+    max_offset = max(0, len(rows) - viewport_height)
+    session.scroll_offset = _adjust_scroll_offset(
+        session.scroll_offset,
+        selected_row,
+        viewport_height,
+        max_offset,
+    )
 
 
 def render_agenda(
@@ -1027,7 +1096,7 @@ def render_agenda(
     view_ctx: AgendaViewContext,
 ) -> None:
     """Render agenda output table using view section specs."""
-    start_date = _resolve_agenda_start_date(render_input.args.date)
+    start_date = resolve_agenda_start_date(render_input.args.date)
     rendered_tables: list[Table] = []
     total_rows = 0
     day_models: list[DayRowModel] = []

@@ -7447,6 +7447,24 @@ Please don't rely on the .org-cli.yaml file present in the repository in tests. 
 - State "DONE"       from "TODO"       [2026-06-06 Sat 16:04]
 :END:
 It used to be under 8 seconds. Please identify the slow tests and update them to run faster.
+**** DONE src/org/commands/agenda/layout.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-06 Sat 19:56]
+:END:
+
+In file src/org/commands/agenda/layout.py around line 624, near the ~def _selected_row_location(session: AgendaSession) -> tuple[int, int] | None:~
+
+#+begin_example
++def selected_row_location(session: AgendaSession) -> tuple[int, int] | None:
++    """Return the selected interactive row location for one agenda session."""
++    return _selected_row_location(session)
+
+#+end_example
+
+This wrapper should be removed, prefer renaming functions and adjusting callsites.
 *** Use Textual widgets for better TUI organization
 - Selection for prompts
 - Sparkline for freequency plots

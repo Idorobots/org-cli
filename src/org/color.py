@@ -122,12 +122,18 @@ def get_state_color(
     if not enabled:
         return ""
 
+    normalized_state = state.strip().upper()
+
+    if normalized_state == "CANCELLED":
+        return "bold red"
+
+    if normalized_state == "SUSPENDED":
+        return "bold yellow"
+
     if state in done_states:
-        if state == "CANCELLED":
-            return "bold red"
         return "bold green"
 
     if state in todo_states or state == "" or state.lower() == "null":
-        return "dim white"
+        return "bold bright_black"
 
     return "bold yellow"

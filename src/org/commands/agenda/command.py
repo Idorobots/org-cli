@@ -13,13 +13,12 @@ from org.cli_common import load_and_process_data
 from org.commands.interactive_common import interactive_help_command_text, local_now
 from org.tui import build_console, processing_status, setup_output
 
-from . import events, layout
+from . import layout
+from .app import run_agenda_app
 from .views import resolve_view_context
 
 
 logger = logging.getLogger("org")
-_HIGHLIGHT_ROW_STYLE = "on grey23"
-_INTERACTIVE_INPUT_TIMEOUT_SECONDS = 1.0
 
 
 @dataclass
@@ -97,18 +96,15 @@ def run_agenda(args: AgendaArgs) -> None:
         return
 
     if sys.stdin.isatty() and sys.stdout.isatty():
-        events.run_agenda_interactive(
-            console,
-            events.create_agenda_session(
-                args,
-                nodes,
-                layout.RenderContext(
-                    color_enabled=color_enabled,
-                    done_states=done_states,
-                    todo_states=todo_states,
-                ),
-                view_ctx,
+        run_agenda_app(
+            args,
+            nodes,
+            layout.RenderContext(
+                color_enabled=color_enabled,
+                done_states=done_states,
+                todo_states=todo_states,
             ),
+            view_ctx,
         )
         return
 
