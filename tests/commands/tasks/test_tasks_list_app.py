@@ -27,8 +27,8 @@ def _make_session_data(nodes: list[Heading]) -> tasks_list._TasksListSessionData
     )
 
 
-def test_tasks_list_app_moves_selection_with_arrow_keys() -> None:
-    """Arrow-key navigation should update the selected task row."""
+def test_tasks_list_app_navigation_and_help_forwarding() -> None:
+    """Tasks list app should support navigation and help key forwarding."""
 
     async def _run() -> None:
         nodes = node_from_org("* TODO A\n* TODO B\n")
@@ -40,6 +40,25 @@ def test_tasks_list_app_moves_selection_with_arrow_keys() -> None:
 
             await pilot.press("up")
             assert app.session.selected_index == 0
+
+            app.action_show_help()
+            await pilot.pause()
+
+            help_title = app.screen.query_one("#help-title", Static)
+            help_content = app.screen.query_one("#help-content", Static)
+            title_rendered = cast("Any", help_title).render()
+            rendered = cast("Any", help_content).render()
+            title_text = getattr(title_rendered, "plain", str(title_rendered))
+            plain_text = getattr(rendered, "plain", str(rendered))
+            assert title_text == "Key bindings"
+            assert "Key bindings:" not in plain_text
+            assert "Esc/q" in plain_text
+
+            await pilot.press("down")
+            await pilot.pause()
+
+            assert app.session.selected_index == 1
+            assert app.screen.query_one("#tasks-body", Static) is not None
 
     asyncio.run(_run())
 
@@ -72,38 +91,16 @@ def test_tasks_list_app_search_prompt_filters_results_live() -> None:
     asyncio.run(_run())
 
 
-def test_tasks_list_app_help_modal_shows_key_bindings() -> None:
-    """Help modal should stay open and show key binding text."""
+def test_tasks_list_app_help_prompt_and_separator_widgets() -> None:
+    """Search prompt label and footer separators should render correctly."""
 
     async def _run() -> None:
         nodes = node_from_org("* TODO Alpha\n")
         app = TasksListApp(make_list_args([]), _make_session_data(nodes))
 
         async with app.run_test() as pilot:
-            app.action_show_help()
-            await pilot.pause()
+            assert app.screen.query_one("#tasks-footer-rule", Static) is not None
 
-            help_title = app.screen.query_one("#help-title", Static)
-            help_content = app.screen.query_one("#help-content", Static)
-            title_rendered = cast("Any", help_title).render()
-            rendered = cast("Any", help_content).render()
-            title_text = getattr(title_rendered, "plain", str(title_rendered))
-            plain_text = getattr(rendered, "plain", str(rendered))
-            assert title_text == "Key bindings"
-            assert "Key bindings:" not in plain_text
-            assert "Esc/q" in plain_text
-
-    asyncio.run(_run())
-
-
-def test_tasks_list_app_search_prompt_shows_label() -> None:
-    """Search prompt should display its label when opened."""
-
-    async def _run() -> None:
-        nodes = node_from_org("* TODO Alpha\n")
-        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
-
-        async with app.run_test() as pilot:
             app.action_prompt_search()
             await pilot.pause()
 
@@ -133,40 +130,6 @@ def test_tasks_list_app_escape_cancels_prompt_without_exiting() -> None:
             assert app.is_running
             assert app.session.status_message == "Search cancelled"
             assert app.screen.query_one("#tasks-body", Static) is not None
-
-    asyncio.run(_run())
-
-
-def test_tasks_list_app_help_modal_applies_key_to_underlying_screen() -> None:
-    """Help modal should close and forward the pressed key to the app."""
-
-    async def _run() -> None:
-        nodes = node_from_org("* TODO Alpha\n* TODO Beta\n")
-        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
-
-        async with app.run_test() as pilot:
-            app.action_show_help()
-            await pilot.pause()
-            assert app.screen.query_one("#help-content", Static) is not None
-
-            await pilot.press("down")
-            await pilot.pause()
-
-            assert app.session.selected_index == 1
-            assert app.screen.query_one("#tasks-body", Static) is not None
-
-    asyncio.run(_run())
-
-
-def test_tasks_list_app_renders_footer_separator_widgets() -> None:
-    """Tasks list app should mount rule widgets between body, footer, and status."""
-
-    async def _run() -> None:
-        nodes = node_from_org("* TODO Alpha\n")
-        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
-
-        async with app.run_test():
-            assert app.screen.query_one("#tasks-footer-rule", Static) is not None
 
     asyncio.run(_run())
 

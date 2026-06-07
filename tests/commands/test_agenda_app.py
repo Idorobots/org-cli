@@ -57,8 +57,8 @@ def _body_lines(app: AgendaApp) -> list[str]:
     return lines
 
 
-def test_agenda_app_moves_selection_with_arrow_keys() -> None:
-    """Arrow-key navigation should update the selected agenda row."""
+def test_agenda_app_navigation_help_and_separators() -> None:
+    """Agenda app should support navigation, help forwarding, and separator widgets."""
 
     async def _run() -> None:
         fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
@@ -66,11 +66,29 @@ def test_agenda_app_moves_selection_with_arrow_keys() -> None:
         app = _make_app(args, list(org_parser.load(fixture_path)))
 
         async with app.run_test() as pilot:
+            assert app.screen.query_one("#agenda-header-rule", Static) is not None
+            assert app.screen.query_one("#agenda-footer-rule", Static) is not None
+
             await pilot.press("down")
             assert app.session.selected_row_index == 1
 
             await pilot.press("up")
             assert app.session.selected_row_index == 0
+
+            app.action_show_help()
+            await pilot.pause()
+
+            assert app.screen.query_one("#help-content", Static) is not None
+            await pilot.press("down")
+            await pilot.pause()
+
+            assert app.session.selected_row_index == 1
+            assert app.screen.query_one("#agenda-body", AgendaViewport) is not None
+            await pilot.press("right")
+            await pilot.pause()
+
+            header = cast("Any", app.query_one("#agenda-header", Static).render())
+            assert getattr(header, "plain", str(header)) == "Thursday 2025-01-16"
 
     asyncio.run(_run())
 
@@ -107,61 +125,6 @@ def test_agenda_app_search_prompt_filters_results_live_and_escape_restores() -> 
             assert app.is_running
             assert app.session.search_text == ""
             assert app.session.status_message == "Search cancelled"
-
-    asyncio.run(_run())
-
-
-def test_agenda_app_help_modal_forwards_key_to_app() -> None:
-    """Help modal should close and forward the pressed key to the agenda app."""
-
-    async def _run() -> None:
-        fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
-        args = _make_args([fixture_path], date="2025-01-15")
-        app = _make_app(args, list(org_parser.load(fixture_path)))
-
-        async with app.run_test() as pilot:
-            app.action_show_help()
-            await pilot.pause()
-
-            assert app.screen.query_one("#help-content", Static) is not None
-            await pilot.press("down")
-            await pilot.pause()
-
-            assert app.session.selected_row_index == 1
-            assert app.screen.query_one("#agenda-body", AgendaViewport) is not None
-
-    asyncio.run(_run())
-
-
-def test_agenda_app_renders_separator_widgets() -> None:
-    """Agenda app should mount rule widgets around header, footer, and status."""
-
-    async def _run() -> None:
-        fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
-        args = _make_args([fixture_path], date="2025-01-15")
-        app = _make_app(args, list(org_parser.load(fixture_path)))
-
-        async with app.run_test():
-            assert app.screen.query_one("#agenda-header-rule", Static) is not None
-            assert app.screen.query_one("#agenda-footer-rule", Static) is not None
-
-    asyncio.run(_run())
-
-
-def test_agenda_app_pages_date_window_with_right_key() -> None:
-    """Right-arrow paging should move the agenda start date by the current span."""
-
-    async def _run() -> None:
-        fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
-        args = _make_args([fixture_path], date="2025-01-15", days=2)
-        app = _make_app(args, list(org_parser.load(fixture_path)))
-
-        async with app.run_test() as pilot:
-            await pilot.press("right")
-            await pilot.pause()
-
-            header = cast("Any", app.query_one("#agenda-header", Static).render())
-            assert getattr(header, "plain", str(header)) == "Friday 2025-01-17"
 
     asyncio.run(_run())
 

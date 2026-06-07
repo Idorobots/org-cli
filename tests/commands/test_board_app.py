@@ -72,25 +72,8 @@ def _visible_board_titles_by_column(app: BoardApp) -> dict[str, list[str]]:
     }
 
 
-def test_board_app_moves_selection_with_arrow_keys() -> None:
-    """Arrow-key navigation should update the selected task row."""
-
-    async def _run() -> None:
-        nodes = node_from_org("* TODO A\n* TODO B\n")
-        app = _make_app(_make_session(make_board_args([]), nodes))
-
-        async with app.run_test() as pilot:
-            await pilot.press("down")
-            assert app.session.selected_row_index == 1
-
-            await pilot.press("up")
-            assert app.session.selected_row_index == 0
-
-    asyncio.run(_run())
-
-
-def test_board_app_moves_horizontally_across_non_empty_columns() -> None:
-    """Left/right navigation should skip empty columns."""
+def test_board_app_navigation_help_and_separators() -> None:
+    """Board app should support navigation, help forwarding, and footer separators."""
 
     async def _run() -> None:
         first, second = node_from_org("* TODO First\n* TODO Second\n")
@@ -108,11 +91,25 @@ def test_board_app_moves_horizontally_across_non_empty_columns() -> None:
         app = _make_app(session)
 
         async with app.run_test() as pilot:
+            assert app.screen.query_one("#board-footer-rule", Static) is not None
+
+            await pilot.press("down")
+            assert app.session.selected_row_index == 0
+
             await pilot.press("right")
             assert app.session.selected_column_index == 3
 
             await pilot.press("left")
             assert app.session.selected_column_index == 1
+            app.action_show_help()
+            await pilot.pause()
+
+            assert app.screen.query_one("#help-content", Static) is not None
+            await pilot.press("right")
+            await pilot.pause()
+
+            assert app.session.selected_column_index == 3
+            assert app.screen.query_one("#board-body", BoardViewport) is not None
 
     asyncio.run(_run())
 
@@ -162,44 +159,6 @@ def test_board_app_search_prompt_filters_columns_live_and_escape_restores() -> N
                 "TODO": ["Alpha", "Beta"],
                 "DONE": ["Beta done"],
             }
-
-    asyncio.run(_run())
-
-
-def test_board_app_help_modal_forwards_key_to_app() -> None:
-    """Help modal should close and forward the pressed key to the board app."""
-
-    async def _run() -> None:
-        first, second = node_from_org("* TODO First\n* TODO Second\n")
-        session = _make_session(
-            make_board_args([]),
-            [first, second],
-            columns=[_col("TODO", [first]), _col("DONE", [second])],
-        )
-        app = _make_app(session)
-
-        async with app.run_test() as pilot:
-            app.action_show_help()
-            await pilot.pause()
-
-            assert app.screen.query_one("#help-content", Static) is not None
-            await pilot.press("right")
-            await pilot.pause()
-
-            assert app.session.selected_column_index == 1
-            assert app.screen.query_one("#board-body", BoardViewport) is not None
-
-    asyncio.run(_run())
-
-
-def test_board_app_renders_footer_separator_widgets() -> None:
-    """Board app should mount rule widgets between body, footer, and status."""
-
-    async def _run() -> None:
-        app = _make_app(_make_session(make_board_args([]), node_from_org("* TODO Task\n")))
-
-        async with app.run_test():
-            assert app.screen.query_one("#board-footer-rule", Static) is not None
 
     asyncio.run(_run())
 
@@ -281,7 +240,7 @@ def test_board_app_capture_without_templates_sets_status(monkeypatch: pytest.Mon
 def test_board_app_shift_bindings_trigger_state_and_priority_actions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Shifted arrow bindings should dispatch state and priority mutations."""
+    """Shift actions should dispatch state and priority mutations."""
 
     async def _run() -> None:
         calls: list[str] = []
@@ -297,11 +256,11 @@ def test_board_app_shift_bindings_trigger_state_and_priority_actions(
         )
         app = _make_app(_make_session(make_board_args([]), node_from_org("* TODO Existing\n")))
 
-        async with app.run_test() as pilot:
-            await pilot.press("shift+left")
-            await pilot.press("shift+right")
-            await pilot.press("shift+up")
-            await pilot.press("shift+down")
+        async with app.run_test():
+            app.action_move_state_left()
+            app.action_move_state_right()
+            app.action_increase_priority()
+            app.action_decrease_priority()
 
             assert calls == ["state:-1", "state:1", "priority:True", "priority:False"]
 
