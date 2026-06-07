@@ -14,32 +14,17 @@ from org.cli_common import load_and_process_data
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_common import (
-    FooterPromptState,
     HeadingLocator,
-    InputEvent,
-    InteractiveEvent,
-    InteractivePromptState,
-    TimeoutEvent,
     advance_timestamp_by_repeater,
     append_repeat_transition,
-    apply_help_modal_key,
-    create_interactive_prompt_state,
-    handle_active_prompt_event,
     heading_locator,
-    interactive_loop,
     local_now,
     resolve_heading_locator,
     shift_priority,
 )
 from org.commands.search_common import filter_nodes_by_search
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
-from org.commands.tasks.common import (
-    PromptActionConfig,
-    capture_template_prompt_config,
-    configured_capture_template_names,
-    resolve_capture_template_selection,
-    save_document,
-)
+from org.commands.tasks.common import configured_capture_template_names, save_document
 from org.query_language import (
     CompiledQuery,
     EvalContext,
@@ -49,14 +34,11 @@ from org.query_language import (
     compile_query_text,
 )
 
-from .layout import _interactive_flow_board_renderable
-
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
 
     from org_parser.document import Document, Heading
-    from rich.console import Console
 
     from .command import BoardArgs
 
@@ -97,10 +79,6 @@ class BoardSession:
     status_message: str
     all_columns: Sequence[BoardColumn] = field(default_factory=list)
     search_text: str = ""
-    search_prompt_previous_text: str | None = None
-    show_help_modal: bool = False
-    active_prompt: InteractivePromptState | None = None
-    run_external: Callable[[Callable[[], None]], None] | None = None
 
 
 def _coerce_latest_timestamp_start(node: Heading) -> datetime | None:
@@ -299,7 +277,7 @@ def _ensure_selection_bounds(session: BoardSession) -> None:
     session.selected_row_index = min(max(session.selected_row_index, 0), len(selected_nodes) - 1)
 
 
-def _refresh_visible_columns(
+def refresh_visible_columns(
     session: BoardSession,
     preserve_identity: HeadingLocator | None,
 ) -> None:
@@ -354,7 +332,7 @@ def reload_session(
         filtered_nodes,
         resolve_column_specs(session.args),
     )
-    _refresh_visible_columns(session, preserve_identity)
+    refresh_visible_columns(session, preserve_identity)
 
 
 def create_flow_board_session(
@@ -385,9 +363,6 @@ def create_flow_board_session(
         scroll_offset=0,
         status_message="",
         search_text="",
-        show_help_modal=False,
-        active_prompt=None,
-        run_external=None,
     )
     _ensure_selection_bounds(session)
     return session
@@ -429,7 +404,7 @@ def step_heading_state(heading: Heading, *, direction: int) -> tuple[str | None,
     return new_state, status
 
 
-def _move_selection_vertical(session: BoardSession, step: int) -> None:
+def move_selection_vertical(session: BoardSession, step: int) -> None:
     """Move highlighted task up/down in the selected column."""
     selected_nodes = session.columns[session.selected_column_index].nodes
     if not selected_nodes:
@@ -509,7 +484,7 @@ def apply_state_move(session: BoardSession, *, direction: int) -> None:
     session.status_message = f"State updated: {old_state or '-'} -> {new_state or '-'}"
 
 
-def _apply_priority_shift(session: BoardSession, *, increase: bool) -> None:
+def apply_priority_shift(session: BoardSession, *, increase: bool) -> None:
     """Increase or decrease selected task priority."""
     heading = selected_node(session)
     if heading is None:
@@ -541,7 +516,7 @@ def _apply_priority_shift(session: BoardSession, *, increase: bool) -> None:
     session.status_message = f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}"
 
 
-def _edit_selected_task_in_external_editor(session: BoardSession) -> None:
+def edit_selected_task_in_external_editor(session: BoardSession) -> None:
     """Edit selected task subtree in configured external editor."""
     heading = selected_node(session)
     if heading is None:
@@ -568,7 +543,7 @@ def _edit_selected_task_in_external_editor(session: BoardSession) -> None:
     session.status_message = "Task updated"
 
 
-def _archive_selected_task(session: BoardSession) -> None:
+def archive_selected_task(session: BoardSession) -> None:
     """Archive selected task subtree using shared archive-location rules."""
     heading = selected_node(session)
     if heading is None:
@@ -591,7 +566,7 @@ def _archive_selected_task(session: BoardSession) -> None:
     session.status_message = "Task archived"
 
 
-def _apply_capture_task(session: BoardSession, template_name: str) -> None:
+def apply_capture_task(session: BoardSession, template_name: str) -> None:
     """Capture a new task and reload board session."""
     session.status_message = ""
     capture_args = TasksCaptureArgs(
@@ -618,7 +593,7 @@ def _apply_capture_task(session: BoardSession, template_name: str) -> None:
     session.status_message = "Task captured"
 
 
-def _clear_search(session: BoardSession) -> None:
+def clear_search(session: BoardSession) -> None:
     """Clear active interactive search and restore full board columns."""
     if not session.search_text:
         session.status_message = "Search already clear"
@@ -627,220 +602,24 @@ def _clear_search(session: BoardSession) -> None:
     selected = selected_node(session)
     preserve_identity = heading_locator(selected) if selected is not None else None
     session.search_text = ""
-    _refresh_visible_columns(session, preserve_identity)
+    refresh_visible_columns(session, preserve_identity)
     session.status_message = "Search cleared"
 
 
-def _apply_search_text(session: BoardSession, search_text: str) -> None:
+def apply_search_text(session: BoardSession, search_text: str) -> None:
     """Apply search text to board columns and update match status."""
     selected = selected_node(session)
     preserve_identity = heading_locator(selected) if selected is not None else None
     session.search_text = search_text
-    _refresh_visible_columns(session, preserve_identity)
+    refresh_visible_columns(session, preserve_identity)
     session.status_message = (
         "Search cleared" if not search_text else f"{_visible_task_count(session.columns)} matches"
     )
 
 
-def _activate_prompt(
-    session: BoardSession,
-    config: PromptActionConfig,
-    *,
-    submit_value: Callable[[str], bool],
-    preview_value: Callable[[str], None] | None = None,
-    cancel: Callable[[], None] | None = None,
-) -> None:
-    """Attach one active footer prompt to the board session."""
-    session.active_prompt = create_interactive_prompt_state(
-        config,
-        submit_value=submit_value,
-        preview_value=preview_value,
-        cancel=cancel,
-    )
-
-
-def _activate_capture_prompt(session: BoardSession) -> None:
-    template_names = configured_capture_template_names()
-    if not template_names:
-        session.status_message = "No capture templates configured"
-        return
-    config = capture_template_prompt_config()
-
-    def _submit(value: str) -> bool:
-        value = value.strip()
-        template_name = resolve_capture_template_selection(value, template_names)
-        if template_name is None and not value:
-            session.status_message = config.cancel_status
-            return False
-        if template_name is None:
-            session.status_message = config.invalid_status
-            return True
-        _run_external(session, lambda: _apply_capture_task(session, template_name))
-        return False
-
-    _activate_prompt(session, config, submit_value=_submit)
-
-
-def _activate_search_prompt(session: BoardSession) -> None:
-    session.search_prompt_previous_text = session.search_text
-    config = PromptActionConfig(
-        prompt=FooterPromptState(label="Search text (blank clears)"),
-        cancel_status="Search cancelled",
-        invalid_status="Invalid search input",
-    )
-
-    def _submit(value: str) -> bool:
-        session.search_prompt_previous_text = None
-        _apply_search_text(session, value.strip())
-        return False
-
-    def _preview(value: str) -> None:
-        _apply_search_text(session, value.strip())
-
-    def _cancel() -> None:
-        previous_text = session.search_prompt_previous_text or ""
-        session.search_prompt_previous_text = None
-        _apply_search_text(session, previous_text)
-        session.status_message = config.cancel_status
-
-    _activate_prompt(
-        session,
-        config,
-        submit_value=_submit,
-        preview_value=_preview,
-        cancel=_cancel,
-    )
-
-
-def _handle_capture_prompt_activation(session: BoardSession) -> None:
-    _activate_capture_prompt(session)
-
-
-def _handle_search_prompt_activation(session: BoardSession) -> None:
-    _activate_search_prompt(session)
-
-
-def _handle_help_modal_event(session: BoardSession, event: InteractiveEvent) -> bool:
-    if not session.show_help_modal:
-        return False
-    if not isinstance(event, TimeoutEvent):
-        session.show_help_modal = False
-    return True
-
-
-def _handle_navigation_key(session: BoardSession, key: str) -> bool:
-    handler = {
-        "DOWN": lambda: _move_selection_vertical(session, 1),
-        "WHEEL-DOWN": lambda: _move_selection_vertical(session, 1),
-        "UP": lambda: _move_selection_vertical(session, -1),
-        "WHEEL-UP": lambda: _move_selection_vertical(session, -1),
-        "RIGHT": lambda: move_selection_horizontal(session, 1),
-        "LEFT": lambda: move_selection_horizontal(session, -1),
-    }.get(key)
-    if handler is None:
-        return False
-    handler()
-    return True
-
-
-def _handle_mutation_key(
-    session: BoardSession,
-    key: str,
-    run_external: Callable[[Callable[[], None]], None],
-) -> bool:
-    handler = {
-        "ENTER": lambda: run_external(lambda: _edit_selected_task_in_external_editor(session)),
-        "$": lambda: _archive_selected_task(session),
-        "x": lambda: _clear_search(session),
-        "S-LEFT": lambda: apply_state_move(session, direction=-1),
-        "S-RIGHT": lambda: apply_state_move(session, direction=1),
-        "S-UP": lambda: _apply_priority_shift(session, increase=True),
-        "S-DOWN": lambda: _apply_priority_shift(session, increase=False),
-    }.get(key)
-    if handler is None:
-        return False
-    handler()
-    return True
-
-
-def _handle_prompt_activation_key(
-    session: BoardSession,
-    key: str,
-    _run_external_callback: Callable[[Callable[[], None]], None],
-) -> bool:
-    handler = {
-        "a": _handle_capture_prompt_activation,
-        "/": _handle_search_prompt_activation,
-    }.get(key)
-    if handler is None:
-        return False
-    handler(session)
-    return True
-
-
-def _handle_keypress_event(
-    session: BoardSession,
-    key: str,
-    run_external: Callable[[Callable[[], None]], None] | None = None,
-) -> bool:
-    effective_run_external = passthrough_run_external if run_external is None else run_external
-    consumed, next_help_modal = apply_help_modal_key(key, show_help_modal=session.show_help_modal)
-    session.show_help_modal = next_help_modal
-    if consumed:
-        return True
-    if key in {"q", "ESC"}:
-        return False
-    if _handle_navigation_key(session, key):
-        return True
-    if _handle_mutation_key(session, key, effective_run_external):
-        return True
-    if _handle_prompt_activation_key(session, key, effective_run_external):
-        return True
-    if key and key != "IGNORE":
-        session.status_message = f"Unsupported key: {key}"
-    return True
-
-
-def passthrough_run_external(callback: Callable[[], None]) -> None:
-    """Run an external callback immediately."""
-    callback()
-
-
-def _run_external(session: BoardSession, callback: Callable[[], None]) -> None:
-    runner = session.run_external or passthrough_run_external
-    runner(callback)
-
-
-def handle_interactive_event(
-    session: BoardSession,
-    event: InteractiveEvent,
-    run_external: Callable[[Callable[[], None]], None],
-) -> bool:
-    """Handle one flow-board interactive event."""
-    if _handle_help_modal_event(session, event):
-        return True
-    if session.active_prompt is not None:
-        return handle_active_prompt_event(session, event)
-    if isinstance(event, TimeoutEvent):
-        return True
-    if isinstance(event, InputEvent):
-        return True
-    return _handle_keypress_event(session, event.key, run_external)
-
-
-def run_flow_board_interactive(console: Console, session: BoardSession) -> None:
-    """Run the interactive flow-board loop."""
-    run_external: list[Callable[[Callable[[], None]], None]] = [passthrough_run_external]
-
-    def _bind_run_external(callback: Callable[[Callable[[], None]], None]) -> None:
-        run_external[0] = callback
-        session.run_external = callback
-
-    session.run_external = run_external[0]
-    interactive_loop(
-        console=console,
-        render=lambda: _interactive_flow_board_renderable(console, session),
-        on_event=lambda event: handle_interactive_event(session, event, run_external[0]),
-        bind_run_external=_bind_run_external,
-        timeout_seconds=None,
-    )
+def can_activate_capture_prompt(session: BoardSession) -> str | None:
+    """Return status text when the capture prompt cannot be opened."""
+    del session
+    if not configured_capture_template_names():
+        return "No capture templates configured"
+    return None

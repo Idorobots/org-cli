@@ -10,9 +10,11 @@ import typer
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
-from org.commands.board import events, layout
 from org.commands.interactive_common import interactive_help_command_text
 from org.tui import build_console, processing_status, setup_output
+
+from . import events, layout
+from .app import run_board_app
 
 
 logger = logging.getLogger("org")
@@ -95,16 +97,7 @@ def run_flow_board(args: BoardArgs) -> None:
         return
 
     if sys.stdin.isatty() and sys.stdout.isatty():
-        events.run_flow_board_interactive(
-            console,
-            events.create_flow_board_session(
-                args,
-                nodes,
-                todo_states,
-                done_states,
-                color_enabled,
-            ),
-        )
+        run_board_app(args, nodes, todo_states, done_states, color_enabled)
         return
 
     columns = events.build_selector_board_columns(nodes, events.resolve_column_specs(args))

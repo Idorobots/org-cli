@@ -6,22 +6,16 @@ import math
 from typing import TYPE_CHECKING, Protocol
 
 from rich import box
+from rich.align import Align
 from rich.cells import cell_len
 from rich.console import Console, Group, RenderableType
 from rich.errors import MarkupError
-from rich.layout import Layout
 from rich.panel import Panel
-from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
 from org.color import get_state_color
-from org.commands.interactive_common import (
-    INTERACTIVE_HELP_FOOTER_HINT,
-    InteractiveHelpEntry,
-    build_footer_prompt_text,
-    render_interactive_help_modal,
-)
+from org.commands.interactive_common import InteractiveHelpEntry
 from org.tui import heading_title_to_text, task_priority_to_text, task_tags_to_text
 
 
@@ -42,9 +36,6 @@ class _BoardColumnLike(Protocol):
 
 
 _HIGHLIGHT_PANEL_STYLE = "on grey23"
-_INTERACTIVE_HEADER_HEIGHT = 2
-_INTERACTIVE_FOOTER_HEIGHT = 3
-_INTERACTIVE_FOOTER_HEIGHT_WITH_PROMPT = 4
 _INTERACTIVE_PANEL_HEIGHT = 4
 
 
@@ -213,7 +204,7 @@ def render_column_title_text(title: str) -> Text:
         return Text(title)
 
 
-def _estimate_panel_content_width(console_width: int, column_count: int) -> int:
+def estimate_panel_content_width(console_width: int, column_count: int) -> int:
     """Estimate panel inner width for pre-wrapping task card lines."""
     safe_columns = max(1, column_count)
     raw_width = console_width // safe_columns
@@ -257,10 +248,10 @@ def render_static_flow_board(
     for _ in columns:
         table.add_column(ratio=1)
 
-    header_row = [render_column_title_text(column.title) for column in columns]
+    header_row = [Align.center(render_column_title_text(column.title)) for column in columns]
     table.add_row(*header_row)
 
-    panel_content_width = _estimate_panel_content_width(console.width, len(columns))
+    panel_content_width = estimate_panel_content_width(console.width, len(columns))
     render = BoardPanelRenderConfig(
         width=panel_content_width,
         color_enabled=color_enabled,
@@ -287,28 +278,6 @@ def render_static_flow_board(
 
 def _column_row_heights(nodes: Sequence[Heading], render: BoardPanelRenderConfig) -> list[int]:
     return [_interactive_panel_height(node, render) for node in nodes]
-
-
-def _interactive_viewport_rows(console_height: int) -> int:
-    available_space = console_height - _INTERACTIVE_HEADER_HEIGHT - _INTERACTIVE_FOOTER_HEIGHT
-    available_lines = max(1, available_space)
-    return max(1, available_lines // _INTERACTIVE_PANEL_HEIGHT)
-
-
-def _interactive_row_heights(
-    session: BoardSession,
-    render: BoardPanelRenderConfig,
-) -> list[int]:
-    total_rows = _max_column_nodes(session.columns)
-    row_heights: list[int] = []
-    for row_index in range(total_rows):
-        max_height = 1
-        for column in session.columns:
-            if row_index >= len(column.nodes):
-                continue
-            max_height = max(max_height, _interactive_panel_height(column.nodes[row_index], render))
-        row_heights.append(max_height)
-    return row_heights
 
 
 def _selected_column_row_heights(
@@ -342,11 +311,12 @@ def _window_end_for_height(
     return end, used_lines
 
 
-def _sync_scroll_for_selection(
+def sync_scroll_for_selection(
     session: BoardSession,
     row_heights: list[int],
     available_lines: int,
 ) -> tuple[int, int, int]:
+    """Clamp scroll offset and return the selected-column visible row window."""
     if not row_heights:
         session.scroll_offset = 0
         return 0, 0, 0
@@ -379,125 +349,42 @@ def _sync_scroll_for_selection(
     return session.scroll_offset, end_row, used_lines
 
 
-def _build_board_header(columns: Sequence[_BoardColumnLike]) -> Table:
-    header = Table(expand=True, box=None, show_lines=False, show_header=False, pad_edge=False)
-    for _ in columns:
-        header.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
-    header_cells: list[Text] = []
-    for column in columns:
-        title_text = render_column_title_text(column.title)
-        title_text.overflow = "ellipsis"
-        title_text.no_wrap = True
-        header_cells.append(title_text)
-    header.add_row(*header_cells)
-    return header
-
-
-def _build_board_body(
+def selected_column_window(
     session: BoardSession,
-    panel_content_width: int,
+    render: BoardPanelRenderConfig,
+    *,
     body_height: int,
-) -> tuple[Table, int]:
-    body = Table(expand=True, box=None, show_lines=False, show_header=False, pad_edge=False)
-    for _ in session.columns:
-        body.add_column(ratio=1)
-
-    render = BoardPanelRenderConfig(
-        width=panel_content_width,
-        color_enabled=session.color_enabled,
-        done_states=session.done_states,
-        todo_states=session.todo_states,
-    )
+) -> tuple[int, int]:
+    """Return the selected-column visible row window after syncing scroll state."""
     selected_row_heights = _selected_column_row_heights(session, render)
-    start_row, end_row, _used_lines = _sync_scroll_for_selection(
+    start_row, end_row, _used_lines = sync_scroll_for_selection(
         session,
         selected_row_heights,
         body_height,
     )
-
-    body_cells: list[RenderableType] = []
-    for column_index, column in enumerate(session.columns):
-        panels: list[RenderableType] = []
-        if start_row >= len(column.nodes):
-            body_cells.append(Text(""))
-            continue
-        column_end_row, _column_used_lines = _window_end_for_height(
-            _column_row_heights(column.nodes, render),
-            start_row,
-            body_height,
-        )
-        if column_end_row < len(column.nodes):
-            column_end_row += 1
-        for row_index in range(start_row, column_end_row):
-            if row_index >= len(column.nodes):
-                continue
-            node = column.nodes[row_index]
-            highlighted = (
-                column_index == session.selected_column_index
-                and row_index == session.selected_row_index
-            )
-            panels.append(build_task_panel(node, render, highlighted=highlighted))
-        body_cells.append(Group(*panels) if panels else Text(""))
-
-    body.add_row(*body_cells)
-    return body, end_row
+    return start_row, end_row
 
 
-def _interactive_flow_board_renderable(console: Console, session: BoardSession) -> RenderableType:
-    if session.show_help_modal:
-        return render_interactive_help_modal(
-            BOARD_HELP_ENTRIES,
-            color_enabled=session.color_enabled,
-        )
-
-    prompt_line = None
-    active_prompt = session.active_prompt
-    if active_prompt is not None:
-        prompt_line = build_footer_prompt_text(active_prompt.prompt)
-    footer_height = (
-        _INTERACTIVE_FOOTER_HEIGHT
-        if prompt_line is None
-        else _INTERACTIVE_FOOTER_HEIGHT_WITH_PROMPT
+def column_window_end(
+    nodes: Sequence[Heading],
+    render: BoardPanelRenderConfig,
+    *,
+    start_row: int,
+    body_height: int,
+) -> int:
+    """Return the exclusive end row for one board column's visible card slice."""
+    column_end_row, _used_lines = _window_end_for_height(
+        _column_row_heights(nodes, render),
+        start_row,
+        body_height,
     )
-    panel_content_width = _estimate_panel_content_width(console.width, len(session.columns))
-    body_height = max(1, console.size.height - _INTERACTIVE_HEADER_HEIGHT - footer_height)
-    header = _build_board_header(session.columns)
-    body, end_row = _build_board_body(session, panel_content_width, body_height)
+    if column_end_row < len(nodes):
+        column_end_row += 1
+    return column_end_row
 
-    selected_nodes = session.columns[session.selected_column_index].nodes
-    total_rows = max(len(selected_nodes), 1)
-    visible_end_row = min(end_row, total_rows)
-    search_text = session.search_text or "-"
-    row_text = f"Rows {visible_end_row}/{total_rows} | Search: {search_text}"
-    status = " ".join((session.status_message or "").splitlines())
-    footer_style = "dim" if session.color_enabled else ""
 
-    footer_line = Table.grid(expand=True)
-    footer_line.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
-    footer_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
-    footer_line.add_row(
-        Text(row_text, style=footer_style, no_wrap=True, overflow="ellipsis"),
-        Text(
-            INTERACTIVE_HELP_FOOTER_HINT,
-            style=footer_style,
-            no_wrap=True,
-            overflow="ellipsis",
-        ),
-    )
-
-    layout = Layout(name="board")
-    layout.split_column(
-        Layout(name="header", size=_INTERACTIVE_HEADER_HEIGHT),
-        Layout(name="body"),
-        Layout(name="footer", size=footer_height),
-    )
-    layout["header"].update(Group(header, Rule(style=footer_style)))
-    layout["body"].update(body)
-    status_text = Text(status, style=footer_style, no_wrap=True, overflow="ellipsis")
-    if prompt_line is None:
-        layout["footer"].update(Group(Rule(style=footer_style), footer_line, status_text))
-    else:
-        layout["footer"].update(
-            Group(Rule(style=footer_style), footer_line, prompt_line, status_text),
-        )
-    return layout
+def selected_column_total_rows(session: BoardSession) -> int:
+    """Return the selected column row count, defaulting to one for footer display."""
+    if not session.columns:
+        return 1
+    return max(len(session.columns[session.selected_column_index].nodes), 1)
