@@ -192,6 +192,18 @@ def test_board_app_help_modal_forwards_key_to_app() -> None:
     asyncio.run(_run())
 
 
+def test_board_app_renders_footer_separator_widgets() -> None:
+    """Board app should mount rule widgets between body, footer, and status."""
+
+    async def _run() -> None:
+        app = _make_app(_make_session(make_board_args([]), node_from_org("* TODO Task\n")))
+
+        async with app.run_test():
+            assert app.screen.query_one("#board-footer-rule", Static) is not None
+
+    asyncio.run(_run())
+
+
 def test_board_app_enter_edits_selected_task(monkeypatch: pytest.MonkeyPatch) -> None:
     """Enter should trigger external-editor handling on the selected task card."""
 

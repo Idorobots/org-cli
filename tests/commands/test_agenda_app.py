@@ -133,6 +133,21 @@ def test_agenda_app_help_modal_forwards_key_to_app() -> None:
     asyncio.run(_run())
 
 
+def test_agenda_app_renders_separator_widgets() -> None:
+    """Agenda app should mount rule widgets around header, footer, and status."""
+
+    async def _run() -> None:
+        fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+        args = _make_args([fixture_path], date="2025-01-15")
+        app = _make_app(args, list(org_parser.load(fixture_path)))
+
+        async with app.run_test():
+            assert app.screen.query_one("#agenda-header-rule", Static) is not None
+            assert app.screen.query_one("#agenda-footer-rule", Static) is not None
+
+    asyncio.run(_run())
+
+
 def test_agenda_app_pages_date_window_with_right_key() -> None:
     """Right-arrow paging should move the agenda start date by the current span."""
 

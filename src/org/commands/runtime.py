@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+from rich.table import Table
 from rich.text import Text
 from textual import events as textual_events
 from textual.app import App, ComposeResult, SuspendNotSupported
@@ -27,6 +28,18 @@ def _help_body_text(entries: list[InteractiveHelpEntry]) -> Text:
     panel_text = render_interactive_help_panel_text(entries)
     body_lines = panel_text.splitlines()[1:]
     return Text.from_markup("\n".join(body_lines))
+
+
+def footer_renderable(left_text: str, right_text: str, *, style: str) -> Table:
+    """Build one footer line with a right-aligned help hint."""
+    footer_line = Table.grid(expand=True)
+    footer_line.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
+    footer_line.add_column(ratio=4, justify="right", no_wrap=True, overflow="ellipsis")
+    footer_line.add_row(
+        Text(left_text, style=style, no_wrap=True, overflow="ellipsis"),
+        Text(right_text, style=style, no_wrap=True, overflow="ellipsis"),
+    )
+    return footer_line
 
 
 class HelpModalScreen(ModalScreen[None]):

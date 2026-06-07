@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
+from rich.rule import Rule
 from rich.text import Text
 from textual.binding import Binding, BindingType
 from textual.containers import Vertical
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     from org_parser.document import Heading
     from textual.app import ComposeResult
     from textual.events import MouseScrollDown, MouseScrollUp, Resize
+    from textual.widget import Widget
 
     from .command import AgendaArgs
     from .views import AgendaViewContext
@@ -106,7 +108,9 @@ class AgendaApp(runtime.CommandApp):
         """Build the main agenda screen layout."""
         yield Vertical(
             Static(id="agenda-header"),
-            AgendaViewport(id="agenda-body"),
+            Static(id="agenda-header-rule"),
+            AgendaViewport(widget_id="agenda-body"),
+            Static(id="agenda-footer-rule"),
             Static(id="agenda-footer"),
             Static(id="agenda-status"),
         )
@@ -136,8 +140,14 @@ class AgendaApp(runtime.CommandApp):
     def _body_widget(self) -> AgendaViewport:
         return self.query_one("#agenda-body", AgendaViewport)
 
+    def _header_rule_widget(self) -> Static:
+        return self.query_one("#agenda-header-rule", Static)
+
     def _footer_widget(self) -> Static:
         return self.query_one("#agenda-footer", Static)
+
+    def _footer_rule_widget(self) -> Static:
+        return self.query_one("#agenda-footer-rule", Static)
 
     def _status_widget(self) -> Static:
         return self.query_one("#agenda-status", Static)
@@ -173,12 +183,13 @@ class AgendaApp(runtime.CommandApp):
         )
         search_text = self.session.search_text or "-"
         footer_style = "dim" if self.session.render.color_enabled else ""
+        self._header_rule_widget().update(Rule(style=footer_style))
+        self._footer_rule_widget().update(Rule(style=footer_style))
         self._footer_widget().update(
-            Text(
-                f"Lines {end_line}/{total_rows} | Search: {search_text} | {_HELP_FOOTER_TEXT}",
+            runtime.footer_renderable(
+                f"Lines {end_line}/{total_rows} | Search: {search_text}",
+                _HELP_FOOTER_TEXT,
                 style=footer_style,
-                no_wrap=True,
-                overflow="ellipsis",
             ),
         )
 

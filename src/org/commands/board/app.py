@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from rich.align import Align
 from rich.console import Group, RenderableType
+from rich.rule import Rule
 from rich.text import Text
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from org_parser.document import Heading
     from textual.app import ComposeResult
     from textual.events import MouseScrollDown, MouseScrollUp, Resize
+    from textual.widget import Widget
 
     from .command import BoardArgs
 
@@ -106,7 +108,8 @@ class BoardApp(runtime.CommandApp):
     def compose(self) -> ComposeResult:
         """Build the main board app layout."""
         yield Vertical(
-            BoardViewport(id="board-body"),
+            BoardViewport(widget_id="board-body"),
+            Static(id="board-footer-rule"),
             Static(id="board-footer"),
             Static(id="board-status"),
         )
@@ -134,6 +137,9 @@ class BoardApp(runtime.CommandApp):
 
     def _footer_widget(self) -> Static:
         return self.query_one("#board-footer", Static)
+
+    def _footer_rule_widget(self) -> Static:
+        return self.query_one("#board-footer-rule", Static)
 
     def _status_widget(self) -> Static:
         return self.query_one("#board-status", Static)
@@ -207,15 +213,12 @@ class BoardApp(runtime.CommandApp):
         search_text = self.session.search_text or "-"
         total_rows = layout.selected_column_total_rows(self.session)
         footer_style = "dim" if self.session.color_enabled else ""
+        self._footer_rule_widget().update(Rule(style=footer_style))
         self._footer_widget().update(
-            Text(
-                (
-                    f"Rows {self._visible_end_row}/{total_rows} | Search: {search_text} | "
-                    f"{_HELP_FOOTER_TEXT}"
-                ),
+            runtime.footer_renderable(
+                f"Rows {self._visible_end_row}/{total_rows} | Search: {search_text}",
+                _HELP_FOOTER_TEXT,
                 style=footer_style,
-                no_wrap=True,
-                overflow="ellipsis",
             ),
         )
 

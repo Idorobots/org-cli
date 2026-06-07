@@ -158,6 +158,19 @@ def test_tasks_list_app_help_modal_applies_key_to_underlying_screen() -> None:
     asyncio.run(_run())
 
 
+def test_tasks_list_app_renders_footer_separator_widgets() -> None:
+    """Tasks list app should mount rule widgets between body, footer, and status."""
+
+    async def _run() -> None:
+        nodes = node_from_org("* TODO Alpha\n")
+        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+
+        async with app.run_test():
+            assert app.screen.query_one("#tasks-footer-rule", Static) is not None
+
+    asyncio.run(_run())
+
+
 def test_run_tasks_list_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     """Interactive tasks list path should delegate to the Textual app runner."""
     nodes = node_from_org("* TODO Alpha\n")

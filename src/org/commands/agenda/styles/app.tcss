@@ -3,7 +3,9 @@ Screen {
 }
 
 #agenda-header,
+#agenda-header-rule,
 #agenda-footer,
+#agenda-footer-rule,
 #agenda-status {
     height: auto;
 }

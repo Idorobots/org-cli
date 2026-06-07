@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from rich.console import Group
+from rich.console import Group, RenderableType
+from rich.rule import Rule
 from rich.text import Text
 from textual.binding import Binding, BindingType
 from textual.containers import Vertical
@@ -78,6 +79,7 @@ class TasksListApp(runtime.CommandApp):
         """Build the main app layout."""
         yield Vertical(
             Static(id="tasks-body"),
+            Static(id="tasks-footer-rule"),
             Static(id="tasks-footer"),
             Static(id="tasks-status"),
         )
@@ -105,6 +107,9 @@ class TasksListApp(runtime.CommandApp):
 
     def _footer_widget(self) -> Static:
         return self.query_one("#tasks-footer", Static)
+
+    def _footer_rule_widget(self) -> Static:
+        return self.query_one("#tasks-footer-rule", Static)
 
     def _status_widget(self) -> Static:
         return self.query_one("#tasks-status", Static)
@@ -157,16 +162,15 @@ class TasksListApp(runtime.CommandApp):
         rows.extend(Text("") for _ in range(viewport_height - len(window)))
         return Group(*rows)
 
-    def _footer_renderable(self) -> Text:
+    def _footer_renderable(self) -> RenderableType:
         selected_row = self.session.selected_index + 1 if self.session.visible_nodes else 0
         total_rows = len(self.session.visible_nodes)
         search_text = self.session.search_text or "-"
         footer_style = "dim" if self.session.color_enabled else ""
-        return Text(
-            f"Rows {selected_row}/{total_rows} | Search: {search_text} | {_HELP_FOOTER_TEXT}",
+        return runtime.footer_renderable(
+            f"Rows {selected_row}/{total_rows} | Search: {search_text}",
+            _HELP_FOOTER_TEXT,
             style=footer_style,
-            no_wrap=True,
-            overflow="ellipsis",
         )
 
     def _status_renderable(self) -> Text:
@@ -179,7 +183,9 @@ class TasksListApp(runtime.CommandApp):
         )
 
     def _refresh_view(self) -> None:
+        footer_style = "dim" if self.session.color_enabled else ""
         self._body_widget().update(self._body_renderable())
+        self._footer_rule_widget().update(Rule(style=footer_style))
         self._footer_widget().update(self._footer_renderable())
         self._status_widget().update(self._status_renderable())
 
