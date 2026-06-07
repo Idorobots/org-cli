@@ -53,19 +53,37 @@ class AgendaRowWidget(Static):
 class AgendaViewport(Vertical):
     """Virtualized agenda viewport backed by a reusable row widget pool."""
 
+    def __init__(
+        self,
+        *children: Widget,
+        name: str | None = None,
+        widget_id: str | None = None,
+        classes: str | None = None,
+        disabled: bool = False,
+    ) -> None:
+        """Track row widgets explicitly so pool updates stay synchronous."""
+        super().__init__(
+            *children,
+            name=name,
+            id=widget_id,
+            classes=classes,
+            disabled=disabled,
+        )
+        self._row_widgets: list[AgendaRowWidget] = []
+
     def ensure_row_pool(self, count: int) -> None:
         """Grow or shrink the rendered row pool to match the viewport height."""
-        widgets = self.row_widgets()
-        while len(widgets) < count:
-            self.mount(AgendaRowWidget(classes="agenda-row"))
-            widgets = self.row_widgets()
-        while len(widgets) > count:
-            widgets[-1].remove()
-            widgets = self.row_widgets()
+        missing = count - len(self._row_widgets)
+        for _ in range(max(0, missing)):
+            widget = AgendaRowWidget(classes="agenda-row")
+            self._row_widgets.append(widget)
+            self.mount(widget)
+        while len(self._row_widgets) > count:
+            self._row_widgets.pop().remove()
 
     def row_widgets(self) -> list[AgendaRowWidget]:
         """Return row widgets in display order."""
-        return cast("list[AgendaRowWidget]", list(self.query(AgendaRowWidget)))
+        return self._row_widgets
 
 
 class AgendaApp(runtime.CommandApp):

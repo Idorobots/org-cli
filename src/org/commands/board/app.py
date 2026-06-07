@@ -60,19 +60,37 @@ class BoardColumnWidget(Static):
 class BoardViewport(Horizontal):
     """Horizontal board viewport that owns one widget per visible column."""
 
+    def __init__(
+        self,
+        *children: Widget,
+        name: str | None = None,
+        widget_id: str | None = None,
+        classes: str | None = None,
+        disabled: bool = False,
+    ) -> None:
+        """Track column widgets explicitly so pool updates stay synchronous."""
+        super().__init__(
+            *children,
+            name=name,
+            id=widget_id,
+            classes=classes,
+            disabled=disabled,
+        )
+        self._column_widgets: list[BoardColumnWidget] = []
+
     def ensure_column_pool(self, count: int) -> None:
         """Grow or shrink the rendered column pool to match the board state."""
-        widgets = self.column_widgets()
-        while len(widgets) < count:
-            self.mount(BoardColumnWidget(classes="board-column"))
-            widgets = self.column_widgets()
-        while len(widgets) > count:
-            widgets[-1].remove()
-            widgets = self.column_widgets()
+        missing = count - len(self._column_widgets)
+        for _ in range(max(0, missing)):
+            widget = BoardColumnWidget(classes="board-column")
+            self._column_widgets.append(widget)
+            self.mount(widget)
+        while len(self._column_widgets) > count:
+            self._column_widgets.pop().remove()
 
     def column_widgets(self) -> list[BoardColumnWidget]:
         """Return board column widgets in display order."""
-        return cast("list[BoardColumnWidget]", list(self.query(BoardColumnWidget)))
+        return self._column_widgets
 
 
 class BoardApp(runtime.CommandApp):
