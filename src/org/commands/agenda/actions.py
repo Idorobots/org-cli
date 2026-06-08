@@ -36,7 +36,7 @@ from org.commands.tasks.common import (
     todo_states_for_heading,
 )
 
-from .layout import (
+from .ui import (
     AgendaColumnWidths,
     AgendaRow,
     DayRowModel,

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     from org_parser.document import Heading
 
-    from .events import BoardSession
+    from .actions import BoardSession
 
 
 class _BoardColumnLike(Protocol):

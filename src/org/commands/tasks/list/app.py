@@ -24,8 +24,8 @@ from org.commands.tasks.common import (
 )
 from org.tui import TaskLineConfig, format_task_line
 
-from . import events
-from .events import TASKS_LIST_HELP_ENTRIES, create_tasks_list_session
+from . import actions
+from .actions import TASKS_LIST_HELP_ENTRIES, create_tasks_list_session
 
 
 if TYPE_CHECKING:
@@ -94,12 +94,12 @@ class TasksListApp(runtime.CommandApp):
 
     def on_mouse_scroll_up(self, _event: MouseScrollUp) -> None:
         """Match legacy wheel-up navigation behavior."""
-        events.move_selection(self.session, -1)
+        actions.move_selection(self.session, -1)
         self._refresh_view()
 
     def on_mouse_scroll_down(self, _event: MouseScrollDown) -> None:
         """Match legacy wheel-down navigation behavior."""
-        events.move_selection(self.session, 1)
+        actions.move_selection(self.session, 1)
         self._refresh_view()
 
     def _body_widget(self) -> Static:
@@ -147,7 +147,7 @@ class TasksListApp(runtime.CommandApp):
 
     def _body_renderable(self) -> Group:
         viewport_height = self._viewport_height()
-        events.ensure_selection_bounds(self.session)
+        actions.ensure_selection_bounds(self.session)
         self._sync_scroll(viewport_height)
         window = self.session.visible_nodes[
             self.session.scroll_offset : self.session.scroll_offset + viewport_height
@@ -215,36 +215,36 @@ class TasksListApp(runtime.CommandApp):
 
     def action_move_up(self) -> None:
         """Move the selection one row upward."""
-        events.move_selection(self.session, -1)
+        actions.move_selection(self.session, -1)
         self._refresh_view()
 
     def action_move_down(self) -> None:
         """Move the selection one row downward."""
-        events.move_selection(self.session, 1)
+        actions.move_selection(self.session, 1)
         self._refresh_view()
 
     def action_increase_priority(self) -> None:
         """Raise the selected task priority one step."""
-        events.apply_priority_shift(self.session, increase=True)
+        actions.apply_priority_shift(self.session, increase=True)
         self._refresh_view()
 
     def action_decrease_priority(self) -> None:
         """Lower the selected task priority one step."""
-        events.apply_priority_shift(self.session, increase=False)
+        actions.apply_priority_shift(self.session, increase=False)
         self._refresh_view()
 
     def action_clear_search(self) -> None:
         """Clear the active search filter."""
-        events.clear_search(self.session)
+        actions.clear_search(self.session)
         self._refresh_view()
 
     def action_edit_selected(self) -> None:
         """Open the selected task in the external editor."""
-        self._run_external(lambda: events.edit_selected_task_in_external_editor(self.session))
+        self._run_external(lambda: actions.edit_selected_task_in_external_editor(self.session))
 
     def action_archive_selected(self) -> None:
         """Archive the selected task subtree."""
-        events.archive_selected_task(self.session)
+        actions.archive_selected_task(self.session)
         self._refresh_view()
 
     def action_quit_app(self) -> None:
@@ -265,19 +265,19 @@ class TasksListApp(runtime.CommandApp):
         previous_text = self.session.search_text
 
         def _preview(value: str) -> None:
-            events.apply_search_text(self.session, value.strip())
+            actions.apply_search_text(self.session, value.strip())
             self._refresh_view()
 
         self._open_prompt(
             "Search text (blank clears)",
             initial_value=self.session.search_text,
             on_change=_preview,
-            on_submit=lambda value: events.apply_search_text(self.session, value.strip()),
+            on_submit=lambda value: actions.apply_search_text(self.session, value.strip()),
             on_cancel=lambda: self._cancel_search(previous_text),
         )
 
     def _cancel_search(self, previous_text: str) -> None:
-        events.apply_search_text(self.session, previous_text)
+        actions.apply_search_text(self.session, previous_text)
         self.session.status_message = "Search cancelled"
 
     def action_prompt_capture(self) -> None:
@@ -297,7 +297,7 @@ class TasksListApp(runtime.CommandApp):
             if template_name is None:
                 self.session.status_message = "Invalid capture template shortcut"
                 return
-            self._run_external(lambda: events.apply_capture_task(self.session, template_name))
+            self._run_external(lambda: actions.apply_capture_task(self.session, template_name))
 
         self._open_prompt(
             capture_template_prompt_label(template_names),
@@ -307,12 +307,12 @@ class TasksListApp(runtime.CommandApp):
 
     def action_prompt_state(self) -> None:
         """Prompt for a TODO state transition."""
-        status_message = events.can_activate_state_prompt(self.session)
+        status_message = actions.can_activate_state_prompt(self.session)
         if status_message is not None:
             self.session.status_message = status_message
             self._refresh_view()
             return
-        states = events.state_choices_for_selected_node(self.session)
+        states = actions.state_choices_for_selected_node(self.session)
 
         def _submit(value: str) -> None:
             stripped = value.strip()
@@ -323,7 +323,7 @@ class TasksListApp(runtime.CommandApp):
             if selected_state is None:
                 self.session.status_message = "Invalid TODO state selection"
                 return
-            events.apply_state_change_with_value(self.session, selected_state)
+            actions.apply_state_change_with_value(self.session, selected_state)
 
         self._open_prompt(
             state_selection_prompt_label(states),
@@ -335,7 +335,7 @@ class TasksListApp(runtime.CommandApp):
         """Prompt for replacement tag CSV on the selected task."""
         self._open_prompt(
             tags_prompt_label(),
-            on_submit=lambda value: events.apply_tags_edit(self.session, value),
+            on_submit=lambda value: actions.apply_tags_edit(self.session, value),
             on_cancel=lambda: self._set_status("Tags edit cancelled"),
         )
 
@@ -345,7 +345,7 @@ class TasksListApp(runtime.CommandApp):
     def _prompt_planning(self, field: PlanningTimestampField) -> None:
         self._open_prompt(
             planning_prompt_label(field),
-            on_submit=lambda value: events.apply_planning_timestamp_edit(
+            on_submit=lambda value: actions.apply_planning_timestamp_edit(
                 self.session,
                 field=field,
                 raw_timestamp=value,

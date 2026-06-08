@@ -19,8 +19,8 @@ from org.commands.tasks.common import (
     resolve_capture_template_selection,
 )
 
-from . import events, layout
-from .events import BoardSession, create_flow_board_session
+from . import actions, ui
+from .actions import BoardSession, create_flow_board_session
 
 
 if TYPE_CHECKING:
@@ -49,7 +49,7 @@ class BoardColumnWidget(Static):
         selected: bool,
     ) -> None:
         """Update the column title and rendered card group."""
-        title_text = layout.render_column_title_text(title)
+        title_text = ui.render_column_title_text(title)
         title_text.no_wrap = True
         title_text.overflow = "ellipsis"
         if selected:
@@ -124,7 +124,7 @@ class BoardApp(runtime.CommandApp):
         self._visible_end_row = 0
 
     def compose(self) -> ComposeResult:
-        """Build the main board app layout."""
+        """Build the main board app ui."""
         yield Vertical(
             BoardViewport(widget_id="board-body"),
             Static(id="board-footer-rule"),
@@ -137,17 +137,17 @@ class BoardApp(runtime.CommandApp):
         self._refresh_view()
 
     def on_resize(self, _event: Resize) -> None:
-        """Refresh viewport layout after terminal resize."""
+        """Refresh viewport ui after terminal resize."""
         self._refresh_view()
 
     def on_mouse_scroll_up(self, _event: MouseScrollUp) -> None:
         """Match legacy wheel-up navigation behavior."""
-        events.move_selection_vertical(self.session, -1)
+        actions.move_selection_vertical(self.session, -1)
         self._refresh_view()
 
     def on_mouse_scroll_down(self, _event: MouseScrollDown) -> None:
         """Match legacy wheel-down navigation behavior."""
-        events.move_selection_vertical(self.session, 1)
+        actions.move_selection_vertical(self.session, 1)
         self._refresh_view()
 
     def _body_widget(self) -> BoardViewport:
@@ -174,9 +174,9 @@ class BoardApp(runtime.CommandApp):
             return max(80, self.size.width)
         return max(80, body_width)
 
-    def _render_config(self) -> layout.BoardPanelRenderConfig:
-        return layout.BoardPanelRenderConfig(
-            width=layout.estimate_panel_content_width(
+    def _render_config(self) -> ui.BoardPanelRenderConfig:
+        return ui.BoardPanelRenderConfig(
+            width=ui.estimate_panel_content_width(
                 self._body_width(),
                 len(self.session.columns),
             ),
@@ -190,24 +190,24 @@ class BoardApp(runtime.CommandApp):
         body.ensure_column_pool(len(self.session.columns))
         render = self._render_config()
         body_height = self._body_height()
-        start_row, end_row = layout.selected_column_window(
+        start_row, end_row = ui.selected_column_window(
             self.session,
             render,
             body_height=body_height,
         )
-        self._visible_end_row = min(end_row, layout.selected_column_total_rows(self.session))
+        self._visible_end_row = min(end_row, ui.selected_column_total_rows(self.session))
 
         for column_index, (widget, column) in enumerate(
             zip(body.column_widgets(), self.session.columns, strict=False),
         ):
-            column_end = layout.column_window_end(
+            column_end = ui.column_window_end(
                 column.nodes,
                 render,
                 start_row=start_row,
                 body_height=body_height,
             )
             panels = [
-                layout.build_task_panel(
+                ui.build_task_panel(
                     node,
                     render,
                     highlighted=(
@@ -229,7 +229,7 @@ class BoardApp(runtime.CommandApp):
 
     def _refresh_footer(self) -> None:
         search_text = self.session.search_text or "-"
-        total_rows = layout.selected_column_total_rows(self.session)
+        total_rows = ui.selected_column_total_rows(self.session)
         footer_style = "dim" if self.session.color_enabled else ""
         self._footer_rule_widget().update(Rule(style=footer_style))
         self._footer_widget().update(
@@ -286,63 +286,63 @@ class BoardApp(runtime.CommandApp):
 
     def action_move_up(self) -> None:
         """Move the selection one task upward in the selected column."""
-        events.move_selection_vertical(self.session, -1)
+        actions.move_selection_vertical(self.session, -1)
         self._refresh_view()
 
     def action_move_down(self) -> None:
         """Move the selection one task downward in the selected column."""
-        events.move_selection_vertical(self.session, 1)
+        actions.move_selection_vertical(self.session, 1)
         self._refresh_view()
 
     def action_move_left(self) -> None:
         """Move board focus one non-empty column to the left."""
-        events.move_selection_horizontal(self.session, -1)
+        actions.move_selection_horizontal(self.session, -1)
         self._refresh_view()
 
     def action_move_right(self) -> None:
         """Move board focus one non-empty column to the right."""
-        events.move_selection_horizontal(self.session, 1)
+        actions.move_selection_horizontal(self.session, 1)
         self._refresh_view()
 
     def action_move_state_left(self) -> None:
         """Step the selected task state backward through document state order."""
-        events.apply_state_move(self.session, direction=-1)
+        actions.apply_state_move(self.session, direction=-1)
         self._refresh_view()
 
     def action_move_state_right(self) -> None:
         """Step the selected task state forward through document state order."""
-        events.apply_state_move(self.session, direction=1)
+        actions.apply_state_move(self.session, direction=1)
         self._refresh_view()
 
     def action_increase_priority(self) -> None:
         """Increase the selected task priority."""
-        events.apply_priority_shift(self.session, increase=True)
+        actions.apply_priority_shift(self.session, increase=True)
         self._refresh_view()
 
     def action_decrease_priority(self) -> None:
         """Decrease the selected task priority."""
-        events.apply_priority_shift(self.session, increase=False)
+        actions.apply_priority_shift(self.session, increase=False)
         self._refresh_view()
 
     def action_edit_selected(self) -> None:
         """Open the selected task in the external editor."""
-        self._run_external(lambda: events.edit_selected_task_in_external_editor(self.session))
+        self._run_external(lambda: actions.edit_selected_task_in_external_editor(self.session))
 
     def action_archive_selected(self) -> None:
         """Archive the selected task subtree."""
-        events.archive_selected_task(self.session)
+        actions.archive_selected_task(self.session)
         self._refresh_view()
 
     def action_clear_search(self) -> None:
         """Clear the active board search filter."""
-        events.clear_search(self.session)
+        actions.clear_search(self.session)
         self._refresh_view()
 
     def action_show_help(self) -> None:
         """Open the key bindings help modal."""
         self.push_screen(
             runtime.HelpModalScreen(
-                layout.BOARD_HELP_ENTRIES,
+                ui.BOARD_HELP_ENTRIES,
                 color_enabled=self.session.color_enabled,
             ),
         )
@@ -352,24 +352,24 @@ class BoardApp(runtime.CommandApp):
         previous_text = self.session.search_text
 
         def _preview(value: str) -> None:
-            events.apply_search_text(self.session, value.strip())
+            actions.apply_search_text(self.session, value.strip())
             self._refresh_view()
 
         self._open_prompt(
             "Search text (blank clears)",
             initial_value=previous_text,
             on_change=_preview,
-            on_submit=lambda value: events.apply_search_text(self.session, value.strip()),
+            on_submit=lambda value: actions.apply_search_text(self.session, value.strip()),
             on_cancel=lambda: self._cancel_search(previous_text),
         )
 
     def _cancel_search(self, previous_text: str) -> None:
-        events.apply_search_text(self.session, previous_text)
+        actions.apply_search_text(self.session, previous_text)
         self.session.status_message = "Search cancelled"
 
     def action_prompt_capture(self) -> None:
         """Prompt for a capture template and create a task."""
-        status_message = events.can_activate_capture_prompt(self.session)
+        status_message = actions.can_activate_capture_prompt(self.session)
         if status_message is not None:
             self._set_status(status_message)
             self._refresh_view()
@@ -387,7 +387,7 @@ class BoardApp(runtime.CommandApp):
                 self._set_status("Invalid capture template shortcut")
                 self.action_prompt_capture()
                 return
-            self._run_external(lambda: events.apply_capture_task(self.session, template_name))
+            self._run_external(lambda: actions.apply_capture_task(self.session, template_name))
 
         self._open_prompt(
             capture_template_prompt_label(template_names),

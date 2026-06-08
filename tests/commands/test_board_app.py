@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING, Any, cast
 from textual.widgets import Input, Static
 
 from org import config as config_module
+from org.commands.board import actions
 from org.commands.board import command as board_command
-from org.commands.board import events as board_events
 from org.commands.board.app import BoardApp, BoardViewport
 from org.commands.interactive_common import heading_locator
 from org.commands.tasks import capture as capture_command
@@ -27,21 +27,21 @@ if TYPE_CHECKING:
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 
 
-def _col(title: str, nodes: list[Heading]) -> board_events.BoardColumn:
-    return board_events.BoardColumn(title, nodes)
+def _col(title: str, nodes: list[Heading]) -> actions.BoardColumn:
+    return actions.BoardColumn(title, nodes)
 
 
 def _make_session(
     args: board_command.BoardArgs,
     nodes: list[Heading],
     **overrides: object,
-) -> board_events.BoardSession:
-    resolved_columns = cast("list[board_events.BoardColumn] | None", overrides.pop("columns", None))
+) -> actions.BoardSession:
+    resolved_columns = cast("list[actions.BoardColumn] | None", overrides.pop("columns", None))
     resolved_all_columns = cast(
-        "list[board_events.BoardColumn] | None",
+        "list[actions.BoardColumn] | None",
         overrides.pop("all_columns", None),
     )
-    session = board_events.BoardSession(
+    session = actions.BoardSession(
         args=args,
         nodes=nodes,
         todo_states=["TODO"],
@@ -61,7 +61,7 @@ def _make_session(
     return session
 
 
-def _make_app(session: board_events.BoardSession) -> BoardApp:
+def _make_app(session: actions.BoardSession) -> BoardApp:
     return BoardApp(session)
 
 
@@ -168,7 +168,7 @@ def test_board_app_enter_edits_selected_task(monkeypatch: pytest.MonkeyPatch) ->
     async def _run() -> None:
         nodes = node_from_org("* TODO Task\n")
         monkeypatch.setattr(
-            board_events,
+            actions,
             "edit_selected_task_in_external_editor",
             lambda _session: None,
         )
@@ -195,7 +195,7 @@ def test_board_app_capture_prompt_submits_and_reloads(monkeypatch: pytest.Monkey
             {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
         )
         monkeypatch.setattr(
-            board_events,
+            actions,
             "capture_task",
             lambda _args: capture_command.TasksCaptureResult(
                 template_name="quick",
@@ -204,7 +204,7 @@ def test_board_app_capture_prompt_submits_and_reloads(monkeypatch: pytest.Monkey
             ),
         )
         monkeypatch.setattr(
-            board_events,
+            actions,
             "reload_session",
             lambda _session, preserve_identity: reloaded.update(identity=preserve_identity),
         )
@@ -245,12 +245,12 @@ def test_board_app_shift_bindings_trigger_state_and_priority_actions(
     async def _run() -> None:
         calls: list[str] = []
         monkeypatch.setattr(
-            board_events,
+            actions,
             "apply_state_move",
             lambda _session, *, direction: calls.append(f"state:{direction}"),
         )
         monkeypatch.setattr(
-            board_events,
+            actions,
             "apply_priority_shift",
             lambda _session, *, increase: calls.append(f"priority:{increase}"),
         )

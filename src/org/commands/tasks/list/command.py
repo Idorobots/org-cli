@@ -37,7 +37,7 @@ from org.tui import (
     setup_output,
 )
 
-from . import events
+from . import actions
 from .app import run_tasks_list_app
 
 
@@ -406,7 +406,7 @@ def register(app: typer.Typer) -> None:
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         help=interactive_help_command_text(
             "List tasks matching filters.",
-            events.TASKS_LIST_HELP_ENTRIES,
+            actions.TASKS_LIST_HELP_ENTRIES,
         ),
     )
     def tasks_list(  # noqa: PLR0913

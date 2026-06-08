@@ -22,8 +22,8 @@ from org.commands.tasks.common import (
     state_selection_prompt_label,
 )
 
-from . import events, layout
-from .events import AgendaSession, create_agenda_session
+from . import actions, ui
+from .actions import AgendaSession, create_agenda_session
 
 
 if TYPE_CHECKING:
@@ -123,7 +123,7 @@ class AgendaApp(runtime.CommandApp):
         self.session = session
 
     def compose(self) -> ComposeResult:
-        """Build the main agenda screen layout."""
+        """Build the main agenda screen ui."""
         yield Vertical(
             Static(id="agenda-header"),
             Static(id="agenda-header-rule"),
@@ -139,17 +139,17 @@ class AgendaApp(runtime.CommandApp):
         self._refresh_view()
 
     def on_resize(self, _event: Resize) -> None:
-        """Refresh viewport layout after terminal resize."""
+        """Refresh viewport ui after terminal resize."""
         self._refresh_view()
 
     def on_mouse_scroll_up(self, _event: MouseScrollUp) -> None:
         """Match legacy wheel-up navigation behavior."""
-        events.move_selection(self.session, -1)
+        actions.move_selection(self.session, -1)
         self._refresh_view()
 
     def on_mouse_scroll_down(self, _event: MouseScrollDown) -> None:
         """Match legacy wheel-down navigation behavior."""
-        events.move_selection(self.session, 1)
+        actions.move_selection(self.session, 1)
         self._refresh_view()
 
     def _header_widget(self) -> Static:
@@ -183,7 +183,7 @@ class AgendaApp(runtime.CommandApp):
         return max(40, body_width)
 
     def _refresh_header(self) -> None:
-        sticky = layout.sticky_day(self.session)
+        sticky = ui.sticky_day(self.session)
         self._header_widget().update(
             Text(
                 sticky.strftime("%A %Y-%m-%d"),
@@ -225,8 +225,8 @@ class AgendaApp(runtime.CommandApp):
     def _refresh_rows(self, viewport_height: int) -> None:
         body = self._body_widget()
         body.ensure_row_pool(viewport_height)
-        layout.sync_scroll_offset(self.session, viewport_height)
-        selected_location = layout.selected_row_location(self.session)
+        ui.sync_scroll_offset(self.session, viewport_height)
+        selected_location = ui.selected_row_location(self.session)
         line_width = self._line_width()
         window = self.session.interactive_rows[
             self.session.scroll_offset : self.session.scroll_offset + viewport_height
@@ -234,7 +234,7 @@ class AgendaApp(runtime.CommandApp):
 
         for widget, row in zip(body.row_widgets(), window, strict=False):
             widget.set_row(
-                layout.render_viewport_row_text(
+                ui.render_viewport_row_text(
                     row,
                     self.session.render,
                     self.session.column_widths,
@@ -254,7 +254,7 @@ class AgendaApp(runtime.CommandApp):
         self._refresh_status()
 
     def _refresh_for_clock_tick(self) -> None:
-        if events.refresh_session_if_minute_changed(self.session):
+        if actions.refresh_session_if_minute_changed(self.session):
             self._refresh_view()
 
     def _set_status(self, status_message: str) -> None:
@@ -286,63 +286,63 @@ class AgendaApp(runtime.CommandApp):
 
     def action_move_up(self) -> None:
         """Move the selection one row upward."""
-        events.move_selection(self.session, -1)
+        actions.move_selection(self.session, -1)
         self._refresh_view()
 
     def action_move_down(self) -> None:
         """Move the selection one row downward."""
-        events.move_selection(self.session, 1)
+        actions.move_selection(self.session, 1)
         self._refresh_view()
 
     def action_page_backward(self) -> None:
         """Move the visible agenda window backward by the current span."""
-        events.set_start_date_relative(self.session, day_delta=-self.session.days)
+        actions.set_start_date_relative(self.session, day_delta=-self.session.days)
         self._refresh_view()
 
     def action_page_forward(self) -> None:
         """Move the visible agenda window forward by the current span."""
-        events.set_start_date_relative(self.session, day_delta=self.session.days)
+        actions.set_start_date_relative(self.session, day_delta=self.session.days)
         self._refresh_view()
 
     def action_edit_selected(self) -> None:
         """Open the selected task in the external editor."""
-        self._run_external(lambda: events.edit_selected_task_in_external_editor(self.session))
+        self._run_external(lambda: actions.edit_selected_task_in_external_editor(self.session))
 
     def action_archive_selected(self) -> None:
         """Archive the selected task subtree."""
-        events.archive_selected_task(self.session)
+        actions.archive_selected_task(self.session)
         self._refresh_view()
 
     def action_clear_search(self) -> None:
         """Clear the active search filter."""
-        events.clear_search(self.session)
+        actions.clear_search(self.session)
         self._refresh_view()
 
     def action_shift_date_backward(self) -> None:
         """Shift the selected planning date backward by one day."""
-        events.apply_shift_date(self.session, day_delta=-1)
+        actions.apply_shift_date(self.session, day_delta=-1)
         self._refresh_view()
 
     def action_shift_date_forward(self) -> None:
         """Shift the selected planning date forward by one day."""
-        events.apply_shift_date(self.session, day_delta=1)
+        actions.apply_shift_date(self.session, day_delta=1)
         self._refresh_view()
 
     def action_shift_time_backward(self) -> None:
         """Shift the selected timed planning row backward by one hour."""
-        events.apply_shift_time(self.session, hour_delta=-1)
+        actions.apply_shift_time(self.session, hour_delta=-1)
         self._refresh_view()
 
     def action_shift_time_forward(self) -> None:
         """Shift the selected timed planning row forward by one hour."""
-        events.apply_shift_time(self.session, hour_delta=1)
+        actions.apply_shift_time(self.session, hour_delta=1)
         self._refresh_view()
 
     def action_show_help(self) -> None:
         """Open the key bindings help modal."""
         self.push_screen(
             runtime.HelpModalScreen(
-                layout.AGENDA_HELP_ENTRIES,
+                ui.AGENDA_HELP_ENTRIES,
                 color_enabled=self.session.render.color_enabled,
             ),
         )
@@ -353,24 +353,24 @@ class AgendaApp(runtime.CommandApp):
         self._search_cancel_text = previous_text
 
         def _preview(value: str) -> None:
-            events.apply_search_text(self.session, value.strip())
+            actions.apply_search_text(self.session, value.strip())
             self._refresh_view()
 
         self._open_prompt(
             "Search text (blank clears)",
             initial_value=previous_text,
             on_change=_preview,
-            on_submit=lambda value: events.apply_search_text(self.session, value.strip()),
+            on_submit=lambda value: actions.apply_search_text(self.session, value.strip()),
             on_cancel=lambda: self._cancel_search(previous_text),
         )
 
     def _cancel_search(self, previous_text: str) -> None:
-        events.apply_search_text(self.session, previous_text)
+        actions.apply_search_text(self.session, previous_text)
         self.session.status_message = "Search cancelled"
 
     def action_prompt_capture(self) -> None:
         """Prompt for a capture template and create a task."""
-        status_message = events.can_activate_agenda_capture_prompt(self.session)
+        status_message = actions.can_activate_agenda_capture_prompt(self.session)
         if status_message is not None:
             self._set_status(status_message)
             self._refresh_view()
@@ -387,7 +387,7 @@ class AgendaApp(runtime.CommandApp):
             if template_name is None:
                 self._set_status("Invalid capture template shortcut")
                 return
-            self._run_external(lambda: events.apply_capture_task(self.session, template_name))
+            self._run_external(lambda: actions.apply_capture_task(self.session, template_name))
 
         self._open_prompt(
             capture_template_prompt_label(template_names),
@@ -397,12 +397,12 @@ class AgendaApp(runtime.CommandApp):
 
     def action_prompt_state(self) -> None:
         """Prompt for a TODO state transition."""
-        status_message = events.can_activate_agenda_state_prompt(self.session)
+        status_message = actions.can_activate_agenda_state_prompt(self.session)
         if status_message is not None:
             self._set_status(status_message)
             self._refresh_view()
             return
-        states = events.state_choices_for_selected_row(self.session)
+        states = actions.state_choices_for_selected_row(self.session)
 
         def _submit(value: str) -> None:
             stripped = value.strip()
@@ -413,7 +413,7 @@ class AgendaApp(runtime.CommandApp):
             if selected_state is None:
                 self._set_status("Invalid TODO state selection")
                 return
-            events.apply_state_change_with_value(self.session, selected_state)
+            actions.apply_state_change_with_value(self.session, selected_state)
 
         self._open_prompt(
             state_selection_prompt_label(states),
@@ -423,27 +423,27 @@ class AgendaApp(runtime.CommandApp):
 
     def action_prompt_refile(self) -> None:
         """Prompt for a destination file and refile the selected task."""
-        if events.selected_task_row(self.session) is None:
+        if actions.selected_task_row(self.session) is None:
             self._set_status("Action available only on task rows")
             self._refresh_view()
             return
 
         self._open_prompt(
             refile_prompt_label(resolve_input_paths(self.session.args.files)),
-            on_submit=lambda value: events.apply_refile_with_value(self.session, value.strip()),
+            on_submit=lambda value: actions.apply_refile_with_value(self.session, value.strip()),
             on_cancel=lambda: self._set_status("Refile cancelled"),
         )
 
     def action_prompt_clock(self) -> None:
         """Prompt for a clock duration and append the clock entry."""
-        if events.selected_task_row(self.session) is None:
+        if actions.selected_task_row(self.session) is None:
             self._set_status("Action available only on task rows")
             self._refresh_view()
             return
 
         self._open_prompt(
             clock_duration_prompt_label(),
-            on_submit=lambda value: events.apply_clock_entry_with_value(
+            on_submit=lambda value: actions.apply_clock_entry_with_value(
                 self.session,
                 value.strip(),
             ),
@@ -458,7 +458,7 @@ class AgendaApp(runtime.CommandApp):
 def run_agenda_app(
     args: AgendaArgs,
     nodes: list[Heading],
-    render: layout.RenderContext,
+    render: ui.RenderContext,
     view_ctx: AgendaViewContext,
 ) -> None:
     """Run the Textual-backed interactive agenda app."""

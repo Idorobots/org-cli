@@ -17,9 +17,8 @@ from rich.text import Text
 from org import config as config_module
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
+from org.commands.board import actions, ui
 from org.commands.board import command as board_command
-from org.commands.board import events as board_events
-from org.commands.board import layout as board_layout
 from org.commands.interactive_common import heading_locator
 from tests.conftest import node_from_org
 
@@ -76,17 +75,17 @@ def make_board_args(files: list[str], **overrides: object) -> board_command.Boar
 
 
 def _visible_board_titles_by_column(
-    session: board_events.BoardSession,
+    session: actions.BoardSession,
 ) -> dict[str, list[str]]:
     """Return visible task titles grouped by board column title."""
     return {column.title: [node.title_text for node in column.nodes] for column in session.columns}
 
 
-def _col(title: str, nodes: list[Heading]) -> board_events.BoardColumn:
-    return board_events.BoardColumn(title, nodes)
+def _col(title: str, nodes: list[Heading]) -> actions.BoardColumn:
+    return actions.BoardColumn(title, nodes)
 
 
-def _default_columns(nodes: list[Heading]) -> list[board_events.BoardColumn]:
+def _default_columns(nodes: list[Heading]) -> list[actions.BoardColumn]:
     return [_col("TODO", nodes)]
 
 
@@ -94,16 +93,16 @@ def _make_session(
     args: board_command.BoardArgs,
     nodes: list[Heading],
     **overrides: object,
-) -> board_events.BoardSession:
+) -> actions.BoardSession:
     resolved_columns = cast(
-        "list[board_events.BoardColumn] | None",
+        "list[actions.BoardColumn] | None",
         overrides.pop("columns", None),
     )
     resolved_all_columns = cast(
-        "list[board_events.BoardColumn] | None",
+        "list[actions.BoardColumn] | None",
         overrides.pop("all_columns", None),
     )
-    session = board_events.BoardSession(
+    session = actions.BoardSession(
         args=args,
         nodes=nodes,
         todo_states=["TODO"],
@@ -126,7 +125,7 @@ def _make_session(
 def _pin_board_now(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin board command current time for deterministic completed-task windows."""
     monkeypatch.setattr(
-        board_events,
+        actions,
         "local_now",
         lambda: datetime(2026, 5, 9, 12, 0, tzinfo=UTC),
     )
@@ -137,7 +136,7 @@ def test_filter_recent_completed_nodes_uses_latest_timestamp_window(
 ) -> None:
     """Completed tasks should be filtered by latest_timestamp recency."""
     now = datetime(2026, 5, 9, 12, 0, tzinfo=UTC)
-    monkeypatch.setattr(board_events, "local_now", lambda: now)
+    monkeypatch.setattr(actions, "local_now", lambda: now)
 
     nodes = node_from_org(
         "* TODO Active task\n"
@@ -147,7 +146,7 @@ def test_filter_recent_completed_nodes_uses_latest_timestamp_window(
         "CLOSED: [2026-04-01 Wed 09:00]\n",
     )
 
-    filtered = board_events.filter_recent_completed_nodes(nodes, days=7)
+    filtered = actions.filter_recent_completed_nodes(nodes, days=7)
 
     assert [node.title_text for node in filtered] == ["Active task", "Recent done"]
 
@@ -157,16 +156,14 @@ def test_filter_recent_completed_nodes_respects_days_override(
 ) -> None:
     """Days override should widen completed-task retention window."""
     now = datetime(2026, 5, 9, 12, 0, tzinfo=UTC)
-    monkeypatch.setattr(board_events, "local_now", lambda: now)
+    monkeypatch.setattr(actions, "local_now", lambda: now)
 
     nodes = node_from_org(
         "* DONE Mid-age done\nCLOSED: [2026-04-25 Sat 09:00]\n",
     )
 
-    assert board_events.filter_recent_completed_nodes(nodes, days=7) == []
-    assert [
-        node.title_text for node in board_events.filter_recent_completed_nodes(nodes, days=30)
-    ] == [
+    assert actions.filter_recent_completed_nodes(nodes, days=7) == []
+    assert [node.title_text for node in actions.filter_recent_completed_nodes(nodes, days=30)] == [
         "Mid-age done",
     ]
 
@@ -273,8 +270,8 @@ def test_build_selector_board_columns_preserves_processed_order() -> None:
         "* TODO [#C] Low\n* TODO Middle\n* TODO [#A] High\n* TODO [#B] Medium\n",
     )
 
-    specs = board_events.resolve_column_specs(make_board_args([]))
-    columns = board_events.build_selector_board_columns(nodes, specs)
+    specs = actions.resolve_column_specs(make_board_args([]))
+    columns = actions.build_selector_board_columns(nodes, specs)
 
     todo_column = next(column for column in columns if column.title == "TODO")
     assert [node.title_text for node in todo_column.nodes] == ["Low", "Middle", "High", "Medium"]
@@ -296,9 +293,9 @@ def test_build_selector_board_columns_with_order_by_overrides_processed_order() 
         ],
     )
 
-    columns = board_events.build_selector_board_columns(
+    columns = actions.build_selector_board_columns(
         nodes,
-        board_events.compile_view_column_specs(view),
+        actions.compile_view_column_specs(view),
     )
 
     todo_column = next(column for column in columns if column.title == "TODO")
@@ -316,9 +313,9 @@ def test_build_selector_board_columns_allows_matches_in_multiple_columns() -> No
         ],
     )
 
-    columns = board_events.build_selector_board_columns(
+    columns = actions.build_selector_board_columns(
         nodes,
-        board_events.compile_view_column_specs(view),
+        actions.compile_view_column_specs(view),
     )
 
     any_todo_column = next(column for column in columns if column.title == "Any todo")
@@ -337,9 +334,9 @@ def test_build_selector_board_columns_omits_non_matching_tasks() -> None:
         ],
     )
 
-    columns = board_events.build_selector_board_columns(
+    columns = actions.build_selector_board_columns(
         nodes,
-        board_events.compile_view_column_specs(view),
+        actions.compile_view_column_specs(view),
     )
 
     assert len(columns) == 1
@@ -349,7 +346,7 @@ def test_build_selector_board_columns_omits_non_matching_tasks() -> None:
 
 def test_render_column_title_text_allows_rich_markup() -> None:
     """Column titles should support Rich markup syntax."""
-    title = board_layout.render_column_title_text("[bold green]Complete[/]")
+    title = ui.render_column_title_text("[bold green]Complete[/]")
 
     assert title.plain == "Complete"
     assert title.spans
@@ -357,7 +354,7 @@ def test_render_column_title_text_allows_rich_markup() -> None:
 
 def test_render_column_title_text_falls_back_on_invalid_markup() -> None:
     """Invalid markup in column title should render as literal text."""
-    title = board_layout.render_column_title_text("[bold")
+    title = ui.render_column_title_text("[bold")
 
     assert title.plain == "[bold"
 
@@ -384,10 +381,10 @@ def test_move_selection_horizontal_skips_empty_columns() -> None:
     )
 
     assert session.selected_column_index == 1
-    board_events.move_selection_horizontal(session, 1)
+    actions.move_selection_horizontal(session, 1)
     assert session.selected_column_index == 3
 
-    board_events.move_selection_horizontal(session, -1)
+    actions.move_selection_horizontal(session, -1)
     assert session.selected_column_index == 1
 
 
@@ -395,7 +392,7 @@ def test_step_heading_state_right_from_none_uses_first_document_state() -> None:
     """Shift-right from empty state should use first all_states item."""
     heading = node_from_org("#+TODO: TODO WAITING | DONE\n* Task\n")[0]
 
-    new_state, status = board_events.step_heading_state(heading, direction=1)
+    new_state, status = actions.step_heading_state(heading, direction=1)
 
     assert new_state == "TODO"
     assert status is None
@@ -405,7 +402,7 @@ def test_step_heading_state_left_from_first_moves_to_none() -> None:
     """Shift-left from first state should clear todo state."""
     heading = node_from_org("#+TODO: TODO WAITING | DONE\n* TODO Task\n")[0]
 
-    new_state, status = board_events.step_heading_state(heading, direction=-1)
+    new_state, status = actions.step_heading_state(heading, direction=-1)
 
     assert new_state is None
     assert status is None
@@ -415,8 +412,8 @@ def test_step_heading_state_moves_prev_next_in_middle() -> None:
     """Shift-left/right should move through middle states."""
     heading = node_from_org("#+TODO: TODO WAITING | DONE\n* WAITING Task\n")[0]
 
-    next_state, next_status = board_events.step_heading_state(heading, direction=1)
-    prev_state, prev_status = board_events.step_heading_state(heading, direction=-1)
+    next_state, next_status = actions.step_heading_state(heading, direction=1)
+    prev_state, prev_status = actions.step_heading_state(heading, direction=-1)
 
     assert next_state == "DONE"
     assert next_status is None
@@ -429,8 +426,8 @@ def test_step_heading_state_boundary_no_ops() -> None:
     empty_heading = node_from_org("#+TODO: TODO | DONE\n* Task\n")[0]
     done_heading = node_from_org("#+TODO: TODO | DONE\n* DONE Task\n")[0]
 
-    no_state, no_state_status = board_events.step_heading_state(empty_heading, direction=-1)
-    last_state, last_state_status = board_events.step_heading_state(done_heading, direction=1)
+    no_state, no_state_status = actions.step_heading_state(empty_heading, direction=-1)
+    last_state, last_state_status = actions.step_heading_state(done_heading, direction=1)
 
     assert no_state is None
     assert no_state_status == "State unchanged"
@@ -442,7 +439,7 @@ def test_step_heading_state_deduplicates_document_states() -> None:
     """State stepping should deduplicate repeated all_states values."""
     heading = node_from_org("#+TODO: TODO TODO WAITING | DONE DONE\n* TODO Task\n")[0]
 
-    new_state, status = board_events.step_heading_state(heading, direction=1)
+    new_state, status = actions.step_heading_state(heading, direction=1)
 
     assert new_state == "WAITING"
     assert status is None
@@ -471,14 +468,14 @@ def test_apply_state_move_steps_state_and_reloads(
     def _capture_save(document: Document) -> None:
         saved_documents.append(document)
 
-    monkeypatch.setattr(board_events, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(actions, "_save_document_changes", _capture_save)
     monkeypatch.setattr(
-        board_events,
+        actions,
         "reload_session",
         lambda _session, preserve_identity: reloaded.append(preserve_identity),
     )
 
-    board_events.apply_state_move(session, direction=1)
+    actions.apply_state_move(session, direction=1)
 
     assert node.todo == "DONE"
     assert saved_documents == [node.document]
@@ -495,9 +492,9 @@ def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
     session = _make_session(
         args=args,
         nodes=original_nodes,
-        columns=board_events.build_selector_board_columns(
+        columns=actions.build_selector_board_columns(
             original_nodes,
-            board_events.resolve_column_specs(args),
+            actions.resolve_column_specs(args),
         ),
         color_enabled=False,
         selected_column_index=1,
@@ -513,14 +510,14 @@ def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
     reloaded_nodes = node_from_org("* TODO [#A] Other\n* TODO [#A] Focus\n")
 
     monkeypatch.setattr(
-        board_events,
+        actions,
         "load_and_process_data",
         lambda _args: (reloaded_nodes, ["TODO"], ["DONE"]),
     )
 
-    board_events.reload_session(session, preserve_identity)
+    actions.reload_session(session, preserve_identity)
 
-    selected = board_events.selected_node(session)
+    selected = actions.selected_node(session)
     assert selected is not None
     assert selected.title_text == "Focus"
 
@@ -549,9 +546,9 @@ def test_edit_selected_task_in_external_editor_reports_no_changes(
     def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
         return editor_command.DocumentEditResult(changed=False)
 
-    monkeypatch.setattr(board_events, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(actions, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    board_events.edit_selected_task_in_external_editor(session)
+    actions.edit_selected_task_in_external_editor(session)
     assert session.status_message == "No changes."
 
 
@@ -582,14 +579,14 @@ def test_edit_selected_task_in_external_editor_reloads_with_identity_after_chang
 
     reloaded_identity = None
 
-    def _capture_reload(_session: board_events.BoardSession, identity: object) -> None:
+    def _capture_reload(_session: actions.BoardSession, identity: object) -> None:
         nonlocal reloaded_identity
         reloaded_identity = identity
 
-    monkeypatch.setattr(board_events, "edit_heading_subtree_in_external_editor", _fake_edit)
-    monkeypatch.setattr(board_events, "reload_session", _capture_reload)
+    monkeypatch.setattr(actions, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(actions, "reload_session", _capture_reload)
 
-    board_events.edit_selected_task_in_external_editor(session)
+    actions.edit_selected_task_in_external_editor(session)
     assert session.status_message == "Task updated"
     assert reloaded_identity == heading_locator(source_node)
 
@@ -636,10 +633,10 @@ def test_archive_selected_task_archives_selected_heading(
             destination_document=heading.document,
         )
 
-    monkeypatch.setattr(board_events, "archive_heading_subtree_and_save", _fake_archive)
-    monkeypatch.setattr(board_events, "reload_session", lambda _session, _identity: None)
+    monkeypatch.setattr(actions, "archive_heading_subtree_and_save", _fake_archive)
+    monkeypatch.setattr(actions, "reload_session", lambda _session, _identity: None)
 
-    board_events.archive_selected_task(session)
+    actions.archive_selected_task(session)
     assert session.status_message == "Task archived"
 
 
@@ -1021,7 +1018,7 @@ def test_run_flow_board_uses_default_view_from_config(
     try:
         # Simulate Typer default_map applying defaults: --view=kanban
         args.view = "kanban"
-        specs = board_events.resolve_column_specs(args)
+        specs = actions.resolve_column_specs(args)
         assert [spec.name for spec in specs] == ["Backlog", "Working"]
         monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "150"])
         board_command.run_flow_board(args)
@@ -1128,9 +1125,9 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
     session = _make_session(
         args=args,
         nodes=[source_node],
-        columns=board_events.build_selector_board_columns(
+        columns=actions.build_selector_board_columns(
             [source_node],
-            board_events.resolve_column_specs(args),
+            actions.resolve_column_specs(args),
         ),
         color_enabled=False,
         selected_column_index=0,
@@ -1157,14 +1154,14 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
             )
         return ([source_node], ["TODO"], ["DONE"])
 
-    monkeypatch.setattr(board_events, "_save_document_changes", _capture_save)
-    monkeypatch.setattr(board_events, "load_and_process_data", _load_after_change)
+    monkeypatch.setattr(actions, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(actions, "load_and_process_data", _load_after_change)
 
     try:
-        board_events.apply_state_move(session, direction=1)
+        actions.apply_state_move(session, direction=1)
         assert saved_documents == [source_node.document]
         assert session.selected_column_index == 1
-        selected = board_events.selected_node(session)
+        selected = actions.selected_node(session)
         assert selected is not None
         assert selected.todo == "DONE"
     finally:
@@ -1182,9 +1179,9 @@ def test_build_task_panel_renders_rich_title_content() -> None:
         ),
     )
 
-    panel = board_layout.build_task_panel(
+    panel = ui.build_task_panel(
         nodes[0],
-        board_layout.BoardPanelRenderConfig(
+        ui.BoardPanelRenderConfig(
             width=60,
             color_enabled=True,
             done_states=["DONE"],
@@ -1258,9 +1255,9 @@ def test_build_task_panel_shows_colored_todo_state_prefix() -> None:
     """Task panels should show and colorize current TODO state."""
     node = node_from_org("#+TODO: TODO WAITING | DONE\n* TODO Task\n")[0]
 
-    panel = board_layout.build_task_panel(
+    panel = ui.build_task_panel(
         node,
-        board_layout.BoardPanelRenderConfig(
+        ui.BoardPanelRenderConfig(
             width=60,
             color_enabled=True,
             done_states=["DONE"],
@@ -1279,9 +1276,9 @@ def test_build_task_panel_without_todo_state_has_no_prefix() -> None:
     """Task panels without TODO state should keep heading text unchanged."""
     node = node_from_org("* Task without state\n")[0]
 
-    panel = board_layout.build_task_panel(
+    panel = ui.build_task_panel(
         node,
-        board_layout.BoardPanelRenderConfig(
+        ui.BoardPanelRenderConfig(
             width=60,
             color_enabled=True,
             done_states=["DONE"],

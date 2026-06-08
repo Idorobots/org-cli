@@ -13,9 +13,8 @@ import typer
 from org_parser.time import Timestamp
 
 from org import config as config_module
+from org.commands.agenda import actions, ui
 from org.commands.agenda import command as agenda_command
-from org.commands.agenda import events as agenda_events
-from org.commands.agenda import layout as agenda_layout
 from org.commands.agenda.views import (
     AgendaViewContext,
     _compile_view_section_specs,
@@ -86,7 +85,7 @@ def _make_args(files: list[str], **overrides: object) -> agenda_command.AgendaAr
 def _visible_agenda_task_titles(session: object) -> list[str]:
     """Return visible task titles from current interactive agenda rows."""
     titles: list[str] = []
-    typed_session = cast("agenda_events.AgendaSession", session)
+    typed_session = cast("actions.AgendaSession", session)
     for day_model in typed_session.day_models:
         titles.extend(
             row.node.title_text.strip()
@@ -103,23 +102,23 @@ def _make_session(
     done_states: list[str] | None = None,
     todo_states: list[str] | None = None,
     color_enabled: bool = False,
-) -> agenda_events.AgendaSession:
+) -> actions.AgendaSession:
     view = _fallback_agenda_view()
     view_ctx = AgendaViewContext(section_specs=_compile_view_section_specs(view), name=view.name)
-    render = agenda_layout.RenderContext(
+    render = ui.RenderContext(
         color_enabled=color_enabled,
         done_states=["DONE"] if done_states is None else done_states,
         todo_states=["TODO"] if todo_states is None else todo_states,
     )
-    return agenda_events.create_agenda_session(args, nodes, render, view_ctx)
+    return actions.create_agenda_session(args, nodes, render, view_ctx)
 
 
 def _pin_agenda_now(monkeypatch: pytest.MonkeyPatch) -> datetime:
     """Pin agenda command current time for deterministic date-sensitive tests."""
     pinned_now = datetime(2025, 1, 15, 12, 0)
     monkeypatch.setattr(agenda_command, "local_now", lambda: pinned_now)
-    monkeypatch.setattr(agenda_events, "local_now", lambda: pinned_now)
-    monkeypatch.setattr(agenda_layout, "local_now", lambda: pinned_now)
+    monkeypatch.setattr(actions, "local_now", lambda: pinned_now)
+    monkeypatch.setattr(ui, "local_now", lambda: pinned_now)
     return pinned_now
 
 
@@ -550,7 +549,7 @@ def test_build_view_day_model_plain_rows_choose_matching_planning_source() -> No
             ),
         ],
     )
-    day_model = agenda_layout.build_view_day_model(
+    day_model = ui.build_view_day_model(
         nodes,
         datetime(2025, 1, 15).date(),
         datetime(2025, 1, 15, 12, 0),
@@ -636,7 +635,7 @@ def test_build_view_day_model_timeline_rows_append_untimed_with_deadline_precede
             ),
         ],
     )
-    day_model = agenda_layout.build_view_day_model(
+    day_model = ui.build_view_day_model(
         nodes,
         datetime(2025, 1, 15).date(),
         datetime(2025, 1, 15, 12, 0),
@@ -865,9 +864,9 @@ def test_interactive_selection_can_land_on_hour_row_and_block_task_actions() -> 
     )
     session.selected_row_index = hour_index
 
-    assert agenda_events.selected_task_row(session) is None
+    assert actions.selected_task_row(session) is None
 
-    agenda_events.apply_shift_date(session, day_delta=1)
+    actions.apply_shift_date(session, day_delta=1)
     assert session.status_message == "Action available only on task rows"
 
 
@@ -899,16 +898,16 @@ def test_apply_state_change_uses_current_action_time(
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
     monkeypatch.setattr("org.commands.agenda.command.local_now", lambda: action_now)
-    monkeypatch.setattr(agenda_events, "_save_document_changes", lambda _document: None)
-    monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
-    monkeypatch.setattr(agenda_events, "local_now", lambda: action_now)
+    monkeypatch.setattr(actions, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(actions, "local_now", lambda: action_now)
     monkeypatch.setattr(
-        agenda_events,
+        actions,
         "refresh_session",
         lambda _session, _preserve_identity: None,
     )
 
-    agenda_events.apply_state_change_with_value(session, "DONE")
+    actions.apply_state_change_with_value(session, "DONE")
 
     assert heading.todo == "DONE"
     assert heading.repeats
@@ -933,16 +932,16 @@ def test_apply_clock_entry_uses_current_action_time(
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
     monkeypatch.setattr("org.commands.agenda.command.local_now", lambda: action_now)
-    monkeypatch.setattr(agenda_events, "_save_document_changes", lambda _document: None)
-    monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
-    monkeypatch.setattr(agenda_events, "local_now", lambda: action_now)
+    monkeypatch.setattr(actions, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(actions, "local_now", lambda: action_now)
     monkeypatch.setattr(
-        agenda_events,
+        actions,
         "refresh_session",
         lambda _session, _preserve_identity: None,
     )
 
-    agenda_events.apply_clock_entry_with_value(session, "30")
+    actions.apply_clock_entry_with_value(session, "30")
 
     assert heading.clock_entries
     timestamp = heading.clock_entries[-1].timestamp
@@ -970,7 +969,7 @@ def test_apply_refile_rejects_same_file_with_equivalent_path(
     )
 
     destination_alias = os.path.join(tmp_path, ".", "agenda_refile_same.org")
-    agenda_events.apply_refile_with_value(session, destination_alias)
+    actions.apply_refile_with_value(session, destination_alias)
 
     assert session.status_message == "Task already in destination file"
     with open(fixture_path, encoding="utf-8") as handle:
@@ -1002,9 +1001,9 @@ def test_apply_refile_preserves_moved_task_locator(
     heading = root.heading_by_id("task-1")
     assert heading is not None
     monkeypatch.setattr(
-        agenda_events,
+        actions,
         "selected_task_row",
-        lambda _session: agenda_layout.AgendaRow(
+        lambda _session: ui.AgendaRow(
             kind="task",
             day=datetime(2025, 1, 15).date(),
             node=heading,
@@ -1015,19 +1014,19 @@ def test_apply_refile_preserves_moved_task_locator(
     saved_documents: list[Document] = []
     refreshed: dict[str, object] = {}
 
-    monkeypatch.setattr(agenda_events, "_save_document_changes", saved_documents.append)
-    monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
+    monkeypatch.setattr(actions, "_save_document_changes", saved_documents.append)
+    monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
 
     def _capture_refresh(
-        current_session: agenda_events.AgendaSession,
+        current_session: actions.AgendaSession,
         preserve_identity: object,
     ) -> None:
         refreshed["session"] = current_session
         refreshed["identity"] = preserve_identity
 
-    monkeypatch.setattr(agenda_events, "refresh_session", _capture_refresh)
+    monkeypatch.setattr(actions, "refresh_session", _capture_refresh)
 
-    agenda_events.apply_refile_with_value(session, destination_path)
+    actions.apply_refile_with_value(session, destination_path)
 
     assert refreshed["session"] is session
     assert refreshed["identity"] == heading_locator(heading)
@@ -1051,14 +1050,14 @@ def test_shift_planning_time_for_row_shifts_timed_scheduled_by_one_hour() -> Non
     """Shifting timed scheduled rows by hour should mutate scheduled timestamp time."""
     root = org_parser.loads("* TODO X\nSCHEDULED: <2025-01-15 Wed 10:30>\n")
     heading = next(iter(root))
-    row = agenda_layout.AgendaRow(
+    row = ui.AgendaRow(
         kind="task",
         day=datetime(2025, 1, 15).date(),
         node=heading,
         source="scheduled",
     )
 
-    timestamp, status = agenda_events.shift_planning_time_for_row(row, hour_delta=1)
+    timestamp, status = actions.shift_planning_time_for_row(row, hour_delta=1)
     assert timestamp is not None
     assert status == "Shifted scheduled forward by 1 hour"
     assert str(timestamp).startswith("<2025-01-15 Wed 11:30")
@@ -1068,14 +1067,14 @@ def test_shift_planning_time_for_row_shifts_timed_deadline_by_one_hour() -> None
     """Shifting timed deadline rows by hour should mutate deadline timestamp time."""
     root = org_parser.loads("* TODO X\nDEADLINE: <2025-01-15 Wed 10:30>\n")
     heading = next(iter(root))
-    row = agenda_layout.AgendaRow(
+    row = ui.AgendaRow(
         kind="task",
         day=datetime(2025, 1, 15).date(),
         node=heading,
         source="deadline",
     )
 
-    timestamp, status = agenda_events.shift_planning_time_for_row(row, hour_delta=1)
+    timestamp, status = actions.shift_planning_time_for_row(row, hour_delta=1)
     assert timestamp is not None
     assert status == "Shifted deadline forward by 1 hour"
     assert str(timestamp).startswith("<2025-01-15 Wed 11:30")
@@ -1085,14 +1084,14 @@ def test_shift_planning_time_for_row_rejects_non_timed_rows() -> None:
     """Hour shifting should reject non-timed or non-planning row sources."""
     root = org_parser.loads("* TODO X\nSCHEDULED: <2025-01-15 Wed>\n")
     heading = next(iter(root))
-    row = agenda_layout.AgendaRow(
+    row = ui.AgendaRow(
         kind="task",
         day=datetime(2025, 1, 15).date(),
         node=heading,
         source="scheduled_untimed",
     )
 
-    timestamp, status = agenda_events.shift_planning_time_for_row(row, hour_delta=-1)
+    timestamp, status = actions.shift_planning_time_for_row(row, hour_delta=-1)
     assert timestamp is None
     assert status == "Time shifting is available only for timed scheduled/deadline rows"
 
@@ -1108,19 +1107,19 @@ def test_build_timeline_section_rows_preserves_timed_entry_sources() -> None:
     assert root is not None
     scheduled, deadline, repeated = list(root)
     day = datetime(2025, 1, 15).date()
-    entries = agenda_layout._ViewTimelineEntries(
+    entries = ui._ViewTimelineEntries(
         timed=[
-            agenda_layout._TimedEntry(
+            ui._TimedEntry(
                 node=scheduled,
                 when=datetime(2025, 1, 15, 9, 0),
                 kind="scheduled",
             ),
-            agenda_layout._TimedEntry(
+            ui._TimedEntry(
                 node=deadline,
                 when=datetime(2025, 1, 15, 10, 0),
                 kind="deadline",
             ),
-            agenda_layout._TimedEntry(
+            ui._TimedEntry(
                 node=repeated,
                 when=datetime(2025, 1, 15, 11, 0),
                 kind="repeat",
@@ -1129,7 +1128,7 @@ def test_build_timeline_section_rows_preserves_timed_entry_sources() -> None:
         untimed=[],
     )
 
-    rows = agenda_layout._build_timeline_section_rows(
+    rows = ui._build_timeline_section_rows(
         day,
         datetime(2025, 1, 15, 12, 0),
         entries,

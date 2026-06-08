@@ -13,7 +13,7 @@ from org.cli_common import load_and_process_data
 from org.commands.interactive_common import interactive_help_command_text
 from org.tui import build_console, processing_status, setup_output
 
-from . import events, layout
+from . import actions, ui
 from .app import run_board_app
 
 
@@ -59,7 +59,7 @@ class BoardArgs:
     with_tags_as_category: bool
 
 
-_BOARD_HELP_ENTRIES = layout.BOARD_HELP_ENTRIES
+_BOARD_HELP_ENTRIES = ui.BOARD_HELP_ENTRIES
 
 
 def _resolve_tasks_limit(max_results: int | None) -> int:
@@ -85,8 +85,8 @@ def run_flow_board(args: BoardArgs) -> None:
 
     with processing_status(console, color_enabled):
         nodes, discovered_todo_states, discovered_done_states = load_and_process_data(args)
-        nodes = events.filter_recent_completed_nodes(nodes, args.days)
-        todo_states, done_states = events.resolved_states(
+        nodes = actions.filter_recent_completed_nodes(nodes, args.days)
+        todo_states, done_states = actions.resolved_states(
             args,
             discovered_todo_states,
             discovered_done_states,
@@ -100,8 +100,8 @@ def run_flow_board(args: BoardArgs) -> None:
         run_board_app(args, nodes, todo_states, done_states, color_enabled)
         return
 
-    columns = events.build_selector_board_columns(nodes, events.resolve_column_specs(args))
-    layout.render_static_flow_board(
+    columns = actions.build_selector_board_columns(nodes, actions.resolve_column_specs(args))
+    ui.render_static_flow_board(
         console,
         columns,
         done_states=done_states,

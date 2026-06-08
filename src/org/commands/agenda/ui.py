@@ -31,8 +31,8 @@ if TYPE_CHECKING:
     from org_parser.document import Heading
     from rich.console import Console
 
+    from .actions import AgendaSession
     from .command import AgendaArgs
-    from .events import AgendaSession
     from .views import AgendaSectionSpec, AgendaViewContext
 
 

@@ -20,8 +20,8 @@ from org.commands import editor as editor_command
 from org.commands.interactive_common import heading_locator
 from org.commands.search_common import filter_nodes_by_search
 from org.commands.tasks import capture as capture_command
+from org.commands.tasks.list import actions
 from org.commands.tasks.list import command as tasks_list
-from org.commands.tasks.list import events as tasks_list_events
 from org.histogram import visual_len
 from org.output_format import OutputFormat, OutputFormatError
 from tests.conftest import node_from_org
@@ -98,8 +98,8 @@ def _make_session(
     nodes: list[Heading],
     *,
     color_enabled: bool = False,
-) -> tasks_list_events.TasksListSession:
-    return tasks_list_events.create_tasks_list_session(
+) -> actions.TasksListSession:
+    return actions.create_tasks_list_session(
         make_list_args([]),
         _make_session_data(nodes, color_enabled=color_enabled),
     )
@@ -756,9 +756,9 @@ def test_edit_selected_task_in_external_editor_sets_no_changes_status(
     def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
         return editor_command.DocumentEditResult(changed=False)
 
-    monkeypatch.setattr(tasks_list_events, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(actions, "edit_heading_subtree_in_external_editor", _fake_edit)
 
-    tasks_list_events.edit_selected_task_in_external_editor(session)
+    actions.edit_selected_task_in_external_editor(session)
     assert session.status_message == "No changes."
 
 
@@ -776,7 +776,7 @@ def test_edit_selected_task_in_external_editor_reloads_using_selected_node_ident
     reloaded_identity = None
 
     def _fake_reload(
-        current_session: tasks_list_events.TasksListSession,
+        current_session: actions.TasksListSession,
         identity: object,
     ) -> bool:
         nonlocal reloaded_identity
@@ -784,10 +784,10 @@ def test_edit_selected_task_in_external_editor_reloads_using_selected_node_ident
         reloaded_identity = identity
         return True
 
-    monkeypatch.setattr(tasks_list_events, "edit_heading_subtree_in_external_editor", _fake_edit)
-    monkeypatch.setattr(tasks_list_events, "reload_session_nodes", _fake_reload)
+    monkeypatch.setattr(actions, "edit_heading_subtree_in_external_editor", _fake_edit)
+    monkeypatch.setattr(actions, "reload_session_nodes", _fake_reload)
 
-    tasks_list_events.edit_selected_task_in_external_editor(session)
+    actions.edit_selected_task_in_external_editor(session)
     assert reloaded_identity == heading_locator(source_node)
     assert session.status_message == "Task updated"
 
@@ -820,14 +820,14 @@ def test_archive_selected_task_archives_selected_task(
             destination_document=heading.document,
         )
 
-    monkeypatch.setattr(tasks_list_events, "archive_heading_subtree_and_save", _fake_archive)
+    monkeypatch.setattr(actions, "archive_heading_subtree_and_save", _fake_archive)
     monkeypatch.setattr(
-        tasks_list_events,
+        actions,
         "reload_session_nodes",
         lambda _session, _identity: True,
     )
 
-    tasks_list_events.archive_selected_task(session)
+    actions.archive_selected_task(session)
     assert session.status_message == "Task archived"
 
 
@@ -846,7 +846,7 @@ def test_apply_capture_task_captures_task_and_reloads(
     )
 
     monkeypatch.setattr(
-        tasks_list_events,
+        actions,
         "capture_task",
         lambda _args: capture_command.TasksCaptureResult(
             template_name="quick",
@@ -856,16 +856,16 @@ def test_apply_capture_task_captures_task_and_reloads(
     )
 
     def _fake_reload(
-        current_session: tasks_list_events.TasksListSession,
+        current_session: actions.TasksListSession,
         preserve_identity: object,
     ) -> bool:
         reload_args["session"] = current_session
         reload_args["identity"] = preserve_identity
         return True
 
-    monkeypatch.setattr(tasks_list_events, "reload_session_nodes", _fake_reload)
+    monkeypatch.setattr(actions, "reload_session_nodes", _fake_reload)
 
-    tasks_list_events.apply_capture_task(session, "quick")
+    actions.apply_capture_task(session, "quick")
     assert reload_args["session"] is session
     assert reload_args["identity"] == heading_locator(captured_node)
     assert session.status_message == "Task captured"
@@ -881,9 +881,9 @@ def test_apply_capture_task_reports_keyboard_interrupt_as_cancelled(
     def _raise_interrupt(_args: object) -> object:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(tasks_list_events, "capture_task", _raise_interrupt)
+    monkeypatch.setattr(actions, "capture_task", _raise_interrupt)
 
-    tasks_list_events.apply_capture_task(session, "quick")
+    actions.apply_capture_task(session, "quick")
     assert session.status_message == "Capture cancelled"
 
 
@@ -897,9 +897,9 @@ def test_apply_capture_task_reports_bad_parameter_error(
     def _raise_bad_parameter(_args: object) -> object:
         raise typer.BadParameter("Invalid capture template shortcut")
 
-    monkeypatch.setattr(tasks_list_events, "capture_task", _raise_bad_parameter)
+    monkeypatch.setattr(actions, "capture_task", _raise_bad_parameter)
 
-    tasks_list_events.apply_capture_task(session, "quick")
+    actions.apply_capture_task(session, "quick")
     assert session.status_message == "Invalid capture template shortcut"
 
 
@@ -909,12 +909,12 @@ def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.Monkey
     node = nodes[0]
     session = _make_session(nodes)
     monkeypatch.setattr(
-        tasks_list_events,
+        actions,
         "persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list_events.apply_state_change_with_value(session, "DONE")
+    actions.apply_state_change_with_value(session, "DONE")
 
     assert node.todo == "DONE"
     assert node.repeats
@@ -928,12 +928,12 @@ def test_apply_state_change_advances_repeater_timestamp(monkeypatch: pytest.Monk
     node = nodes[0]
     session = _make_session(nodes)
     monkeypatch.setattr(
-        tasks_list_events,
+        actions,
         "persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list_events.apply_state_change_with_value(session, "DONE")
+    actions.apply_state_change_with_value(session, "DONE")
 
     assert node.scheduled is not None
     assert str(node.scheduled).startswith("<2025-01-22")
@@ -945,12 +945,12 @@ def test_apply_scheduled_edit_updates_scheduled(monkeypatch: pytest.MonkeyPatch)
     node = nodes[0]
     session = _make_session(nodes)
     monkeypatch.setattr(
-        tasks_list_events,
+        actions,
         "persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list_events.apply_planning_timestamp_edit(
+    actions.apply_planning_timestamp_edit(
         session,
         field="scheduled",
         raw_timestamp="<2025-01-20 Mon>",
@@ -966,12 +966,12 @@ def test_apply_closed_edit_updates_closed(monkeypatch: pytest.MonkeyPatch) -> No
     node = nodes[0]
     session = _make_session(nodes)
     monkeypatch.setattr(
-        tasks_list_events,
+        actions,
         "persist_and_reload_selected",
         lambda _session, _node, _status: None,
     )
 
-    tasks_list_events.apply_planning_timestamp_edit(
+    actions.apply_planning_timestamp_edit(
         session,
         field="closed",
         raw_timestamp="[2025-01-20 Mon 09:00]",
@@ -991,8 +991,8 @@ def test_persist_and_reload_selected_reports_save_failures(
     def _raise_save(_document: object) -> None:
         raise typer.BadParameter("Permission denied for 'dummy.org'")
 
-    monkeypatch.setattr(tasks_list_events, "save_document_changes", _raise_save)
+    monkeypatch.setattr(actions, "save_document_changes", _raise_save)
 
-    tasks_list_events.persist_and_reload_selected(session, nodes[0], "updated")
+    actions.persist_and_reload_selected(session, nodes[0], "updated")
 
     assert session.status_message == "Permission denied for 'dummy.org'"

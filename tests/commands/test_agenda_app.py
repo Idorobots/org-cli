@@ -12,9 +12,8 @@ import org_parser
 from textual.widgets import Input, Static
 
 from org import config as config_module
+from org.commands.agenda import actions, ui
 from org.commands.agenda import command as agenda_command
-from org.commands.agenda import events as agenda_events
-from org.commands.agenda import layout as agenda_layout
 from org.commands.agenda.app import AgendaApp, AgendaViewport
 from org.commands.agenda.views import (
     AgendaViewContext,
@@ -41,12 +40,12 @@ def _make_app(
 ) -> AgendaApp:
     view = _fallback_agenda_view()
     view_ctx = AgendaViewContext(section_specs=_compile_view_section_specs(view), name=view.name)
-    render = agenda_layout.RenderContext(
+    render = ui.RenderContext(
         color_enabled=color_enabled,
         done_states=["DONE"],
         todo_states=["TODO"],
     )
-    return AgendaApp(agenda_events.create_agenda_session(args, nodes, render, view_ctx))
+    return AgendaApp(actions.create_agenda_session(args, nodes, render, view_ctx))
 
 
 def _body_lines(app: AgendaApp) -> list[str]:
@@ -137,8 +136,8 @@ def test_agenda_app_timer_refresh_updates_now_marker(monkeypatch: pytest.MonkeyP
         args = _make_args([fixture_path], date="2025-01-15")
         clock = {"value": datetime(2025, 1, 15, 10, 0)}
         monkeypatch.setattr(agenda_command, "local_now", lambda: clock["value"])
-        monkeypatch.setattr(agenda_events, "local_now", lambda: clock["value"])
-        monkeypatch.setattr(agenda_layout, "local_now", lambda: clock["value"])
+        monkeypatch.setattr(actions, "local_now", lambda: clock["value"])
+        monkeypatch.setattr(ui, "local_now", lambda: clock["value"])
         app = _make_app(args, list(org_parser.load(fixture_path)))
 
         async with app.run_test():
@@ -193,12 +192,12 @@ def test_agenda_app_capture_from_timed_row_schedules_task(
                 document=captured_node.document,
             )
 
-        monkeypatch.setattr(agenda_events, "capture_task", _fake_capture)
-        monkeypatch.setattr(agenda_events, "_save_document_changes", lambda _document: None)
-        monkeypatch.setattr(agenda_events, "_reload_session_nodes", lambda _session: None)
+        monkeypatch.setattr(actions, "capture_task", _fake_capture)
+        monkeypatch.setattr(actions, "_save_document_changes", lambda _document: None)
+        monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
 
         app = _make_app(args, list(org_parser.load(fixture_path)))
-        monkeypatch.setattr(agenda_events, "refresh_session", lambda _session, _identity: None)
+        monkeypatch.setattr(actions, "refresh_session", lambda _session, _identity: None)
         app.session.selected_row_index = next(
             index
             for index, (day_index, row_index) in enumerate(app.session.row_locations)
@@ -207,7 +206,7 @@ def test_agenda_app_capture_from_timed_row_schedules_task(
                 and ":" in app.session.day_models[day_index].rows[row_index].time_text
             )
         )
-        selected_row = agenda_events.selected_row(app.session)
+        selected_row = actions.selected_row(app.session)
         assert selected_row is not None
         expected_timestamp = f"<2025-01-15 Wed {selected_row.time_text}>"
 
@@ -235,7 +234,7 @@ def test_run_agenda_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch)
     def _fake_run(
         passed_args: agenda_command.AgendaArgs,
         nodes: list[Heading],
-        render: agenda_layout.RenderContext,
+        render: ui.RenderContext,
         view_ctx: AgendaViewContext,
     ) -> None:
         called["value"] = True

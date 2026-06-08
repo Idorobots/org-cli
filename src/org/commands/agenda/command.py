@@ -13,7 +13,7 @@ from org.cli_common import load_and_process_data
 from org.commands.interactive_common import interactive_help_command_text, local_now
 from org.tui import build_console, processing_status, setup_output
 
-from . import layout
+from . import ui
 from .app import run_agenda_app
 from .views import resolve_view_context
 
@@ -99,7 +99,7 @@ def run_agenda(args: AgendaArgs) -> None:
         run_agenda_app(
             args,
             nodes,
-            layout.RenderContext(
+            ui.RenderContext(
                 color_enabled=color_enabled,
                 done_states=done_states,
                 todo_states=todo_states,
@@ -108,13 +108,13 @@ def run_agenda(args: AgendaArgs) -> None:
         )
         return
 
-    layout.render_agenda(
+    ui.render_agenda(
         console,
-        layout.AgendaRenderInput(
+        ui.AgendaRenderInput(
             args=args,
             nodes=nodes,
             now=local_now(),
-            render=layout.RenderContext(
+            render=ui.RenderContext(
                 color_enabled=color_enabled,
                 done_states=done_states,
                 todo_states=todo_states,
@@ -132,7 +132,7 @@ def register(app: typer.Typer) -> None:
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         help=interactive_help_command_text(
             "Show agenda for one day or a date range.",
-            layout.AGENDA_HELP_ENTRIES,
+            ui.AGENDA_HELP_ENTRIES,
         ),
     )
     def agenda(  # noqa: PLR0913
