@@ -144,3 +144,13 @@ class CommandApp(App[None]):
                 callback()
         else:
             callback()
+
+    def run_external_and_refresh(
+        self,
+        callback: Callable[[], None],
+        *,
+        refresh: Callable[[], None],
+    ) -> None:
+        """Suspend around one external action and refresh afterwards."""
+        self.suspend_for_external(callback)
+        refresh()

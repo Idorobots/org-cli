@@ -211,8 +211,7 @@ class TasksListApp(runtime.CommandApp):
         )
 
     def _run_external(self, callback: Callable[[], None]) -> None:
-        self.suspend_for_external(callback)
-        self._refresh_view()
+        self.run_external_and_refresh(callback, refresh=self._refresh_view)
 
     def action_move_up(self) -> None:
         """Move the selection one row upward."""

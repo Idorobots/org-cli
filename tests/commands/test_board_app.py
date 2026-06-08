@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, cast
 from textual.widgets import Input, Static
 
 from org import config as config_module
-from org.commands import editor as editor_command
 from org.commands.board import command as board_command
 from org.commands.board import events as board_events
 from org.commands.board.app import BoardApp, BoardViewport
@@ -170,10 +169,11 @@ def test_board_app_enter_edits_selected_task(monkeypatch: pytest.MonkeyPatch) ->
         nodes = node_from_org("* TODO Task\n")
         monkeypatch.setattr(
             board_events,
-            "edit_heading_subtree_in_external_editor",
-            lambda _heading: editor_command.DocumentEditResult(changed=False),
+            "edit_selected_task_in_external_editor",
+            lambda _session: None,
         )
         app = _make_app(_make_session(make_board_args([]), nodes))
+        app.session.status_message = "No changes."
 
         async with app.run_test() as pilot:
             await pilot.press("enter")

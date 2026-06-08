@@ -67,18 +67,6 @@ def _run_editor_at_line(filename: str, line: int) -> int:
     return 0
 
 
-def _confirm_temporary_file_edit(prompt: str) -> bool:
-    """Ask whether a temporary-file fallback edit should be opened."""
-    return typer.confirm(prompt, default=False)
-
-
-def _edit_via_temporary_file(document_text: str, prompt: str) -> str | None:
-    """Prompt for and run the temporary-file fallback editor flow."""
-    if not _confirm_temporary_file_edit(prompt):
-        return None
-    return edit_text_in_external_editor(document_text)
-
-
 def _read_document_text(path: Path, filename: str) -> str:
     """Read one document file from disk."""
     try:
@@ -97,24 +85,18 @@ def _write_document_text(path: Path, filename: str, document_text: str) -> None:
         raise typer.BadParameter(f"Permission denied for '{filename}'") from err
 
 
-def _edit_document_without_filename(heading: Heading) -> DocumentEditResult:
-    """Edit a document that does not have a backing filename."""
-    original_text = heading.document.render()
-    edited_text = _edit_via_temporary_file(
-        original_text,
-        "This task is not associated with a file. Edit a temporary copy instead?",
-    )
-    if edited_text is None or edited_text == original_text:
-        return DocumentEditResult(changed=False)
+def attempt_edit_heading_subtree_in_external_editor(
+    heading: Heading,
+) -> DocumentEditResult:
+    """Edit one file-backed task subtree in the configured external editor."""
+    filename = heading.document.filename or None
+    if filename is None:
+        raise typer.BadParameter(
+            "This task is not associated with a file and cannot be edited.",
+        )
 
-    return DocumentEditResult(changed=True)
-
-
-def _edit_document_with_filename(heading: Heading, filename: str) -> DocumentEditResult:
-    """Edit a document backed by a filename, preferring in-place file edits."""
     path = Path(filename)
     original_text = _read_document_text(path, filename)
-
     return_code = _run_editor_at_line(filename, 0 if heading.line is None else heading.line)
     if return_code == 0:
         edited_text = _read_document_text(path, filename)
@@ -123,23 +105,9 @@ def _edit_document_with_filename(heading: Heading, filename: str) -> DocumentEdi
         _load_document_from_text(edited_text, filename)
         return DocumentEditResult(changed=True)
 
-    fallback_text = _edit_via_temporary_file(
-        original_text,
-        "Opening the original file at the task line failed. Edit a temporary copy instead?",
-    )
-    if fallback_text is None:
-        raise typer.BadParameter("Editor failed to open")
-    if fallback_text == original_text:
-        return DocumentEditResult(changed=False)
-
-    _write_document_text(path, filename, fallback_text)
-    _load_document_from_text(fallback_text, filename)
-    return DocumentEditResult(changed=True)
+    raise typer.BadParameter("Editor failed to open")
 
 
 def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
     """Edit the original task document, preferring in-place file editing at task line."""
-    filename = heading.document.filename or None
-    if filename is None:
-        return _edit_document_without_filename(heading)
-    return _edit_document_with_filename(heading, filename)
+    return attempt_edit_heading_subtree_in_external_editor(heading)

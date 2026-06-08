@@ -261,8 +261,7 @@ class BoardApp(runtime.CommandApp):
         self.session.status_message = status_message
 
     def _run_external(self, callback: Callable[[], None]) -> None:
-        self.suspend_for_external(callback)
-        self._refresh_view()
+        self.run_external_and_refresh(callback, refresh=self._refresh_view)
 
     def _open_prompt(
         self,

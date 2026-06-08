@@ -7351,8 +7351,11 @@ Organize it the same as the other commands (most recentry modified: agenda, boar
 *** Avoid using =getattr= and =setattr= like the plague
 Refactor all places that currently use either of these functions so that the concrete type is known and concrete field is accessed.
 Introduce linter rules that make sure these function cannot be used.
-*** Avoid monkey patching in tests
-*** TODO Textual for app organization & input handling
+*** Avoid monkey patching in tests                                                           :Tests:
+*** DONE Textual for app organization & input handling
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-07 Sun 23:17]
+:END:
 Refine the plan in @plans/textual-migration.md to better reflect the current state of the codebase.
 Focus on just the TUI organization & input handling aspects, we'll handle widgets etc later.
 
@@ -7468,6 +7471,10 @@ This wrapper should be removed, prefer renaming functions and adjusting callsite
 *** Use Textual widgets for better TUI organization
 - Selection for prompts
 - Sparkline for freequency plots
+*** Use Textual header & footer widgets in the interactive commands
+*** Use Textual textarea for any org-mode syntax highlighting
+- Limit to just the interactive commands.
+- Potentially use it for code edits of the files?
 *** REWORKED Interactive loop refactor
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-05-26 Tue 21:27]
