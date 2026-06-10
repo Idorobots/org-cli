@@ -356,20 +356,9 @@ def _run_tasks_list_interactive(
     run_tasks_list_app(args, data)
 
 
-def _is_cli_option_present(argv: list[str], option: str) -> bool:
-    """Return True when a long option token is present in argv."""
-    return any(token == option or token.startswith(f"{option}=") for token in argv)
-
-
 def _is_interactive_tty() -> bool:
     """Return whether both stdin and stdout are attached to a TTY."""
     return sys.stdin.isatty() and sys.stdout.isatty()
-
-
-def _effective_noninteractive_mode(args: ListArgs) -> bool:
-    """Resolve whether tasks list should run in non-interactive mode."""
-    out_is_org = args.out.strip().lower() == OutputFormat.ORG
-    return args.noninteractive or args.details or not out_is_org or not _is_interactive_tty()
 
 
 def run_tasks_list(args: ListArgs) -> None:
@@ -391,11 +380,16 @@ def run_tasks_list(args: ListArgs) -> None:
         color_enabled=color_enabled,
     )
 
-    if not _effective_noninteractive_mode(args):
-        _run_tasks_list_interactive(args, session_data)
+    if args.noninteractive:
+        _run_tasks_list_static(console, args, session_data)
         return
 
-    _run_tasks_list_static(console, args, session_data)
+    if not _is_interactive_tty():
+        raise click.UsageError(
+            "org tasks list requires a TTY unless --details or --out is provided",
+        )
+
+    _run_tasks_list_interactive(args, session_data)
 
 
 def register(app: typer.Typer) -> None:
@@ -551,8 +545,8 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Number of results to skip before displaying",
         ),
-        details: bool = typer.Option(
-            False,
+        details: bool | None = typer.Option(
+            None,
             "--details",
             help="Show full org node details",
         ),
@@ -591,8 +585,8 @@ def register(app: typer.Typer) -> None:
             "--with-tags-as-category",
             help="Preprocess nodes to set category from first tag",
         ),
-        out: str = typer.Option(
-            OutputFormat.ORG,
+        out: str | None = typer.Option(
+            None,
             "--out",
             help="Output format: org, json, or any pandoc writer format",
         ),
@@ -609,6 +603,8 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """List tasks matching filters."""
+        details_switch_present = details is not None
+        out_switch_present = out is not None
         args = ListArgs(
             files=files,
             config=config,
@@ -633,7 +629,7 @@ def register(app: typer.Typer) -> None:
             color_flag=color_flag,
             width=width,
             max_results=max_results,
-            details=details,
+            details=False if details is None else details,
             offset=offset,
             order_by_level=order_by_level,
             order_by_file_order=order_by_file_order,
@@ -642,16 +638,12 @@ def register(app: typer.Typer) -> None:
             order_by_timestamp_asc=order_by_timestamp_asc,
             order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
-            out=out,
+            out=OutputFormat.ORG if out is None else out,
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
         config_module.apply_config_defaults(args)
-        details_switch_present = _is_cli_option_present(sys.argv[1:], "--details")
-        out_switch_present = _is_cli_option_present(sys.argv[1:], "--out")
-        args.noninteractive = (
-            details_switch_present or out_switch_present or not _is_interactive_tty()
-        )
+        args.noninteractive = details_switch_present or out_switch_present
         config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks list")
         config_module.log_command_arguments(args, "tasks list")
         run_tasks_list(args)

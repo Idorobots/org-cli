@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from dataclasses import replace
 
+import click
 import typer
 
 from org import config as config_module
@@ -37,8 +38,10 @@ def capture_task(args: TasksCaptureArgs) -> TasksCaptureResult:
 
     interactive_used = False
     resolved_args = args
+    interactive_terminal = _is_interactive_terminal()
+
     if args.template_name is None:
-        if not _is_interactive_terminal():
+        if not interactive_terminal:
             raise _missing_template_name_error()
         selected_name = run_template_selection_app(_template_names(templates))
         if selected_name is None:
@@ -57,7 +60,7 @@ def capture_task(args: TasksCaptureArgs) -> TasksCaptureResult:
 
     plan = prepare_capture_plan(resolved_args, resolved_args.template_name)
     if plan.unresolved_placeholders:
-        if not _is_interactive_terminal():
+        if not interactive_terminal:
             raise _missing_placeholder_error(plan.unresolved_placeholders)
         values = run_capture_form_app(plan)
         if values is None:
@@ -69,6 +72,11 @@ def capture_task(args: TasksCaptureArgs) -> TasksCaptureResult:
 
 def run_tasks_capture(args: TasksCaptureArgs) -> None:
     """Run tasks capture command using configured templates."""
+    if args.template_name is None and not _is_interactive_terminal():
+        raise click.UsageError(
+            "org tasks capture requires a TTY unless TEMPLATE_NAME and all values are provided",
+        )
+
     result = capture_task(args)
     if not result.interactive_used:
         typer.echo(result.heading.id or result.heading.title_text)

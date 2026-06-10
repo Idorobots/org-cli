@@ -6,11 +6,12 @@ import logging
 import sys
 from dataclasses import dataclass
 
+import click
 import typer
 
 from org import config as config_module
 from org.cli_common import load_and_process_data
-from org.commands.interactive_common import interactive_help_command_text, local_now
+from org.commands.interactive_common import interactive_help_command_text
 from org.tui import build_console, processing_status, setup_output
 
 from . import ui
@@ -85,6 +86,7 @@ def run_agenda(args: AgendaArgs) -> None:
         raise typer.BadParameter("--days must be at least 1")
 
     args.max_results = _resolve_tasks_limit(args.max_results)
+    ui.resolve_agenda_start_date(args.date)
 
     view_ctx = resolve_view_context(args)
 
@@ -95,30 +97,16 @@ def run_agenda(args: AgendaArgs) -> None:
         console.print("No results", markup=False)
         return
 
-    if sys.stdin.isatty() and sys.stdout.isatty():
-        run_agenda_app(
-            args,
-            nodes,
-            ui.RenderContext(
-                color_enabled=color_enabled,
-                done_states=done_states,
-                todo_states=todo_states,
-            ),
-            view_ctx,
-        )
-        return
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise click.UsageError("org agenda requires a TTY")
 
-    ui.render_agenda(
-        console,
-        ui.AgendaRenderInput(
-            args=args,
-            nodes=nodes,
-            now=local_now(),
-            render=ui.RenderContext(
-                color_enabled=color_enabled,
-                done_states=done_states,
-                todo_states=todo_states,
-            ),
+    run_agenda_app(
+        args,
+        nodes,
+        ui.RenderContext(
+            color_enabled=color_enabled,
+            done_states=done_states,
+            todo_states=todo_states,
         ),
         view_ctx,
     )

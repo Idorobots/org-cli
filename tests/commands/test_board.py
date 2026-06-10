@@ -15,11 +15,13 @@ from rich.console import Console
 from rich.text import Text
 
 from org import config as config_module
+from org.cli_common import load_and_process_data
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
 from org.commands.board import actions, ui
 from org.commands.board import command as board_command
 from org.commands.interactive_common import heading_locator
+from org.tui import setup_output
 from tests.conftest import node_from_org
 
 
@@ -131,6 +133,39 @@ def _pin_board_now(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def _render_board_output(args: board_command.BoardArgs) -> str:
+    """Render board output through shared UI helpers for rendering tests."""
+    color_enabled = setup_output(args)
+    args.max_results = board_command._resolve_tasks_limit(args.max_results)
+    console_output = StringIO()
+    console = Console(
+        file=console_output,
+        width=args.width or 120,
+        no_color=not color_enabled,
+        force_terminal=color_enabled,
+    )
+    nodes, discovered_todo_states, discovered_done_states = load_and_process_data(
+        args,
+    )
+    nodes = actions.filter_recent_completed_nodes(nodes, args.days)
+    todo_states, done_states = actions.resolved_states(
+        args,
+        discovered_todo_states,
+        discovered_done_states,
+    )
+    if not nodes:
+        return "No results\n"
+    columns = actions.build_selector_board_columns(nodes, actions.resolve_column_specs(args))
+    ui.render_static_flow_board(
+        console,
+        columns,
+        done_states=done_states,
+        todo_states=todo_states,
+        color_enabled=color_enabled,
+    )
+    return console_output.getvalue()
+
+
 def test_filter_recent_completed_nodes_uses_latest_timestamp_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -168,10 +203,7 @@ def test_filter_recent_completed_nodes_respects_days_override(
     ]
 
 
-def test_run_flow_board_renders_expected_columns(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_flow_board_renders_expected_columns(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board should render built-in selector fallback columns."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
@@ -195,8 +227,7 @@ def test_run_flow_board_renders_expected_columns(
             "150",
         ],
     )
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     assert "Backlog" in output
     assert "TODO" in output
@@ -204,7 +235,6 @@ def test_run_flow_board_renders_expected_columns(
 
 
 def test_run_flow_board_column_order_follows_document_todo_order(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -226,8 +256,7 @@ def test_run_flow_board_column_order_follows_document_todo_order(
         width=220,
     )
     monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "220"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     pos_not_started = output.find("Backlog")
     pos_todo = output.find("TODO")
@@ -241,7 +270,6 @@ def test_run_flow_board_column_order_follows_document_todo_order(
 
 
 def test_run_flow_board_preserves_order_in_column_when_priorities_equal(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Board should keep stable per-column order when priorities are equal."""
@@ -254,8 +282,7 @@ def test_run_flow_board_preserves_order_in_column_when_priorities_equal(
     )
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--order-by-file-order"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     first = output.find("Refactor codebase")
     second = output.find("Fix bug in parser")
@@ -641,7 +668,6 @@ def test_archive_selected_task_archives_selected_heading(
 
 
 def test_run_flow_board_does_not_hide_unknown_or_empty_states(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unknown and empty task states should still be visible on the board."""
@@ -649,24 +675,19 @@ def test_run_flow_board_does_not_hide_unknown_or_empty_states(
     args = make_board_args([fixture_path], width=120)
 
     monkeypatch.setattr(sys, "argv", ["org", "board"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     assert "Task without any state" in output
     assert "WAITING Custom todo state" in output
 
 
-def test_run_flow_board_no_results(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_flow_board_no_results(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board should print No results when filters remove all tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], filter_tags=["nomatch$"])
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--filter-tag", "nomatch$"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     assert output.strip() == "No results"
 
@@ -681,33 +702,25 @@ def test_run_flow_board_rejects_width_below_80(monkeypatch: pytest.MonkeyPatch) 
         board_command.run_flow_board(args)
 
 
-def test_run_flow_board_limit_applies_before_grouping(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_flow_board_limit_applies_before_grouping(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board should respect --limit when selecting processed tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], max_results=1)
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--limit", "1"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     assert "Refactor codebase" in output
     assert "Fix bug in parser" not in output
 
 
-def test_run_flow_board_offset_applies_before_grouping(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_flow_board_offset_applies_before_grouping(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board should respect --offset when selecting processed tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], max_results=1, offset=1, days=100000)
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--offset", "1", "--limit", "1"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     assert "Refactor codebase" not in output
     assert "Fix bug in parser" in output
@@ -763,17 +776,31 @@ def test_run_flow_board_uses_pager_when_render_exceeds_console_height(
         yield
 
     monkeypatch.setattr(console, "pager", _fake_pager)
-    monkeypatch.setattr("org.commands.board.command.build_console", lambda _color, _width: console)
 
     args = make_board_args([fixture_path], max_results=None)
-    monkeypatch.setattr(sys, "argv", ["org", "board"])
-    board_command.run_flow_board(args)
+    args.max_results = board_command._resolve_tasks_limit(args.max_results)
+    nodes, discovered_todo_states, discovered_done_states = load_and_process_data(
+        args,
+    )
+    nodes = actions.filter_recent_completed_nodes(nodes, args.days)
+    todo_states, done_states = actions.resolved_states(
+        args,
+        discovered_todo_states,
+        discovered_done_states,
+    )
+    columns = actions.build_selector_board_columns(nodes, actions.resolve_column_specs(args))
+    ui.render_static_flow_board(
+        console,
+        columns,
+        done_states=done_states,
+        todo_states=todo_states,
+        color_enabled=False,
+    )
 
     assert pager_called["value"]
 
 
 def test_run_flow_board_selector_uses_full_nodes_from_multiple_files(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -797,8 +824,7 @@ def test_run_flow_board_selector_uses_full_nodes_from_multiple_files(
 
     try:
         monkeypatch.setattr(sys, "argv", ["org", "board", "--view", "kanban", "--width", "160"])
-        board_command.run_flow_board(args)
-        output = capsys.readouterr().out
+        output = _render_board_output(args)
         assert "First file task" in output
         assert "Second file task" in output
     finally:
@@ -807,7 +833,6 @@ def test_run_flow_board_selector_uses_full_nodes_from_multiple_files(
 
 
 def test_run_flow_board_coalesce_completed_true_shows_completed_column(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fallback selector view should include DONE column for completed tasks."""
@@ -821,15 +846,13 @@ def test_run_flow_board_coalesce_completed_true_shows_completed_column(
     )
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "200"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     assert "DONE" in output
     assert "Completed task" in output
 
 
 def test_run_flow_board_coalesce_completed_true_prefixes_state_in_panel(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fallback DONE selector should include all completed state tasks."""
@@ -843,8 +866,7 @@ def test_run_flow_board_coalesce_completed_true_prefixes_state_in_panel(
     )
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "200"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     assert "Completed task" in output
     assert "Custom done state" in output
@@ -852,7 +874,6 @@ def test_run_flow_board_coalesce_completed_true_prefixes_state_in_panel(
 
 
 def test_run_flow_board_coalesce_completed_false_shows_individual_done_columns(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fallback selector view should not render legacy COMPLETED header."""
@@ -866,8 +887,7 @@ def test_run_flow_board_coalesce_completed_false_shows_individual_done_columns(
     )
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "200"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     assert "COMPLETED" not in output
     assert "DONE" in output
@@ -876,7 +896,6 @@ def test_run_flow_board_coalesce_completed_false_shows_individual_done_columns(
 
 
 def test_run_flow_board_coalesce_completed_false_done_columns_ordered_after_todo_columns(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fallback selector headers should stay in Backlog/TODO/DONE order."""
@@ -890,8 +909,7 @@ def test_run_flow_board_coalesce_completed_false_done_columns_ordered_after_todo
     )
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "200"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     pos_in_progress = output.find("TODO")
     pos_done = output.find("DONE")
@@ -902,7 +920,6 @@ def test_run_flow_board_coalesce_completed_false_done_columns_ordered_after_todo
 
 
 def test_run_flow_board_coalesce_completed_false_tasks_in_correct_columns(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fallback DONE selector should show all completed-state tasks."""
@@ -916,18 +933,14 @@ def test_run_flow_board_coalesce_completed_false_tasks_in_correct_columns(
     )
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "200"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     assert "Completed task" in output
     assert "Custom done state" in output
     assert "Another done state" in output
 
 
-def test_run_flow_board_uses_configured_view_columns(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_flow_board_uses_configured_view_columns(monkeypatch: pytest.MonkeyPatch) -> None:
     """Requested configured view should render configured columns."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args([fixture_path], view="kanban", width=150)
@@ -949,8 +962,7 @@ def test_run_flow_board_uses_configured_view_columns(
 
     try:
         monkeypatch.setattr(sys, "argv", ["org", "board", "--view", "kanban", "--width", "150"])
-        board_command.run_flow_board(args)
-        output = capsys.readouterr().out
+        output = _render_board_output(args)
         assert "Backlog" in output
         assert "Working" in output
     finally:
@@ -958,7 +970,7 @@ def test_run_flow_board_uses_configured_view_columns(
         config_module.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_missing_requested_view_raises() -> None:
+def test_run_flow_board_missing_requested_view_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """Missing requested view should return explicit BadParameter."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="missing")
@@ -974,6 +986,8 @@ def test_run_flow_board_missing_requested_view_raises() -> None:
         ],
     )
     try:
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
         with pytest.raises(typer.BadParameter, match="Requested board view not found"):
             board_command.run_flow_board(args)
     finally:
@@ -981,13 +995,17 @@ def test_run_flow_board_missing_requested_view_raises() -> None:
         config_module.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_requested_view_without_configured_views_raises() -> None:
+def test_run_flow_board_requested_view_without_configured_views_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Explicit --view should fail when no configured views exist."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="kanban")
     original_views = dict(config_module.CONFIG_BOARD_VIEWS)
     config_module.CONFIG_BOARD_VIEWS.clear()
     try:
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
         with pytest.raises(typer.BadParameter, match="no board views are configured"):
             board_command.run_flow_board(args)
     finally:
@@ -995,10 +1013,7 @@ def test_run_flow_board_requested_view_without_configured_views_raises() -> None
         config_module.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_uses_default_view_from_config(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_flow_board_uses_default_view_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """Config-defaulted view value should drive board view resolution."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args([fixture_path], view=None, width=150)
@@ -1021,15 +1036,16 @@ def test_run_flow_board_uses_default_view_from_config(
         specs = actions.resolve_column_specs(args)
         assert [spec.name for spec in specs] == ["Backlog", "Working"]
         monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "150"])
-        board_command.run_flow_board(args)
-        output = capsys.readouterr().out
+        output = _render_board_output(args)
         assert "Backlog" in output
     finally:
         config_module.CONFIG_BOARD_VIEWS.clear()
         config_module.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_invalid_filter_or_order_by_parse_error_has_context() -> None:
+def test_run_flow_board_invalid_filter_or_order_by_parse_error_has_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Filter/order-by parse failures should include view and column context."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="kanban")
@@ -1042,6 +1058,8 @@ def test_run_flow_board_invalid_filter_or_order_by_parse_error_has_context() -> 
         ],
     )
     try:
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
         with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
             board_command.run_flow_board(args)
     finally:
@@ -1071,6 +1089,8 @@ def test_run_flow_board_invalid_filter_or_order_by_runtime_error_has_context(
         "load_and_process_data",
         lambda _args: ([node_from_org("* TODO Task\n")[0]], ["TODO"], ["DONE"]),
     )
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     try:
         with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
             board_command.run_flow_board(args)
@@ -1079,7 +1099,9 @@ def test_run_flow_board_invalid_filter_or_order_by_runtime_error_has_context(
         config_module.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_invalid_order_by_parse_error_has_context() -> None:
+def test_run_flow_board_invalid_order_by_parse_error_has_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Invalid order-by parse should include view and column context."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="kanban")
@@ -1096,6 +1118,8 @@ def test_run_flow_board_invalid_order_by_parse_error_has_context() -> None:
         ],
     )
     try:
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
         with pytest.raises(
             typer.BadParameter,
             match=r"Invalid board filter/order-by \(view=kanban, column=Broken\)",
@@ -1213,7 +1237,6 @@ def test_build_task_panel_renders_rich_title_content() -> None:
 
 
 def test_run_flow_board_renders_rich_title_plain_output(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -1227,8 +1250,7 @@ def test_run_flow_board_renders_rich_title_plain_output(
 
     args = make_board_args([fixture_path], width=120)
     monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "120"])
-    board_command.run_flow_board(args)
-    output = capsys.readouterr().out
+    output = _render_board_output(args)
 
     assert "Bold" in output
     assert "Italic" in output

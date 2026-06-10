@@ -6932,6 +6932,19 @@ Perform steps in a loop while there are any tasks available for stepping.
 - =--log= - file to log the transitions into
 - =--workflow= to specify which configured workflow to use.
 
+*** Embed a rules-based engine into the workflow
+- Each workflow step is a rule.
+- Org files are the store.
+- Support unification in the query language (=x as $v= and =$v as x= and =$v as $u= and =x as y= should unify the variable/value with the other value/variable). Bindings should be available in the rule body.
+- Use a proper DSL for the rules:
+#+begin_example
+rule Init (.todo as $foo and $foo as null):
+  .id = .category + "-" + str([.document.all_headings[] | select(.id != null)] | length);
+  .todo = "TODO"
+#+end_example
+- Embed a Rete/datalog engine?
+- Alternatively, when the store changes, reload the file, compute a delta and rerun the rules on just the affected tasks.
+
 *** CANCELLED Flow refine command
 :LOGBOOK:
 - State "CANCELLED"  from              [2026-05-05 Tue 18:47] \\

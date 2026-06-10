@@ -135,7 +135,6 @@ def test_agenda_app_timer_refresh_updates_now_marker(monkeypatch: pytest.MonkeyP
         fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
         args = _make_args([fixture_path], date="2025-01-15")
         clock = {"value": datetime(2025, 1, 15, 10, 0)}
-        monkeypatch.setattr(agenda_command, "local_now", lambda: clock["value"])
         monkeypatch.setattr(actions, "local_now", lambda: clock["value"])
         monkeypatch.setattr(ui, "local_now", lambda: clock["value"])
         app = _make_app(args, list(org_parser.load(fixture_path)))

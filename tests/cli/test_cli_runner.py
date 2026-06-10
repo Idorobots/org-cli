@@ -208,7 +208,15 @@ def test_cli_runner_tasks_list_custom_filter_without_arg() -> None:
 
         result = runner.invoke(
             app,
-            ["tasks", "list", "--no-color", "--filter-has-todo", fixture_path],
+            [
+                "tasks",
+                "list",
+                "--no-color",
+                "--out",
+                "org",
+                "--filter-has-todo",
+                fixture_path,
+            ],
         )
 
         assert result.exit_code == 0
@@ -231,7 +239,16 @@ def test_cli_runner_tasks_list_custom_filter_with_arg() -> None:
 
         result = runner.invoke(
             app,
-            ["tasks", "list", "--no-color", "--filter-level-above", "0", fixture_path],
+            [
+                "tasks",
+                "list",
+                "--no-color",
+                "--out",
+                "org",
+                "--filter-level-above",
+                "0",
+                fixture_path,
+            ],
         )
 
         assert result.exit_code == 0
@@ -265,8 +282,8 @@ def test_cli_runner_tasks_list_custom_filter_required_arg_error() -> None:
         config.CONFIG_CUSTOM_FILTERS.update(original_filters)
 
 
-def test_cli_runner_board_renders_columns() -> None:
-    """CLI should render board columns for root board command."""
+def test_cli_runner_board_requires_tty() -> None:
+    """CLI should reject non-TTY board execution."""
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "custom_states.org").resolve())
 
@@ -285,10 +302,8 @@ def test_cli_runner_board_renders_columns() -> None:
         ],
     )
 
-    assert result.exit_code == 0
-    assert "Backlog" in result.stdout
-    assert "TODO" in result.stdout
-    assert "DONE" in result.stdout
+    assert result.exit_code != 0
+    assert "org board requires a TTY" in clean_combined_output(result)
 
 
 def test_cli_runner_flow_subcommand_is_not_registered() -> None:
@@ -301,8 +316,8 @@ def test_cli_runner_flow_subcommand_is_not_registered() -> None:
     assert "No such command 'flow'" in clean_combined_output(result)
 
 
-def test_cli_runner_agenda_renders_day_view() -> None:
-    """CLI should render agenda day sections and items."""
+def test_cli_runner_agenda_requires_tty() -> None:
+    """CLI should reject non-TTY agenda execution."""
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "agenda_sample.org").resolve())
 
@@ -317,12 +332,8 @@ def test_cli_runner_agenda_renders_day_view() -> None:
         ],
     )
 
-    assert result.exit_code == 0
-    plain_stdout = result.stdout.replace("…", "")
-    assert "CATEGORY" in plain_stdout
-    assert "TASK" in plain_stdout
-    assert "2025-01-15" in plain_stdout
-    assert "Timed agenda task" in plain_stdout
+    assert result.exit_code != 0
+    assert "org agenda requires a TTY" in clean_combined_output(result)
 
 
 def test_cli_runner_tasks_add_writes_heading(tmp_path: Path) -> None:

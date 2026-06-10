@@ -6,6 +6,7 @@ import logging
 import sys
 from dataclasses import dataclass
 
+import click
 import typer
 
 from org import config as config_module
@@ -82,6 +83,7 @@ def run_flow_board(args: BoardArgs) -> None:
     if args.days < 0:
         raise typer.BadParameter("--days must be non-negative")
     args.max_results = _resolve_tasks_limit(args.max_results)
+    actions.resolve_column_specs(args)
 
     with processing_status(console, color_enabled):
         nodes, discovered_todo_states, discovered_done_states = load_and_process_data(args)
@@ -96,18 +98,10 @@ def run_flow_board(args: BoardArgs) -> None:
         console.print("No results", markup=False)
         return
 
-    if sys.stdin.isatty() and sys.stdout.isatty():
-        run_board_app(args, nodes, todo_states, done_states, color_enabled)
-        return
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise click.UsageError("org board requires a TTY")
 
-    columns = actions.build_selector_board_columns(nodes, actions.resolve_column_specs(args))
-    ui.render_static_flow_board(
-        console,
-        columns,
-        done_states=done_states,
-        todo_states=todo_states,
-        color_enabled=color_enabled,
-    )
+    run_board_app(args, nodes, todo_states, done_states, color_enabled)
 
 
 def register(app: typer.Typer) -> None:

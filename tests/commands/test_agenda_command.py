@@ -5,20 +5,25 @@ from __future__ import annotations
 import os
 import sys
 from datetime import datetime, timedelta
+from io import StringIO
 from typing import TYPE_CHECKING, cast
 
 import org_parser
 import pytest
 import typer
 from org_parser.time import Timestamp
+from rich.console import Console
 
 from org import config as config_module
+from org.cli_common import load_and_process_data
+from org.commands import interactive_common
 from org.commands.agenda import actions, ui
 from org.commands.agenda import command as agenda_command
 from org.commands.agenda.views import (
     AgendaViewContext,
     _compile_view_section_specs,
     _fallback_agenda_view,
+    resolve_view_context,
 )
 from org.commands.interactive_common import (
     advance_timestamp_by_repeater,
@@ -27,6 +32,7 @@ from org.commands.interactive_common import (
     local_now,
 )
 from org.commands.tasks.common import duration_to_org_text, parse_clock_duration
+from org.tui import setup_output
 
 
 if TYPE_CHECKING:
@@ -116,16 +122,44 @@ def _make_session(
 def _pin_agenda_now(monkeypatch: pytest.MonkeyPatch) -> datetime:
     """Pin agenda command current time for deterministic date-sensitive tests."""
     pinned_now = datetime(2025, 1, 15, 12, 0)
-    monkeypatch.setattr(agenda_command, "local_now", lambda: pinned_now)
     monkeypatch.setattr(actions, "local_now", lambda: pinned_now)
     monkeypatch.setattr(ui, "local_now", lambda: pinned_now)
+    monkeypatch.setattr("org.commands.interactive_common.local_now", lambda: pinned_now)
     return pinned_now
 
 
-def test_run_agenda_renders_expected_sections(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def _render_agenda_output(args: agenda_command.AgendaArgs) -> str:
+    """Render agenda output through shared UI helpers for rendering tests."""
+    color_enabled = setup_output(args)
+    args.max_results = agenda_command._resolve_tasks_limit(args.max_results)
+    ui.resolve_agenda_start_date(args.date)
+    console_output = StringIO()
+    console = Console(
+        file=console_output,
+        width=args.width or 140,
+        height=1000,
+        no_color=not color_enabled,
+        force_terminal=color_enabled,
+    )
+    nodes, todo_states, done_states = load_and_process_data(args)
+    ui.render_agenda(
+        console,
+        ui.AgendaRenderInput(
+            args=args,
+            nodes=nodes,
+            now=interactive_common.local_now(),
+            render=ui.RenderContext(
+                color_enabled=color_enabled,
+                done_states=done_states,
+                todo_states=todo_states,
+            ),
+        ),
+        resolve_view_context(args),
+    )
+    return console_output.getvalue()
+
+
+def test_run_agenda_renders_expected_sections(monkeypatch: pytest.MonkeyPatch) -> None:
     """Agenda should render the current view-based agenda for the selected day."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
@@ -136,8 +170,7 @@ def test_run_agenda_renders_expected_sections(
         "argv",
         ["org", "agenda", "--date", "2025-01-15", fixture_path],
     )
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
     plain_output = output.replace("…", "")
 
     assert "2025-01-15" in plain_output
@@ -154,7 +187,6 @@ def test_run_agenda_renders_expected_sections(
 
 
 def test_run_agenda_no_completed_hides_completed_and_repeats(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Agenda should hide completed states and repeat completions with --no-completed."""
@@ -162,47 +194,37 @@ def test_run_agenda_no_completed_hides_completed_and_repeats(
     args = _make_args([fixture_path], date="2025-01-15", no_completed=True)
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15", "--no-completed"])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "Repeated completion on day" not in output
     assert "Completed one-off task" not in output
 
 
-def test_run_agenda_no_overdue_hides_overdue_sections(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_agenda_no_overdue_hides_overdue_sections(monkeypatch: pytest.MonkeyPatch) -> None:
     """Agenda should hide overdue sections and rows with --no-overdue."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15", no_overdue=True)
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15", "--no-overdue"])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "Overdue scheduled task" not in output
     assert "Overdue deadline task" not in output
 
 
-def test_run_agenda_no_upcoming_hides_upcoming_section(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_agenda_no_upcoming_hides_upcoming_section(monkeypatch: pytest.MonkeyPatch) -> None:
     """Agenda should hide upcoming deadline section with --no-upcoming."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15", no_upcoming=True)
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15", "--no-upcoming"])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "Upcoming deadlines (30d)" not in output
     assert "Upcoming deadline task" not in output
 
 
 def test_run_agenda_shows_future_repeated_scheduled_by_default(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -213,15 +235,13 @@ def test_run_agenda_shows_future_repeated_scheduled_by_default(
 
     args = _make_args([fixture_path], date="2025-01-17")
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-17", fixture_path])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "Repeat scheduled" in output
     assert "09:30" in output
 
 
 def test_run_agenda_shows_future_repeated_deadline_by_default(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -232,15 +252,13 @@ def test_run_agenda_shows_future_repeated_deadline_by_default(
 
     args = _make_args([fixture_path], date="2025-01-17")
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-17", fixture_path])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "Repeat deadline" in output
     assert "13:15" in output
 
 
 def test_run_agenda_no_future_repeats_hides_projected_repeats(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -255,40 +273,31 @@ def test_run_agenda_no_future_repeats_hides_projected_repeats(
         "argv",
         ["org", "agenda", "--date", "2025-01-16", "--no-future-repeats", fixture_path],
     )
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "Repeat scheduled" not in output
 
 
-def test_run_agenda_days_renders_multiple_day_headers(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_agenda_days_renders_multiple_day_headers(monkeypatch: pytest.MonkeyPatch) -> None:
     """Agenda should render one weekday/date header per day in the requested range."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15", days=2)
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15", "--days", "2"])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
     plain_output = output.replace("…", "")
 
     assert "Wednesday 2025-01-15" in plain_output
     assert "Thursday 2025-01-16" in plain_output
 
 
-def test_run_agenda_single_day_default_shows_day_header(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_agenda_single_day_default_shows_day_header(monkeypatch: pytest.MonkeyPatch) -> None:
     """Single-day agenda should render a weekday/date header row."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path])
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda"])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
     plain_output = output.replace("…", "")
     expected_day_header = local_now().strftime("%A %Y-%m-%d")
 
@@ -296,10 +305,7 @@ def test_run_agenda_single_day_default_shows_day_header(
     assert expected_day_header in plain_output
 
 
-def test_run_agenda_hides_repeat_prefix(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_agenda_hides_repeat_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
     """Agenda should render repeated tasks without the REPEAT prefix."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
@@ -309,14 +315,12 @@ def test_run_agenda_hides_repeat_prefix(
         "argv",
         ["org", "agenda", "--date", "2025-01-15", fixture_path],
     )
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "REPEAT " not in output
 
 
 def test_run_agenda_repeat_row_uses_repeat_after_state(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -334,15 +338,13 @@ def test_run_agenda_repeat_row_uses_repeat_after_state(
 
     args = _make_args([fixture_path], date="2025-01-15")
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15"])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "DONE Reopened repeat task" in output
     assert "TODO Reopened repeat task" not in output
 
 
 def test_run_agenda_excludes_completed_untimed_scheduled(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -362,15 +364,13 @@ def test_run_agenda_excludes_completed_untimed_scheduled(
         "argv",
         ["org", "agenda", "--date", "2025-01-15", "--no-completed", fixture_path],
     )
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "Active timed task" in output
     assert "Completed timed task" not in output
 
 
 def test_run_agenda_timed_deadline_and_scheduled_tasks_appear_in_time_order(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -390,8 +390,7 @@ def test_run_agenda_timed_deadline_and_scheduled_tasks_appear_in_time_order(
         "argv",
         ["org", "agenda", "--date", "2025-01-15", fixture_path],
     )
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "Due today timed" in output
     assert "Scheduled today timed" in output
@@ -399,7 +398,6 @@ def test_run_agenda_timed_deadline_and_scheduled_tasks_appear_in_time_order(
 
 
 def test_run_agenda_deadline_with_time_is_aligned_to_timetable(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -412,30 +410,24 @@ def test_run_agenda_deadline_with_time_is_aligned_to_timetable(
 
     args = _make_args([fixture_path], date="2025-01-15")
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15"])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "09:30" in output
     assert "Timed due" in output
 
 
-def test_run_agenda_untimed_scheduled_omits_all_day_label(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_run_agenda_untimed_scheduled_omits_all_day_label(monkeypatch: pytest.MonkeyPatch) -> None:
     """Untimed scheduled rows should not include an all-day marker."""
     fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
     args = _make_args([fixture_path], date="2025-01-15")
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15"])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "all day" not in output
 
 
 def test_run_agenda_default_view_shows_overdue_scheduled_and_deadline_tasks(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -453,15 +445,13 @@ def test_run_agenda_default_view_shows_overdue_scheduled_and_deadline_tasks(
 
     args = _make_args([fixture_path], date=today.isoformat())
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", today.isoformat()])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "overdue sched" in output
     assert "overdue deadline" in output
 
 
 def test_run_agenda_same_day_timed_tasks_are_ordered_by_time(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -479,14 +469,12 @@ def test_run_agenda_same_day_timed_tasks_are_ordered_by_time(
 
     args = _make_args([fixture_path], date=today.isoformat())
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", today.isoformat()])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert output.index("earlier task") < output.index("later task")
 
 
 def test_run_agenda_plain_view_rows_show_relative_day_labels(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -522,8 +510,7 @@ def test_run_agenda_plain_view_rows_show_relative_day_labels(
         "argv",
         ["org", "agenda", "--date", "2025-01-15", "--view", "plain", fixture_path],
     )
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "2 days ago" in output
     assert "today" in output
@@ -570,7 +557,6 @@ def test_build_view_day_model_plain_rows_choose_matching_planning_source() -> No
 
 
 def test_run_agenda_timeline_view_appends_selected_untimed_tasks(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -604,8 +590,7 @@ def test_run_agenda_timeline_view_appends_selected_untimed_tasks(
         "argv",
         ["org", "agenda", "--date", "2025-01-15", "--view", "timeline", fixture_path],
     )
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "09:30" in output
     assert "Timed task" in output
@@ -658,7 +643,6 @@ def test_build_view_day_model_timeline_rows_append_untimed_with_deadline_precede
 
 
 def test_run_agenda_omits_inactive_planning_timestamps(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -681,8 +665,7 @@ def test_run_agenda_omits_inactive_planning_timestamps(
 
     args = _make_args([fixture_path], date=today.isoformat())
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", today.isoformat()])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out
+    output = _render_agenda_output(args)
 
     assert "inactive scheduled" not in output
     assert "inactive deadline" not in output
@@ -690,7 +673,6 @@ def test_run_agenda_omits_inactive_planning_timestamps(
 
 
 def test_run_agenda_now_marker_renders_after_same_time_tasks(
-    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -708,14 +690,15 @@ def test_run_agenda_now_marker_renders_after_same_time_tasks(
 
     args = _make_args([fixture_path], date="2025-01-15")
     local_tz = local_now().tzinfo
-    monkeypatch.setattr(
-        agenda_command,
-        "local_now",
-        lambda: datetime(2025, 1, 15, 17, 4, 0, tzinfo=local_tz),
-    )
+
+    def current_now() -> datetime:
+        return datetime(2025, 1, 15, 17, 4, 0, tzinfo=local_tz)
+
+    monkeypatch.setattr(actions, "local_now", current_now)
+    monkeypatch.setattr(ui, "local_now", current_now)
+    monkeypatch.setattr("org.commands.interactive_common.local_now", current_now)
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15"])
-    agenda_command.run_agenda(args)
-    output = capsys.readouterr().out.replace("…", "")
+    output = _render_agenda_output(args).replace("…", "")
 
     assert output.index("Same minute task") < output.index("------ NOW ------")
     assert output.index("------ NOW ------") < output.index("Later task")
@@ -897,7 +880,6 @@ def test_apply_state_change_uses_current_action_time(
     )
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
-    monkeypatch.setattr("org.commands.agenda.command.local_now", lambda: action_now)
     monkeypatch.setattr(actions, "_save_document_changes", lambda _document: None)
     monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
     monkeypatch.setattr(actions, "local_now", lambda: action_now)
@@ -931,7 +913,6 @@ def test_apply_clock_entry_uses_current_action_time(
     )
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
-    monkeypatch.setattr("org.commands.agenda.command.local_now", lambda: action_now)
     monkeypatch.setattr(actions, "_save_document_changes", lambda _document: None)
     monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
     monkeypatch.setattr(actions, "local_now", lambda: action_now)

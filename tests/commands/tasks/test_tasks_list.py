@@ -75,6 +75,7 @@ def make_list_args(files: list[str], **overrides: object) -> tasks_list.ListArgs
         out=OutputFormat.ORG,
         out_theme="github-dark",
         pandoc_args=None,
+        noninteractive=True,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -612,7 +613,7 @@ def test_run_tasks_list_uses_interactive_mode_when_tty_and_not_blocked(
 ) -> None:
     """TTY execution should enter interactive mode when no blocking switches are explicit."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
-    args = make_list_args([fixture_path])
+    args = make_list_args([fixture_path], noninteractive=False)
     called = {"interactive": False}
 
     def _fake_interactive(
@@ -639,6 +640,15 @@ def test_run_tasks_list_uses_interactive_mode_when_tty_and_not_blocked(
     tasks_list.run_tasks_list(args)
 
     assert called["interactive"]
+
+
+def test_run_tasks_list_requires_tty_without_explicit_static_mode() -> None:
+    """Default tasks list mode should fail without a TTY."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_list_args([fixture_path], noninteractive=False)
+
+    with pytest.raises(click.UsageError, match="requires a TTY unless --details or --out"):
+        tasks_list.run_tasks_list(args)
 
 
 def test_run_tasks_list_details_switch_blocks_interactive_mode(
