@@ -12,18 +12,15 @@ from rich import box
 from rich.table import Table
 from rich.text import Text
 
-from org.commands.interactive_common import (
-    InteractiveHelpEntry,
-    local_now,
-    shift_datetimes_by_unit,
-)
+from org.commands.interactive_common import local_now, shift_datetimes_by_unit
 from org.query_language import EvalContext, QueryRuntimeError, Stream
-from org.tui import (
+from org.tui.bits import (
     heading_title_to_text,
     task_priority_to_text,
     task_state_prefix_to_text,
     task_tags_to_text,
 )
+from org.tui.help import InteractiveHelpEntry
 from org.validation import parse_date_argument
 
 

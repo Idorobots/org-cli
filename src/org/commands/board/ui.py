@@ -14,9 +14,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from org.color import get_state_color
-from org.commands.interactive_common import InteractiveHelpEntry
-from org.tui import heading_title_to_text, task_priority_to_text, task_tags_to_text
+from org.tui.bits import heading_title_to_text, task_priority_to_text, task_tags_to_text
+from org.tui.color import get_state_color
+from org.tui.help import InteractiveHelpEntry
 
 
 if TYPE_CHECKING:

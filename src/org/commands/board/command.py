@@ -12,8 +12,8 @@ import typer
 import org.config.app
 import org.logging
 from org.cli_common import load_and_process_data
-from org.commands.interactive_common import interactive_help_command_text
-from org.tui import build_console, processing_status, setup_output
+from org.tui.bits import build_console, processing_status, setup_output
+from org.tui.help import interactive_help_command_text
 
 from . import actions, ui
 from .app import run_board_app

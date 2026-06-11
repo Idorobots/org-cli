@@ -40,7 +40,7 @@ from org.serde.format import (
     _prepare_output,
     print_prepared_output,
 )
-from org.tui import build_console, processing_status, setup_output
+from org.tui.bits import build_console, processing_status, setup_output
 
 
 if TYPE_CHECKING:

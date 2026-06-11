@@ -14,10 +14,9 @@ from org_parser.element import Keyword
 from org_parser.text import RichText
 from rich.syntax import Syntax
 
-from org.analyze import AnalysisResult, Group, Tag, TimeRange
+from org.analyze import AnalysisResult, Distribution, Group, Tag, TimeRange
 from org.commands.tasks import query as query_command
 from org.commands.tasks.list import command as tasks_list_command
-from org.histogram import Histogram
 from org.serde import format as output_format
 
 
@@ -260,13 +259,13 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
 
 
 def test_to_json_compatible_serializes_histogram_with_type_field() -> None:
-    """Histogram should serialize to a JSON object with a type field."""
-    histogram = Histogram(values={"DONE": 3, "TODO": 2})
+    """Distribution should serialize to a JSON object with a type field."""
+    histogram = Distribution(values={"DONE": 3, "TODO": 2})
 
     result = output_format._to_json_compatible(histogram)
 
     assert isinstance(result, dict)
-    assert result["type"] == "Histogram"
+    assert result["type"] == "Distribution"
     assert result["values"] == {"DONE": 3, "TODO": 2}
 
 
@@ -350,10 +349,10 @@ def test_to_json_compatible_serializes_analysis_result_with_type_field() -> None
     result = AnalysisResult(
         total_tasks=4,
         unique_tasks=4,
-        task_states=Histogram(values={"DONE": 2, "TODO": 2}),
-        task_categories=Histogram(values={}),
-        task_priorities=Histogram(values={"A": 1}),
-        task_days=Histogram(values={"Monday": 2}),
+        task_states=Distribution(values={"DONE": 2, "TODO": 2}),
+        task_categories=Distribution(values={}),
+        task_priorities=Distribution(values={"A": 1}),
+        task_days=Distribution(values={"Monday": 2}),
         timerange=tr,
         avg_tasks_per_day=0.2,
         max_single_day_count=2,
@@ -372,7 +371,7 @@ def test_to_json_compatible_serializes_analysis_result_with_type_field() -> None
 
     task_states = serialized["task_states"]
     assert isinstance(task_states, dict)
-    assert task_states["type"] == "Histogram"
+    assert task_states["type"] == "Distribution"
     assert task_states["values"] == {"DONE": 2, "TODO": 2}
 
     timerange = serialized["timerange"]

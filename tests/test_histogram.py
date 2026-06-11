@@ -1,40 +1,40 @@
-"""Tests for the Histogram class."""
+"""Tests for the Distribution class."""
 
-from org.histogram import Histogram
+from org.analyze import Distribution
 
 
 def test_histogram_initialization_empty() -> None:
-    """Test Histogram can be initialized empty."""
-    hist = Histogram()
+    """Test Distribution can be initialized empty."""
+    hist = Distribution()
 
     assert hist.values == {}
 
 
 def test_histogram_initialization_with_values() -> None:
-    """Test Histogram can be initialized with values."""
-    hist = Histogram(values={"TODO": 5, "DONE": 10})
+    """Test Distribution can be initialized with values."""
+    hist = Distribution(values={"TODO": 5, "DONE": 10})
 
     assert hist.values["TODO"] == 5
     assert hist.values["DONE"] == 10
 
 
 def test_histogram_repr() -> None:
-    """Test Histogram repr."""
-    hist = Histogram(values={"TODO": 5, "DONE": 10})
+    """Test Distribution repr."""
+    hist = Distribution(values={"TODO": 5, "DONE": 10})
 
-    assert repr(hist) == "Histogram(values={'TODO': 5, 'DONE': 10})"
+    assert repr(hist) == "Distribution(values={'TODO': 5, 'DONE': 10})"
 
 
 def test_histogram_empty_repr() -> None:
-    """Test Histogram repr when empty."""
-    hist = Histogram()
+    """Test Distribution repr when empty."""
+    hist = Distribution()
 
-    assert repr(hist) == "Histogram(values={})"
+    assert repr(hist) == "Distribution(values={})"
 
 
 def test_histogram_values_mutable() -> None:
-    """Test that histogram values can be modified."""
-    hist = Histogram(values={"TODO": 5})
+    """Test that distribution values can be modified."""
+    hist = Distribution(values={"TODO": 5})
 
     hist.update("TODO", 1)
     hist.values["DONE"] = 10
@@ -45,7 +45,7 @@ def test_histogram_values_mutable() -> None:
 
 def test_histogram_get_with_default() -> None:
     """Test getting values with default."""
-    hist = Histogram(values={"TODO": 5})
+    hist = Distribution(values={"TODO": 5})
 
     assert hist.values.get("TODO", 0) == 5
     assert hist.values.get("DONE", 0) == 0
@@ -53,7 +53,7 @@ def test_histogram_get_with_default() -> None:
 
 def test_histogram_update_existing_key() -> None:
     """Test update method with existing key."""
-    hist = Histogram(values={"TODO": 5})
+    hist = Distribution(values={"TODO": 5})
 
     hist.update("TODO", 3)
 
@@ -62,7 +62,7 @@ def test_histogram_update_existing_key() -> None:
 
 def test_histogram_update_new_key() -> None:
     """Test update method with new key."""
-    hist = Histogram(values={"TODO": 5})
+    hist = Distribution(values={"TODO": 5})
 
     hist.update("DONE", 10)
 
@@ -72,7 +72,7 @@ def test_histogram_update_new_key() -> None:
 
 def test_histogram_update_negative_amount() -> None:
     """Test update method with negative amount."""
-    hist = Histogram(values={"TODO": 10})
+    hist = Distribution(values={"TODO": 10})
 
     hist.update("TODO", -3)
 
@@ -81,7 +81,7 @@ def test_histogram_update_negative_amount() -> None:
 
 def test_histogram_update_zero_amount() -> None:
     """Test update method with zero amount."""
-    hist = Histogram(values={"TODO": 5})
+    hist = Distribution(values={"TODO": 5})
 
     hist.update("TODO", 0)
 

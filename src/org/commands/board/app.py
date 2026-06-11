@@ -12,7 +12,11 @@ from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
-from org.commands import runtime
+import org.tui.app
+import org.tui.footer
+import org.tui.help
+import org.tui.prompt
+import org.tui.selection
 from org.commands.tasks.common import (
     configured_capture_template_names,
 )
@@ -91,7 +95,7 @@ class BoardViewport(Horizontal):
         return self._column_widgets
 
 
-class BoardApp(runtime.CommandApp):
+class BoardApp(org.tui.app.CommandApp):
     """Textual app that backs interactive `board`."""
 
     CSS_PATH = "styles/app.tcss"
@@ -231,7 +235,7 @@ class BoardApp(runtime.CommandApp):
         footer_style = "dim" if self.session.color_enabled else ""
         self._footer_rule_widget().update(Rule(style=footer_style))
         self._footer_widget().update(
-            runtime.footer_renderable(
+            org.tui.footer.footer_renderable(
                 f"Rows {self._visible_end_row}/{total_rows} | Search: {search_text}",
                 _HELP_FOOTER_TEXT,
                 style=footer_style,
@@ -278,14 +282,18 @@ class BoardApp(runtime.CommandApp):
             self._refresh_view()
 
         self.push_screen(
-            runtime.PromptModalScreen(label, initial_value=initial_value, on_change=on_change),
+            org.tui.prompt.PromptModalScreen(
+                label,
+                initial_value=initial_value,
+                on_change=on_change,
+            ),
             callback=_complete,
         )
 
     def _open_selection(
         self,
         label: str,
-        options: list[runtime.SelectionOption],
+        options: list[org.tui.selection.SelectionOption],
         *,
         on_submit: Callable[[str], None],
         on_cancel: Callable[[], None],
@@ -297,7 +305,7 @@ class BoardApp(runtime.CommandApp):
                 on_submit(result)
             self._refresh_view()
 
-        self.push_screen(runtime.SelectionModalScreen(label, options), callback=_complete)
+        self.push_screen(org.tui.selection.SelectionModalScreen(label, options), callback=_complete)
 
     def action_move_up(self) -> None:
         """Move the selection one task upward in the selected column."""
@@ -356,7 +364,7 @@ class BoardApp(runtime.CommandApp):
     def action_show_help(self) -> None:
         """Open the key bindings help modal."""
         self.push_screen(
-            runtime.HelpModalScreen(
+            org.tui.help.HelpModalScreen(
                 ui.BOARD_HELP_ENTRIES,
                 color_enabled=self.session.color_enabled,
             ),
@@ -394,7 +402,7 @@ class BoardApp(runtime.CommandApp):
 
         self._open_selection(
             "Capture template",
-            [runtime.SelectionOption(value=name, label=name) for name in template_names],
+            [org.tui.selection.SelectionOption(value=name, label=name) for name in template_names],
             on_submit=lambda template_name: self._run_external(
                 lambda: actions.apply_capture_task(self.session, template_name),
             ),

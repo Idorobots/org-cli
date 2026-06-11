@@ -10,7 +10,9 @@ from textual.binding import Binding, BindingType
 from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Button, Static, TextArea
 
-from org.commands import runtime
+import org.tui.app
+import org.tui.help
+import org.tui.selection
 
 from .domain import (
     _CAPTURE_HELP_ENTRIES,
@@ -26,7 +28,7 @@ if TYPE_CHECKING:
     from textual.app import ComposeResult
 
 
-class _TemplateSelectionApp(runtime.CommandApp):
+class _TemplateSelectionApp(org.tui.app.CommandApp):
     """Small app for selecting a capture template interactively."""
 
     CSS_PATH = "styles/selection.tcss"
@@ -47,9 +49,12 @@ class _TemplateSelectionApp(runtime.CommandApp):
 
     def _prompt_template_selection(self) -> None:
         self.push_screen(
-            runtime.SelectionModalScreen(
+            org.tui.selection.SelectionModalScreen(
                 "Capture template",
-                [runtime.SelectionOption(value=name, label=name) for name in self._template_names],
+                [
+                    org.tui.selection.SelectionOption(value=name, label=name)
+                    for name in self._template_names
+                ],
             ),
             callback=self._complete_template_selection,
         )
@@ -60,7 +65,7 @@ class _TemplateSelectionApp(runtime.CommandApp):
         self.exit()
 
 
-class CaptureApp(runtime.CommandApp):
+class CaptureApp(org.tui.app.CommandApp):
     """Interactive multi-field capture form with preview."""
 
     CSS_PATH = "styles/app.tcss"
@@ -176,7 +181,7 @@ class CaptureApp(runtime.CommandApp):
 
     def action_show_help(self) -> None:
         """Open the key bindings help modal."""
-        self.push_screen(runtime.HelpModalScreen(_CAPTURE_HELP_ENTRIES, color_enabled=True))
+        self.push_screen(org.tui.help.HelpModalScreen(_CAPTURE_HELP_ENTRIES, color_enabled=True))
 
     def action_cancel_capture(self) -> None:
         """Cancel interactive capture without saving."""

@@ -21,7 +21,7 @@ from org.commands import editor as editor_command
 from org.commands.board import actions, ui
 from org.commands.board import command as board_command
 from org.commands.interactive_common import heading_locator
-from org.tui import setup_output
+from org.tui.bits import setup_output
 from tests.conftest import node_from_org
 
 

@@ -1,0 +1,18 @@
+HelpModalScreen {
+    align: center middle;
+    background: $surface 60%;
+}
+
+#help-dialog {
+    width: 80%;
+    max-width: 100;
+    height: auto;
+    max-height: 80%;
+    border: round $primary;
+    background: $panel;
+    padding: 1 2;
+}
+
+#help-content {
+    width: 1fr;
+}

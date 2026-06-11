@@ -8,12 +8,11 @@ import sys
 import pytest
 import typer
 
-from org.analyze import AnalysisResult, Group, Tag, TimeRange
+from org.analyze import AnalysisResult, Distribution, Group, Tag, TimeRange
 from org.commands.stats import all as stats_all_command
 from org.commands.stats import groups as stats_groups
 from org.commands.stats import summary as stats_summary_command
 from org.commands.stats import tags as stats_tags
-from org.histogram import Histogram
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
@@ -639,10 +638,10 @@ def test_format_tasks_summary_renders_histograms() -> None:
     result = AnalysisResult(
         total_tasks=2,
         unique_tasks=2,
-        task_states=Histogram(values={"DONE": 1, "TODO": 1}),
-        task_categories=Histogram(values={"null": 2}),
-        task_priorities=Histogram(values={"null": 2}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 1, "TODO": 1}),
+        task_categories=Distribution(values={"null": 2}),
+        task_priorities=Distribution(values={"null": 2}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -673,7 +672,7 @@ def test_format_tasks_summary_orders_task_states_by_group_alphabetically() -> No
     result = AnalysisResult(
         total_tasks=6,
         unique_tasks=6,
-        task_states=Histogram(
+        task_states=Distribution(
             values={
                 "ZDONE": 1,
                 "ADONE": 1,
@@ -683,9 +682,9 @@ def test_format_tasks_summary_orders_task_states_by_group_alphabetically() -> No
                 "AAA": 1,
             },
         ),
-        task_categories=Histogram(values={"null": 6}),
-        task_priorities=Histogram(values={"null": 6}),
-        task_days=Histogram(values={}),
+        task_categories=Distribution(values={"null": 6}),
+        task_priorities=Distribution(values={"null": 6}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -720,10 +719,10 @@ def test_format_tasks_summary_omits_none_state_when_absent() -> None:
     result = AnalysisResult(
         total_tasks=2,
         unique_tasks=2,
-        task_states=Histogram(values={"DONE": 2}),
-        task_categories=Histogram(values={"null": 2}),
-        task_priorities=Histogram(values={"null": 2}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 2}),
+        task_categories=Distribution(values={"null": 2}),
+        task_priorities=Distribution(values={"null": 2}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -756,10 +755,10 @@ def test_format_tasks_summary_keeps_none_state_when_present() -> None:
     result = AnalysisResult(
         total_tasks=2,
         unique_tasks=2,
-        task_states=Histogram(values={"DONE": 1, "null": 1}),
-        task_categories=Histogram(values={"null": 2}),
-        task_priorities=Histogram(values={"null": 2}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 1, "null": 1}),
+        task_categories=Distribution(values={"null": 2}),
+        task_priorities=Distribution(values={"null": 2}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,

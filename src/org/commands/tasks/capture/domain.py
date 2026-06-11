@@ -14,7 +14,6 @@ from org_parser.document import Document, Heading
 from rich.syntax import Syntax
 
 import org.config.app
-from org.commands.interactive_common import InteractiveHelpEntry
 from org.commands.tasks.common import load_document, resolve_parent_heading, save_document
 from org.query_language import (
     EvalContext,
@@ -24,6 +23,7 @@ from org.query_language import (
     compile_query_text,
 )
 from org.serde.format import DEFAULT_OUTPUT_THEME
+from org.tui.help import InteractiveHelpEntry
 
 
 if TYPE_CHECKING:

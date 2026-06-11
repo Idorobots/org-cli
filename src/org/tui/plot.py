@@ -2,8 +2,24 @@
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import TYPE_CHECKING
 
-from org.color import bright_blue, dim_white, magenta
+from org.tui.color import bright_blue, dim_white, magenta
+
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from org.analyze import TimeRange
+
+
+@dataclass(frozen=True)
+class TimelineFormatConfig:
+    """Configuration for rendering timeline charts."""
+
+    color_enabled: bool
+    indent: str
+    plot_width: int
 
 
 @dataclass(frozen=True)
@@ -14,17 +30,45 @@ class TimelineRenderConfig:
     color_enabled: bool = False
 
 
+def select_earliest_date(
+    date_from: datetime | None,
+    global_timerange: TimeRange,
+    local_timerange: TimeRange,
+) -> date | None:
+    """Select earliest date using priority: user filter > global > local."""
+    if date_from:
+        return date_from.date()
+    if global_timerange.earliest:
+        return global_timerange.earliest.date()
+    if local_timerange.earliest:
+        return local_timerange.earliest.date()
+    return None
+
+
+def select_latest_date(
+    date_until: datetime | None,
+    global_timerange: TimeRange,
+    local_timerange: TimeRange,
+) -> date | None:
+    """Select latest date using priority: user filter > global > local."""
+    if date_until:
+        return date_until.date()
+    if global_timerange.latest:
+        return global_timerange.latest.date()
+    if local_timerange.latest:
+        return local_timerange.latest.date()
+    if local_timerange.earliest:
+        return local_timerange.earliest.date()
+    return None
+
+
+def resolve_timeline_plot_width(config: TimelineFormatConfig) -> int:
+    """Resolve visual timeline plot width from config."""
+    return max(3, config.plot_width)
+
+
 def expand_timeline(timeline: dict[date, int], earliest: date, latest: date) -> dict[date, int]:
-    """Fill in missing dates with 0 activity to create a complete timeline.
-
-    Args:
-        timeline: Sparse timeline with only days that have activity
-        earliest: First date in the range
-        latest: Last date in the range
-
-    Returns:
-        Complete timeline with all dates from earliest to latest, missing dates set to 0
-    """
+    """Fill in missing dates with 0 activity to create a complete timeline."""
     expanded: dict[date, int] = {}
     current = earliest
 
@@ -36,15 +80,7 @@ def expand_timeline(timeline: dict[date, int], earliest: date, latest: date) -> 
 
 
 def bucket_timeline(timeline: dict[date, int], num_buckets: int) -> list[int]:
-    """Group timeline into N equal-sized time buckets and sum activity per bucket.
-
-    Args:
-        timeline: Complete timeline dict mapping dates to activity counts
-        num_buckets: Number of buckets to create
-
-    Returns:
-        List of bucket sums (length = num_buckets)
-    """
+    """Group timeline into N equal-sized time buckets and sum activity per bucket."""
     if not timeline:
         return [0] * num_buckets
 
@@ -66,15 +102,7 @@ def bucket_timeline(timeline: dict[date, int], num_buckets: int) -> list[int]:
 
 
 def _map_value_to_bar(value: int, max_value: int) -> str:
-    """Map a value to appropriate unicode bar character based on percentage.
-
-    Args:
-        value: Value to map
-        max_value: Maximum value for percentage calculation
-
-    Returns:
-        Unicode bar character representing the percentage
-    """
+    """Map a value to appropriate unicode bar character based on percentage."""
     if max_value == 0 or value == 0:
         return " "
 
@@ -101,17 +129,7 @@ def render_timeline_chart(
     latest: date,
     config: TimelineRenderConfig,
 ) -> tuple[str, str, str]:
-    """Create ASCII bar chart from timeline data.
-
-    Args:
-        timeline: Timeline dict mapping dates to activity counts
-        earliest: First date in the range
-        latest: Last date in the range
-        config: Timeline chart rendering configuration
-
-    Returns:
-        Tuple of (date_line, chart_line, underline)
-    """
+    """Create ASCII bar chart from timeline data."""
     expanded = expand_timeline(timeline, earliest, latest)
     num_buckets = max(1, config.plot_width - 2)
     buckets = bucket_timeline(expanded, num_buckets)
@@ -153,3 +171,26 @@ def render_timeline_chart(
     underline = dim_white("‾" * chart_width, config.color_enabled)
 
     return (date_line, chart_line, underline)
+
+
+def format_timeline_lines(
+    timeline: dict[date, int],
+    earliest_date: date,
+    latest_date: date,
+    config: TimelineFormatConfig,
+) -> list[str]:
+    """Render timeline chart lines and apply configured indentation."""
+    plot_width = resolve_timeline_plot_width(config)
+    date_line, chart_line, underline = render_timeline_chart(
+        timeline,
+        earliest_date,
+        latest_date,
+        TimelineRenderConfig(
+            plot_width=plot_width,
+            color_enabled=config.color_enabled,
+        ),
+    )
+    return [
+        f"{config.indent}{line}" if config.indent and line else line
+        for line in [date_line, chart_line, underline]
+    ]

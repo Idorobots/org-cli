@@ -32,7 +32,7 @@ from org.commands.interactive_common import (
     local_now,
 )
 from org.commands.tasks.common import duration_to_org_text, parse_clock_duration
-from org.tui import setup_output
+from org.tui.bits import setup_output
 
 
 if TYPE_CHECKING:

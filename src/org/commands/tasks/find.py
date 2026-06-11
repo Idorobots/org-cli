@@ -30,7 +30,7 @@ from org.serde.format import (
     OutputFormatError,
     print_prepared_output,
 )
-from org.tui import build_console, processing_status, setup_output
+from org.tui.bits import build_console, processing_status, setup_output
 
 
 @dataclass

@@ -10,7 +10,7 @@ import typer
 
 import org.config.app
 import org.logging
-from org.commands.interactive_common import interactive_help_command_text
+from org.tui.help import interactive_help_command_text
 
 from .app import run_capture_form_app, run_template_selection_app
 from .domain import (

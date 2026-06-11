@@ -24,11 +24,10 @@ from org.cli_common import (
     resolve_mapping,
 )
 from org.commands.stats.summary import SummaryDisplayConfig, format_tasks_summary
-from org.tui import (
+from org.tui.bits import (
     GroupBlockConfig,
     TagBlockConfig,
     TaskLineConfig,
-    TimelineFormatConfig,
     build_console,
     format_group_block,
     format_tag_block,
@@ -37,6 +36,7 @@ from org.tui import (
     processing_status,
     setup_output,
 )
+from org.tui.plot import TimelineFormatConfig
 from org.validation import validate_stats_arguments
 
 

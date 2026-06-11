@@ -11,14 +11,18 @@ from textual.binding import Binding, BindingType
 from textual.containers import Vertical
 from textual.widgets import Static
 
-from org.commands import runtime
+import org.tui.app
+import org.tui.footer
+import org.tui.help
+import org.tui.prompt
+import org.tui.selection
 from org.commands.tasks.common import (
     PlanningTimestampField,
     configured_capture_template_names,
     planning_prompt_label,
     tags_prompt_label,
 )
-from org.tui import TaskLineConfig, format_task_line
+from org.tui.bits import TaskLineConfig, format_task_line
 
 from . import actions
 from .actions import TASKS_LIST_HELP_ENTRIES, create_tasks_list_session
@@ -39,7 +43,7 @@ _HIGHLIGHT_ROW_STYLE = "on grey23"
 _HELP_FOOTER_TEXT = "Type ? for help"
 
 
-class TasksListApp(runtime.CommandApp):
+class TasksListApp(org.tui.app.CommandApp):
     """Textual app that backs interactive `tasks list`."""
 
     CSS_PATH = "styles/app.tcss"
@@ -163,7 +167,7 @@ class TasksListApp(runtime.CommandApp):
         total_rows = len(self.session.visible_nodes)
         search_text = self.session.search_text or "-"
         footer_style = "dim" if self.session.color_enabled else ""
-        return runtime.footer_renderable(
+        return org.tui.footer.footer_renderable(
             f"Rows {selected_row}/{total_rows} | Search: {search_text}",
             _HELP_FOOTER_TEXT,
             style=footer_style,
@@ -202,7 +206,11 @@ class TasksListApp(runtime.CommandApp):
             self._refresh_view()
 
         self.push_screen(
-            runtime.PromptModalScreen(label, initial_value=initial_value, on_change=on_change),
+            org.tui.prompt.PromptModalScreen(
+                label,
+                initial_value=initial_value,
+                on_change=on_change,
+            ),
             callback=_complete,
         )
 
@@ -212,7 +220,7 @@ class TasksListApp(runtime.CommandApp):
     def _open_selection(
         self,
         label: str,
-        options: list[runtime.SelectionOption],
+        options: list[org.tui.selection.SelectionOption],
         *,
         on_submit: Callable[[str], None],
         on_cancel: Callable[[], None],
@@ -224,7 +232,7 @@ class TasksListApp(runtime.CommandApp):
                 on_submit(result)
             self._refresh_view()
 
-        self.push_screen(runtime.SelectionModalScreen(label, options), callback=_complete)
+        self.push_screen(org.tui.selection.SelectionModalScreen(label, options), callback=_complete)
 
     def action_move_up(self) -> None:
         """Move the selection one row upward."""
@@ -267,7 +275,7 @@ class TasksListApp(runtime.CommandApp):
     def action_show_help(self) -> None:
         """Open the key bindings help modal."""
         self.push_screen(
-            runtime.HelpModalScreen(
+            org.tui.help.HelpModalScreen(
                 TASKS_LIST_HELP_ENTRIES,
                 color_enabled=self.session.color_enabled,
             ),
@@ -303,7 +311,7 @@ class TasksListApp(runtime.CommandApp):
 
         self._open_selection(
             "Capture template",
-            [runtime.SelectionOption(value=name, label=name) for name in template_names],
+            [org.tui.selection.SelectionOption(value=name, label=name) for name in template_names],
             on_submit=lambda template_name: self._run_external(
                 lambda: actions.apply_capture_task(self.session, template_name),
             ),
@@ -321,7 +329,7 @@ class TasksListApp(runtime.CommandApp):
 
         self._open_selection(
             "TODO state",
-            [runtime.SelectionOption(value=state, label=state) for state in states],
+            [org.tui.selection.SelectionOption(value=state, label=state) for state in states],
             on_submit=lambda selected_state: actions.apply_state_change_with_value(
                 self.session,
                 selected_state,

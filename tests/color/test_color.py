@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from org import color
+from org.tui import color
 
 
 if TYPE_CHECKING:

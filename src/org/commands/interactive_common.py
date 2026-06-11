@@ -9,24 +9,10 @@ from typing import TYPE_CHECKING
 
 from org_parser.element import Repeat
 from org_parser.time import Timestamp
-from rich.markup import escape
 
 
 if TYPE_CHECKING:
     from org_parser.document import Heading
-
-
-INTERACTIVE_HELP_CLI_NOTE = (
-    "In interactive mode, press ? to open key bindings help (press any key to close)."
-)
-
-
-@dataclass(frozen=True)
-class InteractiveHelpEntry:
-    """One key binding entry for interactive help rendering."""
-
-    key: str
-    description: str
 
 
 @dataclass(frozen=True)
@@ -36,34 +22,6 @@ class HeadingLocator:
     filename: str
     heading_id: str | None
     title: str
-
-
-@dataclass
-class FooterPromptState:
-    """Simple prompt label/value state shared by Textual prompt configs."""
-
-    label: str
-    value: str = ""
-    cursor_position: int = 0
-    error_message: str = ""
-
-
-def render_interactive_help_panel_text(entries: list[InteractiveHelpEntry]) -> str:
-    """Render key bindings as plain help text lines."""
-    key_width = max(12, max((len(entry.key) for entry in entries), default=0) + 1)
-    lines = ["[white not dim]Key bindings:[/]"]
-    for entry in entries:
-        key_text = escape(f"{entry.key:<{key_width}}")
-        description_text = escape(entry.description)
-        lines.append(f"  [bold white not dim]{key_text}[/][white not dim]{description_text}[/]")
-    return "\n".join(lines)
-
-
-def interactive_help_command_text(base_text: str, entries: list[InteractiveHelpEntry]) -> str:
-    """Append the shared interactive-help note and key-bindings panel to help text."""
-    normalized = " ".join(base_text.split())
-    panel_text = render_interactive_help_panel_text(entries)
-    return f"{normalized} {INTERACTIVE_HELP_CLI_NOTE}\n\n{panel_text}"
 
 
 def local_now() -> datetime:

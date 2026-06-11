@@ -28,9 +28,8 @@ from org.cli_common import (
     resolve_group_values,
     resolve_mapping,
 )
-from org.tui import (
+from org.tui.bits import (
     GroupBlockConfig,
-    TimelineFormatConfig,
     apply_indent,
     build_console,
     format_group_block,
@@ -39,6 +38,7 @@ from org.tui import (
     processing_status,
     setup_output,
 )
+from org.tui.plot import TimelineFormatConfig
 from org.validation import validate_stats_arguments
 
 

@@ -1,55 +1,21 @@
-"""Histogram data structure and rendering functions."""
+"""Histogram rendering functions."""
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from rich.cells import cell_len
-from rich.text import Text
-
-from org.color import bright_blue, colorize, dim_white, get_state_color
-
-
-def visual_len(text: str) -> int:
-    """Get visual length of text (excluding Rich markup).
-
-    Args:
-        text: Text that may contain Rich markup or ANSI codes
-
-    Returns:
-        Visual length of the text
-    """
-    return cell_len(Text.from_markup(text).plain)
+from org.tui.bits import apply_indent, section_header_lines, visual_len
+from org.tui.color import bright_blue, colorize, dim_white, get_state_color
 
 
-@dataclass
-class Histogram:
-    """Represents a distribution of values.
-
-    Attributes:
-        values: Dictionary mapping categories to their counts
-    """
-
-    values: dict[str, int] = field(default_factory=dict)
-
-    def update(self, key: str, amount: int) -> None:
-        """Update the count for a given key by the specified amount.
-
-        Args:
-            key: The category to update
-            amount: The amount to add
-        """
-        self.values[key] = self.values.get(key, 0) + amount
+if TYPE_CHECKING:
+    from org.analyze import Distribution
 
 
 @dataclass
 class RenderConfig:
-    """Configuration for histogram rendering.
-
-    Attributes:
-        color_enabled: Whether to apply colors to the output
-        histogram_type: Type of histogram ("task_states" or "other")
-        done_states: List of done state keywords (for task_states coloring)
-        todo_states: List of todo state keywords (for task_states coloring)
-    """
+    """Configuration for histogram rendering."""
 
     color_enabled: bool = False
     histogram_type: str = "other"
@@ -64,6 +30,16 @@ class HistogramRenderConfig:
     plot_width: int
     category_order: list[str] | None
     style: RenderConfig = field(default_factory=RenderConfig)
+
+
+@dataclass(frozen=True)
+class HistogramSectionConfig:
+    """Configuration for rendering histogram sections."""
+
+    plot_width: int
+    order: list[str]
+    render_config: RenderConfig
+    indent: str
 
 
 def _resolve_render_config(
@@ -85,9 +61,9 @@ def _resolve_render_config(
     )
 
 
-def _resolve_categories(histogram: Histogram, category_order: list[str] | None) -> list[str]:
+def _resolve_categories(distribution: Distribution, category_order: list[str] | None) -> list[str]:
     """Resolve final category sequence for rendering."""
-    occurring_categories = set(histogram.values.keys())
+    occurring_categories = set(distribution.values.keys())
     if category_order is None:
         return sorted(occurring_categories)
 
@@ -105,32 +81,22 @@ def _resolve_categories(histogram: Histogram, category_order: list[str] | None) 
 
 
 def render_histogram(
-    histogram: Histogram,
+    distribution: Distribution,
     config: HistogramRenderConfig | int,
     category_order: list[str] | None = None,
     style: RenderConfig | None = None,
 ) -> list[str]:
-    """Render histogram as visual bar chart.
-
-    Args:
-        histogram: Histogram object to render
-        config: Histogram rendering configuration
-        category_order: Deprecated legacy argument
-        style: Deprecated legacy argument
-
-    Returns:
-        List of formatted strings, one per category
-    """
+    """Render histogram as visual bar chart."""
     render_config_input, legacy_total_blocks = _resolve_render_config(config, category_order, style)
 
     render_config = render_config_input.style
 
-    total_sum = sum(histogram.values.values())
-    categories = _resolve_categories(histogram, render_config_input.category_order)
+    total_sum = sum(distribution.values.values())
+    categories = _resolve_categories(distribution, render_config_input.category_order)
 
     lines = []
     for category in categories:
-        value = histogram.values.get(category, 0)
+        value = distribution.values.get(category, 0)
         display_name = category[:8] + "." if len(category) > 9 else category
         if render_config.histogram_type == "task_states":
             state_style = get_state_color(
@@ -172,3 +138,23 @@ def render_histogram(
         lines.append(line)
 
     return lines
+
+
+def format_histogram_section(
+    title: str,
+    distribution: Distribution,
+    config: HistogramSectionConfig,
+) -> list[str]:
+    """Render one histogram section as indented output lines."""
+    lines = section_header_lines(title, config.render_config.color_enabled)
+    histogram_plot_width = max(3, config.plot_width - 2)
+    histogram_lines = render_histogram(
+        distribution,
+        HistogramRenderConfig(
+            plot_width=histogram_plot_width,
+            category_order=config.order,
+            style=config.render_config,
+        ),
+    )
+    lines.extend([f"  {line}" for line in histogram_lines])
+    return apply_indent(lines, config.indent)

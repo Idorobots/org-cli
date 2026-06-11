@@ -10,8 +10,12 @@ from textual.binding import Binding, BindingType
 from textual.containers import Vertical
 from textual.widgets import Static
 
+import org.tui.app
+import org.tui.footer
+import org.tui.help
+import org.tui.prompt
+import org.tui.selection
 from org.cli_common import resolve_input_paths
-from org.commands import runtime
 from org.commands.tasks.common import (
     clock_duration_prompt_label,
     configured_capture_template_names,
@@ -81,7 +85,7 @@ class AgendaViewport(Vertical):
         return self._row_widgets
 
 
-class AgendaApp(runtime.CommandApp):
+class AgendaApp(org.tui.app.CommandApp):
     """Textual app that backs interactive `agenda`."""
 
     CSS_PATH = "styles/app.tcss"
@@ -199,7 +203,7 @@ class AgendaApp(runtime.CommandApp):
         self._header_rule_widget().update(Rule(style=footer_style))
         self._footer_rule_widget().update(Rule(style=footer_style))
         self._footer_widget().update(
-            runtime.footer_renderable(
+            org.tui.footer.footer_renderable(
                 f"Lines {end_line}/{total_rows} | Search: {search_text}",
                 _HELP_FOOTER_TEXT,
                 style=footer_style,
@@ -275,14 +279,18 @@ class AgendaApp(runtime.CommandApp):
             self._refresh_view()
 
         self.push_screen(
-            runtime.PromptModalScreen(label, initial_value=initial_value, on_change=on_change),
+            org.tui.prompt.PromptModalScreen(
+                label,
+                initial_value=initial_value,
+                on_change=on_change,
+            ),
             callback=_complete,
         )
 
     def _open_selection(
         self,
         label: str,
-        options: list[runtime.SelectionOption],
+        options: list[org.tui.selection.SelectionOption],
         *,
         on_submit: Callable[[str], None],
         on_cancel: Callable[[], None],
@@ -294,7 +302,7 @@ class AgendaApp(runtime.CommandApp):
                 on_submit(result)
             self._refresh_view()
 
-        self.push_screen(runtime.SelectionModalScreen(label, options), callback=_complete)
+        self.push_screen(org.tui.selection.SelectionModalScreen(label, options), callback=_complete)
 
     def action_move_up(self) -> None:
         """Move the selection one row upward."""
@@ -353,7 +361,7 @@ class AgendaApp(runtime.CommandApp):
     def action_show_help(self) -> None:
         """Open the key bindings help modal."""
         self.push_screen(
-            runtime.HelpModalScreen(
+            org.tui.help.HelpModalScreen(
                 ui.AGENDA_HELP_ENTRIES,
                 color_enabled=self.session.render.color_enabled,
             ),
@@ -392,7 +400,7 @@ class AgendaApp(runtime.CommandApp):
 
         self._open_selection(
             "Capture template",
-            [runtime.SelectionOption(value=name, label=name) for name in template_names],
+            [org.tui.selection.SelectionOption(value=name, label=name) for name in template_names],
             on_submit=lambda template_name: self._run_external(
                 lambda: actions.apply_capture_task(self.session, template_name),
             ),
@@ -410,7 +418,7 @@ class AgendaApp(runtime.CommandApp):
 
         self._open_selection(
             "TODO state",
-            [runtime.SelectionOption(value=state, label=state) for state in states],
+            [org.tui.selection.SelectionOption(value=state, label=state) for state in states],
             on_submit=lambda selected_state: actions.apply_state_change_with_value(
                 self.session,
                 selected_state,
@@ -428,7 +436,7 @@ class AgendaApp(runtime.CommandApp):
         self._open_selection(
             "Destination file",
             [
-                runtime.SelectionOption(value=path, label=path)
+                org.tui.selection.SelectionOption(value=path, label=path)
                 for path in resolve_input_paths(self.session.args.files)
             ],
             on_submit=lambda destination_path: actions.apply_refile_with_value(

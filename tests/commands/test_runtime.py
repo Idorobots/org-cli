@@ -9,14 +9,15 @@ from textual.binding import Binding, BindingType
 from textual.containers import Vertical
 from textual.widgets import OptionList, Static
 
-from org.commands import runtime
+import org.tui.app
+import org.tui.selection
 
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
 
 
-class _SelectionHarnessApp(runtime.CommandApp):
+class _SelectionHarnessApp(org.tui.app.CommandApp):
     """Minimal app for exercising the shared selection modal."""
 
     BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "quit_app", show=False)]
@@ -30,11 +31,11 @@ class _SelectionHarnessApp(runtime.CommandApp):
 
     def on_mount(self) -> None:
         self.push_screen(
-            runtime.SelectionModalScreen(
+            org.tui.selection.SelectionModalScreen(
                 "Choose value",
                 [
-                    runtime.SelectionOption(value="alpha", label="alpha"),
-                    runtime.SelectionOption(value="beta", label="beta"),
+                    org.tui.selection.SelectionOption(value="alpha", label="alpha"),
+                    org.tui.selection.SelectionOption(value="beta", label="beta"),
                 ],
             ),
             callback=self._store_result,

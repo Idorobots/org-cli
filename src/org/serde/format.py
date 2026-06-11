@@ -19,9 +19,8 @@ from org_parser.text import RichText
 from org_parser.time import Clock, Timestamp
 from rich.syntax import Syntax
 
-from org.analyze import AnalysisResult, Group, Tag, TimeRange
-from org.histogram import Histogram
-from org.tui import print_output
+from org.analyze import AnalysisResult, Distribution, Group, Tag, TimeRange
+from org.tui.bits import print_output
 
 
 if TYPE_CHECKING:
@@ -353,7 +352,7 @@ def _org_object_to_json_dict(value: object, seen: set[int]) -> dict[str, object]
 
 
 def _analysis_object_to_json_dict(
-    value: AnalysisResult | Tag | Group | TimeRange | Histogram,
+    value: AnalysisResult | Tag | Group | TimeRange | Distribution,
     seen: set[int],
 ) -> dict[str, object]:
     """Serialize analysis result dataclass into a JSON object with a type field."""
@@ -395,7 +394,7 @@ def _to_json_compatible(value: object, seen: set[int] | None = None) -> object: 
     elif isinstance(value, Timestamp | Clock | Repeat | Heading | Document | Element):
         seen.add(obj_id)
         result = _org_object_to_json_dict(value, seen)
-    elif isinstance(value, AnalysisResult | Tag | Group | TimeRange | Histogram):
+    elif isinstance(value, AnalysisResult | Tag | Group | TimeRange | Distribution):
         seen.add(obj_id)
         result = _analysis_object_to_json_dict(value, seen)
     elif isinstance(value, Mapping):

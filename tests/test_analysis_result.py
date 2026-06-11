@@ -1,7 +1,6 @@
 """Tests for the AnalysisResult dataclass."""
 
-from org.analyze import AnalysisResult, Tag, TimeRange
-from org.histogram import Histogram
+from org.analyze import AnalysisResult, Distribution, Tag, TimeRange
 
 
 def test_analysis_result_initialization() -> None:
@@ -17,11 +16,11 @@ def test_analysis_result_initialization() -> None:
 
     result = AnalysisResult(
         unique_tasks=0,
-        task_priorities=Histogram(values={}),
+        task_priorities=Distribution(values={}),
         total_tasks=10,
-        task_states=Histogram(values={"DONE": 5, "TODO": 5}),
-        task_categories=Histogram(values={}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 5, "TODO": 5}),
+        task_categories=Distribution(values={}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -47,11 +46,11 @@ def test_analysis_result_empty_initialization() -> None:
     """Test AnalysisResult with empty data."""
     result = AnalysisResult(
         unique_tasks=0,
-        task_priorities=Histogram(values={}),
+        task_priorities=Distribution(values={}),
         total_tasks=0,
-        task_states=Histogram(values={"DONE": 0, "TODO": 0}),
-        task_categories=Histogram(values={}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 0, "TODO": 0}),
+        task_categories=Distribution(values={}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -76,11 +75,11 @@ def test_analysis_result_attributes() -> None:
     """Test that AnalysisResult has all expected attributes."""
     result = AnalysisResult(
         unique_tasks=0,
-        task_priorities=Histogram(values={}),
+        task_priorities=Distribution(values={}),
         total_tasks=1,
-        task_states=Histogram(values={"DONE": 1, "TODO": 0}),
-        task_categories=Histogram(values={}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 1, "TODO": 0}),
+        task_categories=Distribution(values={}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -120,11 +119,11 @@ def test_analysis_result_repr() -> None:
 
     result = AnalysisResult(
         unique_tasks=0,
-        task_priorities=Histogram(values={}),
+        task_priorities=Distribution(values={}),
         total_tasks=2,
-        task_states=Histogram(values={"DONE": 1, "TODO": 1}),
-        task_categories=Histogram(values={}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 1, "TODO": 1}),
+        task_categories=Distribution(values={}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -152,11 +151,11 @@ def test_analysis_result_equality() -> None:
 
     result1 = AnalysisResult(
         unique_tasks=0,
-        task_priorities=Histogram(values={}),
+        task_priorities=Distribution(values={}),
         total_tasks=5,
-        task_states=Histogram(values={"DONE": 3, "TODO": 2}),
-        task_categories=Histogram(values={}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 3, "TODO": 2}),
+        task_categories=Distribution(values={}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -167,11 +166,11 @@ def test_analysis_result_equality() -> None:
 
     result2 = AnalysisResult(
         unique_tasks=0,
-        task_priorities=Histogram(values={}),
+        task_priorities=Distribution(values={}),
         total_tasks=5,
-        task_states=Histogram(values={"DONE": 3, "TODO": 2}),
-        task_categories=Histogram(values={}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 3, "TODO": 2}),
+        task_categories=Distribution(values={}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -182,11 +181,11 @@ def test_analysis_result_equality() -> None:
 
     result3 = AnalysisResult(
         unique_tasks=0,
-        task_priorities=Histogram(values={}),
+        task_priorities=Distribution(values={}),
         total_tasks=10,
-        task_states=Histogram(values={"DONE": 5, "TODO": 5}),
-        task_categories=Histogram(values={}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 5, "TODO": 5}),
+        task_categories=Distribution(values={}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -207,11 +206,11 @@ def test_analysis_result_mutable_fields() -> None:
 
     result = AnalysisResult(
         unique_tasks=0,
-        task_priorities=Histogram(values={}),
+        task_priorities=Distribution(values={}),
         total_tasks=0,
-        task_states=Histogram(values={"DONE": 0, "TODO": 0}),
-        task_categories=Histogram(values={}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 0, "TODO": 0}),
+        task_categories=Distribution(values={}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,
@@ -280,11 +279,11 @@ def test_analysis_result_dict_operations() -> None:
 
     result = AnalysisResult(
         unique_tasks=0,
-        task_priorities=Histogram(values={}),
+        task_priorities=Distribution(values={}),
         total_tasks=3,
-        task_states=Histogram(values={"DONE": 2, "TODO": 1}),
-        task_categories=Histogram(values={}),
-        task_days=Histogram(values={}),
+        task_states=Distribution(values={"DONE": 2, "TODO": 1}),
+        task_categories=Distribution(values={}),
+        task_days=Distribution(values={}),
         timerange=TimeRange(),
         avg_tasks_per_day=0.0,
         max_single_day_count=0,

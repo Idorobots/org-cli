@@ -22,8 +22,8 @@ from org.commands.search_common import filter_nodes_by_search
 from org.commands.tasks import capture as capture_command
 from org.commands.tasks.list import actions
 from org.commands.tasks.list import command as tasks_list
-from org.histogram import visual_len
 from org.serde.format import OutputFormat, OutputFormatError
+from org.tui.bits import visual_len
 from tests.conftest import node_from_org
 
 

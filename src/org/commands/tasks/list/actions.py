@@ -13,7 +13,6 @@ from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_common import (
     HeadingLocator,
-    InteractiveHelpEntry,
     advance_timestamp_by_repeater,
     append_repeat_transition,
     heading_locator,
@@ -31,6 +30,7 @@ from org.commands.tasks.common import (
     save_document,
     todo_states_for_heading,
 )
+from org.tui.help import InteractiveHelpEntry
 
 
 if TYPE_CHECKING:

@@ -17,7 +17,6 @@ from rich.prompt import Confirm
 import org.config.app
 import org.logging
 from org.cli_common import resolve_input_paths
-from org.color import should_use_color
 from org.commands.tasks.common import (
     iter_descendants,
     load_document,
@@ -33,6 +32,7 @@ from org.commands.tasks.common import (
     resolve_task_selector_query,
     save_document,
 )
+from org.tui.color import should_use_color
 
 
 if TYPE_CHECKING:

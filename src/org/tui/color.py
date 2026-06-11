@@ -51,54 +51,22 @@ def colorize(text: str, style: str, enabled: bool) -> str:
 
 
 def bright_white(text: str, enabled: bool) -> str:
-    """Apply bright white color to text.
-
-    Args:
-        text: Text to colorize
-        enabled: Whether coloring is enabled
-
-    Returns:
-        Colored text if enabled, original text otherwise
-    """
+    """Apply bright white color to text."""
     return colorize(text, "bold white", enabled)
 
 
 def dim_white(text: str, enabled: bool) -> str:
-    """Apply dim white color to text.
-
-    Args:
-        text: Text to colorize
-        enabled: Whether coloring is enabled
-
-    Returns:
-        Colored text if enabled, original text otherwise
-    """
+    """Apply dim white color to text."""
     return colorize(text, "dim white", enabled)
 
 
 def magenta(text: str, enabled: bool) -> str:
-    """Apply magenta color to text.
-
-    Args:
-        text: Text to colorize
-        enabled: Whether coloring is enabled
-
-    Returns:
-        Colored text if enabled, original text otherwise
-    """
+    """Apply magenta color to text."""
     return colorize(text, "magenta", enabled)
 
 
 def bright_blue(text: str, enabled: bool) -> str:
-    """Apply bright blue color to text.
-
-    Args:
-        text: Text to colorize
-        enabled: Whether coloring is enabled
-
-    Returns:
-        Colored text if enabled, original text otherwise
-    """
+    """Apply bright blue color to text."""
     return colorize(text, "bold blue", enabled)
 
 
@@ -108,17 +76,7 @@ def get_state_color(
     todo_states: list[str],
     enabled: bool,
 ) -> str:
-    """Get appropriate style for a task state.
-
-    Args:
-        state: Task state (e.g., "DONE", "TODO", "CANCELLED")
-        done_states: List of done state keywords
-        todo_states: List of todo state keywords
-        enabled: Whether coloring is enabled
-
-    Returns:
-        Rich style string for the state
-    """
+    """Get appropriate style for a task state."""
     if not enabled:
         return ""
 

@@ -32,7 +32,7 @@ from rich.style import Style
 from rich.text import Text
 
 from org.cli_common import get_top_tasks
-from org.color import (
+from org.tui.color import (
     bright_blue,
     bright_white,
     colorize,
@@ -42,73 +42,21 @@ from org.color import (
     magenta,
     should_use_color,
 )
-from org.histogram import (
-    Histogram,
-    HistogramRenderConfig,
-    RenderConfig,
-    render_histogram,
-    visual_len,
+from org.tui.plot import (
+    TimelineFormatConfig,
+    format_timeline_lines,
+    select_earliest_date,
+    select_latest_date,
 )
-from org.plot import TimelineRenderConfig, render_timeline_chart
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from datetime import date, datetime
+    from datetime import datetime
 
     from org_parser.document import Heading
 
     from org.analyze import Group, Tag, TimeRange
-
-
-def select_earliest_date(
-    date_from: datetime | None,
-    global_timerange: TimeRange,
-    local_timerange: TimeRange,
-) -> date | None:
-    """Select earliest date using priority: user filter > global > local.
-
-    Args:
-        date_from: User-provided filter date or None
-        global_timerange: Global timerange across all tasks
-        local_timerange: Local timerange for specific item
-
-    Returns:
-        Selected earliest date or None if no dates available
-    """
-    if date_from:
-        return date_from.date()
-    if global_timerange.earliest:
-        return global_timerange.earliest.date()
-    if local_timerange.earliest:
-        return local_timerange.earliest.date()
-    return None
-
-
-def select_latest_date(
-    date_until: datetime | None,
-    global_timerange: TimeRange,
-    local_timerange: TimeRange,
-) -> date | None:
-    """Select latest date using priority: user filter > global > local.
-
-    Args:
-        date_until: User-provided filter date or None
-        global_timerange: Global timerange across all tasks
-        local_timerange: Local timerange for specific item
-
-    Returns:
-        Selected latest date or None if no dates available
-    """
-    if date_until:
-        return date_until.date()
-    if global_timerange.latest:
-        return global_timerange.latest.date()
-    if local_timerange.latest:
-        return local_timerange.latest.date()
-    if local_timerange.earliest:
-        return local_timerange.earliest.date()
-    return None
 
 
 def lines_to_text(lines: list[str]) -> str:
@@ -165,20 +113,6 @@ def section_header_lines(title: str, color_enabled: bool) -> list[str]:
 
 
 @dataclass(frozen=True)
-class TimelineFormatConfig:
-    """Configuration for rendering timeline charts."""
-
-    color_enabled: bool
-    indent: str
-    plot_width: int
-
-
-def resolve_timeline_plot_width(config: TimelineFormatConfig) -> int:
-    """Resolve visual timeline plot width from config."""
-    return max(3, config.plot_width)
-
-
-@dataclass(frozen=True)
 class TagBlockConfig:
     """Configuration for rendering a tag block."""
 
@@ -202,16 +136,6 @@ class GroupBlockConfig:
     timeline: TimelineFormatConfig
     name_indent: str
     stats_indent: str
-
-
-@dataclass(frozen=True)
-class HistogramSectionConfig:
-    """Configuration for rendering histogram sections."""
-
-    plot_width: int
-    order: list[str]
-    render_config: RenderConfig
-    indent: str
 
 
 @dataclass(frozen=True)
@@ -252,6 +176,11 @@ def _truncate_filename(filename: str, width: int) -> str:
     """Truncate or pad filename to fixed-width column."""
     truncated = _truncate_to_visual_width(filename, width)
     return _pad_to_visual_width(truncated, width)
+
+
+def visual_len(text: str) -> int:
+    """Get visual length of text (excluding Rich markup)."""
+    return cell_len(Text.from_markup(text).plain)
 
 
 def _truncate_to_visual_width(text: str, max_width: int) -> str:
@@ -531,26 +460,6 @@ def format_task_line(
     return line
 
 
-def format_timeline_lines(
-    timeline: dict[date, int],
-    earliest_date: date,
-    latest_date: date,
-    config: TimelineFormatConfig,
-) -> list[str]:
-    """Render timeline chart lines and apply configured indentation."""
-    plot_width = resolve_timeline_plot_width(config)
-    date_line, chart_line, underline = render_timeline_chart(
-        timeline,
-        earliest_date,
-        latest_date,
-        TimelineRenderConfig(
-            plot_width=plot_width,
-            color_enabled=config.color_enabled,
-        ),
-    )
-    return apply_indent([date_line, chart_line, underline], config.indent)
-
-
 def format_tag_block(name: str, tag: Tag, config: TagBlockConfig) -> list[str]:
     """Render one tag block with timeline, stats, and relation lines."""
     lines: list[str] = []
@@ -725,23 +634,3 @@ def format_top_tasks_section(
     ]
 
     return lines_to_text(apply_indent(lines, config.indent))
-
-
-def format_histogram_section(
-    title: str,
-    histogram: Histogram,
-    config: HistogramSectionConfig,
-) -> list[str]:
-    """Render one histogram section as indented output lines."""
-    lines = section_header_lines(title, config.render_config.color_enabled)
-    histogram_plot_width = max(3, config.plot_width - 2)
-    histogram_lines = render_histogram(
-        histogram,
-        HistogramRenderConfig(
-            plot_width=histogram_plot_width,
-            category_order=config.order,
-            style=config.render_config,
-        ),
-    )
-    lines.extend([f"  {line}" for line in histogram_lines])
-    return apply_indent(lines, config.indent)

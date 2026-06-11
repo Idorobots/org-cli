@@ -7509,7 +7509,10 @@ Add a new package =org/config= that will contain:
 Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
 Make sure to update the commands to use this new config package.
 
-*** TODO Reorganize the TUI
+*** DONE Reorganize the TUI
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-11 Thu 19:32]
+:END:
 With Textual as the backbone of the interactive commands, it makes sense to expand the =org/tui.py= module to be a full package
 =org/tui= that contains:
 - =color= - current =org/color.py=

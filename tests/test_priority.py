@@ -5,8 +5,7 @@ from __future__ import annotations
 from rich.text import Text
 
 from org.analyze import compute_priority_histogram
-from org.histogram import visual_len
-from org.tui import TaskLineConfig, format_task_line
+from org.tui.bits import TaskLineConfig, format_task_line, visual_len
 from tests.conftest import node_from_org
 
 

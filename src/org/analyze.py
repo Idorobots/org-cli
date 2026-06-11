@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from org.histogram import Histogram
 from org.timestamp import extract_timestamp_any
 
 
@@ -115,6 +114,17 @@ class Relations:
 
 
 @dataclass
+class Distribution:
+    """Represents a distribution of values."""
+
+    values: dict[str, int] = field(default_factory=dict)
+
+    def update(self, key: str, amount: int) -> None:
+        """Update the count for a given key by the specified amount."""
+        self.values[key] = self.values.get(key, 0) + amount
+
+
+@dataclass
 class Tag:
     """Represents complete statistics for a single tag.
 
@@ -161,10 +171,11 @@ class AnalysisResult:
     Attributes:
         total_tasks: Total number of tasks analyzed (including repeats)
         unique_tasks: Number of unique nodes (without repeats)
-        task_states: Histogram of task states (TODO, DONE, DELEGATED, CANCELLED, SUSPENDED, other)
-        task_categories: Histogram of task categories by gamify_exp (simple, regular, hard)
-        task_priorities: Histogram of task priorities (A, B, C, etc.)
-        task_days: Histogram of tasks by day of week
+        task_states: Distribution of task states
+            (TODO, DONE, DELEGATED, CANCELLED, SUSPENDED, other)
+        task_categories: Distribution of task categories by gamify_exp (simple, regular, hard)
+        task_priorities: Distribution of task priorities (A, B, C, etc.)
+        task_days: Distribution of tasks by day of week
         timerange: Global time range for all tasks
         avg_tasks_per_day: Average tasks per day (total tasks / days spanned)
         max_single_day_count: Highest number of tasks on a single day
@@ -178,10 +189,10 @@ class AnalysisResult:
 
     total_tasks: int
     unique_tasks: int
-    task_states: Histogram
-    task_categories: Histogram
-    task_priorities: Histogram
-    task_days: Histogram
+    task_states: Distribution
+    task_categories: Distribution
+    task_priorities: Distribution
+    task_days: Distribution
     timerange: TimeRange
     avg_tasks_per_day: float
     max_single_day_count: int
@@ -315,7 +326,7 @@ def compute_avg_tasks_per_day(timerange: TimeRange, total_count: int) -> float:
     return total_count / days_spanned
 
 
-def compute_task_state_histogram(nodes: list[Heading]) -> Histogram:
+def compute_task_state_histogram(nodes: list[Heading]) -> Distribution:
     """Compute histogram of task states across all nodes.
 
     Counts states from repeated tasks if present, otherwise uses node.todo.
@@ -324,9 +335,9 @@ def compute_task_state_histogram(nodes: list[Heading]) -> Histogram:
         nodes: List of org-mode nodes
 
     Returns:
-        Histogram with counts for each task state
+        Distribution with counts for each task state
     """
-    task_states = Histogram(values={})
+    task_states = Distribution(values={})
 
     for node in nodes:
         if node.repeats:
@@ -340,7 +351,7 @@ def compute_task_state_histogram(nodes: list[Heading]) -> Histogram:
     return task_states
 
 
-def compute_day_of_week_histogram(nodes: list[Heading]) -> Histogram:
+def compute_day_of_week_histogram(nodes: list[Heading]) -> Distribution:
     """Compute histogram of task completion days across all tasks.
 
     Extracts timestamps from all tasks and counts by day of week.
@@ -350,9 +361,9 @@ def compute_day_of_week_histogram(nodes: list[Heading]) -> Histogram:
         nodes: List of org-mode nodes
 
     Returns:
-        Histogram with counts for each day of week (Monday-Sunday, unknown)
+        Distribution with counts for each day of week (Monday-Sunday, unknown)
     """
-    task_days = Histogram(values={})
+    task_days = Distribution(values={})
 
     for node in nodes:
         count = max(1, len(node.repeats))
@@ -368,9 +379,9 @@ def compute_day_of_week_histogram(nodes: list[Heading]) -> Histogram:
     return task_days
 
 
-def compute_category_histogram(nodes: list[Heading]) -> Histogram:
+def compute_category_histogram(nodes: list[Heading]) -> Distribution:
     """Compute histogram based on effective heading category values."""
-    task_categories = Histogram(values={})
+    task_categories = Distribution(values={})
 
     for node in nodes:
         count = max(1, len(node.repeats))
@@ -384,7 +395,7 @@ def compute_category_histogram(nodes: list[Heading]) -> Histogram:
     return task_categories
 
 
-def compute_priority_histogram(nodes: list[Heading]) -> Histogram:
+def compute_priority_histogram(nodes: list[Heading]) -> Distribution:
     """Compute histogram of task priorities across all nodes.
 
     Counts priorities from all tasks (including repeats).
@@ -394,9 +405,9 @@ def compute_priority_histogram(nodes: list[Heading]) -> Histogram:
         nodes: List of org-mode nodes
 
     Returns:
-        Histogram with counts for each priority value
+        Distribution with counts for each priority value
     """
-    task_priorities = Histogram(values={})
+    task_priorities = Distribution(values={})
 
     for node in nodes:
         count = max(1, len(node.repeats))

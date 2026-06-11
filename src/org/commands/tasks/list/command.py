@@ -14,7 +14,6 @@ from rich.syntax import Syntax
 import org.config.app
 import org.logging
 from org.cli_common import load_and_process_data
-from org.commands.interactive_common import interactive_help_command_text
 from org.serde.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
@@ -29,7 +28,7 @@ from org.serde.format import (
     _prepare_output,
     print_prepared_output,
 )
-from org.tui import (
+from org.tui.bits import (
     TaskLineConfig,
     build_console,
     format_task_line,
@@ -37,6 +36,7 @@ from org.tui import (
     processing_status,
     setup_output,
 )
+from org.tui.help import interactive_help_command_text
 
 from . import actions
 from .app import run_tasks_list_app
