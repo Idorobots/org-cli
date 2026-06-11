@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, cast
 
 import typer
 
-from org import config as config_module
+import org.config.app
 from org.cli_common import load_and_process_data
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
@@ -148,22 +148,22 @@ def _compile_column_filter_query(
     return compile_query_text(f"{base_query} | sort_by({order_by})")
 
 
-def _fallback_view_config() -> config_module.BoardViewConfig:
+def _fallback_view_config() -> org.config.app.BoardViewConfig:
     """Return built-in fallback board filter view definition."""
-    return config_module.BoardViewConfig(
+    return org.config.app.BoardViewConfig(
         name="fallback",
         columns=[
-            config_module.BoardColumnConfig(name="Backlog", filter=".todo == null"),
-            config_module.BoardColumnConfig(
+            org.config.app.BoardColumnConfig(name="Backlog", filter=".todo == null"),
+            org.config.app.BoardColumnConfig(
                 name="TODO",
                 filter=".todo != null and not(.is_completed)",
             ),
-            config_module.BoardColumnConfig(name="DONE", filter=".is_completed"),
+            org.config.app.BoardColumnConfig(name="DONE", filter=".is_completed"),
         ],
     )
 
 
-def compile_view_column_specs(view: config_module.BoardViewConfig) -> list[BoardColumnSpec]:
+def compile_view_column_specs(view: org.config.app.BoardViewConfig) -> list[BoardColumnSpec]:
     """Compile one board view's filters into renderable column specs."""
     column_specs: list[BoardColumnSpec] = []
     for column in view.columns:
@@ -197,7 +197,7 @@ def _resolve_selected_view_name(args: BoardArgs) -> str | None:
 def resolve_column_specs(args: BoardArgs) -> list[BoardColumnSpec]:
     """Resolve configured or fallback filter columns for board rendering."""
     selected_view = _resolve_selected_view_name(args)
-    configured_views = config_module.CONFIG_BOARD_VIEWS
+    configured_views = org.config.app.CONFIG_BOARD_VIEWS
 
     if selected_view is None:
         return compile_view_column_specs(_fallback_view_config())

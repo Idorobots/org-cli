@@ -9,7 +9,7 @@ import org_parser
 import pytest
 import typer
 
-from org import config
+import org.config.app
 from org.commands.tasks import capture
 
 
@@ -36,16 +36,16 @@ def _make_capture_args(
 
 def _set_capture_templates(templates: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
     """Replace global capture templates and return previous value."""
-    previous = dict(config.CONFIG_CAPTURE_TEMPLATES)
-    config.CONFIG_CAPTURE_TEMPLATES.clear()
-    config.CONFIG_CAPTURE_TEMPLATES.update(templates)
+    previous = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
+    org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
+    org.config.app.CONFIG_CAPTURE_TEMPLATES.update(templates)
     return previous
 
 
 def _restore_capture_templates(previous: dict[str, dict[str, str]]) -> None:
     """Restore global capture templates from previous value."""
-    config.CONFIG_CAPTURE_TEMPLATES.clear()
-    config.CONFIG_CAPTURE_TEMPLATES.update(previous)
+    org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
+    org.config.app.CONFIG_CAPTURE_TEMPLATES.update(previous)
 
 
 def test_run_capture_errors_when_no_templates_configured() -> None:

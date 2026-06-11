@@ -16,7 +16,8 @@ from org_parser.text import RichText
 from org_parser.time import Timestamp
 from rich.syntax import Syntax
 
-from org import config as config_module
+import org.config.app
+import org.logging
 from org.cli_common import load_root_data
 from org.query_language import (
     EvalContext,
@@ -381,7 +382,7 @@ def register(app: typer.Typer) -> None:
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks query")
-        config_module.log_command_arguments(args, "tasks query")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks query")
+        org.logging.log_command_arguments(args, "tasks query")
         run_tasks_query(args)

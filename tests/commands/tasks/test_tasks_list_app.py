@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from textual.widgets import Input, OptionList, Static
 
-from org import config as config_module
+import org.config.app
 from org.commands.tasks.list import command as tasks_list
 from org.commands.tasks.list.app import TasksListApp
 from tests.commands.tasks.test_tasks_list import make_list_args
@@ -142,7 +142,7 @@ def test_tasks_list_app_capture_selection_uses_keyboard(monkeypatch: pytest.Monk
         nodes = node_from_org("* TODO Alpha\n")
         app = TasksListApp(make_list_args([]), _make_session_data(nodes))
         called: list[str] = []
-        monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {"quick": {}, "later": {}})
+        monkeypatch.setattr(org.config.app, "CONFIG_CAPTURE_TEMPLATES", {"quick": {}, "later": {}})
         monkeypatch.setattr(
             "org.commands.tasks.list.actions.apply_capture_task",
             lambda _session, template_name: called.append(template_name),

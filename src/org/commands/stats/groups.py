@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from org import config as config_module
+import org.config.app
+import org.logging
 from org.analyze import (
     Group,
     TimeRange,
@@ -399,7 +400,7 @@ def register(app: typer.Typer) -> None:
             min_group_size=0,
             max_groups=0,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats groups")
-        config_module.log_command_arguments(args, "stats groups")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "stats groups")
+        org.logging.log_command_arguments(args, "stats groups")
         run_stats_groups(args)

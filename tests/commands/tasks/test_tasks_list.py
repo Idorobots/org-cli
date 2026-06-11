@@ -14,7 +14,7 @@ import pytest
 import typer
 from rich.console import Console
 
-from org import config as config_module
+import org.config.app
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
 from org.commands.interactive_common import heading_locator
@@ -850,7 +850,7 @@ def test_apply_capture_task_captures_task_and_reloads(
     captured_node = node_from_org("* TODO Captured\n")[0]
     reload_args: dict[str, object] = {}
     monkeypatch.setattr(
-        config_module,
+        org.config.app,
         "CONFIG_CAPTURE_TEMPLATES",
         {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
     )

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -127,9 +126,6 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
     "with_tags_as_category": "--with-tags-as-category",
     "width": "--width",
 }
-
-
-logger = logging.getLogger("org")
 
 
 def normalize_exclude_values(values: list[str]) -> set[str]:
@@ -1145,82 +1141,6 @@ def build_default_map(defaults: dict[str, object]) -> CliDefaultMap:
         "board": board_defaults,
         "agenda": agenda_defaults,
     }
-
-
-def _format_default_log_entry(option_name: str, value: object) -> str:
-    """Format one option/value pair for config-default logging."""
-    return f"{option_name}={value!r}"
-
-
-def _format_argument_log_entry(arg_name: str, value: object) -> str:
-    """Format one argument/value pair for command argument logging."""
-    return f"{arg_name}={value!r}"
-
-
-def _redact_inline_config_value(option_name: str, value: object) -> object:
-    """Redact inline mapping/exclude values in default logs."""
-    if option_name in {"--mapping", "--exclude"} and isinstance(value, (dict, list)):
-        return "<Value ellided...>"
-    return value
-
-
-def log_applied_config_defaults(_args: object, _argv: list[str], command_name: str) -> None:
-    """Log config defaults loaded from config file."""
-    if not logger.isEnabledFor(logging.INFO):
-        return
-
-    entries: list[str] = []
-
-    for dest, default_value in sorted(CONFIG_DEFAULTS.items(), key=lambda item: item[0]):
-        option_name = DEST_TO_OPTION_NAME.get(dest)
-        if option_name is None:
-            continue
-        entries.append(
-            _format_default_log_entry(
-                option_name,
-                _redact_inline_config_value(option_name, default_value),
-            ),
-        )
-
-    for dest, values in sorted(CONFIG_APPEND_DEFAULTS.items(), key=lambda item: item[0]):
-        option_name = DEST_TO_OPTION_NAME.get(dest)
-        if option_name is None:
-            continue
-        entries.append(
-            _format_default_log_entry(
-                option_name,
-                _redact_inline_config_value(option_name, values),
-            ),
-        )
-
-    for dest, option_name in (
-        ("mapping_inline", "--mapping"),
-        ("exclude_inline", "--exclude"),
-    ):
-        inline_value = CONFIG_INLINE_DEFAULTS.get(dest)
-        if inline_value is None:
-            continue
-        entries.append(_format_default_log_entry(option_name, "<Value ellided...>"))
-
-    if entries:
-        logger.info("Config defaults applied (%s): %s", command_name, ", ".join(entries))
-
-
-def log_command_arguments(args: object, command_name: str) -> None:
-    """Log all final argument values used to run a command."""
-    if not logger.isEnabledFor(logging.INFO):
-        return
-
-    try:
-        arg_items = vars(args).items()
-    except TypeError:
-        return
-
-    entries = [
-        _format_argument_log_entry(arg_name, arg_value)
-        for arg_name, arg_value in sorted(arg_items, key=lambda item: item[0])
-    ]
-    logger.info("Command arguments (%s): %s", command_name, ", ".join(entries))
 
 
 def apply_config_defaults(args: object) -> None:

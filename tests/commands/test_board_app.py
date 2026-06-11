@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from textual.widgets import Input, OptionList, Static
 
-from org import config as config_module
+import org.config.app
 from org.commands.board import actions
 from org.commands.board import command as board_command
 from org.commands.board.app import BoardApp, BoardViewport
@@ -190,7 +190,7 @@ def test_board_app_capture_prompt_submits_and_reloads(monkeypatch: pytest.Monkey
         captured_node = node_from_org("* TODO Captured\n")[0]
         reloaded: dict[str, object] = {}
         monkeypatch.setattr(
-            config_module,
+            org.config.app,
             "CONFIG_CAPTURE_TEMPLATES",
             {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
         )
@@ -228,7 +228,7 @@ def test_board_app_capture_without_templates_sets_status(monkeypatch: pytest.Mon
     """Capture should report a clear status when no templates are configured."""
 
     async def _run() -> None:
-        monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {})
+        monkeypatch.setattr(org.config.app, "CONFIG_CAPTURE_TEMPLATES", {})
         app = _make_app(_make_session(make_board_args([]), node_from_org("* TODO Existing\n")))
 
         async with app.run_test():

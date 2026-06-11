@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from org import config as config_module
+import org.config.app
 from org.query_language import CompiledQuery, QueryParseError, compile_query_text
 
 
@@ -41,12 +41,12 @@ def _compile_section_query(filter_query: str, order_by: str | None) -> CompiledQ
     return compile_query_text(f"{base_query} | sort_by({order_by})")
 
 
-def _fallback_agenda_view() -> config_module.AgendaViewConfig:
+def _fallback_agenda_view() -> org.config.app.AgendaViewConfig:
     """Return built-in fallback agenda view definition."""
-    return config_module.AgendaViewConfig(
+    return org.config.app.AgendaViewConfig(
         name="default",
         sections=[
-            config_module.AgendaSectionConfig(
+            org.config.app.AgendaSectionConfig(
                 name="[bold dim white]Agenda[/]",
                 filter="true",
                 order_by=None,
@@ -57,7 +57,7 @@ def _fallback_agenda_view() -> config_module.AgendaViewConfig:
     )
 
 
-def _compile_view_section_specs(view: config_module.AgendaViewConfig) -> list[AgendaSectionSpec]:
+def _compile_view_section_specs(view: org.config.app.AgendaViewConfig) -> list[AgendaSectionSpec]:
     """Compile one agenda view's filters into renderable section specs."""
     section_specs: list[AgendaSectionSpec] = []
     for section in view.sections:
@@ -81,7 +81,7 @@ def _compile_view_section_specs(view: config_module.AgendaViewConfig) -> list[Ag
 def resolve_view_context(args: AgendaArgs) -> AgendaViewContext:
     """Resolve configured or fallback view context for agenda rendering."""
     selected_view = args.view.strip() if args.view else None
-    configured_views = config_module.CONFIG_AGENDA_VIEWS
+    configured_views = org.config.app.CONFIG_AGENDA_VIEWS
 
     if selected_view is None:
         view = _fallback_agenda_view()

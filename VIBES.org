@@ -7498,7 +7498,10 @@ Add a new package =org/serde= that will contain any parsing/output formatting co
 Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
 Make sure to update the commands to use this new serialization package.
 
-*** TODO Reorganize the config file handling
+*** DONE Reorganize the config file handling
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-11 Thu 17:17]
+:END:
 Add a new package =org/config= that will contain:
 - =app= - current config of =org/config.py=
 - =logging= - current config of =org/logging_config.py=

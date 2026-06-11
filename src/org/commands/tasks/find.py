@@ -12,7 +12,8 @@ import click
 import typer
 from org_parser.document import Heading
 
-from org import config as config_module
+import org.config.app
+import org.logging
 from org.cli_common import load_root_data
 from org.commands.tasks.common import normalize_selector
 from org.commands.tasks.query import get_query_formatter
@@ -307,7 +308,7 @@ def register(app: typer.Typer) -> None:
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks find")
-        config_module.log_command_arguments(args, "tasks find")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks find")
+        org.logging.log_command_arguments(args, "tasks find")
         run_tasks_find(args)

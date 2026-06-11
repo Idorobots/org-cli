@@ -14,7 +14,7 @@ import typer
 from org_parser.time import Timestamp
 from rich.console import Console
 
-from org import config as config_module
+import org.config.app
 from org.cli_common import load_and_process_data
 from org.commands import interactive_common
 from org.commands.agenda import actions, ui
@@ -490,11 +490,11 @@ def test_run_agenda_plain_view_rows_show_relative_day_labels(
             "DEADLINE: <2025-01-18 Sat>\n",
         )
 
-    config_module.CONFIG_AGENDA_VIEWS.clear()
-    config_module.CONFIG_AGENDA_VIEWS["plain"] = config_module.AgendaViewConfig(
+    org.config.app.CONFIG_AGENDA_VIEWS.clear()
+    org.config.app.CONFIG_AGENDA_VIEWS["plain"] = org.config.app.AgendaViewConfig(
         name="plain",
         sections=[
-            config_module.AgendaSectionConfig(
+            org.config.app.AgendaSectionConfig(
                 name="Planning",
                 filter=".scheduled != null or .deadline != null",
                 order_by=None,
@@ -524,10 +524,10 @@ def test_build_view_day_model_plain_rows_choose_matching_planning_source() -> No
         "* TODO Scheduled row\nSCHEDULED: <2025-01-13 Mon>\n",
     )
     nodes = list(root)
-    view = config_module.AgendaViewConfig(
+    view = org.config.app.AgendaViewConfig(
         name="plain",
         sections=[
-            config_module.AgendaSectionConfig(
+            org.config.app.AgendaSectionConfig(
                 name="Planning",
                 filter=".scheduled != null or .deadline != null",
                 order_by=None,
@@ -570,11 +570,11 @@ def test_run_agenda_timeline_view_appends_selected_untimed_tasks(
             "SCHEDULED: <2025-01-15 Wed>\n",
         )
 
-    config_module.CONFIG_AGENDA_VIEWS.clear()
-    config_module.CONFIG_AGENDA_VIEWS["timeline"] = config_module.AgendaViewConfig(
+    org.config.app.CONFIG_AGENDA_VIEWS.clear()
+    org.config.app.CONFIG_AGENDA_VIEWS["timeline"] = org.config.app.AgendaViewConfig(
         name="timeline",
         sections=[
-            config_module.AgendaSectionConfig(
+            org.config.app.AgendaSectionConfig(
                 name="Agenda",
                 filter=".scheduled != null",
                 order_by=None,
@@ -608,10 +608,10 @@ def test_build_view_day_model_timeline_rows_append_untimed_with_deadline_precede
         "* TODO Both row\nSCHEDULED: <2025-01-14 Tue>\nDEADLINE: <2025-01-17 Fri>\n",
     )
     nodes = list(root)
-    view = config_module.AgendaViewConfig(
+    view = org.config.app.AgendaViewConfig(
         name="timeline",
         sections=[
-            config_module.AgendaSectionConfig(
+            org.config.app.AgendaSectionConfig(
                 name="Agenda",
                 filter=".scheduled != null or .deadline != null",
                 order_by=None,

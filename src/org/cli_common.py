@@ -14,7 +14,7 @@ import click
 import typer
 from org_parser.document import Heading
 
-from org import config as config_module
+import org.config.app
 from org.analyze import TimeRange, normalize
 from org.query_language import (
     EvalContext,
@@ -303,19 +303,19 @@ def _resolve_custom_option(option: str) -> tuple[str, bool] | None:
     """Resolve configured custom option to (query, requires_arg)."""
     filter_name = _custom_option_name(option, "filter")
     if filter_name is not None:
-        query = config_module.CONFIG_CUSTOM_FILTERS.get(filter_name)
+        query = org.config.app.CONFIG_CUSTOM_FILTERS.get(filter_name)
         if query is not None:
             return (query, _query_uses_arg(query))
 
     order_name = _custom_option_name(option, "order-by")
     if order_name is not None:
-        query = config_module.CONFIG_CUSTOM_ORDER_BY.get(order_name)
+        query = org.config.app.CONFIG_CUSTOM_ORDER_BY.get(order_name)
         if query is not None:
             return (query, _query_uses_arg(query))
 
     with_name = _custom_option_name(option, "with")
     if with_name is not None:
-        query = config_module.CONFIG_CUSTOM_WITH.get(with_name)
+        query = org.config.app.CONFIG_CUSTOM_WITH.get(with_name)
         if query is not None:
             return (query, _query_uses_arg(query))
 
@@ -451,13 +451,13 @@ def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) ->
     """Validate prefixed custom switches against configured/built-in options."""
     builtin_order_options = set(ORDER_BY_OPTION_TO_VALUE) if include_builtin_ordering else set()
     allowed_filter_options = FILTER_OPTIONS_WITH_VALUE.union(FILTER_OPTIONS_FLAGS).union(
-        {f"--filter-{name}" for name in config_module.CONFIG_CUSTOM_FILTERS},
+        {f"--filter-{name}" for name in org.config.app.CONFIG_CUSTOM_FILTERS},
     )
     allowed_order_options = builtin_order_options.union(
-        {f"--order-by-{name}" for name in config_module.CONFIG_CUSTOM_ORDER_BY},
+        {f"--order-by-{name}" for name in org.config.app.CONFIG_CUSTOM_ORDER_BY},
     )
     allowed_with_options = WITH_OPTIONS_FLAGS.union(
-        {f"--with-{name}" for name in config_module.CONFIG_CUSTOM_WITH},
+        {f"--with-{name}" for name in org.config.app.CONFIG_CUSTOM_WITH},
     )
 
     for index, token in enumerate(argv):
@@ -503,11 +503,11 @@ def parse_filter_entries_from_argv(
             continue
 
         name = _custom_option_name(option, "filter")
-        if name is None or name not in config_module.CONFIG_CUSTOM_FILTERS or option in builtins:
+        if name is None or name not in org.config.app.CONFIG_CUSTOM_FILTERS or option in builtins:
             index += 1
             continue
 
-        query = config_module.CONFIG_CUSTOM_FILTERS[name]
+        query = org.config.app.CONFIG_CUSTOM_FILTERS[name]
         requires_arg = _query_uses_arg(query)
         if token.startswith(f"{option}="):
             entries.append(
@@ -559,13 +559,13 @@ def parse_order_entries_from_argv(
         name = _custom_option_name(option, "order-by")
         if (
             name is None
-            or name not in config_module.CONFIG_CUSTOM_ORDER_BY
+            or name not in org.config.app.CONFIG_CUSTOM_ORDER_BY
             or option in builtin_options
         ):
             index += 1
             continue
 
-        query = config_module.CONFIG_CUSTOM_ORDER_BY[name]
+        query = org.config.app.CONFIG_CUSTOM_ORDER_BY[name]
         requires_arg = _query_uses_arg(query)
         if token.startswith(f"{option}="):
             entries.append(
@@ -612,11 +612,11 @@ def parse_with_entries_from_argv(
             continue
 
         name = _custom_option_name(option, "with")
-        if name is None or name not in config_module.CONFIG_CUSTOM_WITH or option in builtins:
+        if name is None or name not in org.config.app.CONFIG_CUSTOM_WITH or option in builtins:
             index += 1
             continue
 
-        query = config_module.CONFIG_CUSTOM_WITH[name]
+        query = org.config.app.CONFIG_CUSTOM_WITH[name]
         requires_arg = _query_uses_arg(query)
         if token.startswith(f"{option}="):
             entries.append(
@@ -1085,16 +1085,16 @@ def resolve_mapping(args: object) -> dict[str, str]:
     if mapping_inline is not None:
         return mapping_inline or MAP
     mapping_file = getattr(args, "mapping", None)
-    return config_module.load_mapping(mapping_file) or MAP
+    return org.config.app.load_mapping(mapping_file) or MAP
 
 
 def resolve_exclude_set(args: object) -> set[str]:
     """Resolve exclude set based on inline or file-based configuration."""
     exclude_inline = getattr(args, "exclude_inline", None)
     if exclude_inline is not None:
-        return config_module.normalize_exclude_values(exclude_inline) or DEFAULT_EXCLUDE
+        return org.config.app.normalize_exclude_values(exclude_inline) or DEFAULT_EXCLUDE
     exclude_file = getattr(args, "exclude", None)
-    return config_module.load_exclude_list(exclude_file) or DEFAULT_EXCLUDE
+    return org.config.app.load_exclude_list(exclude_file) or DEFAULT_EXCLUDE
 
 
 class DataLoadArgs(QueryBuildArgs, Protocol):

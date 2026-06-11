@@ -11,7 +11,8 @@ import click
 import typer
 from rich.syntax import Syntax
 
-from org import config as config_module
+import org.config.app
+import org.logging
 from org.cli_common import load_and_process_data
 from org.commands.interactive_common import interactive_help_command_text
 from org.serde.format import (
@@ -642,8 +643,8 @@ def register(app: typer.Typer) -> None:
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        config_module.apply_config_defaults(args)
+        org.config.app.apply_config_defaults(args)
         args.noninteractive = details_switch_present or out_switch_present
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks list")
-        config_module.log_command_arguments(args, "tasks list")
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks list")
+        org.logging.log_command_arguments(args, "tasks list")
         run_tasks_list(args)

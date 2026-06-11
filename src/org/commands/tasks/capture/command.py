@@ -8,7 +8,8 @@ from dataclasses import replace
 import click
 import typer
 
-from org import config as config_module
+import org.config.app
+import org.logging
 from org.commands.interactive_common import interactive_help_command_text
 
 from .app import run_capture_form_app, run_template_selection_app
@@ -33,7 +34,7 @@ def _is_interactive_terminal() -> bool:
 
 def capture_task(args: TasksCaptureArgs) -> TasksCaptureResult:
     """Capture one task from templates and return created heading metadata."""
-    templates = config_module.CONFIG_CAPTURE_TEMPLATES
+    templates = org.config.app.CONFIG_CAPTURE_TEMPLATES
     _require_templates(templates)
 
     interactive_used = False
@@ -131,7 +132,7 @@ def register(app: typer.Typer) -> None:
             parent=parent,
             set_values=set_values,
         )
-        config_module.log_command_arguments(args, "tasks capture")
+        org.logging.log_command_arguments(args, "tasks capture")
         run_tasks_capture(args)
 
 

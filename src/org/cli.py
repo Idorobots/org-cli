@@ -6,7 +6,8 @@ import sys
 
 import typer
 
-from org import config, logging_config
+import org.config.app
+import org.logging
 from org.cli_common import DEFAULT_VERBOSE, resolve_verbose
 from org.commands import agenda, stats
 from org.commands import board as board_command
@@ -31,7 +32,7 @@ def main_callback(
     """Global CLI options."""
     if verbose is None and not DEFAULT_VERBOSE["value"]:
         return
-    logging_config.configure_logging(resolve_verbose(verbose))
+    org.logging.configure_logging(resolve_verbose(verbose))
 
 
 agenda.register(app)
@@ -42,32 +43,32 @@ tasks_command.register(app)
 
 def main() -> None:
     """Run the CLI entry point."""
-    loaded_config = config.load_cli_config(sys.argv)
+    loaded_config = org.config.app.load_cli_config(sys.argv)
     defaults = loaded_config.defaults
     if defaults is not None:
         DEFAULT_VERBOSE["value"] = bool(defaults.pop("verbose", False))
-    config.CONFIG_APPEND_DEFAULTS.clear()
-    config.CONFIG_APPEND_DEFAULTS.update(loaded_config.append_defaults)
-    config.CONFIG_INLINE_DEFAULTS.clear()
-    config.CONFIG_INLINE_DEFAULTS.update(loaded_config.inline_defaults)
-    config.CONFIG_DEFAULTS.clear()
+    org.config.app.CONFIG_APPEND_DEFAULTS.clear()
+    org.config.app.CONFIG_APPEND_DEFAULTS.update(loaded_config.append_defaults)
+    org.config.app.CONFIG_INLINE_DEFAULTS.clear()
+    org.config.app.CONFIG_INLINE_DEFAULTS.update(loaded_config.inline_defaults)
+    org.config.app.CONFIG_DEFAULTS.clear()
     if defaults is not None:
-        config.CONFIG_DEFAULTS.update(defaults)
-    config.CONFIG_CUSTOM_FILTERS.clear()
-    config.CONFIG_CUSTOM_FILTERS.update(loaded_config.custom_filters)
-    config.CONFIG_CUSTOM_ORDER_BY.clear()
-    config.CONFIG_CUSTOM_ORDER_BY.update(loaded_config.custom_order_by)
-    config.CONFIG_CUSTOM_WITH.clear()
-    config.CONFIG_CUSTOM_WITH.update(loaded_config.custom_with)
-    config.CONFIG_CAPTURE_TEMPLATES.clear()
-    config.CONFIG_CAPTURE_TEMPLATES.update(loaded_config.capture_templates)
-    config.CONFIG_BOARD_VIEWS.clear()
-    config.CONFIG_BOARD_VIEWS.update(loaded_config.board_views)
-    config.CONFIG_AGENDA_VIEWS.clear()
-    config.CONFIG_AGENDA_VIEWS.update(loaded_config.agenda_views)
+        org.config.app.CONFIG_DEFAULTS.update(defaults)
+    org.config.app.CONFIG_CUSTOM_FILTERS.clear()
+    org.config.app.CONFIG_CUSTOM_FILTERS.update(loaded_config.custom_filters)
+    org.config.app.CONFIG_CUSTOM_ORDER_BY.clear()
+    org.config.app.CONFIG_CUSTOM_ORDER_BY.update(loaded_config.custom_order_by)
+    org.config.app.CONFIG_CUSTOM_WITH.clear()
+    org.config.app.CONFIG_CUSTOM_WITH.update(loaded_config.custom_with)
+    org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
+    org.config.app.CONFIG_CAPTURE_TEMPLATES.update(loaded_config.capture_templates)
+    org.config.app.CONFIG_BOARD_VIEWS.clear()
+    org.config.app.CONFIG_BOARD_VIEWS.update(loaded_config.board_views)
+    org.config.app.CONFIG_AGENDA_VIEWS.clear()
+    org.config.app.CONFIG_AGENDA_VIEWS.update(loaded_config.agenda_views)
 
     command = typer.main.get_command(app)
-    default_map = config.build_default_map(defaults) if defaults else None
+    default_map = org.config.app.build_default_map(defaults) if defaults else None
     command.main(
         args=sys.argv[1:],
         prog_name="org",

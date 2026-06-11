@@ -14,7 +14,7 @@ import typer
 from rich.console import Console
 from rich.text import Text
 
-from org import config as config_module
+import org.config.app
 from org.cli_common import load_and_process_data
 from org.commands import archive as archive_command
 from org.commands import editor as editor_command
@@ -309,10 +309,10 @@ def test_build_selector_board_columns_with_order_by_overrides_processed_order() 
     nodes = node_from_org(
         "* TODO a\n* TODO c\n* TODO b\n",
     )
-    view = config_module.BoardViewConfig(
+    view = org.config.app.BoardViewConfig(
         name="ordered",
         columns=[
-            config_module.BoardColumnConfig(
+            org.config.app.BoardColumnConfig(
                 name="TODO",
                 filter=".todo != null",
                 order_by=".title_text",
@@ -332,11 +332,11 @@ def test_build_selector_board_columns_with_order_by_overrides_processed_order() 
 def test_build_selector_board_columns_allows_matches_in_multiple_columns() -> None:
     """One task can appear in multiple selector columns."""
     nodes = node_from_org("* TODO Shared\n* DONE Finished\n")
-    view = config_module.BoardViewConfig(
+    view = org.config.app.BoardViewConfig(
         name="overlap",
         columns=[
-            config_module.BoardColumnConfig(name="Any todo", filter=".todo != null"),
-            config_module.BoardColumnConfig(name="Open", filter="not(.is_completed)"),
+            org.config.app.BoardColumnConfig(name="Any todo", filter=".todo != null"),
+            org.config.app.BoardColumnConfig(name="Open", filter="not(.is_completed)"),
         ],
     )
 
@@ -354,10 +354,10 @@ def test_build_selector_board_columns_allows_matches_in_multiple_columns() -> No
 def test_build_selector_board_columns_omits_non_matching_tasks() -> None:
     """Tasks that match no selectors should not appear in any column."""
     nodes = node_from_org("* TODO Open\n* DONE Closed\n")
-    view = config_module.BoardViewConfig(
+    view = org.config.app.BoardViewConfig(
         name="nomatch",
         columns=[
-            config_module.BoardColumnConfig(name="Backlog", filter=".todo == null"),
+            org.config.app.BoardColumnConfig(name="Backlog", filter=".todo == null"),
         ],
     )
 
@@ -813,12 +813,12 @@ def test_run_flow_board_selector_uses_full_nodes_from_multiple_files(
         second_handle.write("* TODO Second file task\n")
 
     args = make_board_args([first_path, second_path], view="kanban", width=160)
-    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
-    config_module.CONFIG_BOARD_VIEWS.clear()
-    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
+    org.config.app.CONFIG_BOARD_VIEWS.clear()
+    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
         name="kanban",
         columns=[
-            config_module.BoardColumnConfig(name="TODO", filter='str(.todo) == "TODO"'),
+            org.config.app.BoardColumnConfig(name="TODO", filter='str(.todo) == "TODO"'),
         ],
     )
 
@@ -828,8 +828,8 @@ def test_run_flow_board_selector_uses_full_nodes_from_multiple_files(
         assert "First file task" in output
         assert "Second file task" in output
     finally:
-        config_module.CONFIG_BOARD_VIEWS.clear()
-        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+        org.config.app.CONFIG_BOARD_VIEWS.clear()
+        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
 def test_run_flow_board_coalesce_completed_true_shows_completed_column(
@@ -944,16 +944,16 @@ def test_run_flow_board_uses_configured_view_columns(monkeypatch: pytest.MonkeyP
     """Requested configured view should render configured columns."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args([fixture_path], view="kanban", width=150)
-    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
-    config_module.CONFIG_BOARD_VIEWS.clear()
-    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
+    org.config.app.CONFIG_BOARD_VIEWS.clear()
+    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
         name="kanban",
         columns=[
-            config_module.BoardColumnConfig(
+            org.config.app.BoardColumnConfig(
                 name="Backlog",
                 filter=".todo == null",
             ),
-            config_module.BoardColumnConfig(
+            org.config.app.BoardColumnConfig(
                 name="Working",
                 filter=".todo != null and not(.is_completed)",
             ),
@@ -966,20 +966,20 @@ def test_run_flow_board_uses_configured_view_columns(monkeypatch: pytest.MonkeyP
         assert "Backlog" in output
         assert "Working" in output
     finally:
-        config_module.CONFIG_BOARD_VIEWS.clear()
-        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+        org.config.app.CONFIG_BOARD_VIEWS.clear()
+        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
 def test_run_flow_board_missing_requested_view_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """Missing requested view should return explicit BadParameter."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="missing")
-    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
-    config_module.CONFIG_BOARD_VIEWS.clear()
-    config_module.CONFIG_BOARD_VIEWS["other"] = config_module.BoardViewConfig(
+    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
+    org.config.app.CONFIG_BOARD_VIEWS.clear()
+    org.config.app.CONFIG_BOARD_VIEWS["other"] = org.config.app.BoardViewConfig(
         name="other",
         columns=[
-            config_module.BoardColumnConfig(
+            org.config.app.BoardColumnConfig(
                 name="TODO",
                 filter='.todo == "TODO"',
             ),
@@ -991,8 +991,8 @@ def test_run_flow_board_missing_requested_view_raises(monkeypatch: pytest.Monkey
         with pytest.raises(typer.BadParameter, match="Requested board view not found"):
             board_command.run_flow_board(args)
     finally:
-        config_module.CONFIG_BOARD_VIEWS.clear()
-        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+        org.config.app.CONFIG_BOARD_VIEWS.clear()
+        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
 def test_run_flow_board_requested_view_without_configured_views_raises(
@@ -1001,29 +1001,29 @@ def test_run_flow_board_requested_view_without_configured_views_raises(
     """Explicit --view should fail when no configured views exist."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="kanban")
-    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
-    config_module.CONFIG_BOARD_VIEWS.clear()
+    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
+    org.config.app.CONFIG_BOARD_VIEWS.clear()
     try:
         monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
         monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
         with pytest.raises(typer.BadParameter, match="no board views are configured"):
             board_command.run_flow_board(args)
     finally:
-        config_module.CONFIG_BOARD_VIEWS.clear()
-        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+        org.config.app.CONFIG_BOARD_VIEWS.clear()
+        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
 def test_run_flow_board_uses_default_view_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """Config-defaulted view value should drive board view resolution."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args([fixture_path], view=None, width=150)
-    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
-    config_module.CONFIG_BOARD_VIEWS.clear()
-    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
+    org.config.app.CONFIG_BOARD_VIEWS.clear()
+    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
         name="kanban",
         columns=[
-            config_module.BoardColumnConfig(name="Backlog", filter=".todo == null"),
-            config_module.BoardColumnConfig(
+            org.config.app.BoardColumnConfig(name="Backlog", filter=".todo == null"),
+            org.config.app.BoardColumnConfig(
                 name="Working",
                 filter=".todo != null and not(.is_completed)",
             ),
@@ -1039,8 +1039,8 @@ def test_run_flow_board_uses_default_view_from_config(monkeypatch: pytest.Monkey
         output = _render_board_output(args)
         assert "Backlog" in output
     finally:
-        config_module.CONFIG_BOARD_VIEWS.clear()
-        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+        org.config.app.CONFIG_BOARD_VIEWS.clear()
+        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
 def test_run_flow_board_invalid_filter_or_order_by_parse_error_has_context(
@@ -1049,12 +1049,12 @@ def test_run_flow_board_invalid_filter_or_order_by_parse_error_has_context(
     """Filter/order-by parse failures should include view and column context."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="kanban")
-    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
-    config_module.CONFIG_BOARD_VIEWS.clear()
-    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
+    org.config.app.CONFIG_BOARD_VIEWS.clear()
+    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
         name="kanban",
         columns=[
-            config_module.BoardColumnConfig(name="Broken", filter=".todo =="),
+            org.config.app.BoardColumnConfig(name="Broken", filter=".todo =="),
         ],
     )
     try:
@@ -1063,8 +1063,8 @@ def test_run_flow_board_invalid_filter_or_order_by_parse_error_has_context(
         with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
             board_command.run_flow_board(args)
     finally:
-        config_module.CONFIG_BOARD_VIEWS.clear()
-        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+        org.config.app.CONFIG_BOARD_VIEWS.clear()
+        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
 def test_run_flow_board_invalid_filter_or_order_by_runtime_error_has_context(
@@ -1073,12 +1073,12 @@ def test_run_flow_board_invalid_filter_or_order_by_runtime_error_has_context(
     """Filter/order-by runtime failures should include view and column context."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="kanban")
-    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
-    config_module.CONFIG_BOARD_VIEWS.clear()
-    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
+    org.config.app.CONFIG_BOARD_VIEWS.clear()
+    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
         name="kanban",
         columns=[
-            config_module.BoardColumnConfig(
+            org.config.app.BoardColumnConfig(
                 name="Broken",
                 filter="unknown_fn(.todo)",
             ),
@@ -1095,8 +1095,8 @@ def test_run_flow_board_invalid_filter_or_order_by_runtime_error_has_context(
         with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
             board_command.run_flow_board(args)
     finally:
-        config_module.CONFIG_BOARD_VIEWS.clear()
-        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+        org.config.app.CONFIG_BOARD_VIEWS.clear()
+        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
 def test_run_flow_board_invalid_order_by_parse_error_has_context(
@@ -1105,12 +1105,12 @@ def test_run_flow_board_invalid_order_by_parse_error_has_context(
     """Invalid order-by parse should include view and column context."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="kanban")
-    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
-    config_module.CONFIG_BOARD_VIEWS.clear()
-    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
+    org.config.app.CONFIG_BOARD_VIEWS.clear()
+    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
         name="kanban",
         columns=[
-            config_module.BoardColumnConfig(
+            org.config.app.BoardColumnConfig(
                 name="Broken",
                 filter='.todo == "TODO"',
                 order_by=".priority ==",
@@ -1126,8 +1126,8 @@ def test_run_flow_board_invalid_order_by_parse_error_has_context(
         ):
             board_command.run_flow_board(args)
     finally:
-        config_module.CONFIG_BOARD_VIEWS.clear()
-        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+        org.config.app.CONFIG_BOARD_VIEWS.clear()
+        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
 def test_apply_state_move_reload_reassigns_task_across_selector_columns(
@@ -1136,13 +1136,13 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
     """State changes should reload and move task to new selector column."""
     args = make_board_args([], view="kanban", days=100000)
     source_node = node_from_org("#+TODO: TODO | DONE\n* TODO Task\n")[0]
-    original_views = dict(config_module.CONFIG_BOARD_VIEWS)
-    config_module.CONFIG_BOARD_VIEWS.clear()
-    config_module.CONFIG_BOARD_VIEWS["kanban"] = config_module.BoardViewConfig(
+    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
+    org.config.app.CONFIG_BOARD_VIEWS.clear()
+    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
         name="kanban",
         columns=[
-            config_module.BoardColumnConfig(name="TODO", filter='.todo == "TODO"'),
-            config_module.BoardColumnConfig(name="DONE", filter='.todo == "DONE"'),
+            org.config.app.BoardColumnConfig(name="TODO", filter='.todo == "TODO"'),
+            org.config.app.BoardColumnConfig(name="DONE", filter='.todo == "DONE"'),
         ],
     )
 
@@ -1189,8 +1189,8 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
         assert selected is not None
         assert selected.todo == "DONE"
     finally:
-        config_module.CONFIG_BOARD_VIEWS.clear()
-        config_module.CONFIG_BOARD_VIEWS.update(original_views)
+        org.config.app.CONFIG_BOARD_VIEWS.clear()
+        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
 def test_build_task_panel_renders_rich_title_content() -> None:

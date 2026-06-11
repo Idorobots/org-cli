@@ -11,7 +11,8 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.text import Text
 
-from org import config as config_module
+import org.config.app
+import org.logging
 from org.analyze import AnalysisResult, Tag, TimeRange, analyze, clean
 from org.analyze import Group as TagGroup
 from org.cli_common import (
@@ -771,7 +772,7 @@ def register(app: typer.Typer) -> None:
             min_group_size=min_group_size,
             max_groups=max_groups,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats all")
-        config_module.log_command_arguments(args, "stats all")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "stats all")
+        org.logging.log_command_arguments(args, "stats all")
         run_stats(args)

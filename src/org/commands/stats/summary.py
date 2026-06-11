@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from org import config as config_module
+import org.config.app
+import org.logging
 from org.analyze import (
     AnalysisResult,
     compute_avg_tasks_per_day,
@@ -447,7 +448,7 @@ def register(app: typer.Typer) -> None:
             max_results=max_results,
             with_tags_as_category=with_tags_as_category,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats summary")
-        config_module.log_command_arguments(args, "stats summary")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "stats summary")
+        org.logging.log_command_arguments(args, "stats summary")
         run_stats_summary(args)

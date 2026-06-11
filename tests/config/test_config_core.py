@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 import pytest
 import typer
 
-from org import config
+import org.config.app
+import org.logging
 
 
 if TYPE_CHECKING:
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 def test_load_config_missing_file_returns_empty(tmp_path: Path) -> None:
     """Missing config should return empty config without error."""
     missing = tmp_path / "missing.yaml"
-    data, malformed = config.load_config(str(missing))
+    data, malformed = org.config.app.load_config(str(missing))
 
     assert data == {}
     assert malformed is False
@@ -29,7 +30,7 @@ def test_load_config_directory_path_is_malformed(tmp_path: Path) -> None:
     """Directory path should be treated as malformed config."""
     config_dir = tmp_path / "cfgdir"
     config_dir.mkdir()
-    data, malformed = config.load_config(str(config_dir))
+    data, malformed = org.config.app.load_config(str(config_dir))
 
     assert data == {}
     assert malformed is True
@@ -40,7 +41,7 @@ def test_load_config_non_dict_is_malformed(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text("- 1\n- 2\n- 3\n", encoding="utf-8")
 
-    data, malformed = config.load_config(str(config_path))
+    data, malformed = org.config.app.load_config(str(config_path))
 
     assert data == {}
     assert malformed is True
@@ -48,7 +49,7 @@ def test_load_config_non_dict_is_malformed(tmp_path: Path) -> None:
 
 def test_parse_color_defaults_conflict() -> None:
     """Conflicting color flags should be rejected."""
-    defaults, valid = config.parse_color_defaults({"--color": True, "--no-color": True})
+    defaults, valid = org.config.app.parse_color_defaults({"--color": True, "--no-color": True})
 
     assert defaults == {}
     assert valid is False
@@ -56,7 +57,7 @@ def test_parse_color_defaults_conflict() -> None:
 
 def test_parse_color_defaults_ignores_value() -> None:
     """Color defaults should be driven by key presence, not YAML value."""
-    defaults, valid = config.parse_color_defaults({"--color": "yes"})
+    defaults, valid = org.config.app.parse_color_defaults({"--color": "yes"})
 
     assert defaults == {"color_flag": True}
     assert valid is True
@@ -72,7 +73,7 @@ def test_build_config_defaults_applies_values() -> None:
         "--pandoc-args": "--wrap=none",
     }
 
-    defaults = config.build_config_defaults(raw)
+    defaults = org.config.app.build_config_defaults(raw)
 
     assert defaults is not None
     default_values, stats_defaults, append_defaults = defaults
@@ -87,7 +88,7 @@ def test_build_config_defaults_rejects_invalid_entry() -> None:
     """Invalid values should cause config defaults to be rejected."""
     raw: dict[str, object] = {"--limit": "not-a-number"}
 
-    defaults = config.build_config_defaults(raw)
+    defaults = org.config.app.build_config_defaults(raw)
 
     assert defaults is None
 
@@ -100,7 +101,7 @@ def test_build_config_defaults_accepts_ordering_flags() -> None:
         "--order-by-timestamp-desc": True,
     }
 
-    defaults = config.build_config_defaults(raw)
+    defaults = org.config.app.build_config_defaults(raw)
 
     assert defaults is not None
     default_values, _stats_defaults, _append_defaults = defaults
@@ -116,7 +117,7 @@ def test_build_config_defaults_keeps_regular_boolean_values() -> None:
         "--order-by-level": False,
     }
 
-    defaults = config.build_config_defaults(raw)
+    defaults = org.config.app.build_config_defaults(raw)
 
     assert defaults is not None
     default_values, _stats_defaults, _append_defaults = defaults
@@ -131,7 +132,7 @@ def test_build_config_defaults_ignores_value_for_paired_boolean_flags() -> None:
         "--no-color": "disabled",
     }
 
-    defaults = config.build_config_defaults(raw)
+    defaults = org.config.app.build_config_defaults(raw)
 
     assert defaults is not None
     default_values, _stats_defaults, _append_defaults = defaults
@@ -143,7 +144,7 @@ def test_build_config_defaults_sets_false_for_negated_paired_flag() -> None:
     """Negated paired flags should store the negative destination value."""
     raw: dict[str, object] = {"--no-future-repeats": True}
 
-    defaults = config.build_config_defaults(raw)
+    defaults = org.config.app.build_config_defaults(raw)
 
     assert defaults is not None
     default_values, _stats_defaults, _append_defaults = defaults
@@ -154,7 +155,7 @@ def test_build_config_defaults_accepts_view_default() -> None:
     """Board view default should be accepted as a non-empty string."""
     raw: dict[str, object] = {"--view": "kanban"}
 
-    defaults = config.build_config_defaults(raw)
+    defaults = org.config.app.build_config_defaults(raw)
 
     assert defaults is not None
     default_values, _stats_defaults, _append_defaults = defaults
@@ -165,7 +166,7 @@ def test_build_config_defaults_rejects_non_boolean_ordering_flags() -> None:
     """Ordering switch defaults must be boolean values."""
     raw: dict[str, object] = {"--order-by-level": "yes"}
 
-    defaults = config.build_config_defaults(raw)
+    defaults = org.config.app.build_config_defaults(raw)
 
     assert defaults is None
 
@@ -174,7 +175,7 @@ def test_build_config_defaults_rejects_empty_view_default() -> None:
     """Board view default must not be empty."""
     raw: dict[str, object] = {"--view": ""}
 
-    defaults = config.build_config_defaults(raw)
+    defaults = org.config.app.build_config_defaults(raw)
 
     assert defaults is None
 
@@ -183,19 +184,19 @@ def test_parse_config_argument_prefers_cli_value() -> None:
     """--config argument should override default config name."""
     argv = ["org", "stats", "all", "--config", "custom.yaml"]
 
-    assert config.parse_config_argument(argv) == "custom.yaml"
+    assert org.config.app.parse_config_argument(argv) == "custom.yaml"
 
 
 def test_parse_config_argument_supports_equals_form() -> None:
     """--config=FILE format should be parsed."""
     argv = ["org", "stats", "all", "--config=inline.yaml"]
 
-    assert config.parse_config_argument(argv) == "inline.yaml"
+    assert org.config.app.parse_config_argument(argv) == "inline.yaml"
 
 
 def test_parse_config_argument_default() -> None:
     """Default config name should be used when not specified."""
-    assert config.parse_config_argument(["org", "stats", "all"]) == ".org-cli.yaml"
+    assert org.config.app.parse_config_argument(["org", "stats", "all"]) == ".org-cli.yaml"
 
 
 def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -216,7 +217,7 @@ def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.Monk
     )
 
     monkeypatch.chdir(config_path.parent)
-    loaded = config.load_cli_config(["org"])
+    loaded = org.config.app.load_cli_config(["org"])
 
     assert loaded.defaults["max_results"] == 7
     assert loaded.append_defaults == {}
@@ -237,7 +238,7 @@ def test_load_cli_config_sections_are_optional(
     config_path.write_text("defaults:\n  --limit: 7\n", encoding="utf-8")
 
     monkeypatch.chdir(config_path.parent)
-    loaded = config.load_cli_config(["org"])
+    loaded = org.config.app.load_cli_config(["org"])
 
     assert loaded.defaults["max_results"] == 7
     assert loaded.custom_filters == {}
@@ -269,7 +270,7 @@ def test_load_cli_config_parses_capture_templates(
     )
 
     monkeypatch.chdir(config_path.parent)
-    loaded = config.load_cli_config(["org"])
+    loaded = org.config.app.load_cli_config(["org"])
 
     assert loaded.capture_templates == {
         "quick": {"file": "tasks.org", "content": "* TODO {{title}}"},
@@ -304,7 +305,7 @@ def test_load_cli_config_parses_board_views(
     )
 
     monkeypatch.chdir(config_path.parent)
-    loaded = config.load_cli_config(["org"])
+    loaded = org.config.app.load_cli_config(["org"])
 
     assert set(loaded.board_views) == {"kanban"}
     assert loaded.board_views["kanban"].name == "kanban"
@@ -329,7 +330,7 @@ def test_load_cli_config_rejects_empty_board_section(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_board_views_not_list(
@@ -342,7 +343,7 @@ def test_load_cli_config_rejects_board_views_not_list(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_duplicate_board_view_names(
@@ -369,7 +370,7 @@ def test_load_cli_config_rejects_duplicate_board_view_names(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_empty_board_columns(
@@ -385,7 +386,7 @@ def test_load_cli_config_rejects_empty_board_columns(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_invalid_board_column_fields(
@@ -408,7 +409,7 @@ def test_load_cli_config_rejects_invalid_board_column_fields(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_unknown_board_keys(
@@ -432,7 +433,7 @@ def test_load_cli_config_rejects_unknown_board_keys(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_board_with_wrong_top_level_type(
@@ -445,7 +446,7 @@ def test_load_cli_config_rejects_board_with_wrong_top_level_type(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_empty_board_view_name(
@@ -468,7 +469,7 @@ def test_load_cli_config_rejects_empty_board_view_name(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_missing_board_view_columns(
@@ -484,7 +485,7 @@ def test_load_cli_config_rejects_missing_board_view_columns(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_missing_board_column_name(
@@ -506,7 +507,7 @@ def test_load_cli_config_rejects_missing_board_column_name(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_missing_board_column_filter(
@@ -522,7 +523,7 @@ def test_load_cli_config_rejects_missing_board_column_filter(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_empty_board_column_filter(
@@ -545,7 +546,7 @@ def test_load_cli_config_rejects_empty_board_column_filter(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_empty_board_column_order_by(
@@ -569,7 +570,7 @@ def test_load_cli_config_rejects_empty_board_column_order_by(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_non_string_board_column_order_by(
@@ -593,7 +594,7 @@ def test_load_cli_config_rejects_non_string_board_column_order_by(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_malformed_capture_templates(
@@ -609,7 +610,7 @@ def test_load_cli_config_rejects_malformed_capture_templates(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_unknown_capture_template_fields(
@@ -632,7 +633,7 @@ def test_load_cli_config_rejects_unknown_capture_template_fields(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_rejects_invalid_custom_section_values(
@@ -648,7 +649,7 @@ def test_load_cli_config_rejects_invalid_custom_section_values(
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_load_cli_config_malformed_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -658,56 +659,56 @@ def test_load_cli_config_malformed_yaml(tmp_path: Path, monkeypatch: pytest.Monk
 
     monkeypatch.chdir(config_path.parent)
     with pytest.raises(typer.BadParameter, match="Malformed config"):
-        config.load_cli_config(["org"])
+        org.config.app.load_cli_config(["org"])
 
 
 def test_validate_helpers() -> None:
     """Validation helpers should accept valid values and reject invalid ones."""
-    assert config.is_valid_date_argument("2025-01-15") is True
-    assert config.is_valid_date_argument("2025/01/15") is False
+    assert org.config.app.is_valid_date_argument("2025-01-15") is True
+    assert org.config.app.is_valid_date_argument("2025/01/15") is False
 
-    assert config.is_valid_keys_string("TODO,DONE") is True
-    assert config.is_valid_keys_string("TODO|WAIT") is False
+    assert org.config.app.is_valid_keys_string("TODO,DONE") is True
+    assert org.config.app.is_valid_keys_string("TODO|WAIT") is False
 
-    assert config.validate_int_option(3, 0) == 3
-    assert config.validate_int_option(-1, 0) is None
-    assert config.validate_int_option("nope", 0) is None
+    assert org.config.app.validate_int_option(3, 0) == 3
+    assert org.config.app.validate_int_option(-1, 0) is None
+    assert org.config.app.validate_int_option("nope", 0) is None
 
-    assert config.validate_str_option("--use", "tags") == "tags"
-    assert config.validate_str_option("--use", "nope") is None
-    assert config.validate_str_option("--out", "gfm") == "gfm"
-    assert config.validate_str_option("--out", "") is None
-    assert config.validate_str_option("--date", "2025-01-15") == "2025-01-15"
-    assert config.validate_str_option("--date", "2025/01/15") is None
-    assert config.validate_str_option("--todo-states", "TODO|WAIT") is None
-    assert config.validate_str_option("--filter-date-from", "2025/01/15") is None
+    assert org.config.app.validate_str_option("--use", "tags") == "tags"
+    assert org.config.app.validate_str_option("--use", "nope") is None
+    assert org.config.app.validate_str_option("--out", "gfm") == "gfm"
+    assert org.config.app.validate_str_option("--out", "") is None
+    assert org.config.app.validate_str_option("--date", "2025-01-15") == "2025-01-15"
+    assert org.config.app.validate_str_option("--date", "2025/01/15") is None
+    assert org.config.app.validate_str_option("--todo-states", "TODO|WAIT") is None
+    assert org.config.app.validate_str_option("--filter-date-from", "2025/01/15") is None
 
-    assert config.validate_list_option("--filter-property", ["key=value"]) == ["key=value"]
-    assert config.validate_list_option("--filter-property", ["novalue"]) is None
-    assert config.validate_list_option("--filter-tag", ["["]) is None
-    assert config.validate_list_option("--filter-body", ["["]) is None
+    assert org.config.app.validate_list_option("--filter-property", ["key=value"]) == ["key=value"]
+    assert org.config.app.validate_list_option("--filter-property", ["novalue"]) is None
+    assert org.config.app.validate_list_option("--filter-tag", ["["]) is None
+    assert org.config.app.validate_list_option("--filter-body", ["["]) is None
 
 
 def test_apply_mapping_and_exclude_config() -> None:
     """Mapping/exclude config should support string and inline forms."""
     defaults: dict[str, object] = {}
 
-    assert config.apply_mapping_config("mapping.json", defaults) is True
+    assert org.config.app.apply_mapping_config("mapping.json", defaults) is True
     assert defaults["mapping"] == "mapping.json"
 
     defaults.clear()
-    assert config.apply_mapping_config({"foo": "bar"}, defaults) is True
+    assert org.config.app.apply_mapping_config({"foo": "bar"}, defaults) is True
     assert defaults["mapping_inline"] == {"foo": "bar"}
 
     defaults.clear()
-    assert config.apply_mapping_config("", defaults) is False
+    assert org.config.app.apply_mapping_config("", defaults) is False
 
     defaults.clear()
-    assert config.apply_exclude_config("exclude.txt", defaults) is True
+    assert org.config.app.apply_exclude_config("exclude.txt", defaults) is True
     assert defaults["exclude"] == "exclude.txt"
 
     defaults.clear()
-    assert config.apply_exclude_config(["alpha", "beta"], defaults) is True
+    assert org.config.app.apply_exclude_config(["alpha", "beta"], defaults) is True
     assert defaults["exclude_inline"] == ["alpha", "beta"]
 
 
@@ -724,7 +725,7 @@ def test_build_default_map_strips_command_specific_values() -> None:
         "groups": ["a,b"],
     }
 
-    default_map = config.build_default_map(defaults)
+    default_map = org.config.app.build_default_map(defaults)
 
     summary_defaults = default_map["stats"]["all"]
     assert "tags" not in summary_defaults
@@ -749,7 +750,7 @@ def test_build_default_map_strips_command_specific_values() -> None:
 
 def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
     """Tasks list and board ordering defaults should remain boolean flags."""
-    default_map = config.build_default_map(
+    default_map = org.config.app.build_default_map(
         {
             "order_by_level": True,
             "order_by_timestamp_desc": False,
@@ -771,7 +772,7 @@ def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
 
 def test_build_default_map_strips_flow_board_unsupported_defaults() -> None:
     """Board default map should omit list-only output options."""
-    default_map = config.build_default_map(
+    default_map = org.config.app.build_default_map(
         {
             "details": True,
             "max_results": 5,
@@ -795,7 +796,7 @@ def test_build_default_map_strips_flow_board_unsupported_defaults() -> None:
 
 def test_build_default_map_includes_agenda_defaults() -> None:
     """Agenda default map should include agenda-specific and shared task options."""
-    default_map = config.build_default_map(
+    default_map = org.config.app.build_default_map(
         {
             "date": "2025-01-15",
             "days": 3,
@@ -829,43 +830,43 @@ def test_build_default_map_includes_agenda_defaults() -> None:
 
 def test_apply_config_defaults_applies_inline_and_append_defaults() -> None:
     """apply_config_defaults should fill append and inline values."""
-    original_append = dict(config.CONFIG_APPEND_DEFAULTS)
-    original_inline = dict(config.CONFIG_INLINE_DEFAULTS)
+    original_append = dict(org.config.app.CONFIG_APPEND_DEFAULTS)
+    original_inline = dict(org.config.app.CONFIG_INLINE_DEFAULTS)
     try:
-        config.CONFIG_APPEND_DEFAULTS.clear()
-        config.CONFIG_INLINE_DEFAULTS.clear()
+        org.config.app.CONFIG_APPEND_DEFAULTS.clear()
+        org.config.app.CONFIG_INLINE_DEFAULTS.clear()
 
-        config.CONFIG_APPEND_DEFAULTS["filter_tags"] = ["alpha"]
-        config.CONFIG_INLINE_DEFAULTS["mapping_inline"] = {"foo": "bar"}
+        org.config.app.CONFIG_APPEND_DEFAULTS["filter_tags"] = ["alpha"]
+        org.config.app.CONFIG_INLINE_DEFAULTS["mapping_inline"] = {"foo": "bar"}
 
         args = SimpleNamespace(filter_tags=None, mapping_inline=None, exclude_inline=None)
-        config.apply_config_defaults(args)
+        org.config.app.apply_config_defaults(args)
 
         assert args.filter_tags == ["alpha"]
         assert args.mapping_inline == {"foo": "bar"}
         assert args.exclude_inline is None
     finally:
-        config.CONFIG_APPEND_DEFAULTS.clear()
-        config.CONFIG_APPEND_DEFAULTS.update(original_append)
-        config.CONFIG_INLINE_DEFAULTS.clear()
-        config.CONFIG_INLINE_DEFAULTS.update(original_inline)
+        org.config.app.CONFIG_APPEND_DEFAULTS.clear()
+        org.config.app.CONFIG_APPEND_DEFAULTS.update(original_append)
+        org.config.app.CONFIG_INLINE_DEFAULTS.clear()
+        org.config.app.CONFIG_INLINE_DEFAULTS.update(original_inline)
 
 
 def test_log_applied_config_defaults_logs_all_config_values(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Default logging should include all values loaded from config."""
-    original_defaults = dict(config.CONFIG_DEFAULTS)
-    original_append = dict(config.CONFIG_APPEND_DEFAULTS)
-    original_inline = dict(config.CONFIG_INLINE_DEFAULTS)
+    original_defaults = dict(org.config.app.CONFIG_DEFAULTS)
+    original_append = dict(org.config.app.CONFIG_APPEND_DEFAULTS)
+    original_inline = dict(org.config.app.CONFIG_INLINE_DEFAULTS)
     try:
-        config.CONFIG_DEFAULTS.clear()
-        config.CONFIG_APPEND_DEFAULTS.clear()
-        config.CONFIG_INLINE_DEFAULTS.clear()
+        org.config.app.CONFIG_DEFAULTS.clear()
+        org.config.app.CONFIG_APPEND_DEFAULTS.clear()
+        org.config.app.CONFIG_INLINE_DEFAULTS.clear()
 
-        config.CONFIG_DEFAULTS.update({"max_results": 10})
-        config.CONFIG_APPEND_DEFAULTS.update({"filter_tags": ["work"]})
-        config.CONFIG_INLINE_DEFAULTS.update({"mapping_inline": {"foo": "bar"}})
+        org.config.app.CONFIG_DEFAULTS.update({"max_results": 10})
+        org.config.app.CONFIG_APPEND_DEFAULTS.update({"filter_tags": ["work"]})
+        org.config.app.CONFIG_INLINE_DEFAULTS.update({"mapping_inline": {"foo": "bar"}})
 
         args = SimpleNamespace(
             max_results=10,
@@ -874,7 +875,7 @@ def test_log_applied_config_defaults_logs_all_config_values(
         )
 
         with caplog.at_level(logging.INFO, logger="org"):
-            config.log_applied_config_defaults(
+            org.logging.log_applied_config_defaults(
                 args,
                 ["stats", "all", "--limit", "20"],
                 "stats all",
@@ -885,12 +886,12 @@ def test_log_applied_config_defaults_logs_all_config_values(
         assert "--filter-tag=['work']" in caplog.text
         assert "--mapping='<Value ellided...>'" in caplog.text
     finally:
-        config.CONFIG_DEFAULTS.clear()
-        config.CONFIG_DEFAULTS.update(original_defaults)
-        config.CONFIG_APPEND_DEFAULTS.clear()
-        config.CONFIG_APPEND_DEFAULTS.update(original_append)
-        config.CONFIG_INLINE_DEFAULTS.clear()
-        config.CONFIG_INLINE_DEFAULTS.update(original_inline)
+        org.config.app.CONFIG_DEFAULTS.clear()
+        org.config.app.CONFIG_DEFAULTS.update(original_defaults)
+        org.config.app.CONFIG_APPEND_DEFAULTS.clear()
+        org.config.app.CONFIG_APPEND_DEFAULTS.update(original_append)
+        org.config.app.CONFIG_INLINE_DEFAULTS.clear()
+        org.config.app.CONFIG_INLINE_DEFAULTS.update(original_inline)
 
 
 def test_log_command_arguments_logs_all_values(caplog: pytest.LogCaptureFixture) -> None:
@@ -898,7 +899,7 @@ def test_log_command_arguments_logs_all_values(caplog: pytest.LogCaptureFixture)
     args = SimpleNamespace(max_results=10, filter_tags=["work"])
 
     with caplog.at_level(logging.INFO, logger="org"):
-        config.log_command_arguments(args, "stats all")
+        org.logging.log_command_arguments(args, "stats all")
 
     assert "Command arguments (stats all):" in caplog.text
     assert "max_results=10" in caplog.text

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, cast
 import org_parser
 from textual.widgets import Input, OptionList, Static
 
-from org import config as config_module
+import org.config.app
 from org.commands.agenda import actions, ui
 from org.commands.agenda import command as agenda_command
 from org.commands.agenda.app import AgendaApp, AgendaViewport
@@ -179,7 +179,7 @@ def test_agenda_app_capture_from_timed_row_schedules_task(
         args = _make_args([fixture_path], date="2025-01-15")
         captured_node = next(iter(org_parser.loads("* TODO Captured\n")))
         monkeypatch.setattr(
-            config_module,
+            org.config.app,
             "CONFIG_CAPTURE_TEMPLATES",
             {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
         )

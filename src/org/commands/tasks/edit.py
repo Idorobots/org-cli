@@ -8,7 +8,8 @@ from dataclasses import dataclass
 
 import typer
 
-from org import config as config_module
+import org.config.app
+import org.logging
 from org.cli_common import resolve_input_paths
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.tasks.common import (
@@ -101,7 +102,7 @@ def register(app: typer.Typer) -> None:
             query_id=query_id,
             query=query,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks edit")
-        config_module.log_command_arguments(args, "tasks edit")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks edit")
+        org.logging.log_command_arguments(args, "tasks edit")
         run_tasks_edit(args)

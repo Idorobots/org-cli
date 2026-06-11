@@ -13,7 +13,7 @@ import typer
 from org_parser.document import Document, Heading
 from rich.syntax import Syntax
 
-from org import config as config_module
+import org.config.app
 from org.commands.interactive_common import InteractiveHelpEntry
 from org.commands.tasks.common import load_document, resolve_parent_heading, save_document
 from org.query_language import (
@@ -339,7 +339,7 @@ def _attach_heading(document: Document, parent_heading: Heading | None, heading:
 
 def prepare_capture_plan(args: TasksCaptureArgs, template_name: str) -> CapturePlan:
     """Prepare capture plan from resolved template and current document state."""
-    templates = config_module.CONFIG_CAPTURE_TEMPLATES
+    templates = org.config.app.CONFIG_CAPTURE_TEMPLATES
     template = templates[template_name]
     target_file = template["file"] if args.file is None else args.file
     template_parent_selector = template.get("parent")

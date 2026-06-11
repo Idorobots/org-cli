@@ -9,7 +9,8 @@ from dataclasses import dataclass
 import click
 import typer
 
-from org import config as config_module
+import org.config.app
+import org.logging
 from org.cli_common import load_and_process_data
 from org.commands.interactive_common import interactive_help_command_text
 from org.tui import build_console, processing_status, setup_output
@@ -381,7 +382,7 @@ def register(app: typer.Typer) -> None:
             future_repeats=future_repeats,
             view=view,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "agenda")
-        config_module.log_command_arguments(args, "agenda")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "agenda")
+        org.logging.log_command_arguments(args, "agenda")
         run_agenda(args)
