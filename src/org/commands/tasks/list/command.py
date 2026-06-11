@@ -14,7 +14,7 @@ from rich.syntax import Syntax
 from org import config as config_module
 from org.cli_common import load_and_process_data
 from org.commands.interactive_common import interactive_help_command_text
-from org.output_format import (
+from org.serde.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,

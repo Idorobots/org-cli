@@ -16,7 +16,6 @@ from rich.syntax import Syntax
 from org import config as config_module
 from org.commands.interactive_common import InteractiveHelpEntry
 from org.commands.tasks.common import load_document, resolve_parent_heading, save_document
-from org.output_format import DEFAULT_OUTPUT_THEME
 from org.query_language import (
     EvalContext,
     QueryParseError,
@@ -24,6 +23,7 @@ from org.query_language import (
     Stream,
     compile_query_text,
 )
+from org.serde.format import DEFAULT_OUTPUT_THEME
 
 
 if TYPE_CHECKING:

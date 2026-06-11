@@ -23,7 +23,7 @@ from org.commands.tasks import capture as capture_command
 from org.commands.tasks.list import actions
 from org.commands.tasks.list import command as tasks_list
 from org.histogram import visual_len
-from org.output_format import OutputFormat, OutputFormatError
+from org.serde.format import OutputFormat, OutputFormatError
 from tests.conftest import node_from_org
 
 

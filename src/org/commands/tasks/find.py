@@ -16,18 +16,18 @@ from org import config as config_module
 from org.cli_common import load_root_data
 from org.commands.tasks.common import normalize_selector
 from org.commands.tasks.query import get_query_formatter
-from org.output_format import (
-    DEFAULT_OUTPUT_THEME,
-    OutputFormat,
-    OutputFormatError,
-    print_prepared_output,
-)
 from org.query_language import (
     EvalContext,
     QueryParseError,
     QueryRuntimeError,
     Stream,
     compile_query_text,
+)
+from org.serde.format import (
+    DEFAULT_OUTPUT_THEME,
+    OutputFormat,
+    OutputFormatError,
+    print_prepared_output,
 )
 from org.tui import build_console, processing_status, setup_output
 

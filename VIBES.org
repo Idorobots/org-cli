@@ -7487,6 +7487,25 @@ This wrapper should be removed, prefer renaming functions and adjusting callsite
 This should be done instead of an input prompt wheneven the set of acceptable values is know before prompting.
 Some examples include: prompting for new state when changing task's todo state, capture template selection, refiling tasks to known files.
 
+*** DONE Reorganize file parsing & formatting
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-11 Thu 12:30]
+:END:
+Add a new package =org/serde= that will contain any parsing/output formatting code. It should contain:
+- =parse= - current contents of =org/parse.py=
+- =format= - current contents of =org/output_format.py=
+
+Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Make sure to update the commands to use this new serialization package.
+
+*** TODO Reorganize the config file handling
+Add a new package =org/config= that will contain:
+- =app= - current config of =org/config.py=
+- =logging= - current config of =org/logging_config.py=
+
+Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Make sure to update the commands to use this new config package.
+
 *** TODO Reorganize the TUI
 With Textual as the backbone of the interactive commands, it makes sense to expand the =org/tui.py= module to be a full package
 =org/tui= that contains:
@@ -7516,22 +7535,6 @@ The shared logic that the commands use are currently present in multiple modules
 
 Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
 Make sure to update the commands to use this new logic package.
-
-*** TODO Reorganize file parsing & formatting
-Add a new package =org/serde= that will contain any parsing/output formatting code. It should contain:
-- =parse= - current contents of =org/parse.py=
-- =format= - current contents of =org/output_format.py=
-
-Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
-Make sure to update the commands to use this new serialization package.
-
-*** TODO Reorganize the config file handling
-Add a new package =org/config= that will contain:
-- =app= - current config of =org/config.py=
-- =logging= - current config of =org/logging_config.py=
-
-Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
-Make sure to update the commands to use this new config package.
 
 *** Use Textual textarea for any org-mode syntax highlighting
 - Limit to just the interactive commands.

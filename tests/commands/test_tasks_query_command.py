@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 
 from org.cli import app
 from org.commands.tasks.query import TasksQueryArgs, _is_org_object, run_tasks_query
-from org.output_format import OutputFormat, OutputFormatError
+from org.serde.format import OutputFormat, OutputFormatError
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")

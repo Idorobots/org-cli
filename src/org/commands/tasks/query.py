@@ -18,7 +18,14 @@ from rich.syntax import Syntax
 
 from org import config as config_module
 from org.cli_common import load_root_data
-from org.output_format import (
+from org.query_language import (
+    EvalContext,
+    QueryParseError,
+    QueryRuntimeError,
+    Stream,
+    compile_query_text,
+)
+from org.serde.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,
@@ -31,13 +38,6 @@ from org.output_format import (
     _parse_pandoc_args,
     _prepare_output,
     print_prepared_output,
-)
-from org.query_language import (
-    EvalContext,
-    QueryParseError,
-    QueryRuntimeError,
-    Stream,
-    compile_query_text,
 )
 from org.tui import build_console, processing_status, setup_output
 

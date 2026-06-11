@@ -16,7 +16,6 @@ from org_parser.document import Heading
 
 from org import config as config_module
 from org.analyze import TimeRange, normalize
-from org.parse import load_root_nodes
 from org.query_language import (
     EvalContext,
     QueryParseError,
@@ -24,6 +23,7 @@ from org.query_language import (
     Stream,
     compile_query_text,
 )
+from org.serde.parse import load_root_nodes
 from org.timestamp import extract_timestamp_any
 from org.validation import (
     parse_date_argument,
