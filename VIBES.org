@@ -7487,16 +7487,7 @@ This wrapper should be removed, prefer renaming functions and adjusting callsite
 This should be done instead of an input prompt wheneven the set of acceptable values is know before prompting.
 Some examples include: prompting for new state when changing task's todo state, capture template selection, refiling tasks to known files.
 
-*** TODO Show a Textual modal when performing external edits, instead of suspending the app
-*** CANCELLED Use Textual header & footer widgets in the interactive commands
-:LOGBOOK:
-- State "CANCELLED"  from              [2026-06-11 Thu 09:46] \\
-  Not very useful right now.
-:END:
-*** Use Textual textarea for any org-mode syntax highlighting
-- Limit to just the interactive commands.
-- Potentially use it for code edits of the files?
-*** Reorganize TUI
+*** TODO Reorganize the TUI
 With Textual as the backbone of the interactive commands, it makes sense to expand the =org/tui.py= module to be a full package
 =org/tui= that contains:
 - =color= - current =org/color.py=
@@ -7509,23 +7500,48 @@ With Textual as the backbone of the interactive commands, it makes sense to expa
 - =footer= - footer rendering of =org/commands/runtime.py=, current contents of =org/commands/interactive_common.py= pertaining to footer state.
 - =header= - current contents of =org/commands/interactive_common.py= pertaining to header state.
 
-When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
 Make sure to update the commands to use this new TUI package.
 
-*** Reorganize command logic
+*** TODO Reorganize common command logic
 The shared logic that the commands use are currently present in multiple modules, but should be reorganized into a new package =org/logic= that contains:
 - =tasks= - current contents of =org/commands/interactive_common.py= pertaining to modifying tasks,
 - =archive= - current contents of =org/commands/archive.py=
 - =edit= - current contents of =org/commands/editor.py=
 - =search= - current contents of =org/commands/search_common.py=
 - =stats= - current contents of =org/analyze.py=
-- =filter= - current contents of =org/cli_common.py=
+- =filtering= - current contents of =org/cli_common.py=
 - =time= - current contents of =org/timestamp.py= and time-related functions from =org/commands/interactive_common.py=
+- =validation= - current contents of =org/validation.py=
 
-When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
 Make sure to update the commands to use this new logic package.
 
-*** Refactor the task CRUD utils into a separate module re-used by all the commands
+*** TODO Reorganize file parsing & formatting
+Add a new package =org/serde= that will contain any parsing/output formatting code. It should contain:
+- =parse= - current contents of =org/parse.py=
+- =format= - current contents of =org/output_format.py=
+
+Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Make sure to update the commands to use this new serialization package.
+
+*** TODO Reorganize the config file handling
+Add a new package =org/config= that will contain:
+- =app= - current config of =org/config.py=
+- =logging= - current config of =org/logging_config.py=
+
+Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Make sure to update the commands to use this new config package.
+
+*** Use Textual textarea for any org-mode syntax highlighting
+- Limit to just the interactive commands.
+- Potentially use it for code edits of the files?
+**** Show a Textual modal when performing external edits, instead of suspending the app
+*** CANCELLED Use Textual header & footer widgets in the interactive commands
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-11 Thu 09:46] \\
+  Not very useful right now.
+:END:
 *** REWORKED Interactive loop refactor
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-05-26 Tue 21:27]
@@ -7541,7 +7557,34 @@ A domain should be defined with all common utils reorganized as domain specific 
 For command output rendering, a common toolkit of widgets and widget-adjacent rendering tools should be extracted.
 Lastly, some common logic should be extracted that allows performing actions generically. Views should only trigger those actions and actions should modify the domain.
 
-** TODO Agenda usability improvements                                                           :UX:
+*** DONE Remove legacy non-interactive rendering from interactive commands
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-10 Wed 19:48]
+:END:
+**** DONE src/org/commands/tasks/list/command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-10 Wed 19:48]
+:END:
+
+In file src/org/commands/tasks/list/command.py around line 663, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        if context is not None:
++            details_switch_present = details_switch_present or (
++                context.get_parameter_source("details") == ParameterSource.COMMANDLINE
++            )
++            out_switch_present = out_switch_present or (
++                context.get_parameter_source("out") == ParameterSource.COMMANDLINE
++            )
+
+#+end_example
+
+I absolutely hate this. Please refactor the =out= and =details= switches to be optional and check their existance that way.
+
+** TODO Agenda usability improvements                                                    :UX:Agenda:
 *** Agenda non-interactive output format
 - Should be adjusted to "look and feel" just like the interactive one.
 *** Show state transition for repeats on the timeline
