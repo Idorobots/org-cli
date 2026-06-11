@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 
 import org_parser
-from textual.widgets import Input, Static
+from textual.widgets import Input, OptionList, Static
 
 from org import config as config_module
 from org.commands.agenda import actions, ui
@@ -212,7 +212,8 @@ def test_agenda_app_capture_from_timed_row_schedules_task(
         async with app.run_test() as pilot:
             app.action_prompt_capture()
             await pilot.pause()
-            app.screen_stack[-1].dismiss("1")
+            assert app.screen.query_one(OptionList).has_focus
+            await pilot.press("enter")
             await pilot.pause()
 
             assert str(captured_node.scheduled) == expected_timestamp
@@ -220,6 +221,78 @@ def test_agenda_app_capture_from_timed_row_schedules_task(
                 app.session.status_message
                 == f"Task captured and scheduled for {expected_timestamp}"
             )
+
+    asyncio.run(_run())
+
+
+def test_agenda_app_state_selection_uses_keyboard(monkeypatch: pytest.MonkeyPatch) -> None:
+    """State selection should be fully keyboard navigable."""
+
+    async def _run() -> None:
+        fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+        args = _make_args([fixture_path], date="2025-01-15")
+        app = _make_app(args, list(org_parser.load(fixture_path)))
+        calls: list[str] = []
+        monkeypatch.setattr(actions, "can_activate_agenda_state_prompt", lambda _session: None)
+        monkeypatch.setattr(
+            actions,
+            "state_choices_for_selected_row",
+            lambda _session: ["TODO", "DONE"],
+        )
+        monkeypatch.setattr(
+            actions,
+            "apply_state_change_with_value",
+            lambda _session, state: calls.append(state),
+        )
+
+        async with app.run_test() as pilot:
+            app.action_prompt_state()
+            await pilot.pause()
+
+            option_list = app.screen.query_one(OptionList)
+            assert option_list.has_focus
+
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert calls == ["TODO"]
+
+    asyncio.run(_run())
+
+
+def test_agenda_app_refile_selection_uses_loaded_files_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Refile selection should submit one of the loaded files via keyboard selection."""
+
+    async def _run() -> None:
+        fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
+        second_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+        args = _make_args([fixture_path, second_path], date="2025-01-15")
+        app = _make_app(args, list(org_parser.load(fixture_path)))
+        destinations: list[str] = []
+        app.session.selected_row_index = next(
+            index
+            for index, (day_index, row_index) in enumerate(app.session.row_locations)
+            if app.session.day_models[day_index].rows[row_index].kind == "task"
+        )
+        monkeypatch.setattr(
+            actions,
+            "apply_refile_with_value",
+            lambda _session, destination: destinations.append(destination),
+        )
+
+        async with app.run_test() as pilot:
+            app.action_prompt_refile()
+            await pilot.pause()
+
+            option_list = app.screen.query_one(OptionList)
+            assert option_list.has_focus
+
+            await pilot.press("down", "enter")
+            await pilot.pause()
+
+            assert destinations == [second_path]
 
     asyncio.run(_run())
 

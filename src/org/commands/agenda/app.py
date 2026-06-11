@@ -13,13 +13,8 @@ from textual.widgets import Static
 from org.cli_common import resolve_input_paths
 from org.commands import runtime
 from org.commands.tasks.common import (
-    capture_template_prompt_label,
     clock_duration_prompt_label,
     configured_capture_template_names,
-    refile_prompt_label,
-    resolve_capture_template_selection,
-    resolve_todo_state_selection,
-    state_selection_prompt_label,
 )
 
 from . import actions, ui
@@ -284,6 +279,23 @@ class AgendaApp(runtime.CommandApp):
             callback=_complete,
         )
 
+    def _open_selection(
+        self,
+        label: str,
+        options: list[runtime.SelectionOption],
+        *,
+        on_submit: Callable[[str], None],
+        on_cancel: Callable[[], None],
+    ) -> None:
+        def _complete(result: str | None) -> None:
+            if result is None:
+                on_cancel()
+            else:
+                on_submit(result)
+            self._refresh_view()
+
+        self.push_screen(runtime.SelectionModalScreen(label, options), callback=_complete)
+
     def action_move_up(self) -> None:
         """Move the selection one row upward."""
         actions.move_selection(self.session, -1)
@@ -378,20 +390,12 @@ class AgendaApp(runtime.CommandApp):
 
         template_names = configured_capture_template_names()
 
-        def _submit(value: str) -> None:
-            stripped = value.strip()
-            if not stripped:
-                self._set_status("Capture cancelled")
-                return
-            template_name = resolve_capture_template_selection(stripped, template_names)
-            if template_name is None:
-                self._set_status("Invalid capture template shortcut")
-                return
-            self._run_external(lambda: actions.apply_capture_task(self.session, template_name))
-
-        self._open_prompt(
-            capture_template_prompt_label(template_names),
-            on_submit=_submit,
+        self._open_selection(
+            "Capture template",
+            [runtime.SelectionOption(value=name, label=name) for name in template_names],
+            on_submit=lambda template_name: self._run_external(
+                lambda: actions.apply_capture_task(self.session, template_name),
+            ),
             on_cancel=lambda: self._set_status("Capture cancelled"),
         )
 
@@ -404,20 +408,13 @@ class AgendaApp(runtime.CommandApp):
             return
         states = actions.state_choices_for_selected_row(self.session)
 
-        def _submit(value: str) -> None:
-            stripped = value.strip()
-            if not stripped:
-                self._set_status("State change cancelled")
-                return
-            selected_state = resolve_todo_state_selection(stripped, states)
-            if selected_state is None:
-                self._set_status("Invalid TODO state selection")
-                return
-            actions.apply_state_change_with_value(self.session, selected_state)
-
-        self._open_prompt(
-            state_selection_prompt_label(states),
-            on_submit=_submit,
+        self._open_selection(
+            "TODO state",
+            [runtime.SelectionOption(value=state, label=state) for state in states],
+            on_submit=lambda selected_state: actions.apply_state_change_with_value(
+                self.session,
+                selected_state,
+            ),
             on_cancel=lambda: self._set_status("State change cancelled"),
         )
 
@@ -428,9 +425,16 @@ class AgendaApp(runtime.CommandApp):
             self._refresh_view()
             return
 
-        self._open_prompt(
-            refile_prompt_label(resolve_input_paths(self.session.args.files)),
-            on_submit=lambda value: actions.apply_refile_with_value(self.session, value.strip()),
+        self._open_selection(
+            "Destination file",
+            [
+                runtime.SelectionOption(value=path, label=path)
+                for path in resolve_input_paths(self.session.args.files)
+            ],
+            on_submit=lambda destination_path: actions.apply_refile_with_value(
+                self.session,
+                destination_path,
+            ),
             on_cancel=lambda: self._set_status("Refile cancelled"),
         )
 

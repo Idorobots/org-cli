@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
-from textual.widgets import Input, Static
+from textual.widgets import Input, OptionList, Static
 
+from org import config as config_module
 from org.commands.tasks.list import command as tasks_list
 from org.commands.tasks.list.app import TasksListApp
 from tests.commands.tasks.test_tasks_list import make_list_args
@@ -130,6 +131,56 @@ def test_tasks_list_app_escape_cancels_prompt_without_exiting() -> None:
             assert app.is_running
             assert app.session.status_message == "Search cancelled"
             assert app.screen.query_one("#tasks-body", Static) is not None
+
+    asyncio.run(_run())
+
+
+def test_tasks_list_app_capture_selection_uses_keyboard(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Capture selection should be fully keyboard navigable."""
+
+    async def _run() -> None:
+        nodes = node_from_org("* TODO Alpha\n")
+        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+        called: list[str] = []
+        monkeypatch.setattr(config_module, "CONFIG_CAPTURE_TEMPLATES", {"quick": {}, "later": {}})
+        monkeypatch.setattr(
+            "org.commands.tasks.list.actions.apply_capture_task",
+            lambda _session, template_name: called.append(template_name),
+        )
+
+        async with app.run_test() as pilot:
+            app.action_prompt_capture()
+            await pilot.pause()
+
+            option_list = app.screen.query_one(OptionList)
+            assert option_list.has_focus
+
+            await pilot.press("down", "enter")
+            await pilot.pause()
+
+            assert called == ["quick"]
+
+    asyncio.run(_run())
+
+
+def test_tasks_list_app_state_selection_uses_keyboard() -> None:
+    """State selection should be fully keyboard navigable."""
+
+    async def _run() -> None:
+        nodes = node_from_org("* TODO Alpha\n")
+        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+
+        async with app.run_test() as pilot:
+            app.action_prompt_state()
+            await pilot.pause()
+
+            option_list = app.screen.query_one(OptionList)
+            assert option_list.has_focus
+
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert nodes[0].todo == "TODO"
 
     asyncio.run(_run())
 

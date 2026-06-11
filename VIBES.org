@@ -7360,7 +7360,6 @@ The timestamp advancement should only be used if the new state is a completed st
 :END:
 Organize it the same as the other commands (most recentry modified: agenda, board and tasks list).
 
-*** Refactor the task CRUD utils into a separate module re-used by all the commands
 *** Avoid using =getattr= and =setattr= like the plague
 Refactor all places that currently use either of these functions so that the concrete type is known and concrete field is accessed.
 Introduce linter rules that make sure these function cannot be used.
@@ -7481,13 +7480,52 @@ In file src/org/commands/agenda/layout.py around line 624, near the ~def _select
 #+end_example
 
 This wrapper should be removed, prefer renaming functions and adjusting callsites.
-*** Use Textual widgets for better TUI organization
-- Selection for prompts
-- Sparkline for freequency plots
-*** Use Textual header & footer widgets in the interactive commands
+*** DONE Use Textual Selection widget for selections from a list of values
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-11 Thu 11:32]
+:END:
+This should be done instead of an input prompt wheneven the set of acceptable values is know before prompting.
+Some examples include: prompting for new state when changing task's todo state, capture template selection, refiling tasks to known files.
+
+*** TODO Show a Textual modal when performing external edits, instead of suspending the app
+*** CANCELLED Use Textual header & footer widgets in the interactive commands
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-11 Thu 09:46] \\
+  Not very useful right now.
+:END:
 *** Use Textual textarea for any org-mode syntax highlighting
 - Limit to just the interactive commands.
 - Potentially use it for code edits of the files?
+*** Reorganize TUI
+With Textual as the backbone of the interactive commands, it makes sense to expand the =org/tui.py= module to be a full package
+=org/tui= that contains:
+- =color= - current =org/color.py=
+- =bits= - current contents of =org/tui.py= that render specific items to Rich renderables,
+- =plot= - current =org/plot.py=
+- =histogram= - current =org/histogram.py=
+- =help= - current contents of =org/commands/runtime.py=, specifically the help modal, and also the help modal rendering from =org/commands/interactive_common.py=
+- =prompt= - current contents of =org/commands/runtime.py=, specifically the input prompt modal
+- =selection= - current contents of =org/commands/runtime.py=, specifically the selection modal
+- =footer= - footer rendering of =org/commands/runtime.py=, current contents of =org/commands/interactive_common.py= pertaining to footer state.
+- =header= - current contents of =org/commands/interactive_common.py= pertaining to header state.
+
+When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Make sure to update the commands to use this new TUI package.
+
+*** Reorganize command logic
+The shared logic that the commands use are currently present in multiple modules, but should be reorganized into a new package =org/logic= that contains:
+- =tasks= - current contents of =org/commands/interactive_common.py= pertaining to modifying tasks,
+- =archive= - current contents of =org/commands/archive.py=
+- =edit= - current contents of =org/commands/editor.py=
+- =search= - current contents of =org/commands/search_common.py=
+- =stats= - current contents of =org/analyze.py=
+- =filter= - current contents of =org/cli_common.py=
+- =time= - current contents of =org/timestamp.py= and time-related functions from =org/commands/interactive_common.py=
+
+When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Make sure to update the commands to use this new logic package.
+
+*** Refactor the task CRUD utils into a separate module re-used by all the commands
 *** REWORKED Interactive loop refactor
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-05-26 Tue 21:27]

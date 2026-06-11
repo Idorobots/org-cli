@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import typer
 from org_parser.time import Clock, Timestamp
 
-from org.cli_common import load_and_process_data, resolve_input_paths
+from org.cli_common import load_and_process_data
 from org.commands.archive import archive_heading_subtree_and_save
 from org.commands.editor import edit_heading_subtree_in_external_editor
 from org.commands.interactive_common import (
@@ -31,7 +31,6 @@ from org.commands.tasks.common import (
     iter_descendants,
     load_document,
     parse_clock_duration,
-    resolve_refile_destination_input,
     save_document,
     todo_states_for_heading,
 )
@@ -409,18 +408,8 @@ def apply_refile_with_value(session: AgendaSession, destination_input: str) -> N
     if row is None or row.node is None:
         session.status_message = "Action available only on task rows"
         return
-    current_files = resolve_input_paths(session.args.files)
-    destination_path, validation_error = resolve_refile_destination_input(
-        destination_input,
-        current_files,
-    )
-    if destination_path is None and validation_error is None:
-        session.status_message = "Refile cancelled"
-        return
-    if validation_error is not None:
-        session.status_message = validation_error
-        return
-    if destination_path is None:
+    destination_path = destination_input.strip()
+    if not destination_path:
         session.status_message = "Refile cancelled"
         return
     try:

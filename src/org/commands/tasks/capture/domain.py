@@ -103,24 +103,6 @@ def _valid_template_names_text(template_names: list[str]) -> str:
     return ", ".join(template_names)
 
 
-def resolve_interactive_capture_template_selection(
-    selection: str,
-    template_names: list[str],
-) -> str | None:
-    """Resolve capture template from interactive selection input."""
-    normalized = selection.strip()
-    if not normalized:
-        return None
-    if normalized in template_names:
-        return normalized
-    if not normalized.isdigit():
-        return None
-    index = int(normalized) - 1
-    if 0 <= index < len(template_names):
-        return template_names[index]
-    return None
-
-
 def _template_placeholders(template_content: str) -> list[str]:
     """Return unique placeholders in first-appearance order."""
     placeholders = [match.group(1) for match in _PLACEHOLDER_RE.finditer(template_content)]

@@ -905,12 +905,12 @@ def test_apply_capture_task_reports_bad_parameter_error(
     session = _make_session(nodes)
 
     def _raise_bad_parameter(_args: object) -> object:
-        raise typer.BadParameter("Invalid capture template shortcut")
+        raise typer.BadParameter("Capture failed")
 
     monkeypatch.setattr(actions, "capture_task", _raise_bad_parameter)
 
     actions.apply_capture_task(session, "quick")
-    assert session.status_message == "Invalid capture template shortcut"
+    assert session.status_message == "Capture failed"
 
 
 def test_apply_state_change_appends_repeat_transition(monkeypatch: pytest.MonkeyPatch) -> None:

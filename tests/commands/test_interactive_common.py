@@ -11,19 +11,8 @@ from org.commands.interactive_common import (
     render_interactive_help_panel_text,
     resolve_heading_locator,
 )
-from org.commands.tasks.common import resolve_todo_state_selection, todo_states_for_heading
+from org.commands.tasks.common import todo_states_for_heading
 from tests.conftest import node_from_org
-
-
-def test_resolve_todo_state_selection_supports_number_and_value() -> None:
-    """State selection should resolve numeric indexes and explicit values."""
-    states = ["TODO", "NEXT", "DONE"]
-
-    assert resolve_todo_state_selection("2", states) == "NEXT"
-    assert resolve_todo_state_selection("DONE", states) == "DONE"
-    assert resolve_todo_state_selection("", states) is None
-    assert resolve_todo_state_selection("99", states) is None
-    assert resolve_todo_state_selection("UNKNOWN", states) is None
 
 
 def test_todo_states_for_heading_returns_stable_unique_order() -> None:

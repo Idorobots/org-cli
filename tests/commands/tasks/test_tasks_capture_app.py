@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
-from textual.widgets import Static, TextArea
+from textual.widgets import OptionList, Static, TextArea
 
 from org.commands.tasks import capture
-from org.commands.tasks.capture.app import CaptureApp
+from org.commands.tasks.capture.app import CaptureApp, _TemplateSelectionApp
 
 
 if TYPE_CHECKING:
@@ -102,5 +102,25 @@ def test_capture_app_save_collects_form_values() -> None:
         assert app.result_values is not None
         assert app.result_values["title"] == "Work"
         assert app.result_values["owner"] == "Sam"
+
+    asyncio.run(_run())
+
+
+def test_template_selection_app_uses_shared_keyboard_selection_modal() -> None:
+    """Template selection should use the shared keyboard-only modal."""
+
+    async def _run() -> None:
+        app = _TemplateSelectionApp(["later", "quick"])
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+
+            option_list = app.screen.query_one(OptionList)
+            assert option_list.has_focus
+
+            await pilot.press("down", "enter")
+            await pilot.pause()
+
+        assert app.selected_template_name == "quick"
 
     asyncio.run(_run())

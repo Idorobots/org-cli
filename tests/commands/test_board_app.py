@@ -7,7 +7,7 @@ import os
 import sys
 from typing import TYPE_CHECKING, Any, cast
 
-from textual.widgets import Input, Static
+from textual.widgets import Input, OptionList, Static
 
 from org import config as config_module
 from org.commands.board import actions
@@ -214,7 +214,8 @@ def test_board_app_capture_prompt_submits_and_reloads(monkeypatch: pytest.Monkey
         async with app.run_test() as pilot:
             app.action_prompt_capture()
             await pilot.pause()
-            app.screen_stack[-1].dismiss("1")
+            assert app.screen.query_one(OptionList).has_focus
+            await pilot.press("down", "enter")
             await pilot.pause()
 
             assert reloaded["identity"] == heading_locator(captured_node)

@@ -18,7 +18,6 @@ from .domain import (
     _template_placeholders,
     _validate_rendered_heading,
     prepare_capture_plan,
-    resolve_interactive_capture_template_selection,
 )
 
 
@@ -40,7 +39,6 @@ __all__ = [
     "capture_task",
     "prepare_capture_plan",
     "register",
-    "resolve_interactive_capture_template_selection",
     "run_capture_form_app",
     "run_tasks_capture",
     "run_template_selection_app",

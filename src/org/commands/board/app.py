@@ -14,9 +14,7 @@ from textual.widgets import Static
 
 from org.commands import runtime
 from org.commands.tasks.common import (
-    capture_template_prompt_label,
     configured_capture_template_names,
-    resolve_capture_template_selection,
 )
 
 from . import actions, ui
@@ -284,6 +282,23 @@ class BoardApp(runtime.CommandApp):
             callback=_complete,
         )
 
+    def _open_selection(
+        self,
+        label: str,
+        options: list[runtime.SelectionOption],
+        *,
+        on_submit: Callable[[str], None],
+        on_cancel: Callable[[], None],
+    ) -> None:
+        def _complete(result: str | None) -> None:
+            if result is None:
+                on_cancel()
+            else:
+                on_submit(result)
+            self._refresh_view()
+
+        self.push_screen(runtime.SelectionModalScreen(label, options), callback=_complete)
+
     def action_move_up(self) -> None:
         """Move the selection one task upward in the selected column."""
         actions.move_selection_vertical(self.session, -1)
@@ -377,21 +392,12 @@ class BoardApp(runtime.CommandApp):
 
         template_names = configured_capture_template_names()
 
-        def _submit(value: str) -> None:
-            stripped = value.strip()
-            if not stripped:
-                self._set_status("Capture cancelled")
-                return
-            template_name = resolve_capture_template_selection(stripped, template_names)
-            if template_name is None:
-                self._set_status("Invalid capture template shortcut")
-                self.action_prompt_capture()
-                return
-            self._run_external(lambda: actions.apply_capture_task(self.session, template_name))
-
-        self._open_prompt(
-            capture_template_prompt_label(template_names),
-            on_submit=_submit,
+        self._open_selection(
+            "Capture template",
+            [runtime.SelectionOption(value=name, label=name) for name in template_names],
+            on_submit=lambda template_name: self._run_external(
+                lambda: actions.apply_capture_task(self.session, template_name),
+            ),
             on_cancel=lambda: self._set_status("Capture cancelled"),
         )
 

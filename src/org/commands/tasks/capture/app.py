@@ -16,7 +16,6 @@ from .domain import (
     _CAPTURE_HELP_ENTRIES,
     CapturePlan,
     _build_template_body,
-    resolve_interactive_capture_template_selection,
 )
 
 
@@ -36,41 +35,29 @@ class _TemplateSelectionApp(runtime.CommandApp):
         super().__init__()
         self._template_names = template_names
         self.selected_template_name: str | None = None
-        self._status_message = ""
 
     def compose(self) -> ComposeResult:
         yield Container(
             Static(Text("Capture template", style="bold"), id="selection-title"),
-            Static(id="selection-status"),
             id="selection-root",
         )
 
     def on_mount(self) -> None:
         self._prompt_template_selection()
 
-    def _refresh_status(self) -> None:
-        self.query_one("#selection-status", Static).update(Text(self._status_message))
-
     def _prompt_template_selection(self) -> None:
-        options_text = ", ".join(
-            f"{idx}:{name}" for idx, name in enumerate(self._template_names, start=1)
-        )
-        label = f"Capture template name or number [{options_text}]"
-
-        def _submit(value: str) -> None:
-            selected = resolve_interactive_capture_template_selection(value, self._template_names)
-            if selected is None:
-                self._status_message = "Invalid capture template selection"
-                self._refresh_status()
-                self._prompt_template_selection()
-                return
-            self.selected_template_name = selected
-            self.exit()
-
         self.push_screen(
-            runtime.PromptModalScreen(label),
-            callback=lambda value: _submit(value) if value is not None else self.exit(),
+            runtime.SelectionModalScreen(
+                "Capture template",
+                [runtime.SelectionOption(value=name, label=name) for name in self._template_names],
+            ),
+            callback=self._complete_template_selection,
         )
+
+    def _complete_template_selection(self, value: str | None) -> None:
+        """Exit after one shared selection modal result."""
+        self.selected_template_name = value
+        self.exit()
 
 
 class CaptureApp(runtime.CommandApp):
