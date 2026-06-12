@@ -8,10 +8,12 @@ from typing import TYPE_CHECKING
 import typer
 
 import org.config.app
-from org.query_language import CompiledQuery, QueryParseError, compile_query_text
+from org.pipeline.query import compile_filter_order_query
 
 
 if TYPE_CHECKING:
+    from org.query_language.compiler import CompiledQuery
+
     from .command import AgendaArgs
 
 
@@ -35,10 +37,7 @@ class AgendaViewContext:
 
 def _compile_section_query(filter_query: str, order_by: str | None) -> CompiledQuery:
     """Compile one agenda section filter/order query text."""
-    base_query = f"select({filter_query})"
-    if order_by is None:
-        return compile_query_text(base_query)
-    return compile_query_text(f"{base_query} | sort_by({order_by})")
+    return compile_filter_order_query(filter_query, order_by)
 
 
 def _fallback_agenda_view() -> org.config.app.AgendaViewConfig:
@@ -63,7 +62,7 @@ def _compile_view_section_specs(view: org.config.app.AgendaViewConfig) -> list[A
     for section in view.sections:
         try:
             query = _compile_section_query(section.filter, section.order_by)
-        except QueryParseError as err:
+        except Exception as err:
             raise typer.BadParameter(
                 f"Invalid agenda filter/order-by (view={view.name}, section={section.name}): {err}",
             ) from err

@@ -1,6 +1,6 @@
 """Tests for the clean() function."""
 
-from org.logic.filtering import DEFAULT_EXCLUDE
+from org.config.app import DEFAULT_EXCLUDE
 from org.logic.stats import Tag, TimeRange, clean
 
 

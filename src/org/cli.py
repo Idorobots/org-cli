@@ -11,7 +11,6 @@ import org.logging
 from org.commands import agenda, stats
 from org.commands import board as board_command
 from org.commands.tasks import command as tasks_command
-from org.logic.filtering import DEFAULT_VERBOSE, resolve_verbose
 
 
 app = typer.Typer(
@@ -30,9 +29,9 @@ def main_callback(
     ),
 ) -> None:
     """Global CLI options."""
-    if verbose is None and not DEFAULT_VERBOSE["value"]:
+    if verbose is None and not org.config.app.DEFAULT_VERBOSE["value"]:
         return
-    org.logging.configure_logging(resolve_verbose(verbose))
+    org.logging.configure_logging(org.config.app.resolve_verbose(verbose))
 
 
 agenda.register(app)
@@ -46,7 +45,7 @@ def main() -> None:
     loaded_config = org.config.app.load_cli_config(sys.argv)
     defaults = loaded_config.defaults
     if defaults is not None:
-        DEFAULT_VERBOSE["value"] = bool(defaults.pop("verbose", False))
+        org.config.app.DEFAULT_VERBOSE["value"] = bool(defaults.pop("verbose", False))
     org.config.app.CONFIG_APPEND_DEFAULTS.clear()
     org.config.app.CONFIG_APPEND_DEFAULTS.update(loaded_config.append_defaults)
     org.config.app.CONFIG_INLINE_DEFAULTS.clear()

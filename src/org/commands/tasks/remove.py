@@ -18,7 +18,7 @@ from org.commands.tasks.common import (
     resolve_task_selector_query,
     save_document,
 )
-from org.logic.filtering import resolve_input_paths
+from org.pipeline.load import resolve_input_paths
 from org.tui.color import should_use_color
 
 

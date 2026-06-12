@@ -19,7 +19,6 @@ from org.commands.tasks.common import (
 )
 from org.logic.archive import archive_heading_subtree_and_save
 from org.logic.edit import edit_heading_subtree_in_external_editor
-from org.logic.filtering import load_and_process_data
 from org.logic.search import filter_nodes_by_search
 from org.logic.tasks import (
     HeadingLocator,
@@ -29,6 +28,7 @@ from org.logic.tasks import (
     shift_priority,
 )
 from org.logic.time import advance_timestamp_by_repeater, local_now
+from org.pipeline.load import load_and_process_data
 from org.tui.help import InteractiveHelpEntry
 
 

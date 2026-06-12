@@ -10,13 +10,6 @@ import typer
 
 import org.config.app
 import org.logging
-from org.logic.filtering import (
-    load_and_process_data,
-    normalize_show_value,
-    resolve_date_filters,
-    resolve_exclude_set,
-    resolve_mapping,
-)
 from org.logic.stats import (
     Tag,
     TimeRange,
@@ -26,8 +19,11 @@ from org.logic.stats import (
     compute_per_tag_statistics,
     compute_relations,
     compute_time_ranges,
+    normalize_show_value,
 )
+from org.logic.time import resolve_date_filters
 from org.logic.validation import validate_stats_arguments
+from org.pipeline.load import load_and_process_data
 from org.tui.bits import (
     TagBlockConfig,
     apply_indent,
@@ -170,8 +166,8 @@ def run_stats_tags(args: TagsArgs) -> None:
     max_results = args.max_results if args.max_results is not None else 10
 
     with processing_status(console, color_enabled):
-        mapping = resolve_mapping(args)
-        exclude_set = resolve_exclude_set(args)
+        mapping = org.config.app.resolve_mapping(args)
+        exclude_set = org.config.app.resolve_exclude_set(args)
         nodes, _, _ = load_and_process_data(args)
 
         if not nodes:

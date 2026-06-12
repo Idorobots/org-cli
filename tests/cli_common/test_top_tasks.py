@@ -2,7 +2,8 @@
 
 from datetime import datetime
 
-from org.logic.filtering import get_most_recent_timestamp, get_top_tasks
+from org.logic.tasks import get_top_tasks
+from org.logic.time import get_most_recent_timestamp
 from tests.conftest import node_from_org
 
 

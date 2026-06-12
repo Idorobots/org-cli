@@ -13,8 +13,7 @@ from rich.syntax import Syntax
 
 import org.config.app
 import org.logging
-from org.logic.filtering import load_and_process_data
-from org.serde.format import (
+from org.pipeline.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,
@@ -28,6 +27,7 @@ from org.serde.format import (
     _prepare_output,
     print_prepared_output,
 )
+from org.pipeline.load import load_and_process_data
 from org.tui.bits import (
     TaskLineConfig,
     build_console,

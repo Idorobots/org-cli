@@ -7566,11 +7566,588 @@ In addition to the above, the =org/tui/bits.py= module now contains a lot of non
 Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
 Make sure to update the commands to use this new logic package.
 
+**** DONE src/org/commands/agenda/command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 00:35]
+:END:
+
+In file src/org/commands/agenda/command.py around line 16, near the ~import typer~
+
+#+begin_example
++from org.logic.filtering import load_and_process_data
+
+#+end_example
+
+Sounds like that function should be in serde module, not logic filtering.
+**** DONE src/org/commands/agenda/ui.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 00:35]
+:END:
+
+In file src/org/commands/agenda/ui.py around line 18, near the ~from rich import box~
+
+#+begin_example
++from org.logic.time import local_now, shift_datetimes_by_unit
++from org.logic.validation import parse_date_argument
+
+#+end_example
+
+The =parse_date_argument= should either be in serde package, or in =logic.time=. I'm leaning towards =logic.time=.
+**** DONE src/org/commands/stats/groups.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 00:35]
+:END:
+
+In file src/org/commands/stats/groups.py around line 20, near the ~import typer~
+
+#+begin_example
++from org.logic.filtering import (
++    load_and_process_data,
++    resolve_date_filters,
++    resolve_exclude_set,
++    resolve_group_values,
++    resolve_mapping,
+
+#+end_example
+
+All of these should be elsewhere than the filtering module.
+**** DONE tests/cli_common/test_filter_construction.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 00:35]
+:END:
+
+In file tests/cli_common/test_filter_construction.py around line 89, near the ~def test_build_query_text_with_ordering_and_slice() -> None:~
+
+#+begin_example
+-    from org.cli_common import build_query_text
++    from org.logic.filtering import build_query_text
+
+#+end_example
+
+Query building should not be a part of the filtering module, it should be in a dedicated module.
+**** DONE tests/cli_common/test_top_tasks.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 00:35]
+:END:
+
+In file tests/cli_common/test_top_tasks.py around line 7, near the ~Merge~
+
+#+begin_example
++from org.logic.filtering import get_most_recent_timestamp, get_top_tasks
+
+#+end_example
+
+=get_most_recent_timestamp= should be in the time module.
+**** TODO Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/edit.py::def _load_document_from_text(document_text: str, filename: str | None) -> Document:
+ """Parse full document text and preserve original filename when present."""
+ try:
+ document = org_parser.loads(document_text)
+ except (TypeError, ValueError) as err:
+ raise typer.BadParameter(f"Edited document content is invalid: {err}") from err
+
+ document.filename = "" if filename is None else filename
+ return document]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/edit.py
+
+#+begin_example
+
+def _load_document_from_text(document_text: str, filename: str | None) -> Document:
+    """Parse full document text and preserve original filename when present."""
+    try:
+        document = org_parser.loads(document_text)
+    except (TypeError, ValueError) as err:
+        raise typer.BadParameter(f"Edited document content is invalid: {err}") from err
+
+    document.filename = "" if filename is None else filename
+    return document
+
+#+end_example
+
+This should be moved to the serde module. Ideally, one way to load a file should be used accross the whole app.
+**** TODO Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def get_top_day_info(time_range: TimeRange | None) -> tuple\[str, int\] | None:
+ """Extract top day and its count from TimeRange."""
+ if not time_range or not time_range.timeline:
+ return None
+ max_count = max(time_range.timeline.values())
+ top_day = min(d for d, count in time_range.timeline.items() if count == max_count)
+ return (top_day.isoformat(), max_count)]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+
+def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
+    """Extract top day and its count from TimeRange."""
+    if not time_range or not time_range.timeline:
+        return None
+    max_count = max(time_range.timeline.values())
+    top_day = min(d for d, count in time_range.timeline.items() if count == max_count)
+    return (top_day.isoformat(), max_count)
+
+#+end_example
+
+This should be in the stats module.
+**** TODO Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def count_filter_values(value: list\[str\] | None) -> int:
+ """Count filter values for append-style filters."""
+ return len(value) if value else 0]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+
+def count_filter_values(value: list[str] | None) -> int:
+    """Count filter values for append-style filters."""
+    return len(value) if value else 0
+
+#+end_example
+
+This function makes no sense, just do this directly wherever this is invoked.
+**** TODO Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/edit.py::def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
+ """Edit the original task document, preferring in-place file editing at task line."""
+ return attempt_edit_heading_subtree_in_external_editor(heading)]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/edit.py
+
+#+begin_example
+
+def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
+    """Edit the original task document, preferring in-place file editing at task line."""
+    return attempt_edit_heading_subtree_in_external_editor(heading)
+
+#+end_example
+
+This wrapper makes no sense.
+**** TODO Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def get_most_recent_timestamp(node: Heading) -> datetime | None:
+ """Get the most recent timestamp from a node."""
+ timestamps = extract_timestamp_any(node)
+ return max(timestamps) if timestamps else None]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+def get_most_recent_timestamp(node: Heading) -> datetime | None:
+    """Get the most recent timestamp from a node."""
+    timestamps = extract_timestamp_any(node)
+    return max(timestamps) if timestamps else None
+
+#+end_example
+
+This is available in the =Heading= class as =latest_timestamp=, please remove this function and use the built-in way to fetch the timestamp.
+**** TODO Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def get_top_tasks(nodes: list\[Heading\], max_results: int) -> list\[Heading\]:
+ """Get top N nodes sorted by most recent timestamp."""
+ nodes_with_timestamps: list\[tuple\[Heading, datetime\]\] = \[\]
+ for node in nodes:
+ timestamp = get_most_recent_timestamp(node)
+ if timestamp:
+ nodes_with_timestamps.append((node, timestamp))
+
+ sorted_nodes = sorted(nodes_with_timestamps, key=lambda x: x\[1\], reverse=True)
+
+ return \[node for node, _ in sorted_nodes\[:max_results\]\]]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+
+def get_top_tasks(nodes: list[Heading], max_results: int) -> list[Heading]:
+    """Get top N nodes sorted by most recent timestamp."""
+    nodes_with_timestamps: list[tuple[Heading, datetime]] = []
+    for node in nodes:
+        timestamp = get_most_recent_timestamp(node)
+        if timestamp:
+            nodes_with_timestamps.append((node, timestamp))
+
+    sorted_nodes = sorted(nodes_with_timestamps, key=lambda x: x[1], reverse=True)
+
+    return [node for node, _ in sorted_nodes[:max_results]]
+
+#+end_example
+
+This should be in the stats module.
+**** TODO Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def validate_custom_switches(argv: list\[str\], include_builtin_ordering: bool) -> None:
+ """Validate prefixed custom switches against configured/built-in options."""
+ builtin_order_options = set(ORDER_BY_OPTION_TO_VALUE) if include_builtin_ordering else set()
+ allowed_filter_options = FILTER_OPTIONS_WITH_VALUE.union(FILTER_OPTIONS_FLAGS).union(
+ {f"--filter-{name}" for name in org.config.app.CONFIG_CUSTOM_FILTERS},
+ )
+ allowed_order_options = builtin_order_options.union(
+ {f"--order-by-{name}" for name in org.config.app.CONFIG_CUSTOM_ORDER_BY},
+ )
+ allowed_with_options = WITH_OPTIONS_FLAGS.union(
+ {f"--with-{name}" for name in org.config.app.CONFIG_CUSTOM_WITH},
+ )
+
+ for index, token in enumerate(argv):
+ option = _extract_option_token(token)
+ if option.startswith("--filter-") and option not in allowed_filter_options:
+ raise click.NoSuchOption(option)
+ if option.startswith("--order-by-") and option not in allowed_order_options:
+ raise click.NoSuchOption(option)
+ if option.startswith("--with-") and option not in allowed_with_options:
+ raise click.NoSuchOption(option)
+
+ custom_option = _resolve_custom_option(option)
+ if custom_option is None:
+ continue
+
+ _, requires_arg = custom_option
+ if not requires_arg or token.startswith(f"{option}="):
+ continue
+
+ next_index = index + 1
+ if next_index >= len(argv):
+ raise _required_custom_arg_error(option)
+
+ next_token = argv\[next_index\]
+ if next_token.startswith("-"):
+ raise _required_custom_arg_error(option)]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+
+def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) -> None:
+    """Validate prefixed custom switches against configured/built-in options."""
+    builtin_order_options = set(ORDER_BY_OPTION_TO_VALUE) if include_builtin_ordering else set()
+    allowed_filter_options = FILTER_OPTIONS_WITH_VALUE.union(FILTER_OPTIONS_FLAGS).union(
+        {f"--filter-{name}" for name in org.config.app.CONFIG_CUSTOM_FILTERS},
+    )
+    allowed_order_options = builtin_order_options.union(
+        {f"--order-by-{name}" for name in org.config.app.CONFIG_CUSTOM_ORDER_BY},
+    )
+    allowed_with_options = WITH_OPTIONS_FLAGS.union(
+        {f"--with-{name}" for name in org.config.app.CONFIG_CUSTOM_WITH},
+    )
+
+    for index, token in enumerate(argv):
+        option = _extract_option_token(token)
+        if option.startswith("--filter-") and option not in allowed_filter_options:
+            raise click.NoSuchOption(option)
+        if option.startswith("--order-by-") and option not in allowed_order_options:
+            raise click.NoSuchOption(option)
+        if option.startswith("--with-") and option not in allowed_with_options:
+            raise click.NoSuchOption(option)
+
+        custom_option = _resolve_custom_option(option)
+        if custom_option is None:
+            continue
+
+        _, requires_arg = custom_option
+        if not requires_arg or token.startswith(f"{option}="):
+            continue
+
+        next_index = index + 1
+        if next_index >= len(argv):
+            raise _required_custom_arg_error(option)
+
+        next_token = argv[next_index]
+        if next_token.startswith("-"):
+            raise _required_custom_arg_error(option)
+
+#+end_example
+
+Probably should be moved to the validation module.
+**** TODO Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::class DataLoadArgs(QueryBuildArgs, Protocol):
+ """Protocol for loading and preprocessing data."""
+
+ files: list\[str\] | None
+ todo_states: str
+ done_states: str
+ width: int | None
+
+
+class SlicedDataLoadArgs(Protocol):
+ """Protocol for args that support query slicing."""
+
+ offset: int
+ max_results: int
+
+
+class RootDataLoadArgs(Protocol):
+ """Protocol for loading root nodes without filters or enrichment."""
+
+ files: list\[str\] | None
+ todo_states: str
+ done_states: str
+ width: int | None
+
+
+def _resolve_and_load_roots(
+ args: RootDataLoadArgs,
+) -> tuple\[list\[Document\], list\[str\], list\[str\]\]:
+ """Resolve inputs and load org roots after validating todo/done keys."""
+ todo_states = validate_and_parse_keys(args.todo_states, "--todo-states")
+ done_states = validate_and_parse_keys(args.done_states, "--done-states")
+ return _load_roots_for_inputs(args.files, todo_states, done_states)
+
+
+def _load_roots_for_inputs(
+ files: list\[str\] | None,
+ todo_states: list\[str\],
+ done_states: list\[str\],
+) -> tuple\[list\[Document\], list\[str\], list\[str\]\]:
+ """Resolve file inputs and load all org root nodes."""
+ filenames = resolve_input_paths(files)
+ return load_root_nodes(filenames, todo_states, done_states)
+
+
+def load_root_data(
+ args: RootDataLoadArgs,
+) -> tuple\[list\[Document\], list\[str\], list\[str\]\]:
+ """Load org root nodes without filters, enrichment, or ordering."""
+ return _resolve_and_load_roots(args)
+
+
+def load_and_process_data(
+ args: DataLoadArgs,
+) -> tuple\[list\[Heading\], list\[str\], list\[str\]\]:
+ """Load nodes, preprocess, and apply query-based filters/ordering."""
+ include_ordering = hasattr(args, "order_by_level")
+ validate_custom_switches(sys.argv, include_ordering)
+
+ normalized_files = normalize_cli_files_for_custom_switches(args.files)
+ args.files = normalized_files
+
+ todo_states, done_states = validate_global_arguments(args)
+ roots, todo_states, done_states = _load_roots_for_inputs(
+ normalized_files,
+ todo_states,
+ done_states,
+ )
+ nodes = \[node for root in roots for node in list(root)\]
+
+ include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
+ query = build_query(
+ args,
+ sys.argv,
+ include_ordering=include_ordering,
+ include_slice=include_slice,
+ )
+
+ context_vars: dict\[str, object\] = {
+ "todo_states": todo_states,
+ "done_states": done_states,
+ }
+ context_vars.update(collect_custom_context_vars(sys.argv, normalized_files, include_ordering))
+ if include_slice:
+ sliced_args = cast("SlicedDataLoadArgs", args)
+ context_vars\["offset"\] = sliced_args.offset
+ context_vars\["limit"\] = sliced_args.max_results
+
+ logger.info("Query context: %s", context_vars)
+
+ try:
+ results = query(Stream(\[nodes\]), EvalContext(context_vars))
+ except (QueryParseError, QueryRuntimeError) as exc:
+ raise typer.BadParameter(str(exc)) from exc
+
+ flattened: list\[object\]
+ if len(results) == 1 and isinstance(results\[0\], list):
+ flattened = cast("list\[object\]", results\[0\])
+ else:
+ flattened = list(results)
+ nodes = \[value for value in flattened if isinstance(value, Heading)\]
+
+ return nodes, todo_states, done_states]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+
+class DataLoadArgs(QueryBuildArgs, Protocol):
+    """Protocol for loading and preprocessing data."""
+
+    files: list[str] | None
+    todo_states: str
+    done_states: str
+    width: int | None
+
+
+class SlicedDataLoadArgs(Protocol):
+    """Protocol for args that support query slicing."""
+
+    offset: int
+    max_results: int
+
+
+class RootDataLoadArgs(Protocol):
+    """Protocol for loading root nodes without filters or enrichment."""
+
+    files: list[str] | None
+    todo_states: str
+    done_states: str
+    width: int | None
+
+
+def _resolve_and_load_roots(
+    args: RootDataLoadArgs,
+) -> tuple[list[Document], list[str], list[str]]:
+    """Resolve inputs and load org roots after validating todo/done keys."""
+    todo_states = validate_and_parse_keys(args.todo_states, "--todo-states")
+    done_states = validate_and_parse_keys(args.done_states, "--done-states")
+    return _load_roots_for_inputs(args.files, todo_states, done_states)
+
+
+def _load_roots_for_inputs(
+    files: list[str] | None,
+    todo_states: list[str],
+    done_states: list[str],
+) -> tuple[list[Document], list[str], list[str]]:
+    """Resolve file inputs and load all org root nodes."""
+    filenames = resolve_input_paths(files)
+    return load_root_nodes(filenames, todo_states, done_states)
+
+
+def load_root_data(
+    args: RootDataLoadArgs,
+) -> tuple[list[Document], list[str], list[str]]:
+    """Load org root nodes without filters, enrichment, or ordering."""
+    return _resolve_and_load_roots(args)
+
+
+def load_and_process_data(
+    args: DataLoadArgs,
+) -> tuple[list[Heading], list[str], list[str]]:
+    """Load nodes, preprocess, and apply query-based filters/ordering."""
+    include_ordering = hasattr(args, "order_by_level")
+    validate_custom_switches(sys.argv, include_ordering)
+
+    normalized_files = normalize_cli_files_for_custom_switches(args.files)
+    args.files = normalized_files
+
+    todo_states, done_states = validate_global_arguments(args)
+    roots, todo_states, done_states = _load_roots_for_inputs(
+        normalized_files,
+        todo_states,
+        done_states,
+    )
+    nodes = [node for root in roots for node in list(root)]
+
+    include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
+    query = build_query(
+        args,
+        sys.argv,
+        include_ordering=include_ordering,
+        include_slice=include_slice,
+    )
+
+    context_vars: dict[str, object] = {
+        "todo_states": todo_states,
+        "done_states": done_states,
+    }
+    context_vars.update(collect_custom_context_vars(sys.argv, normalized_files, include_ordering))
+    if include_slice:
+        sliced_args = cast("SlicedDataLoadArgs", args)
+        context_vars["offset"] = sliced_args.offset
+        context_vars["limit"] = sliced_args.max_results
+
+    logger.info("Query context: %s", context_vars)
+
+    try:
+        results = query(Stream([nodes]), EvalContext(context_vars))
+    except (QueryParseError, QueryRuntimeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    flattened: list[object]
+    if len(results) == 1 and isinstance(results[0], list):
+        flattened = cast("list[object]", results[0])
+    else:
+        flattened = list(results)
+    nodes = [value for value in flattened if isinstance(value, Heading)]
+
+    return nodes, todo_states, done_states
+
+#+end_example
+
+All of this should be moved to the serde module.
+**** TODO Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/validation.py]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/validation.py
+
+#+begin_example
+
+#+end_example
+
+Validation module should be placed in serde package.
+
 *** Use Textual toasts for status messages.
 *** Use Textual textarea for any org-mode syntax highlighting
 - Limit to just the interactive commands.
 - Potentially use it for code edits of the files?
 **** Show a Textual modal when performing external edits, instead of suspending the app
+*** TODO Reorganize the query execution engine code
+:PROPERTIES:
+:capture_time: [2026-06-13 Sat 00:04]
+:context: 
+:END:
+
+Introduce a new package =org.query= and move the query-execution-related helpers in there:
+- Current =org.logic.query= should be moved to that package as =org.query.runner=
+- Current =org.query_language= package should be renamed to =org.query.engine=
+- The query compiler (=org.query.engine.compiler=) and execution engine (=org.query.engine.interpreter=) should be separated, with all the operator/function definitions also separated to their own module =org.query.engine.defs=
+*** TODO Streamline data processing.
+:PROPERTIES:
+:capture_time: [2026-06-12 Fri 23:54]
+:context: 
+:END:
+
+The commands use a common ETL pipeline where they load some data from files, apply filters/ordering/mutators and lastly present the results in some way.
+It would be nice to make this as streamlined as possible, ideally, =org.logic.query= would expose a function =run_query= that takes a list of documents, a textlist of query stages to run and the environment for the query to run in, and compiles and executes the query and returns the result.
+That streamlined query execution should be used in all places that extract or transform the org document data - the data should be loaded, then processed with the =run_query= function and used as needed.
+*** TODO Org file repository abstraction
+:PROPERTIES:
+:capture_time: [2026-06-13 Sat 00:12]
+:context: 
+:END:
+
+Add a new package =org.db= that will store the org file repository abstraction.
+In that package, add a repository-pattern abstraction over one or more org files. The abstraction should automatically load all the files, maintain their modification state and automatically perform saving of the modified files whenever they change.
+The abstraction should also support querying the repository using the query language.
+
+All commands should be updated to instantiate this repository and use its querying capabilities for all of their querying needs.
 *** TODO Load configuration first and pass the object to the commands
 Do not use global state for configuration storage. The goal is for the commands to be stateless.
 

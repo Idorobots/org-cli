@@ -74,6 +74,91 @@ CONFIG_CAPTURE_TEMPLATES: dict[str, dict[str, str]] = {}
 CONFIG_BOARD_VIEWS: dict[str, BoardViewConfig] = {}
 CONFIG_AGENDA_VIEWS: dict[str, AgendaViewConfig] = {}
 
+MAP: dict[str, str] = {}
+
+DEFAULT_VERBOSE: dict[str, bool] = {"value": False}
+
+TAGS: set[str] = set()
+
+HEADING = {
+    "the",
+    "to",
+    "a",
+    "for",
+    "in",
+    "of",
+    "and",
+    "on",
+    "with",
+    "some",
+    "out",
+    "&",
+    "up",
+    "from",
+    "an",
+    "into",
+    "new",
+    "why",
+    "do",
+    "ways",
+    "say",
+    "it",
+    "this",
+    "is",
+    "no",
+    "not",
+    "that",
+    "all",
+    "but",
+    "be",
+    "use",
+    "now",
+    "will",
+    "i",
+    "as",
+    "or",
+    "by",
+    "did",
+    "can",
+    "are",
+    "was",
+    "more",
+    "until",
+    "using",
+    "when",
+    "only",
+    "at",
+    "it's",
+    "have",
+    "about",
+    "just",
+    "get",
+    "didn't",
+    "can't",
+    "my",
+    "does",
+    "etc",
+    "there",
+    "yet",
+    "nope",
+    "should",
+    "i'll",
+    "nah",
+}
+
+DEFAULT_EXCLUDE = TAGS.union(HEADING).union(
+    {
+        "end",
+        "logbook",
+        "cancelled",
+        "scheduled",
+        "suspended",
+        "",
+    },
+)
+
+CATEGORY_NAMES = {"tags": "tags", "heading": "heading words", "body": "body words"}
+
 
 DEST_TO_OPTION_NAME: dict[str, str] = {
     "date": "--date",
@@ -131,6 +216,13 @@ DEST_TO_OPTION_NAME: dict[str, str] = {
 def normalize_exclude_values(values: list[str]) -> set[str]:
     """Normalize exclude values to match file-based behavior."""
     return {line.strip() for line in values if line.strip()}
+
+
+def resolve_verbose(verbose: bool | None) -> bool:
+    """Resolve effective verbose setting from CLI flag and config defaults."""
+    if verbose is None:
+        return DEFAULT_VERBOSE["value"]
+    return verbose
 
 
 def load_exclude_list(filepath: str | None) -> set[str]:
@@ -193,6 +285,24 @@ def load_mapping(filepath: str | None) -> dict[str, str]:
         raise typer.BadParameter(f"Invalid JSON in '{filepath}': {err}") from err
     else:
         return mapping
+
+
+def resolve_mapping(args: object) -> dict[str, str]:
+    """Resolve mapping based on inline or file-based configuration."""
+    mapping_inline = getattr(args, "mapping_inline", None)
+    if mapping_inline is not None:
+        return mapping_inline or MAP
+    mapping_file = getattr(args, "mapping", None)
+    return load_mapping(mapping_file) or MAP
+
+
+def resolve_exclude_set(args: object) -> set[str]:
+    """Resolve exclude set based on inline or file-based configuration."""
+    exclude_inline = getattr(args, "exclude_inline", None)
+    if exclude_inline is not None:
+        return normalize_exclude_values(exclude_inline) or DEFAULT_EXCLUDE
+    exclude_file = getattr(args, "exclude", None)
+    return load_exclude_list(exclude_file) or DEFAULT_EXCLUDE
 
 
 @dataclass

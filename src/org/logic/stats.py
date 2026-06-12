@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from org.logic.time import extract_timestamp_any
+from org.logic.validation import parse_group_values
 
 
 if TYPE_CHECKING:
@@ -128,6 +129,15 @@ class AnalysisResult:
     max_repeat_count: int
     tags: dict[str, Tag]
     tag_groups: list[Group]
+
+
+def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
+    """Extract top day and its count from TimeRange."""
+    if not time_range or not time_range.timeline:
+        return None
+    max_count = max(time_range.timeline.values())
+    top_day = min(d for d, count in time_range.timeline.items() if count == max_count)
+    return (top_day.isoformat(), max_count)
 
 
 def weekday_to_string(weekday: int) -> str:
@@ -574,3 +584,48 @@ def clean(disallowed: set[str], tags: dict[str, Tag]) -> dict[str, Tag]:
     """Remove tags from the disallowed set (stop words)."""
     disallowed_lower = {d.lower() for d in disallowed}
     return {t: tags[t] for t in tags if t.lower() not in disallowed_lower}
+
+
+def normalize_show_value(value: str, mapping: dict[str, str]) -> str:
+    """Normalize a single show value to match heading/body analysis."""
+    normalized = normalize({value}, mapping)
+    return next(iter(normalized), "")
+
+
+def dedupe_values(values: list[str]) -> list[str]:
+    """Deduplicate values while preserving order."""
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
+
+
+def resolve_group_values(
+    groups: list[str] | None,
+    mapping: dict[str, str],
+    category: str,
+) -> list[list[str]] | None:
+    """Resolve explicit group values from CLI arguments."""
+    if groups is None:
+        return None
+
+    resolved_groups: list[list[str]] = []
+    for group_value in groups:
+        raw_values = parse_group_values(group_value)
+        if category == "tags":
+            group_items = [mapping.get(value, value) for value in raw_values]
+        else:
+            group_items = []
+            for value in raw_values:
+                normalized_value = normalize_show_value(value, mapping)
+                if normalized_value:
+                    group_items.append(normalized_value)
+        group_items = dedupe_values(group_items)
+        if group_items:
+            resolved_groups.append(group_items)
+
+    return resolved_groups

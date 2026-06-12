@@ -22,7 +22,7 @@ from org.logic.archive import ArchiveLocation, ArchiveMoveResult, ArchiveTarget
 from org.logic.edit import DocumentEditResult
 from org.logic.search import filter_nodes_by_search
 from org.logic.tasks import heading_locator
-from org.serde.format import OutputFormat, OutputFormatError
+from org.pipeline.format import OutputFormat, OutputFormatError
 from org.tui.bits import visual_len
 from tests.conftest import node_from_org
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from typing import Protocol
 
 import typer
@@ -29,44 +28,6 @@ class StatsArgs(Protocol):
     max_tags: int
     max_groups: int
     min_group_size: int
-
-
-def parse_date_argument(date_str: str, arg_name: str) -> datetime:
-    """Parse and validate timestamp argument in multiple supported formats."""
-    if not date_str or not date_str.strip():
-        supported_formats = [
-            "YYYY-MM-DD",
-            "YYYY-MM-DDThh:mm",
-            "YYYY-MM-DDThh:mm:ss",
-            "YYYY-MM-DD hh:mm",
-            "YYYY-MM-DD hh:mm:ss",
-        ]
-        formats_str = ", ".join(supported_formats)
-        raise typer.BadParameter(
-            f"{arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'",
-        )
-
-    try:
-        return datetime.fromisoformat(date_str)
-    except ValueError:
-        pass
-
-    try:
-        return datetime.fromisoformat(date_str.replace(" ", "T"))
-    except ValueError:
-        pass
-
-    supported_formats = [
-        "YYYY-MM-DD",
-        "YYYY-MM-DDThh:mm",
-        "YYYY-MM-DDThh:mm:ss",
-        "YYYY-MM-DD hh:mm",
-        "YYYY-MM-DD hh:mm:ss",
-    ]
-    formats_str = ", ".join(supported_formats)
-    raise typer.BadParameter(
-        f"{arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'",
-    )
 
 
 def parse_property_filter(property_str: str) -> tuple[str, str]:

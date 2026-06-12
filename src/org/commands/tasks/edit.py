@@ -15,7 +15,7 @@ from org.commands.tasks.common import (
     resolve_task_selector_query,
 )
 from org.logic.edit import edit_heading_subtree_in_external_editor
-from org.logic.filtering import resolve_input_paths
+from org.pipeline.load import resolve_input_paths
 
 
 logger = logging.getLogger("org")

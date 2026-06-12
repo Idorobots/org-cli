@@ -18,15 +18,7 @@ from rich.syntax import Syntax
 
 import org.config.app
 import org.logging
-from org.logic.filtering import load_root_data
-from org.query_language import (
-    EvalContext,
-    QueryParseError,
-    QueryRuntimeError,
-    Stream,
-    compile_query_text,
-)
-from org.serde.format import (
+from org.pipeline.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,
@@ -40,6 +32,8 @@ from org.serde.format import (
     _prepare_output,
     print_prepared_output,
 )
+from org.pipeline.load import load_root_data
+from org.pipeline.query import compile_query_or_raise, execute_query_or_raise
 from org.tui.bits import build_console, processing_status, setup_output
 
 
@@ -240,26 +234,17 @@ def run_tasks_query(args: TasksQueryArgs) -> None:
         raise click.UsageError(str(exc)) from exc
 
     with processing_status(console, color_enabled):
-        try:
-            compiled_query = compile_query_text(args.query)
-        except QueryParseError as exc:
-            raise click.UsageError(str(exc)) from exc
+        compiled_query = compile_query_or_raise(args.query, click.UsageError)
 
         roots, todo_states, done_states = load_root_data(args)
 
-        context = EvalContext(
-            {
-                "offset": args.offset,
-                "limit": args.max_results,
-                "todo_states": todo_states,
-                "done_states": done_states,
-            },
-        )
-        try:
-            stream_nodes = Stream([roots])
-            results = compiled_query(stream_nodes, context)
-        except QueryRuntimeError as exc:
-            raise click.UsageError(str(exc)) from exc
+        context = {
+            "offset": args.offset,
+            "limit": args.max_results,
+            "todo_states": todo_states,
+            "done_states": done_states,
+        }
+        results = execute_query_or_raise(compiled_query, [roots], context, click.UsageError)
 
         first_result = results[0] if results else None
         if len(results) == 1 and isinstance(first_result, list | tuple | set):

@@ -14,13 +14,7 @@ from org_parser.text import CompletionCounter
 from org_parser.time import Timestamp
 
 import org.config.app
-from org.query_language import (
-    EvalContext,
-    QueryParseError,
-    QueryRuntimeError,
-    Stream,
-    compile_query_text,
-)
+from org.pipeline.query import compile_query_or_raise, execute_query_or_raise
 
 
 if TYPE_CHECKING:
@@ -368,20 +362,22 @@ def resolve_headings_by_query(
     selector_query: str,
 ) -> list[Heading]:
     """Resolve matching headings across files from selector query."""
-    try:
-        compiled_query = compile_query_text(selector_query)
-    except QueryParseError as err:
-        raise typer.BadParameter(f"Invalid task selector query: {err}") from err
+    compiled_query = compile_query_or_raise(
+        selector_query,
+        lambda message: typer.BadParameter(f"Invalid task selector query: {message}"),
+    )
 
     logger.info("Task selector query: %s", selector_query)
     matches_by_identity: dict[int, Heading] = {}
     for filename in filenames:
         document = load_document(filename)
         logger.info("Running task selector query against file: %s", filename)
-        try:
-            results = compiled_query(Stream([document]), EvalContext({}))
-        except QueryRuntimeError as err:
-            raise typer.BadParameter(f"Task selector query failed: {err}") from err
+        results = execute_query_or_raise(
+            compiled_query,
+            [document],
+            {},
+            lambda message: typer.BadParameter(f"Task selector query failed: {message}"),
+        )
 
         for value in results:
             if not isinstance(value, Heading):

@@ -104,7 +104,7 @@ lines-after-imports = 2
     "SLF001",  # private member access is tolerated in tests/support code
 ]
 
-"src/org/serde/format.py" = [
+"src/org/pipeline/format.py" = [
     "S603",    # pandoc subprocess invocation is an intentional feature
     "S112",    # best-effort serialization intentionally skips unreadable attributes
 ]

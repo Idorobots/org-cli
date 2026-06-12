@@ -8,10 +8,10 @@ from typing import cast
 import pytest
 import typer
 
+from org.logic.time import parse_date_argument
 from org.logic.validation import (
     GlobalArgs,
     StatsArgs,
-    parse_date_argument,
     parse_property_filter,
     validate_and_parse_keys,
     validate_global_arguments,

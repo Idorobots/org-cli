@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import typer
 
+import org.config.app
 import org.logging
 from org.commands.stats import all as stats_all
 from org.commands.stats import groups, tags
 from org.commands.stats import summary as stats_summary
-from org.logic.filtering import DEFAULT_VERBOSE, resolve_verbose
 
 
 stats_app = typer.Typer(
@@ -27,9 +27,9 @@ def stats_callback(
     ),
 ) -> None:
     """Global stats CLI options."""
-    if verbose is None and not DEFAULT_VERBOSE["value"]:
+    if verbose is None and not org.config.app.DEFAULT_VERBOSE["value"]:
         return
-    org.logging.configure_logging(resolve_verbose(verbose))
+    org.logging.configure_logging(org.config.app.resolve_verbose(verbose))
 
 
 def register(app: typer.Typer) -> None:

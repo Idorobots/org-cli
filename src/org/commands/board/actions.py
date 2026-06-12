@@ -14,7 +14,6 @@ from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import configured_capture_template_names, save_document
 from org.logic.archive import archive_heading_subtree_and_save
 from org.logic.edit import edit_heading_subtree_in_external_editor
-from org.logic.filtering import load_and_process_data
 from org.logic.search import filter_nodes_by_search
 from org.logic.tasks import (
     HeadingLocator,
@@ -24,25 +23,36 @@ from org.logic.tasks import (
     shift_priority,
 )
 from org.logic.time import advance_timestamp_by_repeater, local_now
-from org.query_language import (
-    CompiledQuery,
-    EvalContext,
-    QueryParseError,
-    QueryRuntimeError,
-    Stream,
-    compile_query_text,
-)
+from org.pipeline.load import load_and_process_data
+from org.pipeline.query import compile_filter_order_query, execute_query_or_raise
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from org_parser.document import Document, Heading
+
+    from org.query_language.compiler import CompiledQuery
 
     from .command import BoardArgs
 
 
 logger = logging.getLogger("org")
+
+
+def _board_query_error_builder(
+    view_name: str,
+    column_name: str,
+) -> Callable[[str], typer.BadParameter]:
+    """Build one board query runtime error converter."""
+
+    def _query_error(message: str) -> typer.BadParameter:
+        return typer.BadParameter(
+            "Board filter/order-by query failed "
+            f"(view={view_name}, column={column_name}): {message}",
+        )
+
+    return _query_error
 
 
 @dataclass
@@ -141,10 +151,7 @@ def _compile_column_filter_query(
     order_by: str | None,
 ) -> CompiledQuery:
     """Compile one board column filter/order query text."""
-    base_query = f"select({filter_query})"
-    if order_by is None:
-        return compile_query_text(base_query)
-    return compile_query_text(f"{base_query} | sort_by({order_by})")
+    return compile_filter_order_query(filter_query, order_by)
 
 
 def _fallback_view_config() -> org.config.app.BoardViewConfig:
@@ -168,7 +175,7 @@ def compile_view_column_specs(view: org.config.app.BoardViewConfig) -> list[Boar
     for column in view.columns:
         try:
             query = _compile_column_filter_query(column.filter, column.order_by)
-        except QueryParseError as err:
+        except Exception as err:
             raise typer.BadParameter(
                 f"Invalid board filter/order-by (view={view.name}, column={column.name}): {err}",
             ) from err
@@ -218,15 +225,12 @@ def build_selector_board_columns(
     """Evaluate filter specs against processed task stream."""
     columns: list[BoardColumn] = []
     for spec in column_specs:
-        try:
-            results = spec.query(Stream(nodes), EvalContext({}))
-        except QueryRuntimeError as err:
-            raise typer.BadParameter(
-                (
-                    "Board filter/order-by query failed "
-                    f"(view={spec.view_name}, column={spec.name}): {err}"
-                ),
-            ) from err
+        results = execute_query_or_raise(
+            spec.query,
+            nodes,
+            {},
+            _board_query_error_builder(spec.view_name, spec.name),
+        )
 
         column_nodes = [cast("Heading", node) for node in results]
         columns.append(BoardColumn(title=spec.name, nodes=column_nodes))

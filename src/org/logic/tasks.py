@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 from org_parser.element import Repeat
 from org_parser.time import Timestamp
 
+from org.logic.time import get_most_recent_timestamp
+
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -95,3 +97,15 @@ def detail_org_block(node: Heading) -> str:
     parts = [str(node)]
     parts.extend(detail_org_block(child) for child in node.children)
     return "".join(parts)
+
+
+def get_top_tasks(nodes: list[Heading], max_results: int) -> list[Heading]:
+    """Get top N nodes sorted by most recent timestamp."""
+    nodes_with_timestamps: list[tuple[Heading, datetime]] = []
+    for node in nodes:
+        timestamp = get_most_recent_timestamp(node)
+        if timestamp is not None:
+            nodes_with_timestamps.append((node, timestamp))
+
+    sorted_nodes = sorted(nodes_with_timestamps, key=lambda x: x[1], reverse=True)
+    return [node for node, _ in sorted_nodes[:max_results]]

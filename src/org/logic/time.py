@@ -6,6 +6,8 @@ import calendar
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
+import typer
+
 
 if TYPE_CHECKING:
     from org_parser.document import Heading
@@ -15,6 +17,44 @@ if TYPE_CHECKING:
 def local_now() -> datetime:
     """Return local timezone-aware current datetime."""
     return datetime.now(tz=UTC).astimezone()
+
+
+def parse_date_argument(date_str: str, arg_name: str) -> datetime:
+    """Parse and validate timestamp argument in multiple supported formats."""
+    if not date_str or not date_str.strip():
+        supported_formats = [
+            "YYYY-MM-DD",
+            "YYYY-MM-DDThh:mm",
+            "YYYY-MM-DDThh:mm:ss",
+            "YYYY-MM-DD hh:mm",
+            "YYYY-MM-DD hh:mm:ss",
+        ]
+        formats_str = ", ".join(supported_formats)
+        raise typer.BadParameter(
+            f"{arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'",
+        )
+
+    try:
+        return datetime.fromisoformat(date_str)
+    except ValueError:
+        pass
+
+    try:
+        return datetime.fromisoformat(date_str.replace(" ", "T"))
+    except ValueError:
+        pass
+
+    supported_formats = [
+        "YYYY-MM-DD",
+        "YYYY-MM-DDThh:mm",
+        "YYYY-MM-DDThh:mm:ss",
+        "YYYY-MM-DD hh:mm",
+        "YYYY-MM-DD hh:mm:ss",
+    ]
+    formats_str = ", ".join(supported_formats)
+    raise typer.BadParameter(
+        f"{arg_name} must be in one of these formats: {formats_str}\nGot: '{date_str}'",
+    )
 
 
 def normalize_timestamp(ts: datetime | date) -> datetime:
@@ -58,6 +98,29 @@ def extract_timestamp_any(node: Heading) -> list[datetime]:
         timestamps.extend([timestamp.start for timestamp in node.timestamps])
 
     return [normalize_timestamp(t) for t in timestamps]
+
+
+def get_most_recent_timestamp(node: Heading) -> datetime | None:
+    """Get the most recent timestamp from a node."""
+    timestamps = extract_timestamp_any(node)
+    return max(timestamps) if timestamps else None
+
+
+def resolve_date_filters(args: object) -> tuple[datetime | None, datetime | None]:
+    """Resolve date filter arguments into parsed datetime values."""
+    date_from_value = getattr(args, "filter_date_from", None)
+    date_until_value = getattr(args, "filter_date_until", None)
+    date_from = (
+        parse_date_argument(date_from_value, "--filter-date-from")
+        if date_from_value is not None
+        else None
+    )
+    date_until = (
+        parse_date_argument(date_until_value, "--filter-date-until")
+        if date_until_value is not None
+        else None
+    )
+    return date_from, date_until
 
 
 def set_timestamp_fields(timestamp: Timestamp, start: datetime, end: datetime | None) -> None:

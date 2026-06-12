@@ -14,17 +14,12 @@ from rich.text import Text
 import org.config.app
 import org.logging
 from org.commands.stats.summary import SummaryDisplayConfig, format_tasks_summary
-from org.logic.filtering import (
-    CATEGORY_NAMES,
-    get_top_tasks,
-    load_and_process_data,
-    resolve_date_filters,
-    resolve_exclude_set,
-    resolve_mapping,
-)
 from org.logic.stats import AnalysisResult, Tag, TimeRange, analyze, clean
 from org.logic.stats import Group as TagGroup
+from org.logic.tasks import get_top_tasks
+from org.logic.time import resolve_date_filters
 from org.logic.validation import validate_stats_arguments
+from org.pipeline.load import load_and_process_data
 from org.tui.bits import (
     GroupBlockConfig,
     TagBlockConfig,
@@ -253,7 +248,7 @@ def _build_stats_all_panel_sections(
         )
         sections.append(
             _StatsAllPanelSection(
-                title=CATEGORY_NAMES[args.use].upper(),
+                title=org.config.app.CATEGORY_NAMES[args.use].upper(),
                 body=_normalize_panel_body(tags_body),
             ),
         )
@@ -535,8 +530,8 @@ def run_stats(args: StatsAllArgs) -> None:
     layout_height = 0
 
     with processing_status(console, color_enabled):
-        mapping = resolve_mapping(args)
-        exclude_set = resolve_exclude_set(args)
+        mapping = org.config.app.resolve_mapping(args)
+        exclude_set = org.config.app.resolve_exclude_set(args)
         nodes, todo_states, done_states = load_and_process_data(args)
         if nodes:
             result = analyze(nodes, mapping, args.use, args.max_relations)

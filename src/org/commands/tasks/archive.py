@@ -17,7 +17,7 @@ from org.commands.tasks.common import (
     save_document,
 )
 from org.logic.archive import archive_heading_subtree, archive_result_documents_to_save
-from org.logic.filtering import resolve_input_paths
+from org.pipeline.load import resolve_input_paths
 
 
 logger = logging.getLogger("org")

@@ -15,14 +15,8 @@ from rich.syntax import Syntax
 
 import org.config.app
 from org.commands.tasks.common import load_document, resolve_parent_heading, save_document
-from org.query_language import (
-    EvalContext,
-    QueryParseError,
-    QueryRuntimeError,
-    Stream,
-    compile_query_text,
-)
-from org.serde.format import DEFAULT_OUTPUT_THEME
+from org.pipeline.format import DEFAULT_OUTPUT_THEME
+from org.pipeline.query import compile_query_or_raise, execute_query_or_raise
 from org.tui.help import InteractiveHelpEntry
 
 
@@ -305,15 +299,16 @@ def _resolve_parent_from_selector(document: Document, parent_selector: str) -> H
 
     query_text = f".[] | select({normalized_selector})"
 
-    try:
-        compiled_query = compile_query_text(query_text)
-    except QueryParseError as err:
-        raise typer.BadParameter(f"Invalid parent selector: {err}") from err
-
-    try:
-        results = compiled_query(Stream([document]), EvalContext({}))
-    except QueryRuntimeError as err:
-        raise typer.BadParameter(f"Parent selector failed: {err}") from err
+    compiled_query = compile_query_or_raise(
+        query_text,
+        lambda message: typer.BadParameter(f"Invalid parent selector: {message}"),
+    )
+    results = execute_query_or_raise(
+        compiled_query,
+        [document],
+        {},
+        lambda message: typer.BadParameter(f"Parent selector failed: {message}"),
+    )
 
     matches_by_identity: dict[int, Heading] = {}
     for result in results:

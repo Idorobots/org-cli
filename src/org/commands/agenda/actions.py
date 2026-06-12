@@ -23,7 +23,6 @@ from org.commands.tasks.common import (
 )
 from org.logic.archive import archive_heading_subtree_and_save
 from org.logic.edit import edit_heading_subtree_in_external_editor
-from org.logic.filtering import load_and_process_data
 from org.logic.search import filter_nodes_by_search
 from org.logic.tasks import (
     HeadingLocator,
@@ -32,6 +31,7 @@ from org.logic.tasks import (
     resolve_heading_locator,
 )
 from org.logic.time import advance_timestamp_by_repeater, local_now, set_timestamp_fields
+from org.pipeline.load import load_and_process_data
 
 from .ui import (
     AgendaColumnWidths,
