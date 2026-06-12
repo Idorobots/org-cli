@@ -1,6 +1,6 @@
 """Tests for the AnalysisResult dataclass."""
 
-from org.analyze import AnalysisResult, Distribution, Tag, TimeRange
+from org.logic.stats import AnalysisResult, Distribution, Tag, TimeRange
 
 
 def test_analysis_result_initialization() -> None:
@@ -202,7 +202,7 @@ def test_analysis_result_mutable_fields() -> None:
     """Test that AnalysisResult fields can be modified."""
     from datetime import datetime
 
-    from org.analyze import Group
+    from org.logic.stats import Group
 
     result = AnalysisResult(
         unique_tasks=0,

@@ -31,7 +31,7 @@ from rich.console import Console
 from rich.style import Style
 from rich.text import Text
 
-from org.cli_common import get_top_tasks
+from org.logic.filtering import get_top_tasks
 from org.tui.color import (
     bright_blue,
     bright_white,
@@ -56,7 +56,7 @@ if TYPE_CHECKING:
 
     from org_parser.document import Heading
 
-    from org.analyze import Group, Tag, TimeRange
+    from org.logic.stats import Group, Tag, TimeRange
 
 
 def lines_to_text(lines: list[str]) -> str:

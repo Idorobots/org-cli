@@ -15,12 +15,12 @@ from rich.console import Console
 from rich.text import Text
 
 import org.config.app
-from org.cli_common import load_and_process_data
-from org.commands import archive as archive_command
-from org.commands import editor as editor_command
 from org.commands.board import actions, ui
 from org.commands.board import command as board_command
-from org.commands.interactive_common import heading_locator
+from org.logic.archive import ArchiveLocation, ArchiveMoveResult, ArchiveTarget
+from org.logic.edit import DocumentEditResult
+from org.logic.filtering import load_and_process_data
+from org.logic.tasks import heading_locator
 from org.tui.bits import setup_output
 from tests.conftest import node_from_org
 
@@ -570,8 +570,8 @@ def test_edit_selected_task_in_external_editor_reports_no_changes(
         status_message="",
     )
 
-    def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
-        return editor_command.DocumentEditResult(changed=False)
+    def _fake_edit(_heading: Heading) -> DocumentEditResult:
+        return DocumentEditResult(changed=False)
 
     monkeypatch.setattr(actions, "edit_heading_subtree_in_external_editor", _fake_edit)
 
@@ -601,8 +601,8 @@ def test_edit_selected_task_in_external_editor_reloads_with_identity_after_chang
     )
     source_node = nodes[0]
 
-    def _fake_edit(_heading: Heading) -> editor_command.DocumentEditResult:
-        return editor_command.DocumentEditResult(changed=True)
+    def _fake_edit(_heading: Heading) -> DocumentEditResult:
+        return DocumentEditResult(changed=True)
 
     reloaded_identity = None
 
@@ -642,18 +642,18 @@ def test_archive_selected_task_archives_selected_heading(
     def _fake_archive(
         heading: Heading,
         _cache: dict[str, Document],
-    ) -> archive_command.ArchiveMoveResult:
-        location = archive_command.ArchiveLocation(
+    ) -> ArchiveMoveResult:
+        location = ArchiveLocation(
             raw_spec="%s_archive::",
             file_path="tasks.org_archive",
             parent_title=None,
         )
-        target = archive_command.ArchiveTarget(
+        target = ArchiveTarget(
             location=location,
             document=heading.document,
             parent_heading=None,
         )
-        return archive_command.ArchiveMoveResult(
+        return ArchiveMoveResult(
             heading=heading,
             target=target,
             source_document=heading.document,

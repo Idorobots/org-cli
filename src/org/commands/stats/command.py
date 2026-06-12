@@ -5,10 +5,10 @@ from __future__ import annotations
 import typer
 
 import org.logging
-from org.cli_common import DEFAULT_VERBOSE, resolve_verbose
 from org.commands.stats import all as stats_all
 from org.commands.stats import groups, tags
 from org.commands.stats import summary as stats_summary
+from org.logic.filtering import DEFAULT_VERBOSE, resolve_verbose
 
 
 stats_app = typer.Typer(

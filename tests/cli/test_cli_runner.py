@@ -591,7 +591,7 @@ def test_cli_runner_tasks_edit_updates_subtree(
         )
         return 0
 
-    monkeypatch.setattr("org.commands.editor._run_editor_at_line", _fake_open_at_line)
+    monkeypatch.setattr("org.logic.edit._run_editor_at_line", _fake_open_at_line)
 
     result = runner.invoke(
         app,

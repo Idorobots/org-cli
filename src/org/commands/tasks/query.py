@@ -18,7 +18,7 @@ from rich.syntax import Syntax
 
 import org.config.app
 import org.logging
-from org.cli_common import load_root_data
+from org.logic.filtering import load_root_data
 from org.query_language import (
     EvalContext,
     QueryParseError,

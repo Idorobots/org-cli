@@ -8,10 +8,10 @@ import typer
 
 import org.config.app
 import org.logging
-from org.cli_common import DEFAULT_VERBOSE, resolve_verbose
 from org.commands import agenda, stats
 from org.commands import board as board_command
 from org.commands.tasks import command as tasks_command
+from org.logic.filtering import DEFAULT_VERBOSE, resolve_verbose
 
 
 app = typer.Typer(

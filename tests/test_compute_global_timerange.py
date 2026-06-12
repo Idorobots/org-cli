@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from org.analyze import compute_global_timerange
+from org.logic.stats import compute_global_timerange
 from tests.conftest import node_from_org
 
 

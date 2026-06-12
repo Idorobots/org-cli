@@ -8,7 +8,7 @@ from typing import cast
 import pytest
 import typer
 
-from org.validation import (
+from org.logic.validation import (
     GlobalArgs,
     StatsArgs,
     parse_date_argument,

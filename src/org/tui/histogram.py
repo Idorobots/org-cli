@@ -10,7 +10,7 @@ from org.tui.color import bright_blue, colorize, dim_white, get_state_color
 
 
 if TYPE_CHECKING:
-    from org.analyze import Distribution
+    from org.logic.stats import Distribution
 
 
 @dataclass

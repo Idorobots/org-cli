@@ -14,9 +14,9 @@ from org_parser.element import Keyword
 from org_parser.text import RichText
 from rich.syntax import Syntax
 
-from org.analyze import AnalysisResult, Distribution, Group, Tag, TimeRange
 from org.commands.tasks import query as query_command
 from org.commands.tasks.list import command as tasks_list_command
+from org.logic.stats import AnalysisResult, Distribution, Group, Tag, TimeRange
 from org.serde import format as output_format
 
 

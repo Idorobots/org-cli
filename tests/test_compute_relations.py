@@ -1,6 +1,6 @@
 """Tests for the compute_relations() function."""
 
-from org.analyze import compute_relations
+from org.logic.stats import compute_relations
 from tests.conftest import node_from_org
 
 

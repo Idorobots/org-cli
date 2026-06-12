@@ -15,7 +15,15 @@ import typer
 from org_parser.document import Heading
 
 import org.config.app
-from org.analyze import TimeRange, normalize
+from org.logic.stats import TimeRange, normalize
+from org.logic.time import extract_timestamp_any
+from org.logic.validation import (
+    parse_date_argument,
+    parse_group_values,
+    parse_property_filter,
+    validate_and_parse_keys,
+    validate_global_arguments,
+)
 from org.query_language import (
     EvalContext,
     QueryParseError,
@@ -24,14 +32,6 @@ from org.query_language import (
     compile_query_text,
 )
 from org.serde.parse import load_root_nodes
-from org.timestamp import extract_timestamp_any
-from org.validation import (
-    parse_date_argument,
-    parse_group_values,
-    parse_property_filter,
-    validate_and_parse_keys,
-    validate_global_arguments,
-)
 
 
 if TYPE_CHECKING:
@@ -180,14 +180,7 @@ def is_valid_regex(pattern: str, *, use_multiline: bool = False) -> bool:
 
 
 def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
-    """Extract top day and its count from TimeRange.
-
-    Args:
-        time_range: TimeRange object or None
-
-    Returns:
-        Tuple of (date_string, count) or None if no timeline data
-    """
+    """Extract top day and its count from TimeRange."""
     if not time_range or not time_range.timeline:
         return None
     max_count = max(time_range.timeline.values())
@@ -196,28 +189,13 @@ def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
 
 
 def get_most_recent_timestamp(node: Heading) -> datetime | None:
-    """Get the most recent timestamp from a node.
-
-    Args:
-        node: Org-mode node
-
-    Returns:
-        Most recent datetime or None if no timestamps found
-    """
+    """Get the most recent timestamp from a node."""
     timestamps = extract_timestamp_any(node)
     return max(timestamps) if timestamps else None
 
 
 def get_top_tasks(nodes: list[Heading], max_results: int) -> list[Heading]:
-    """Get top N nodes sorted by most recent timestamp.
-
-    Args:
-        nodes: List of org-mode nodes
-        max_results: Maximum number of results to return
-
-    Returns:
-        List of nodes sorted by most recent timestamp (descending)
-    """
+    """Get top N nodes sorted by most recent timestamp."""
     nodes_with_timestamps: list[tuple[Heading, datetime]] = []
     for node in nodes:
         timestamp = get_most_recent_timestamp(node)
@@ -328,12 +306,7 @@ def _required_custom_arg_error(option: str) -> typer.BadParameter:
 
 
 def normalize_cli_files_for_custom_switches(files: list[str] | None) -> list[str] | None:
-    """Remove configured custom switch tokens from FILE argument values.
-
-    Commands use ``ignore_unknown_options`` to allow config-defined switches. Click still
-    parses those unknown switch tokens as FILE values first, so this helper strips them
-    before input path resolution.
-    """
+    """Remove configured custom switch tokens from FILE argument values."""
     if files is None:
         return None
 
@@ -1027,17 +1000,7 @@ def resolve_group_values(
 
 
 def resolve_input_paths(inputs: list[str] | None) -> list[str]:  # noqa: C901
-    """Resolve CLI inputs into a list of org files to process.
-
-    Args:
-        inputs: List of CLI path arguments (files and directories)
-
-    Returns:
-        List of file paths to process
-
-    Raises:
-        typer.BadParameter: If a path does not exist or no org files are found
-    """
+    """Resolve CLI inputs into a list of org files to process."""
     resolved_files: list[str] = []
     searched_dirs: list[Path] = []
     missing_paths: list[str] = []

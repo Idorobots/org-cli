@@ -11,7 +11,7 @@ import typer
 
 import org.config.app
 import org.logging
-from org.cli_common import load_and_process_data
+from org.logic.filtering import load_and_process_data
 from org.tui.bits import build_console, processing_status, setup_output
 from org.tui.help import interactive_help_command_text
 

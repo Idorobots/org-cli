@@ -9,8 +9,8 @@ import org_parser
 import pytest
 import typer
 
-from org.commands import editor as editor_command
 from org.commands.tasks import edit as tasks_edit
+from org.logic import edit as editor_command
 
 
 if TYPE_CHECKING:

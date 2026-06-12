@@ -8,11 +8,11 @@ import sys
 import pytest
 import typer
 
-from org.analyze import AnalysisResult, Distribution, Group, Tag, TimeRange
 from org.commands.stats import all as stats_all_command
 from org.commands.stats import groups as stats_groups
 from org.commands.stats import summary as stats_summary_command
 from org.commands.stats import tags as stats_tags
+from org.logic.stats import AnalysisResult, Distribution, Group, Tag, TimeRange
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")

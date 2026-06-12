@@ -10,7 +10,8 @@ import typer
 
 import org.config.app
 import org.logging
-from org.analyze import (
+from org.logic.filtering import load_and_process_data, resolve_date_filters
+from org.logic.stats import (
     AnalysisResult,
     Distribution,
     compute_avg_tasks_per_day,
@@ -22,7 +23,6 @@ from org.analyze import (
     compute_task_state_histogram,
     compute_task_stats,
 )
-from org.cli_common import load_and_process_data, resolve_date_filters
 from org.tui.bits import (
     apply_indent,
     build_console,

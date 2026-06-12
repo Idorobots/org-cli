@@ -1,6 +1,6 @@
 """Tests for the Frequency class."""
 
-from org.analyze import Frequency
+from org.logic.stats import Frequency
 
 
 def test_frequency_default_initialization() -> None:

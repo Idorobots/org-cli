@@ -1,6 +1,6 @@
 """Tests for the compute_task_state_histogram() function."""
 
-from org.analyze import compute_task_state_histogram
+from org.logic.stats import compute_task_state_histogram
 from tests.conftest import node_from_org
 
 

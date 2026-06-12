@@ -1,6 +1,6 @@
 """Tests for the Distribution class."""
 
-from org.analyze import Distribution
+from org.logic.stats import Distribution
 
 
 def test_histogram_initialization_empty() -> None:

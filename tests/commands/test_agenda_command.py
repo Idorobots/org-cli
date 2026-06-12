@@ -15,8 +15,7 @@ from org_parser.time import Timestamp
 from rich.console import Console
 
 import org.config.app
-from org.cli_common import load_and_process_data
-from org.commands import interactive_common
+import org.logic.time
 from org.commands.agenda import actions, ui
 from org.commands.agenda import command as agenda_command
 from org.commands.agenda.views import (
@@ -25,13 +24,10 @@ from org.commands.agenda.views import (
     _fallback_agenda_view,
     resolve_view_context,
 )
-from org.commands.interactive_common import (
-    advance_timestamp_by_repeater,
-    detail_org_block,
-    heading_locator,
-    local_now,
-)
 from org.commands.tasks.common import duration_to_org_text, parse_clock_duration
+from org.logic.filtering import load_and_process_data
+from org.logic.tasks import detail_org_block, heading_locator
+from org.logic.time import advance_timestamp_by_repeater, local_now
 from org.tui.bits import setup_output
 
 
@@ -124,7 +120,7 @@ def _pin_agenda_now(monkeypatch: pytest.MonkeyPatch) -> datetime:
     pinned_now = datetime(2025, 1, 15, 12, 0)
     monkeypatch.setattr(actions, "local_now", lambda: pinned_now)
     monkeypatch.setattr(ui, "local_now", lambda: pinned_now)
-    monkeypatch.setattr("org.commands.interactive_common.local_now", lambda: pinned_now)
+    monkeypatch.setattr("org.logic.time.local_now", lambda: pinned_now)
     return pinned_now
 
 
@@ -147,7 +143,7 @@ def _render_agenda_output(args: agenda_command.AgendaArgs) -> str:
         ui.AgendaRenderInput(
             args=args,
             nodes=nodes,
-            now=interactive_common.local_now(),
+            now=org.logic.time.local_now(),
             render=ui.RenderContext(
                 color_enabled=color_enabled,
                 done_states=done_states,
@@ -696,7 +692,7 @@ def test_run_agenda_now_marker_renders_after_same_time_tasks(
 
     monkeypatch.setattr(actions, "local_now", current_now)
     monkeypatch.setattr(ui, "local_now", current_now)
-    monkeypatch.setattr("org.commands.interactive_common.local_now", current_now)
+    monkeypatch.setattr("org.logic.time.local_now", current_now)
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025-01-15"])
     output = _render_agenda_output(args).replace("…", "")
 
@@ -783,7 +779,7 @@ def test_advance_timestamp_by_repeater_double_plus_advances_until_future(
     """'++' repeater should advance repeatedly until timestamp is in the future."""
     timestamp = Timestamp.from_source("<2025-01-10 Fri ++1d>")
     monkeypatch.setattr(
-        "org.commands.interactive_common.local_now",
+        "org.logic.time.local_now",
         lambda: datetime(2025, 1, 15, 12, 0),
     )
 
@@ -797,7 +793,7 @@ def test_advance_timestamp_by_repeater_double_plus_hourly_uses_datetime(
     """'++' with hour unit should advance until datetime is after current time."""
     timestamp = Timestamp.from_source("<2025-01-15 Wed 09:00 ++1h>")
     monkeypatch.setattr(
-        "org.commands.interactive_common.local_now",
+        "org.logic.time.local_now",
         lambda: datetime(2025, 1, 15, 10, 30),
     )
 
@@ -811,7 +807,7 @@ def test_advance_timestamp_by_repeater_double_plus_always_shifts_at_least_once(
     """'++' should still shift once when timestamp is already in the future."""
     timestamp = Timestamp.from_source("<2025-01-15 Wed 23:00 ++1d>")
     monkeypatch.setattr(
-        "org.commands.interactive_common.local_now",
+        "org.logic.time.local_now",
         lambda: datetime(2025, 1, 15, 10, 0),
     )
 
@@ -825,7 +821,7 @@ def test_advance_timestamp_by_repeater_dot_plus_uses_current_day(
     """'.+' repeater should anchor at current day and then shift once by unit."""
     timestamp = Timestamp.from_source("<2025-01-10 Fri 09:30 .+2d>")
     monkeypatch.setattr(
-        "org.commands.interactive_common.local_now",
+        "org.logic.time.local_now",
         lambda: datetime(2025, 1, 15, 18, 45),
     )
 

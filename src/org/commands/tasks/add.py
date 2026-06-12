@@ -12,7 +12,6 @@ from org_parser.document import Document, Heading
 
 import org.config.app
 import org.logging
-from org.cli_common import resolve_input_paths
 from org.commands.tasks.common import (
     load_document,
     normalize_optional_value,
@@ -25,6 +24,7 @@ from org.commands.tasks.common import (
     resolve_parent_heading,
     save_document,
 )
+from org.logic.filtering import resolve_input_paths
 
 
 _TASK_TEMPLATE = "{heading}\n{planning}{properties}{body}"

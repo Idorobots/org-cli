@@ -29,7 +29,7 @@ from org_parser.element import Repeat
 from org_parser.text import RichText
 from org_parser.time import Clock, Timestamp
 
-from org.analyze import analyze as _analyze_nodes
+from org.logic.stats import analyze as _analyze_nodes
 from org.query_language.ast import (
     AsBinding,
     BinaryOp,

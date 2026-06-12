@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING
 import pytest
 import typer
 
-from org.cli_common import (
+from org.logic.filtering import (
     dedupe_values,
     normalize_show_value,
     resolve_group_values,
     resolve_input_paths,
 )
-from org.validation import parse_group_values
+from org.logic.validation import parse_group_values
 
 
 if TYPE_CHECKING:

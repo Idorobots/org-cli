@@ -13,8 +13,8 @@ import org.config.app
 from org.commands.board import actions
 from org.commands.board import command as board_command
 from org.commands.board.app import BoardApp, BoardViewport
-from org.commands.interactive_common import heading_locator
 from org.commands.tasks import capture as capture_command
+from org.logic.tasks import heading_locator
 from tests.commands.test_board import make_board_args
 from tests.conftest import node_from_org
 

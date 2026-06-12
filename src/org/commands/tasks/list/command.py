@@ -13,7 +13,7 @@ from rich.syntax import Syntax
 
 import org.config.app
 import org.logging
-from org.cli_common import load_and_process_data
+from org.logic.filtering import load_and_process_data
 from org.serde.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,

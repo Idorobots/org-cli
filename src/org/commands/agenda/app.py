@@ -15,11 +15,11 @@ import org.tui.footer
 import org.tui.help
 import org.tui.prompt
 import org.tui.selection
-from org.cli_common import resolve_input_paths
 from org.commands.tasks.common import (
     clock_duration_prompt_label,
     configured_capture_template_names,
 )
+from org.logic.filtering import resolve_input_paths
 
 from . import actions, ui
 from .actions import AgendaSession, create_agenda_session

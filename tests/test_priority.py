@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from rich.text import Text
 
-from org.analyze import compute_priority_histogram
+from org.logic.stats import compute_priority_histogram
 from org.tui.bits import TaskLineConfig, format_task_line, visual_len
 from tests.conftest import node_from_org
 

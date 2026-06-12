@@ -32,25 +32,7 @@ class StatsArgs(Protocol):
 
 
 def parse_date_argument(date_str: str, arg_name: str) -> datetime:
-    """Parse and validate timestamp argument in multiple supported formats.
-
-    Supported formats:
-    - YYYY-MM-DD
-    - YYYY-MM-DDThh:mm
-    - YYYY-MM-DDThh:mm:ss
-    - YYYY-MM-DD hh:mm
-    - YYYY-MM-DD hh:mm:ss
-
-    Args:
-        date_str: Date/timestamp string to parse
-        arg_name: Argument name for error messages
-
-    Returns:
-        Parsed datetime object
-
-    Raises:
-        typer.BadParameter: If format is invalid
-    """
+    """Parse and validate timestamp argument in multiple supported formats."""
     if not date_str or not date_str.strip():
         supported_formats = [
             "YYYY-MM-DD",
@@ -88,19 +70,7 @@ def parse_date_argument(date_str: str, arg_name: str) -> datetime:
 
 
 def parse_property_filter(property_str: str) -> tuple[str, str]:
-    """Parse property filter argument in KEY=VALUE format.
-
-    Splits on first '=' to support values containing '='.
-
-    Args:
-        property_str: Property filter string
-
-    Returns:
-        Tuple of (property_name, property_value)
-
-    Raises:
-        typer.BadParameter: If format is invalid (no '=' found)
-    """
+    """Parse property filter argument in KEY=VALUE format."""
     if "=" not in property_str:
         raise typer.BadParameter(
             f"--filter-property must be in KEY=VALUE format, got '{property_str}'",
@@ -111,18 +81,7 @@ def parse_property_filter(property_str: str) -> tuple[str, str]:
 
 
 def validate_and_parse_keys(keys_str: str, option_name: str) -> list[str]:
-    """Parse and validate comma-separated keys.
-
-    Args:
-        keys_str: Comma-separated string of keys
-        option_name: Name of the option for error messages
-
-    Returns:
-        List of validated keys
-
-    Raises:
-        typer.BadParameter: If validation fails
-    """
+    """Parse and validate comma-separated keys."""
     keys = [k.strip() for k in keys_str.split(",") if k.strip()]
     if not keys:
         raise typer.BadParameter(f"{option_name} cannot be empty")
@@ -140,16 +99,7 @@ def validate_pattern(
     *,
     use_multiline: bool = False,
 ) -> None:
-    """Validate that a string is a valid regex pattern.
-
-    Args:
-        pattern: Regex pattern string to validate
-        option_name: Name of the option for error messages
-        use_multiline: Whether to validate with re.MULTILINE flag
-
-    Raises:
-        typer.BadParameter: If pattern is not a valid regex
-    """
+    """Validate that a string is a valid regex pattern."""
     try:
         if use_multiline:
             re.compile(pattern, re.MULTILINE)
@@ -170,17 +120,7 @@ def parse_group_values(value: str) -> list[str]:
 
 
 def validate_global_arguments(args: GlobalArgs) -> tuple[list[str], list[str]]:
-    """Validate shared command-line arguments.
-
-    Args:
-        args: Parsed command-line arguments
-
-    Returns:
-        Tuple of (todo_states, done_states)
-
-    Raises:
-        typer.BadParameter: If validation fails
-    """
+    """Validate shared command-line arguments."""
     todo_states = validate_and_parse_keys(args.todo_states, "--todo-states")
     done_states = validate_and_parse_keys(args.done_states, "--done-states")
 

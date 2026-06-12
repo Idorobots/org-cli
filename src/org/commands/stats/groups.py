@@ -10,7 +10,14 @@ import typer
 
 import org.config.app
 import org.logging
-from org.analyze import (
+from org.logic.filtering import (
+    load_and_process_data,
+    resolve_date_filters,
+    resolve_exclude_set,
+    resolve_group_values,
+    resolve_mapping,
+)
+from org.logic.stats import (
     Group,
     TimeRange,
     compute_explicit_groups,
@@ -21,13 +28,7 @@ from org.analyze import (
     compute_relations,
     compute_time_ranges,
 )
-from org.cli_common import (
-    load_and_process_data,
-    resolve_date_filters,
-    resolve_exclude_set,
-    resolve_group_values,
-    resolve_mapping,
-)
+from org.logic.validation import validate_stats_arguments
 from org.tui.bits import (
     GroupBlockConfig,
     apply_indent,
@@ -39,7 +40,6 @@ from org.tui.bits import (
     setup_output,
 )
 from org.tui.plot import TimelineFormatConfig
-from org.validation import validate_stats_arguments
 
 
 if TYPE_CHECKING:

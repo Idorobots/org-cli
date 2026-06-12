@@ -11,13 +11,13 @@ from org_parser.document import Document, Heading
 
 import org.config.app
 import org.logging
-from org.cli_common import resolve_input_paths
-from org.commands.archive import archive_heading_subtree, archive_result_documents_to_save
 from org.commands.tasks.common import (
     resolve_headings_by_query,
     resolve_task_selector_query,
     save_document,
 )
+from org.logic.archive import archive_heading_subtree, archive_result_documents_to_save
+from org.logic.filtering import resolve_input_paths
 
 
 logger = logging.getLogger("org")

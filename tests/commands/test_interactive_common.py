@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from org.commands.interactive_common import (
+from org.commands.tasks.common import todo_states_for_heading
+from org.logic.tasks import (
     HeadingLocator,
     heading_locator,
     resolve_heading_locator,
 )
-from org.commands.tasks.common import todo_states_for_heading
 from org.tui.help import InteractiveHelpEntry, render_interactive_help_panel_text
 from tests.conftest import node_from_org
 

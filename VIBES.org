@@ -7256,12 +7256,13 @@ When search is enabled in the board, the currently visibla tasks for each column
 It would be really nice if the search results could be updated live, whenever any input is entered into the search prompt.
 Update all interactive commands that permit search to live-update during search input prompting.
 
-*** All interactive commands should support the =--width= CLI switch
+*** DONE All interactive commands should support the =--width= CLI switch
+:LOGBOOK:
+- State "DONE"       from              [2026-06-07 Sun 10:26]
+:END:
 *** Task IDs
 The tasks IDs of newly created tasks should default to ={{document_category}}-{{count_of_headings_in_file + 1}}=
 Show the task ID (when present) in the board task panels as well as agenda and task list. In all cases, it should preceed the TODO state.
-*** Bulk actions
-It should be possible to mark multiple items in agenda, board & task list and apply an action to them in bulk
 *** Task availability indicators
 The agenda and board commands should accept a =--workflow NAME= CLI switch that adds the following task availability indicators:
 
@@ -7352,6 +7353,27 @@ Please don't leave unused arguments in functions, if an argument is no longer ne
 
 *** Mark as completed should respect repeaters
 The timestamp advancement should only be used if the new state is a completed state. In such a case, the state should be updated to the first TODO state defined for the document, a logbook repeat should be added to the task (`State {node.todo} to {new_state}`) and the repeaters should be advanced according to its rules.
+
+*** TODO Timestamps without time components should be preserved in math ops                    :Bug:
+Running this query: ~timestamp("<2026-06-06>") + days(1)~  should produce a timestamp without a time component as the original date did not have it.
+
+*** Show configured filters/orderings/mutators in the command help strings
+*** Ability to add extra filter/order-by queries in interactive commands
+Commands should support the following key bindings:
+- `Shift-f` for filtering
+- `Shift-o` for order-by
+- `Shift-m` for mutators
+
+Show a modal with a multi-selection list for all entities in each category. The user should be able to select multiple filters, and each state transition should result in the entity being applied to the org mode files.
+*** Mor uniform key bindings
+- =Control + f= for search.
+- No need for =x= if search can be set to blank.
+- Drop =n=, =p=, =b= and =f= for agenda navigation.
+- Support =t= for todo and =g= for tags in all commands.
+- Support =s=, =c=, =d= for planning in all commands.
+- Support =r= for refile and =$= for archive in all commands.
+- Support =k= for clocking and =e= for effort estimation.
+- Support =C-
 
 ** TODO Codebase improvements                                                              :Cleanup:
 *** DONE Extract the =stats= command wrapper into a separate module
@@ -7539,13 +7561,61 @@ The shared logic that the commands use are currently present in multiple modules
 - =time= - current contents of =org/timestamp.py= and time-related functions from =org/commands/interactive_common.py=
 - =validation= - current contents of =org/validation.py=
 
+In addition to the above, the =org/tui/bits.py= module now contains a lot of non-UI related functions. These should also be moved to the =org/logic= package to the appropriate submodules.
+
 Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
 Make sure to update the commands to use this new logic package.
 
+*** Use Textual toasts for status messages.
 *** Use Textual textarea for any org-mode syntax highlighting
 - Limit to just the interactive commands.
 - Potentially use it for code edits of the files?
 **** Show a Textual modal when performing external edits, instead of suspending the app
+*** TODO Load configuration first and pass the object to the commands
+Do not use global state for configuration storage. The goal is for the commands to be stateless.
+
+The config processing flow should look like this:
+- create a well-defined structured object that will hold the configuration,
+- populate the config object with code-defaults,
+- determine the configuration file to use,
+- load the configuration file with well-defined sections,
+- update the structured config object with config file values,
+- pass the configuration object to the specific command,
+- overwrite the configuration object with command CLI switch values where applicable,
+- log the effective config object,
+- execute the command with all the configuration values taken from the resulting config object
+
+It might be the case, that the command tree construction will need to be done after the configuration is loaded. That is absolutely fine - update the =main= function to do that.
+
+The shape of the configuration object:
+#+begin_example
+config:
+  defaults: dict[string, string] # for backwards compatibility until we clean this up
+
+  todo_states: list[string], same content as defaults.--todo-states when provided
+  done_states: list[string], same content as defaults.--done-states when provided
+
+  filters: list[current filter config]
+  orderings: list[current order-by config]
+  mutators: list[current with config]
+
+  stats:
+    exclude: file path to the exclude file (same as defaults.--exclude if provided)
+    mapping: file path to the mapping file (same as defaults.--mapping if provided)
+
+  capture:
+    templates: list[current capture templates config]
+
+  agenda:
+    views: list[current agenda view config]
+
+  board:
+    views: list[current board vie config]
+#+end_example
+
+Update the commands to use this new structured configuration object (prefer the command-specific sections for the value, not =config.defaults=).
+Update the tests not to rely on the global state.
+
 *** CANCELLED Use Textual header & footer widgets in the interactive commands
 :LOGBOOK:
 - State "CANCELLED"  from              [2026-06-11 Thu 09:46] \\
@@ -7877,6 +7947,27 @@ agenda:
           align: right
 #+end_src
 
+*** Customizable agenda actions                                                             :Config:
+Allow defining additional task actions that can be executed in the agenda view.
+#+begin_example
+agenda:
+  actions:
+    - name: Set todo
+      description: Set todo state of a task
+      key: t
+      input: select
+      options: .document.all_states
+      action: .todo = $option
+    - name: Shift date
+      description: Shift the date of a task
+      key: S-right_arrow
+      action: .scheduled.start = .scheduled.start + days(1)
+#+end_example
+
+Built-in task actions that can be expressed in terms of this system, should be refactored to rely on it.
+*** Bulk actions
+It should be possible to mark multiple items in agenda, board & task list and apply an action to them in bulk
+
 *** CANCELLED Agenda review/standalone review command
 :LOGBOOK:
 - State "CANCELLED"  from              [2026-05-31 Sun 22:10] \\
@@ -7909,7 +8000,7 @@ The action will prompt the user for each step multiple times (empty response mov
 
 When typing, the action should propose existing tasks by title. When a newly added task matches an existing recurrent task by title it should be "reused" instead of creating a duplicate (reuse as in, scheduled set to the current day while preserving the repeater if present).
 
-** Query language extensions
+** TODO Query language extensions
 *** Query language improvements
 - Uniform function calling: =foo | not= is the same as =not(foo)=
 - Field assignment should return the mutated object: =foo.title = "bar"= evaluates to =foo= after the change.
@@ -7942,9 +8033,48 @@ Introduce wrappers for the analysis results functions that can be visualized aut
 - =histogram()= - histogram plot
 - =progress()= - progress plot
 
-** Board command improvements                                                                   :UX:
+*** Search sigil
+Searches documents for a specific node either by title or by id. Makes use of that documents cache.
+#+begin_example
+.[] | #"id-or-title"
+.[][] | select(.id == "id-or-title" or .title.text == "id-or-title")
+#+end_example
+
+*** TODO sort_by accepting multiple criteria
+Currently, =sort_by()= only accepts one criteria for ordering the stream. It should accept multiple criteria as well, so things like the following are possible:
+#+begin_example
+sort_by(.priority) # sort by priority alone
+sort_by(.priority, .latest_timestamp) # sort by priority first, break ties by latest timestamp
+sort_by(.priority, .category, .title) # sort by multiple values in order
+sort_by(-.property.some_val, .latest_timestamp.start.month) # sort by multiple compound subqueries
+#+end_example
+** Query command improvements                                                             :UX:Query:
+*** Saved queries                                                                           :Config:
+Add a configuration file section for saved queries that can be invoked with =org tasks query= in place of the actual query string.
+
+#+begin_example
+query:
+  - name: all-todos
+    query: .[][] | select(.todo == "TODO")
+#+end_example
+
+Invocation:
+#+begin_example
+org tasks query all-todos
+#+end_example
+
+** Board command improvements                                                             :UX:Board:
 *** Board plan command
 Shows long term plan including completeness of tasks that have children and gannt-style chart for execution.
+*** Customizable agenda actions                                                             :Config:
+Allow defining additional task actions that can be executed in the board view.
+#+begin_example
+board :
+  actions:
+    - key: C-i
+      description: Set the ID property on a tasks
+      action: .id = .id or (.category + "-" + str(.document.all_nodes | length))
+#+end_example
 *** Gantt chart
 - Show a gantt chart of tasks and their dependencies
 *** Progress view
@@ -7953,6 +8083,14 @@ Shows long term plan including completeness of tasks that have children and gann
 - List to be oredered by tree order (top-level tasks followed by their children)
 *** High CPU usage when browsing the board                                                     :Bug:
 
+*** Bulk actions
+It should be possible to mark multiple items in agenda, board & task list and apply an action to them in bulk
+
+*** Copy & copy as markdown actions
+** Tasks list command improvements
+*** Configurable column view
+Should work the same as the configurable agenda view columns.
+
 ** Stats command improvements
 *** =--days= switch for =stats= commands
 - Same as =--filter-date-from= with date X days ago.
@@ -7960,8 +8098,16 @@ Shows long term plan including completeness of tasks that have children and gann
 - Distribution of task durations - for tasks that have a =capture_time= property and are completed, a time the task was "up" can be computed and put on a chart (needs special handling for recurrent tasks)
 - Effort distribution - for tasks that have an =effort= property, convert that to minutes and show on chart
 - Gamify exp progression on various skills
-** Per-project config
+*** Interactive UI
+- Watch input files for changes and recompute stats live
+- Use collapsiple sections for summary (open by default), tags and groups
+- Allow adjusting filters/analysis parameters live
+- Support =--out json/plain= for non-interactive results
+
+** Per-project config                                                                       :Config:
 - Use =.org= directory to store the config file and any other useful bits such as indeces.
+- Cache parsed nodes in the =.org= dir.
+- Default views config for each command that supports it, no global CLI switch defaults.
 
 *** Init command
 - Initializes the config file with some defaults.
@@ -7990,7 +8136,7 @@ Shows long term plan including completeness of tasks that have children and gann
 *** Config handling is too generic
 Split config handling to be per-command and have the config file reflect that.
 *** Refactor config handling so that no global state is mutated
-** Dashboard command
+** Dashboard command                                                                     :Dashboard:
 - Reads a dashboard config and shows a visualization on a server.
 - Tabbed views for the agenda, board, backlog and stats
 - Live updating.
@@ -8011,7 +8157,7 @@ It should apply to each of the available commands. This parameter should be made
 - Document the config format
 - Update the help strings in the CLI commands to better match the usage
 
-** Website for org-cli
+*** Website for org-cli
 - Publish the package
 - Add a static site for org-cli.idorobots.org on github pages.
 - Documentation with mkDocs
@@ -8039,12 +8185,20 @@ Extend =org tasks find= with =--search-rag=.
   This is better served with data export & a separate script.
 :END:
 To be done as a separate script that get's the analysis result JSON.
-*** D3 visualization - tag cloud
-
-*** D3 visualization - relations graph
+*** CANCELLED D3 visualization - tag cloud
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
+:END:
+*** CANCELLED D3 visualization - relations graph
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
+:END:
 Node size is how many tasks are related to a tag. Closeness is how related these are.
 
-*** D3 visualization - tag charts over time
+*** CANCELLED D3 visualization - tag charts over time
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
+:END:
 Allow selecting specific tags or top tags.
 
 ** CANCELLED Agents command
@@ -8056,22 +8210,31 @@ Spawn agents based on workflow config, all tasks that can be done in parallel, s
 Should be able to daemonize and hook up to a running daemon.
 Show spawned agents, their status, what they are working on, etc.
 
-*** Agents command: multi-session screen UI
+*** CANCELLED Agents command: multi-session screen UI
 :PROPERTIES:
 :CAPTURE_TIME: <2026-05-05 Tue 09:24>
 :ID: Vibes-425
 :END:
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
+:END:
 Implement an Agents command UI that supports running multiple agent harness sessions in the background and browsing them in a split-screen TUI. Add a left sidebar listing open sessions with current task and a clear indicator for sessions waiting for human input (for example permissions). Show the active session view on the right. Initial focus should be on the sidebar; moving focus right should enter session interaction mode; provide a keybinding to detach and return focus to the session list; sessions must remain attachable at any time while continuing to run in the background.
-*** Agents command: workflow loop daemon run (--deamon)
+*** CANCELLED Agents command: workflow loop daemon run (--deamon)
 :PROPERTIES:
 :CAPTURE_TIME: <2026-05-05 Tue 11:45>
 :ID: Vibes-427
 :END:
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
+:END:
 Add org agents run --deamon to run the workflow loop using separate agent sessions for each available task until completion or human input is required. Loop: pick a task in the earliest available state, assign the specified agent, create a git worktree and a branch for the task, spawn a session, let the agent do its job, and use skills to push tasks along.
-*** Agents command: notify only on human intervention required
+*** CANCELLED Agents command: notify only on human intervention required
 :PROPERTIES:
 :CAPTURE_TIME: <2026-05-05 Tue 11:45>
 :ID: Vibes-428
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
 :END:
 Add a notification command integration (for instance notify-send) when human intervention is required, such as permission approval. Notifications should be sent only when the agent requires human intervention, and not for normal progress updates.
 ** CANCELLED Spec command
@@ -8080,3 +8243,13 @@ Add a notification command integration (for instance notify-send) when human int
   Should be handled by workflow configuration, no need for a dedicated command.
 :END:
 Similar to flow, but for full specifications, easy extension, replacement, validation etc.
+* TODO Flicker when attempting to edit a non-task row in the agenda.
+:PROPERTIES:
+:capture_time: [2026-06-11 Thu 15:54]
+:context: 
+:END:
+* TODO Agenda command allows highlighting the section titles. Section titles should be omitted when scrolling the highlight.
+:PROPERTIES:
+:capture_time: [2026-06-11 Thu 15:54]
+:context: 
+:END:

@@ -1,27 +1,15 @@
-"""Shared helpers retained across interactive command implementations."""
+"""Timestamp and time-related logic."""
 
 from __future__ import annotations
 
 import calendar
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
-
-from org_parser.element import Repeat
-from org_parser.time import Timestamp
 
 
 if TYPE_CHECKING:
     from org_parser.document import Heading
-
-
-@dataclass(frozen=True)
-class HeadingLocator:
-    """Stable heading locator used to restore selection across reloads."""
-
-    filename: str
-    heading_id: str | None
-    title: str
+    from org_parser.time import Timestamp
 
 
 def local_now() -> datetime:
@@ -29,70 +17,47 @@ def local_now() -> datetime:
     return datetime.now(tz=UTC).astimezone()
 
 
-def shift_priority(priority: str | None, *, increase: bool) -> str | None:
-    """Shift priority one step across A/B/C/none."""
-    order: list[str | None] = ["A", "B", "C", None]
-    normalized = priority if priority in {"A", "B", "C"} else None
-    index = order.index(normalized)
-    if increase:
-        return order[max(0, index - 1)]
-    return order[min(len(order) - 1, index + 1)]
+def normalize_timestamp(ts: datetime | date) -> datetime:
+    """Normalize all timestamps to use the datetime format."""
+    if not isinstance(ts, datetime):
+        return datetime.combine(ts, datetime.min.time())
+    return ts
 
 
-def heading_locator(node: Heading) -> HeadingLocator:
-    """Build a stable heading locator for selection restoration."""
-    return HeadingLocator(
-        filename=node.document.filename or "",
-        heading_id=node.id,
-        title=node.title_text,
-    )
+def extract_timestamp(node: Heading, done_states: list[str]) -> list[datetime]:
+    """Extract timestamps from a node following priority rules."""
+    timestamps = []
+
+    if node.repeats and any(rt.after in done_states for rt in node.repeats):
+        timestamps.extend([rt.timestamp.start for rt in node.repeats if rt.after in done_states])
+    elif node.closed:
+        timestamps.append(node.closed.start)
+    elif node.scheduled:
+        timestamps.append(node.scheduled.start)
+    elif node.deadline:
+        timestamps.append(node.deadline.start)
+    elif node.timestamps:
+        timestamps.extend([timestamp.start for timestamp in node.timestamps])
+
+    return [normalize_timestamp(t) for t in timestamps]
 
 
-def resolve_heading_locator(
-    candidates: list[Heading],
-    locator: HeadingLocator | None,
-) -> Heading | None:
-    """Resolve a preserved heading locator against a candidate heading list."""
-    if locator is None or not candidates:
-        return None
+def extract_timestamp_any(node: Heading) -> list[datetime]:
+    """Extract timestamps from a node without filtering by completion state."""
+    timestamps = []
 
-    document = None
-    for candidate in candidates:
-        if (candidate.document.filename or "") == locator.filename:
-            document = candidate.document
-            break
-    if document is None:
-        return None
+    if node.repeats:
+        timestamps.extend([rt.timestamp.start for rt in node.repeats])
+    elif node.closed:
+        timestamps.append(node.closed.start)
+    elif node.scheduled:
+        timestamps.append(node.scheduled.start)
+    elif node.deadline:
+        timestamps.append(node.deadline.start)
+    elif node.timestamps:
+        timestamps.extend([timestamp.start for timestamp in node.timestamps])
 
-    resolved = (
-        document.heading_by_id(locator.heading_id)
-        if locator.heading_id is not None
-        else document.heading_by_title(locator.title)
-    )
-    if resolved is None:
-        return None
-
-    for candidate in candidates:
-        if candidate is resolved:
-            return candidate
-    return None
-
-
-def append_repeat_transition(
-    heading: Heading,
-    before: str | None,
-    after: str | None,
-    now: datetime,
-) -> None:
-    """Append one repeat transition entry at current time."""
-    transition_time = now.replace(second=0, microsecond=0)
-    heading.repeats.append(
-        Repeat(
-            before=before,
-            after=after,
-            timestamp=Timestamp.from_datetime(transition_time, is_active=False),
-        ),
-    )
+    return [normalize_timestamp(t) for t in timestamps]
 
 
 def set_timestamp_fields(timestamp: Timestamp, start: datetime, end: datetime | None) -> None:
@@ -213,10 +178,3 @@ def advance_timestamp_by_repeater(timestamp: Timestamp) -> bool:
 
     set_timestamp_fields(timestamp, shifted_start, shifted_end)
     return True
-
-
-def detail_org_block(node: Heading) -> str:
-    """Return one heading subtree rendered back to Org text."""
-    parts = [str(node)]
-    parts.extend(detail_org_block(child) for child in node.children)
-    return "".join(parts)

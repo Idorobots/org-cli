@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import org_parser
 
-from org.analyze import analyze
+from org.logic.stats import analyze
 
 
 if TYPE_CHECKING:

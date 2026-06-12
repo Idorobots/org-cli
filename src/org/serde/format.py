@@ -19,7 +19,7 @@ from org_parser.text import RichText
 from org_parser.time import Clock, Timestamp
 from rich.syntax import Syntax
 
-from org.analyze import AnalysisResult, Distribution, Group, Tag, TimeRange
+from org.logic.stats import AnalysisResult, Distribution, Group, Tag, TimeRange
 from org.tui.bits import print_output
 
 

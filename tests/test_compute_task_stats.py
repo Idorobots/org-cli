@@ -1,6 +1,6 @@
 """Tests for the compute_task_stats() function."""
 
-from org.analyze import compute_task_stats
+from org.logic.stats import compute_task_stats
 from tests.conftest import node_from_org
 
 

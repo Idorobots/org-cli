@@ -1,6 +1,6 @@
 """Tests for the normalize() function."""
 
-from org.analyze import normalize
+from org.logic.stats import normalize
 
 
 def test_normalize_basic() -> None:

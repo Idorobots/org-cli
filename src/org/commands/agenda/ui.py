@@ -12,7 +12,8 @@ from rich import box
 from rich.table import Table
 from rich.text import Text
 
-from org.commands.interactive_common import local_now, shift_datetimes_by_unit
+from org.logic.time import local_now, shift_datetimes_by_unit
+from org.logic.validation import parse_date_argument
 from org.query_language import EvalContext, QueryRuntimeError, Stream
 from org.tui.bits import (
     heading_title_to_text,
@@ -21,7 +22,6 @@ from org.tui.bits import (
     task_tags_to_text,
 )
 from org.tui.help import InteractiveHelpEntry
-from org.validation import parse_date_argument
 
 
 if TYPE_CHECKING:

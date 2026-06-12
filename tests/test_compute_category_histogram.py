@@ -1,6 +1,6 @@
 """Tests for the compute_category_histogram() function."""
 
-from org.analyze import compute_category_histogram
+from org.logic.stats import compute_category_histogram
 from tests.conftest import node_from_org
 
 

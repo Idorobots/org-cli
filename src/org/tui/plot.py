@@ -10,7 +10,7 @@ from org.tui.color import bright_blue, dim_white, magenta
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from org.analyze import TimeRange
+    from org.logic.stats import TimeRange
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 """Tests for the render_histogram() function."""
 
-from org.analyze import Distribution
+from org.logic.stats import Distribution
 from org.tui.histogram import render_histogram
 
 

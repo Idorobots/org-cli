@@ -14,9 +14,9 @@ from org_parser.document import Heading
 
 import org.config.app
 import org.logging
-from org.cli_common import load_root_data
 from org.commands.tasks.common import normalize_selector
 from org.commands.tasks.query import get_query_formatter
+from org.logic.filtering import load_root_data
 from org.query_language import (
     EvalContext,
     QueryParseError,

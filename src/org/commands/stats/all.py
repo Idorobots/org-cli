@@ -13,9 +13,8 @@ from rich.text import Text
 
 import org.config.app
 import org.logging
-from org.analyze import AnalysisResult, Tag, TimeRange, analyze, clean
-from org.analyze import Group as TagGroup
-from org.cli_common import (
+from org.commands.stats.summary import SummaryDisplayConfig, format_tasks_summary
+from org.logic.filtering import (
     CATEGORY_NAMES,
     get_top_tasks,
     load_and_process_data,
@@ -23,7 +22,9 @@ from org.cli_common import (
     resolve_exclude_set,
     resolve_mapping,
 )
-from org.commands.stats.summary import SummaryDisplayConfig, format_tasks_summary
+from org.logic.stats import AnalysisResult, Tag, TimeRange, analyze, clean
+from org.logic.stats import Group as TagGroup
+from org.logic.validation import validate_stats_arguments
 from org.tui.bits import (
     GroupBlockConfig,
     TagBlockConfig,
@@ -37,7 +38,6 @@ from org.tui.bits import (
     setup_output,
 )
 from org.tui.plot import TimelineFormatConfig
-from org.validation import validate_stats_arguments
 
 
 if TYPE_CHECKING:
