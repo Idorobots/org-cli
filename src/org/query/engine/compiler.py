@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from org.query_language.parser import parse_query
-from org.query_language.runtime import EvalContext, Stream, evaluate_expr
+from org.query.engine.interpreter import EvalContext, Stream, evaluate_expr
+from org.query.engine.parser import parse_query
 
 
 if TYPE_CHECKING:
-    from org.query_language.ast import Expr
+    from org.query.engine.ast import Expr
 
 
 type CompiledQuery = Callable[[Stream, EvalContext], Stream]

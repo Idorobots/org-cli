@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from parsy import ParseError, Parser, eof, forward_declaration, generate, regex, seq, string
 
-from org.query_language.ast import (
+from org.query.engine.ast import (
     AsBinding,
     BinaryOp,
     BoolLiteral,
@@ -32,7 +32,7 @@ from org.query_language.ast import (
     TupleExpr,
     Variable,
 )
-from org.query_language.errors import QueryParseError
+from org.query.engine.errors import QueryParseError
 
 
 if TYPE_CHECKING:

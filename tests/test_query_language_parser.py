@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from org.query_language import parse_query
-from org.query_language.ast import (
+from org.query.engine.ast import (
     AsBinding,
     BinaryOp,
     DictAssignment,
@@ -22,7 +21,8 @@ from org.query_language.ast import (
     StringLiteral,
     Variable,
 )
-from org.query_language.errors import QueryParseError
+from org.query.engine.errors import QueryParseError
+from org.query.engine.parser import parse_query
 
 
 @pytest.mark.parametrize(

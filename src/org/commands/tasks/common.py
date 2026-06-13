@@ -14,7 +14,7 @@ from org_parser.text import CompletionCounter
 from org_parser.time import Timestamp
 
 import org.config.app
-from org.pipeline.query import compile_query_or_raise, execute_query_or_raise
+from org.query.runner import compile_query_or_raise, execute_query_or_raise
 
 
 if TYPE_CHECKING:

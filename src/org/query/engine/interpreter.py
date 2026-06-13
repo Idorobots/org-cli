@@ -30,7 +30,7 @@ from org_parser.text import RichText
 from org_parser.time import Clock, Timestamp
 
 from org.logic.stats import analyze as _analyze_nodes
-from org.query_language.ast import (
+from org.query.engine.ast import (
     AsBinding,
     BinaryOp,
     BoolLiteral,
@@ -55,7 +55,7 @@ from org.query_language.ast import (
     TupleExpr,
     Variable,
 )
-from org.query_language.errors import QueryRuntimeError
+from org.query.engine.errors import QueryRuntimeError
 
 
 class Stream(list[object]):

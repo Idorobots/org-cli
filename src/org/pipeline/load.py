@@ -12,7 +12,8 @@ from org_parser import loads
 from org_parser.document import Heading
 
 from org.logic.validation import validate_and_parse_keys, validate_global_arguments
-from org.pipeline.query import (
+from org.query.engine.errors import QueryParseError
+from org.query.runner import (
     QueryBuildArgs,
     build_query,
     collect_custom_context_vars,
@@ -21,7 +22,6 @@ from org.pipeline.query import (
     normalize_cli_files_for_custom_switches,
     validate_custom_switches,
 )
-from org.query_language import QueryParseError
 
 
 if TYPE_CHECKING:

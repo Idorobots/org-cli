@@ -7,24 +7,16 @@ import logging
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import Protocol, cast
 
 import click
 
 import org.config.app
 from org.logic.time import parse_date_argument
 from org.logic.validation import parse_property_filter
-from org.query_language import (
-    EvalContext,
-    QueryParseError,
-    QueryRuntimeError,
-    Stream,
-    compile_query_text,
-)
-
-
-if TYPE_CHECKING:
-    from org.query_language.compiler import CompiledQuery
+from org.query.engine.compiler import CompiledQuery, compile_query_text
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.engine.interpreter import EvalContext, Stream
 
 
 logger = logging.getLogger("org")

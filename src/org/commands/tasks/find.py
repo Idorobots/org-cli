@@ -23,7 +23,7 @@ from org.pipeline.format import (
     print_prepared_output,
 )
 from org.pipeline.load import load_root_data
-from org.pipeline.query import compile_query_or_raise, execute_query_or_raise
+from org.query.runner import compile_query_or_raise, execute_query_or_raise
 from org.tui.bits import build_console, processing_status, setup_output
 
 

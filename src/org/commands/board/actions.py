@@ -24,7 +24,7 @@ from org.logic.tasks import (
 )
 from org.logic.time import advance_timestamp_by_repeater, local_now
 from org.pipeline.load import load_and_process_data
-from org.pipeline.query import compile_filter_order_query, execute_query_or_raise
+from org.query.runner import compile_filter_order_query, execute_query_or_raise
 
 
 if TYPE_CHECKING:
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     from org_parser.document import Document, Heading
 
-    from org.query_language.compiler import CompiledQuery
+    from org.query.engine.compiler import CompiledQuery
 
     from .command import BoardArgs
 

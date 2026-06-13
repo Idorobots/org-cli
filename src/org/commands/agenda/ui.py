@@ -13,7 +13,7 @@ from rich.table import Table
 from rich.text import Text
 
 from org.logic.time import local_now, parse_date_argument, shift_datetimes_by_unit
-from org.pipeline.query import execute_query_or_raise
+from org.query.runner import execute_query_or_raise
 from org.tui.bits import (
     heading_title_to_text,
     task_priority_to_text,

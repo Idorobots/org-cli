@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING
 import typer
 
 import org.config.app
-from org.pipeline.query import compile_filter_order_query
+from org.query.runner import compile_filter_order_query
 
 
 if TYPE_CHECKING:
-    from org.query_language.compiler import CompiledQuery
+    from org.query.engine.compiler import CompiledQuery
 
     from .command import AgendaArgs
 

@@ -13,8 +13,10 @@ from org_parser.element import Repeat
 from org_parser.text import RichText
 from org_parser.time import Clock, Timestamp
 
-import org.query_language.runtime as runtime_module
-from org.query_language import EvalContext, QueryRuntimeError, Stream, compile_query_text
+import org.query.engine.interpreter as runtime_module
+from org.query.engine.compiler import compile_query_text
+from org.query.engine.errors import QueryRuntimeError
+from org.query.engine.interpreter import EvalContext, Stream
 from tests.conftest import node_from_org
 
 
@@ -1222,8 +1224,8 @@ def test_runtime_sort_by_all_null_keys_preserves_input_order() -> None:
 
 def test_runtime_unsupported_expression_type_raises_runtime_error() -> None:
     """Evaluating unknown AST nodes should raise runtime error."""
-    from org.query_language.ast import Expr
-    from org.query_language.compiler import compile_expr
+    from org.query.engine.ast import Expr
+    from org.query.engine.compiler import compile_expr
 
     compiled = compile_expr(Expr())
     with pytest.raises(QueryRuntimeError):
@@ -1232,8 +1234,8 @@ def test_runtime_unsupported_expression_type_raises_runtime_error() -> None:
 
 def test_runtime_unsupported_function_name_raises_runtime_error() -> None:
     """Unknown function names in AST should raise runtime error."""
-    from org.query_language.ast import FunctionCall
-    from org.query_language.compiler import compile_expr
+    from org.query.engine.ast import FunctionCall
+    from org.query.engine.compiler import compile_expr
 
     compiled = compile_expr(FunctionCall("unknown", None))
     with pytest.raises(QueryRuntimeError):

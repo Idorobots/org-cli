@@ -8145,16 +8145,25 @@ All of this should be moved to the =org.pipeline.load= module.
 - Limit to just the interactive commands.
 - Potentially use it for code edits of the files?
 **** Show a Textual modal when performing external edits, instead of suspending the app
-*** TODO Reorganize the query execution engine code
+*** DONE Reorganize the query execution engine code
 :PROPERTIES:
 :capture_time: [2026-06-13 Sat 00:04]
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 23:13]
 :END:
 
 Introduce a new package =org.query= and move the query-execution-related helpers in there:
 - Current =org.logic.query= should be moved to that package as =org.query.runner=
 - Current =org.query_language= package should be renamed to =org.query.engine=
 - The query compiler (=org.query.engine.compiler=) and execution engine (=org.query.engine.interpreter=) should be separated, with all the operator/function definitions also separated to their own module =org.query.engine.defs=
+
+*** Streamline query execution
+- One way to run a query used by all commands.
+- Error handling left to the caller
+- Runner accepts a list of files, context and a set of query stages that are all piped together, it performs query building, compilation and execution.
+
 *** TODO Streamline data processing.
 :PROPERTIES:
 :capture_time: [2026-06-12 Fri 23:54]
@@ -8267,6 +8276,11 @@ In file src/org/commands/tasks/list/command.py around line 663, near the ~def re
 
 I absolutely hate this. Please refactor the =out= and =details= switches to be optional and check their existance that way.
 
+*** TODO Extract filter/order/with handling from the query package and into pipeline.
+:PROPERTIES:
+:capture_time: [2026-06-13 Sat 23:09]
+:context: [[file:~/projects/software/org-cli/src/org/query/runner.py::for arg_name, expected in expected_counts.items():]]
+:END:
 ** TODO Agenda usability improvements                                                    :UX:Agenda:
 *** Agenda non-interactive output format
 - Should be adjusted to "look and feel" just like the interactive one.

@@ -16,7 +16,7 @@ from rich.syntax import Syntax
 import org.config.app
 from org.commands.tasks.common import load_document, resolve_parent_heading, save_document
 from org.pipeline.format import DEFAULT_OUTPUT_THEME
-from org.pipeline.query import compile_query_or_raise, execute_query_or_raise
+from org.query.runner import compile_query_or_raise, execute_query_or_raise
 from org.tui.help import InteractiveHelpEntry
 
 
