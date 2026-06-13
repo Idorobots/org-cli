@@ -7653,7 +7653,10 @@ In file tests/cli_common/test_top_tasks.py around line 7, near the ~Merge~
 #+end_example
 
 =get_most_recent_timestamp= should be in the time module.
-**** TODO Code review comment
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 20:58]
+:END:
 :PROPERTIES:
 :context: [[file:~/projects/software/org-cli/src/org/logic/edit.py::def _load_document_from_text(document_text: str, filename: str | None) -> Document:
  """Parse full document text and preserve original filename when present."""
@@ -7682,8 +7685,11 @@ def _load_document_from_text(document_text: str, filename: str | None) -> Docume
 
 #+end_example
 
-This should be moved to the serde module. Ideally, one way to load a file should be used accross the whole app.
-**** TODO Code review comment
+This should be moved to the =org.pipeline.load=. Ideally, one way to load a file should be used accross the whole app.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 20:58]
+:END:
 :PROPERTIES:
 :context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def get_top_day_info(time_range: TimeRange | None) -> tuple\[str, int\] | None:
  """Extract top day and its count from TimeRange."""
@@ -7708,63 +7714,11 @@ def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
 
 #+end_example
 
-This should be in the stats module.
-**** TODO Code review comment
-:PROPERTIES:
-:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def count_filter_values(value: list\[str\] | None) -> int:
- """Count filter values for append-style filters."""
- return len(value) if value else 0]]
+This should be in the =org.logic.stats= module.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 20:58]
 :END:
-
-Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
-
-#+begin_example
-
-def count_filter_values(value: list[str] | None) -> int:
-    """Count filter values for append-style filters."""
-    return len(value) if value else 0
-
-#+end_example
-
-This function makes no sense, just do this directly wherever this is invoked.
-**** TODO Code review comment
-:PROPERTIES:
-:context: [[file:~/projects/software/org-cli/src/org/logic/edit.py::def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
- """Edit the original task document, preferring in-place file editing at task line."""
- return attempt_edit_heading_subtree_in_external_editor(heading)]]
-:END:
-
-Filename: /home/k/projects/software/org-cli/src/org/logic/edit.py
-
-#+begin_example
-
-def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
-    """Edit the original task document, preferring in-place file editing at task line."""
-    return attempt_edit_heading_subtree_in_external_editor(heading)
-
-#+end_example
-
-This wrapper makes no sense.
-**** TODO Code review comment
-:PROPERTIES:
-:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def get_most_recent_timestamp(node: Heading) -> datetime | None:
- """Get the most recent timestamp from a node."""
- timestamps = extract_timestamp_any(node)
- return max(timestamps) if timestamps else None]]
-:END:
-
-Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
-
-#+begin_example
-def get_most_recent_timestamp(node: Heading) -> datetime | None:
-    """Get the most recent timestamp from a node."""
-    timestamps = extract_timestamp_any(node)
-    return max(timestamps) if timestamps else None
-
-#+end_example
-
-This is available in the =Heading= class as =latest_timestamp=, please remove this function and use the built-in way to fetch the timestamp.
-**** TODO Code review comment
 :PROPERTIES:
 :context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def get_top_tasks(nodes: list\[Heading\], max_results: int) -> list\[Heading\]:
  """Get top N nodes sorted by most recent timestamp."""
@@ -7797,8 +7751,75 @@ def get_top_tasks(nodes: list[Heading], max_results: int) -> list[Heading]:
 
 #+end_example
 
-This should be in the stats module.
-**** TODO Code review comment
+This should be in the =org.logic.stats= module.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 21:51]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def count_filter_values(value: list\[str\] | None) -> int:
+ """Count filter values for append-style filters."""
+ return len(value) if value else 0]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+
+def count_filter_values(value: list[str] | None) -> int:
+    """Count filter values for append-style filters."""
+    return len(value) if value else 0
+
+#+end_example
+
+This function makes no sense, just do this directly wherever this is invoked.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 21:52]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/edit.py::def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
+ """Edit the original task document, preferring in-place file editing at task line."""
+ return attempt_edit_heading_subtree_in_external_editor(heading)]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/edit.py
+
+#+begin_example
+
+def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
+    """Edit the original task document, preferring in-place file editing at task line."""
+    return attempt_edit_heading_subtree_in_external_editor(heading)
+
+#+end_example
+
+This wrapper makes no sense, please rename the functions and clean this up.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 21:52]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def get_most_recent_timestamp(node: Heading) -> datetime | None:
+ """Get the most recent timestamp from a node."""
+ timestamps = extract_timestamp_any(node)
+ return max(timestamps) if timestamps else None]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+def get_most_recent_timestamp(node: Heading) -> datetime | None:
+    """Get the most recent timestamp from a node."""
+    timestamps = extract_timestamp_any(node)
+    return max(timestamps) if timestamps else None
+
+#+end_example
+
+This is available in the =Heading= class as =latest_timestamp=, please remove this function and use the built-in way to fetch the timestamp.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 20:58]
+:END:
 :PROPERTIES:
 :context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def validate_custom_switches(argv: list\[str\], include_builtin_ordering: bool) -> None:
  """Validate prefixed custom switches against configured/built-in options."""
@@ -7838,8 +7859,6 @@ This should be in the stats module.
  if next_token.startswith("-"):
  raise _required_custom_arg_error(option)]]
 :END:
-
-Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
 
 #+begin_example
 
@@ -7884,7 +7903,24 @@ def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) ->
 #+end_example
 
 Probably should be moved to the validation module.
-**** TODO Code review comment
+**** CANCELLED Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/validation.py]]
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-06-13 Sat 20:59] \\
+  Meh
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/validation.py
+
+Validation module should be placed in =org.pipeline= package.
+
+**** CANCELLED Code review comment
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-06-13 Sat 20:40] \\
+  Already done.
+:END:
 :PROPERTIES:
 :context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::class DataLoadArgs(QueryBuildArgs, Protocol):
  """Protocol for loading and preprocessing data."""
@@ -8099,21 +8135,12 @@ def load_and_process_data(
 
 #+end_example
 
-All of this should be moved to the serde module.
-**** TODO Code review comment
-:PROPERTIES:
-:context: [[file:~/projects/software/org-cli/src/org/logic/validation.py]]
+All of this should be moved to the =org.pipeline.load= module.
+*** CANCELLED Use Textual toasts for status messages.
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-13 Sat 21:02] \\
+  Nah, these are annoying.
 :END:
-
-Filename: /home/k/projects/software/org-cli/src/org/logic/validation.py
-
-#+begin_example
-
-#+end_example
-
-Validation module should be placed in serde package.
-
-*** Use Textual toasts for status messages.
 *** Use Textual textarea for any org-mode syntax highlighting
 - Limit to just the interactive commands.
 - Potentially use it for code edits of the files?

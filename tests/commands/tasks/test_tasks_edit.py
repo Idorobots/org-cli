@@ -248,19 +248,6 @@ def test_edit_heading_subtree_errors_when_document_has_no_filename() -> None:
         editor_command.edit_heading_subtree_in_external_editor(heading)
 
 
-def test_attempt_edit_heading_subtree_errors_when_document_has_no_filename() -> None:
-    """Non-prompting edit helper should reject tasks without a backing file."""
-    root = org_parser.loads("* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n")
-    heading = root.heading_by_id("task-1")
-    assert heading is not None
-
-    with pytest.raises(
-        typer.BadParameter,
-        match=r"This task is not associated with a file and cannot be edited\.",
-    ):
-        editor_command.attempt_edit_heading_subtree_in_external_editor(heading)
-
-
 def test_edit_heading_subtree_errors_after_line_open_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -276,23 +263,6 @@ def test_edit_heading_subtree_errors_after_line_open_failure(
 
     with pytest.raises(typer.BadParameter, match="Editor failed to open"):
         editor_command.edit_heading_subtree_in_external_editor(heading)
-
-
-def test_attempt_edit_heading_subtree_errors_after_line_open_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Non-prompting edit helper should error after line-open failure."""
-    source = tmp_path / "tasks.org"
-    source.write_text("* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n", encoding="utf-8")
-    root = org_parser.load(str(source))
-    heading = root.heading_by_id("task-1")
-    assert heading is not None
-
-    monkeypatch.setattr(editor_command, "_run_editor_at_line", lambda _filename, _line: 7)
-
-    with pytest.raises(typer.BadParameter, match="Editor failed to open"):
-        editor_command.attempt_edit_heading_subtree_in_external_editor(heading)
 
 
 def test_edit_heading_subtree_rejects_invalid_full_document_content(
@@ -312,8 +282,7 @@ def test_edit_heading_subtree_rejects_invalid_full_document_content(
 
     monkeypatch.setattr(editor_command, "_run_editor_at_line", _edit_file)
     monkeypatch.setattr(
-        org_parser,
-        "loads",
+        "org.pipeline.load.loads",
         lambda _text: (_ for _ in ()).throw(ValueError("boom")),
     )
 

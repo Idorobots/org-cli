@@ -31,6 +31,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger("org")
 
 
+def load_document_from_text(document_text: str, filename: str | None) -> Document:
+    """Parse full document text and preserve original filename when present."""
+    try:
+        document = loads(document_text)
+    except (TypeError, ValueError) as err:
+        raise typer.BadParameter(f"Edited document content is invalid: {err}") from err
+
+    document.filename = "" if filename is None else filename
+    return document
+
+
 def _read_org_file(name: str) -> str:
     """Read one org file and normalize unsupported time values."""
     path = Path(name)

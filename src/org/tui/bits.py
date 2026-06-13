@@ -31,7 +31,7 @@ from rich.console import Console
 from rich.style import Style
 from rich.text import Text
 
-from org.logic.tasks import get_top_tasks
+from org.logic.stats import get_top_tasks
 from org.tui.color import (
     bright_blue,
     bright_white,

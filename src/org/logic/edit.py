@@ -8,12 +8,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import click
-import org_parser
 import typer
+
+from org.pipeline.load import load_document_from_text
 
 
 if TYPE_CHECKING:
-    from org_parser.document import Document, Heading
+    from org_parser.document import Heading
 
 
 def _editor_program() -> str:
@@ -46,17 +47,6 @@ class DocumentEditResult:
     changed: bool
 
 
-def _load_document_from_text(document_text: str, filename: str | None) -> Document:
-    """Parse full document text and preserve original filename when present."""
-    try:
-        document = org_parser.loads(document_text)
-    except (TypeError, ValueError) as err:
-        raise typer.BadParameter(f"Edited document content is invalid: {err}") from err
-
-    document.filename = "" if filename is None else filename
-    return document
-
-
 def _run_editor_at_line(filename: str, line: int) -> int:
     """Open one file in the configured editor at a given line."""
     editor = _editor_program()
@@ -85,9 +75,7 @@ def _write_document_text(path: Path, filename: str, document_text: str) -> None:
         raise typer.BadParameter(f"Permission denied for '{filename}'") from err
 
 
-def attempt_edit_heading_subtree_in_external_editor(
-    heading: Heading,
-) -> DocumentEditResult:
+def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
     """Edit one file-backed task subtree in the configured external editor."""
     filename = heading.document.filename or None
     if filename is None:
@@ -102,12 +90,7 @@ def attempt_edit_heading_subtree_in_external_editor(
         edited_text = _read_document_text(path, filename)
         if edited_text == original_text:
             return DocumentEditResult(changed=False)
-        _load_document_from_text(edited_text, filename)
+        load_document_from_text(edited_text, filename)
         return DocumentEditResult(changed=True)
 
     raise typer.BadParameter("Editor failed to open")
-
-
-def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
-    """Edit the original task document, preferring in-place file editing at task line."""
-    return attempt_edit_heading_subtree_in_external_editor(heading)

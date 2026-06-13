@@ -14,9 +14,8 @@ from rich.text import Text
 import org.config.app
 import org.logging
 from org.commands.stats.summary import SummaryDisplayConfig, format_tasks_summary
-from org.logic.stats import AnalysisResult, Tag, TimeRange, analyze, clean
+from org.logic.stats import AnalysisResult, Tag, TimeRange, analyze, clean, get_top_tasks
 from org.logic.stats import Group as TagGroup
-from org.logic.tasks import get_top_tasks
 from org.logic.time import resolve_date_filters
 from org.logic.validation import validate_stats_arguments
 from org.pipeline.load import load_and_process_data

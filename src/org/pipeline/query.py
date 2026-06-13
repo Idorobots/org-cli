@@ -446,11 +446,6 @@ def extend_with_entries_with_defaults(
     return full_entries
 
 
-def count_filter_values(value: list[str] | None) -> int:
-    """Count filter values for append-style filters."""
-    return len(value) if value else 0
-
-
 def extend_filter_order_with_defaults(
     filter_order: list[str | CustomStageInvocation],
     args: FilterArgs,
@@ -463,10 +458,10 @@ def extend_filter_order_with_defaults(
         "--filter-repeats-below": 1 if args.filter_repeats_below is not None else 0,
         "--filter-date-from": 1 if args.filter_date_from is not None else 0,
         "--filter-date-until": 1 if args.filter_date_until is not None else 0,
-        "--filter-property": count_filter_values(args.filter_properties),
-        "--filter-tag": count_filter_values(args.filter_tags),
-        "--filter-heading": count_filter_values(args.filter_headings),
-        "--filter-body": count_filter_values(args.filter_bodies),
+        "--filter-property": len(args.filter_properties) if args.filter_properties else 0,
+        "--filter-tag": len(args.filter_tags) if args.filter_tags else 0,
+        "--filter-heading": len(args.filter_headings) if args.filter_headings else 0,
+        "--filter-body": len(args.filter_bodies) if args.filter_bodies else 0,
         "--filter-completed": 1 if args.filter_completed else 0,
         "--filter-not-completed": 1 if args.filter_not_completed else 0,
     }

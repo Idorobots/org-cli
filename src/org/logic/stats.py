@@ -140,6 +140,19 @@ def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
     return (top_day.isoformat(), max_count)
 
 
+def get_top_tasks(nodes: list[Heading], max_results: int) -> list[Heading]:
+    """Get top N nodes sorted by most recent timestamp."""
+    nodes_with_timestamps: list[tuple[Heading, datetime]] = []
+    for node in nodes:
+        latest_timestamp = node.latest_timestamp
+        if latest_timestamp is None:
+            continue
+        nodes_with_timestamps.append((node, latest_timestamp.start))
+
+    sorted_nodes = sorted(nodes_with_timestamps, key=lambda x: x[1], reverse=True)
+    return [node for node, _ in sorted_nodes[:max_results]]
+
+
 def weekday_to_string(weekday: int) -> str:
     """Map Python weekday integer to capitalized day name."""
     days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]

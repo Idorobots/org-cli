@@ -100,12 +100,6 @@ def extract_timestamp_any(node: Heading) -> list[datetime]:
     return [normalize_timestamp(t) for t in timestamps]
 
 
-def get_most_recent_timestamp(node: Heading) -> datetime | None:
-    """Get the most recent timestamp from a node."""
-    timestamps = extract_timestamp_any(node)
-    return max(timestamps) if timestamps else None
-
-
 def resolve_date_filters(args: object) -> tuple[datetime | None, datetime | None]:
     """Resolve date filter arguments into parsed datetime values."""
     date_from_value = getattr(args, "filter_date_from", None)
