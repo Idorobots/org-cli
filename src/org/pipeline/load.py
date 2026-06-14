@@ -11,16 +11,19 @@ import typer
 from org_parser import loads
 from org_parser.document import Heading
 
+from org.config.cli import (
+    QueryBuildArgs,
+    build_pipeline_stages,
+    collect_custom_context_vars,
+    normalize_cli_files_for_custom_switches,
+    validate_custom_switches,
+)
 from org.logic.validation import validate_and_parse_keys, validate_global_arguments
 from org.query.engine.errors import QueryParseError
 from org.query.runner import (
-    QueryBuildArgs,
-    build_query,
-    collect_custom_context_vars,
+    build_query_from_stages,
     execute_query_or_raise,
     flatten_query_results,
-    normalize_cli_files_for_custom_switches,
-    validate_custom_switches,
 )
 
 
@@ -201,11 +204,9 @@ def load_and_process_data(args: DataLoadArgs) -> tuple[list[Heading], list[str],
 
     include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
     try:
-        query = build_query(
-            args,
-            sys.argv,
-            include_ordering=include_ordering,
-            include_slice=include_slice,
+        query = build_query_from_stages(
+            build_pipeline_stages(args, sys.argv, include_ordering),
+            include_slice,
         )
     except QueryParseError as exc:
         raise typer.BadParameter(str(exc)) from exc

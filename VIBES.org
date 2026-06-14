@@ -8276,11 +8276,17 @@ In file src/org/commands/tasks/list/command.py around line 663, near the ~def re
 
 I absolutely hate this. Please refactor the =out= and =details= switches to be optional and check their existance that way.
 
-*** TODO Extract filter/order/with handling from the query package and into pipeline.
+*** DONE Extract filter/order/with handling from the query package and into config.
 :PROPERTIES:
 :capture_time: [2026-06-13 Sat 23:09]
 :context: [[file:~/projects/software/org-cli/src/org/query/runner.py::for arg_name, expected in expected_counts.items():]]
 :END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-14 Sun 11:14]
+:END:
+
+All the functions dealing with CLI argument processing, ordering of filters, etc should be moved to a new module =org.config.cli=. The =org.query= package should only contain query building and execution. The =org.config= package is a suitable place for the default pipeline configuration and user-provided overrides in the form of CLI switches.
+
 ** TODO Agenda usability improvements                                                    :UX:Agenda:
 *** Agenda non-interactive output format
 - Should be adjusted to "look and feel" just like the interactive one.
