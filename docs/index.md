@@ -28,13 +28,14 @@ For query syntax details, use [query_language.md](query_language.md).
 
 ### Config file layout
 
-Config uses six top-level sections:
+Config uses seven top-level sections:
 
 - `defaults`: built-in option defaults (for example `--done-states`, `--limit`, `--filter-priority`, `--order-by-priority`).
 - `filter`: custom `--filter-<name>` query snippets.
 - `order-by`: custom `--order-by-<name>` query snippets.
 - `with`: custom `--with-<name>` query snippets.
 - `capture`: named capture templates under `capture.templates`.
+- `agenda`: named agenda views under `agenda.views` with filter-based sections.
 - `board`: named board views under `board.views` with filter-based columns.
 
 Custom switch argument handling:
@@ -64,7 +65,9 @@ Most analysis commands accept many `--filter-*` switches. Ordering controls are 
 
 Built-in argument defaults:
 
-- Global: `--limit 10`, `--offset 0`, `--todo-states TODO`, `--done-states DONE`.
+- Shared defaults: `--offset 0`, `--todo-states TODO`, `--done-states DONE`.
+- Limit defaults are command-specific: many query/list/stats commands default `--limit` to `10`, while
+  `org agenda` and `org board` default to all results.
 - Stats: `--use tags`, `--max-tags 5` (all), `--max-relations 5`, `--max-groups 5` (all), `--min-group-size 2` (all).
 - Built-in filter additions: `--filter-priority P`.
 - Tasks list/board built-in ordering: `--order-by-priority`, `--order-by-level`, `--order-by-file-order`, `--order-by-file-order-reversed`, `--order-by-timestamp-asc`, `--order-by-timestamp-desc`.
