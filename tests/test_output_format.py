@@ -14,11 +14,10 @@ from org_parser.element import Keyword
 from org_parser.text import RichText
 from rich.syntax import Syntax
 
-from org import output_format
-from org.analyze import AnalysisResult, Group, Tag, TimeRange
 from org.commands.tasks import query as query_command
 from org.commands.tasks.list import command as tasks_list_command
-from org.histogram import Histogram
+from org.logic.stats import AnalysisResult, Distribution, Group, Tag, TimeRange
+from org.pipeline import format as output_format
 
 
 if TYPE_CHECKING:
@@ -48,7 +47,7 @@ def test_org_to_pandoc_format_suppresses_warning_and_logs_info(
         del kwargs
         return SimpleNamespace(returncode=0, stdout=b"# converted", stderr=b"pandoc warning text\n")
 
-    monkeypatch.setattr("org.output_format.subprocess.run", _fake_run)
+    monkeypatch.setattr("org.pipeline.format.subprocess.run", _fake_run)
     caplog.set_level(logging.INFO, logger="org")
 
     markdown_text = output_format._org_to_pandoc_format("* TODO test", "markdown", [])
@@ -68,7 +67,7 @@ def test_org_to_pandoc_format_forwards_pandoc_output_args(monkeypatch: pytest.Mo
         seen["kwargs"] = kwargs
         return SimpleNamespace(returncode=0, stdout=b"converted", stderr=b"")
 
-    monkeypatch.setattr("org.output_format.subprocess.run", _fake_run)
+    monkeypatch.setattr("org.pipeline.format.subprocess.run", _fake_run)
 
     rendered = output_format._org_to_pandoc_format(
         "* TODO test",
@@ -95,7 +94,7 @@ def test_org_to_pandoc_format_raises_output_error_on_nonzero_exit(
         del kwargs
         return SimpleNamespace(returncode=22, stdout=b"", stderr=b"Unknown output format\n")
 
-    monkeypatch.setattr("org.output_format.subprocess.run", _fake_run)
+    monkeypatch.setattr("org.pipeline.format.subprocess.run", _fake_run)
 
     with pytest.raises(output_format.OutputFormatError, match="Unknown output format"):
         output_format._org_to_pandoc_format("* TODO test", "invalid-format", [])
@@ -111,7 +110,7 @@ def test_org_to_pandoc_format_raises_output_error_when_pandoc_missing(
         del kwargs
         raise FileNotFoundError("pandoc not found")
 
-    monkeypatch.setattr("org.output_format.subprocess.run", _fake_run)
+    monkeypatch.setattr("org.pipeline.format.subprocess.run", _fake_run)
 
     with pytest.raises(output_format.OutputFormatError, match="pandoc not found"):
         output_format._org_to_pandoc_format("* TODO test", "gfm", [])
@@ -260,13 +259,13 @@ def test_pandoc_tasks_formatter_uses_syntax_when_color_enabled(
 
 
 def test_to_json_compatible_serializes_histogram_with_type_field() -> None:
-    """Histogram should serialize to a JSON object with a type field."""
-    histogram = Histogram(values={"DONE": 3, "TODO": 2})
+    """Distribution should serialize to a JSON object with a type field."""
+    histogram = Distribution(values={"DONE": 3, "TODO": 2})
 
     result = output_format._to_json_compatible(histogram)
 
     assert isinstance(result, dict)
-    assert result["type"] == "Histogram"
+    assert result["type"] == "Distribution"
     assert result["values"] == {"DONE": 3, "TODO": 2}
 
 
@@ -350,10 +349,10 @@ def test_to_json_compatible_serializes_analysis_result_with_type_field() -> None
     result = AnalysisResult(
         total_tasks=4,
         unique_tasks=4,
-        task_states=Histogram(values={"DONE": 2, "TODO": 2}),
-        task_categories=Histogram(values={}),
-        task_priorities=Histogram(values={"A": 1}),
-        task_days=Histogram(values={"Monday": 2}),
+        task_states=Distribution(values={"DONE": 2, "TODO": 2}),
+        task_categories=Distribution(values={}),
+        task_priorities=Distribution(values={"A": 1}),
+        task_days=Distribution(values={"Monday": 2}),
         timerange=tr,
         avg_tasks_per_day=0.2,
         max_single_day_count=2,
@@ -372,7 +371,7 @@ def test_to_json_compatible_serializes_analysis_result_with_type_field() -> None
 
     task_states = serialized["task_states"]
     assert isinstance(task_states, dict)
-    assert task_states["type"] == "Histogram"
+    assert task_states["type"] == "Distribution"
     assert task_states["values"] == {"DONE": 2, "TODO": 2}
 
     timerange = serialized["timerange"]

@@ -2,24 +2,25 @@
 
 from datetime import datetime
 
-from org.cli_common import get_most_recent_timestamp, get_top_tasks
+from org.logic.stats import get_top_tasks
 from tests.conftest import node_from_org
 
 
-def test_get_most_recent_timestamp_with_closed() -> None:
-    """Test get_most_recent_timestamp with closed timestamp."""
+def test_heading_latest_timestamp_with_closed() -> None:
+    """Heading.latest_timestamp should expose closed timestamp when present."""
     org_text = """* DONE Task
 CLOSED: [2023-10-15 Sun 14:00]
 """
     nodes = node_from_org(org_text)
 
-    timestamp = get_most_recent_timestamp(nodes[0])
+    latest_timestamp = nodes[0].latest_timestamp
 
-    assert timestamp == datetime(2023, 10, 15, 14, 0)
+    assert latest_timestamp is not None
+    assert latest_timestamp.start == datetime(2023, 10, 15, 14, 0)
 
 
-def test_get_most_recent_timestamp_with_repeats() -> None:
-    """Test get_most_recent_timestamp with repeated tasks."""
+def test_heading_latest_timestamp_with_repeats() -> None:
+    """Heading.latest_timestamp should expose the latest repeated timestamp."""
     org_text = """* DONE Task
 :LOGBOOK:
 - State "DONE" from "TODO" [2023-10-10 Tue 09:00]
@@ -29,32 +30,39 @@ def test_get_most_recent_timestamp_with_repeats() -> None:
 """
     nodes = node_from_org(org_text)
 
-    timestamp = get_most_recent_timestamp(nodes[0])
+    latest_timestamp = nodes[0].latest_timestamp
 
-    assert timestamp == datetime(2023, 10, 15, 14, 0)
+    assert latest_timestamp is not None
+    assert latest_timestamp.start == datetime(2023, 10, 15, 14, 0)
 
 
-def test_get_most_recent_timestamp_with_scheduled() -> None:
-    """Test get_most_recent_timestamp with scheduled timestamp."""
+def test_heading_latest_timestamp_with_scheduled() -> None:
+    """Heading.latest_timestamp should expose scheduled timestamp when present."""
     org_text = """* TODO Task
 SCHEDULED: <2023-10-20 Fri 10:00>
 """
     nodes = node_from_org(org_text)
 
-    timestamp = get_most_recent_timestamp(nodes[0])
+    latest_timestamp = nodes[0].latest_timestamp
 
-    assert timestamp == datetime(2023, 10, 20, 10, 0)
+    assert latest_timestamp is not None
+    assert latest_timestamp.start == datetime(2023, 10, 20, 10, 0)
 
 
-def test_get_most_recent_timestamp_no_timestamp() -> None:
-    """Test get_most_recent_timestamp with no timestamp."""
+def test_heading_latest_timestamp_no_timestamp() -> None:
+    """Heading.latest_timestamp should be None when a task has no timestamps."""
     org_text = """* TODO Task
 """
     nodes = node_from_org(org_text)
 
-    timestamp = get_most_recent_timestamp(nodes[0])
+    latest_timestamp = nodes[0].latest_timestamp
 
-    assert timestamp is None
+    assert latest_timestamp is None
+
+
+def test_get_top_tasks_imports_from_stats() -> None:
+    """Top tasks helper should remain available from the stats module."""
+    assert get_top_tasks([], 10) == []
 
 
 def test_get_top_tasks_sorted_by_timestamp() -> None:

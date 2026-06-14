@@ -1,0 +1,26 @@
+PromptModalScreen {
+    align: center middle;
+    background: $surface 60%;
+}
+
+#prompt-dialog {
+    width: 80%;
+    max-width: 100;
+    height: auto;
+    border: round $primary;
+    background: $panel;
+    padding: 1 2;
+}
+
+#prompt-label {
+    margin-bottom: 1;
+}
+
+#prompt-instructions {
+    margin-bottom: 1;
+}
+
+#prompt-input {
+    width: 1fr;
+    min-width: 20;
+}

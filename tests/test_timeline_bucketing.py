@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from org.plot import bucket_timeline
+from org.tui.plot import bucket_timeline
 
 
 def test_bucket_timeline_evenly_divisible() -> None:

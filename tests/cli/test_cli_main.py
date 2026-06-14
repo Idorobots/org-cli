@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from org import cli, config
+import org.config.app
+from org import cli
 
 
 if TYPE_CHECKING:
@@ -36,9 +37,9 @@ def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
         return DummyCommand()
 
     monkeypatch.setattr(
-        config,
+        org.config.app,
         "load_cli_config",
-        lambda _argv: config.LoadedCliConfig(
+        lambda _argv: org.config.app.LoadedCliConfig(
             defaults={"max_results": 3},
             append_defaults={},
             inline_defaults={},
@@ -51,7 +52,7 @@ def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
         ),
     )
     monkeypatch.setattr(
-        config,
+        org.config.app,
         "build_default_map",
         lambda _defaults: {"stats": _defaults, "agenda": {}},
     )
@@ -68,28 +69,28 @@ def test_cli_main_builds_default_map(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> None:
     """main should update config append and inline defaults."""
-    original_append = dict(config.CONFIG_APPEND_DEFAULTS)
-    original_inline = dict(config.CONFIG_INLINE_DEFAULTS)
-    original_custom_filters = dict(config.CONFIG_CUSTOM_FILTERS)
-    original_custom_order_by = dict(config.CONFIG_CUSTOM_ORDER_BY)
-    original_custom_with = dict(config.CONFIG_CUSTOM_WITH)
-    original_capture_templates = dict(config.CONFIG_CAPTURE_TEMPLATES)
-    original_board_views = dict(config.CONFIG_BOARD_VIEWS)
-    config.CONFIG_APPEND_DEFAULTS.clear()
-    config.CONFIG_INLINE_DEFAULTS.clear()
-    config.CONFIG_CUSTOM_FILTERS.clear()
-    config.CONFIG_CUSTOM_ORDER_BY.clear()
-    config.CONFIG_CUSTOM_WITH.clear()
-    config.CONFIG_CAPTURE_TEMPLATES.clear()
-    config.CONFIG_BOARD_VIEWS.clear()
+    original_append = dict(org.config.app.CONFIG_APPEND_DEFAULTS)
+    original_inline = dict(org.config.app.CONFIG_INLINE_DEFAULTS)
+    original_custom_filters = dict(org.config.app.CONFIG_CUSTOM_FILTERS)
+    original_custom_order_by = dict(org.config.app.CONFIG_CUSTOM_ORDER_BY)
+    original_custom_with = dict(org.config.app.CONFIG_CUSTOM_WITH)
+    original_capture_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
+    original_board_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
+    org.config.app.CONFIG_APPEND_DEFAULTS.clear()
+    org.config.app.CONFIG_INLINE_DEFAULTS.clear()
+    org.config.app.CONFIG_CUSTOM_FILTERS.clear()
+    org.config.app.CONFIG_CUSTOM_ORDER_BY.clear()
+    org.config.app.CONFIG_CUSTOM_WITH.clear()
+    org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
+    org.config.app.CONFIG_BOARD_VIEWS.clear()
 
     def fake_get_command(_app: object) -> SimpleNamespace:
         return SimpleNamespace(main=lambda **_: None)
 
     monkeypatch.setattr(
-        config,
+        org.config.app,
         "load_cli_config",
-        lambda _argv: config.LoadedCliConfig(
+        lambda _argv: org.config.app.LoadedCliConfig(
             defaults={},
             append_defaults={"filter_tags": ["alpha"]},
             inline_defaults={"mapping_inline": {"a": "b"}},
@@ -98,45 +99,45 @@ def test_cli_main_updates_config_globals(monkeypatch: pytest.MonkeyPatch) -> Non
             custom_with={"my-with": "."},
             capture_templates={"quick": {"file": "tasks.org", "content": "* TODO {{title}}"}},
             board_views={
-                "kanban": config.BoardViewConfig(
+                "kanban": org.config.app.BoardViewConfig(
                     name="kanban",
                     columns=[
-                        config.BoardColumnConfig(name="TODO", filter='.todo == "TODO"'),
+                        org.config.app.BoardColumnConfig(name="TODO", filter='.todo == "TODO"'),
                     ],
                 ),
             },
             agenda_views={},
         ),
     )
-    monkeypatch.setattr(config, "build_default_map", lambda _defaults: {})
+    monkeypatch.setattr(org.config.app, "build_default_map", lambda _defaults: {})
     monkeypatch.setattr(typer.main, "get_command", fake_get_command)
     monkeypatch.setattr(sys, "argv", ["org", "stats", "all"])
 
     try:
         cli.main()
 
-        assert config.CONFIG_APPEND_DEFAULTS == {"filter_tags": ["alpha"]}
-        assert config.CONFIG_INLINE_DEFAULTS == {"mapping_inline": {"a": "b"}}
-        assert config.CONFIG_CUSTOM_FILTERS == {"my-filter": ".[]"}
-        assert config.CONFIG_CUSTOM_ORDER_BY == {"my-order": "."}
-        assert config.CONFIG_CUSTOM_WITH == {"my-with": "."}
-        assert config.CONFIG_CAPTURE_TEMPLATES == {
+        assert org.config.app.CONFIG_APPEND_DEFAULTS == {"filter_tags": ["alpha"]}
+        assert org.config.app.CONFIG_INLINE_DEFAULTS == {"mapping_inline": {"a": "b"}}
+        assert org.config.app.CONFIG_CUSTOM_FILTERS == {"my-filter": ".[]"}
+        assert org.config.app.CONFIG_CUSTOM_ORDER_BY == {"my-order": "."}
+        assert org.config.app.CONFIG_CUSTOM_WITH == {"my-with": "."}
+        assert org.config.app.CONFIG_CAPTURE_TEMPLATES == {
             "quick": {"file": "tasks.org", "content": "* TODO {{title}}"},
         }
-        assert set(config.CONFIG_BOARD_VIEWS) == {"kanban"}
-        assert config.CONFIG_BOARD_VIEWS["kanban"].name == "kanban"
+        assert set(org.config.app.CONFIG_BOARD_VIEWS) == {"kanban"}
+        assert org.config.app.CONFIG_BOARD_VIEWS["kanban"].name == "kanban"
     finally:
-        config.CONFIG_APPEND_DEFAULTS.clear()
-        config.CONFIG_APPEND_DEFAULTS.update(original_append)
-        config.CONFIG_INLINE_DEFAULTS.clear()
-        config.CONFIG_INLINE_DEFAULTS.update(original_inline)
-        config.CONFIG_CUSTOM_FILTERS.clear()
-        config.CONFIG_CUSTOM_FILTERS.update(original_custom_filters)
-        config.CONFIG_CUSTOM_ORDER_BY.clear()
-        config.CONFIG_CUSTOM_ORDER_BY.update(original_custom_order_by)
-        config.CONFIG_CUSTOM_WITH.clear()
-        config.CONFIG_CUSTOM_WITH.update(original_custom_with)
-        config.CONFIG_CAPTURE_TEMPLATES.clear()
-        config.CONFIG_CAPTURE_TEMPLATES.update(original_capture_templates)
-        config.CONFIG_BOARD_VIEWS.clear()
-        config.CONFIG_BOARD_VIEWS.update(original_board_views)
+        org.config.app.CONFIG_APPEND_DEFAULTS.clear()
+        org.config.app.CONFIG_APPEND_DEFAULTS.update(original_append)
+        org.config.app.CONFIG_INLINE_DEFAULTS.clear()
+        org.config.app.CONFIG_INLINE_DEFAULTS.update(original_inline)
+        org.config.app.CONFIG_CUSTOM_FILTERS.clear()
+        org.config.app.CONFIG_CUSTOM_FILTERS.update(original_custom_filters)
+        org.config.app.CONFIG_CUSTOM_ORDER_BY.clear()
+        org.config.app.CONFIG_CUSTOM_ORDER_BY.update(original_custom_order_by)
+        org.config.app.CONFIG_CUSTOM_WITH.clear()
+        org.config.app.CONFIG_CUSTOM_WITH.update(original_custom_with)
+        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
+        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_capture_templates)
+        org.config.app.CONFIG_BOARD_VIEWS.clear()
+        org.config.app.CONFIG_BOARD_VIEWS.update(original_board_views)

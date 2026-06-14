@@ -6,13 +6,17 @@ import logging
 import sys
 from dataclasses import dataclass
 
+import click
 import typer
 
-from org import config as config_module
-from org.cli_common import load_and_process_data
-from org.commands.board import events, layout
-from org.commands.interactive_common import interactive_help_command_text
-from org.tui import build_console, processing_status, setup_output
+import org.config.app
+import org.logging
+from org.pipeline.load import load_and_process_data
+from org.tui.bits import build_console, processing_status, setup_output
+from org.tui.help import interactive_help_command_text
+
+from . import actions, ui
+from .app import run_board_app
 
 
 logger = logging.getLogger("org")
@@ -57,7 +61,7 @@ class BoardArgs:
     with_tags_as_category: bool
 
 
-_BOARD_HELP_ENTRIES = layout.BOARD_HELP_ENTRIES
+_BOARD_HELP_ENTRIES = ui.BOARD_HELP_ENTRIES
 
 
 def _resolve_tasks_limit(max_results: int | None) -> int:
@@ -67,8 +71,13 @@ def _resolve_tasks_limit(max_results: int | None) -> int:
     return max_results
 
 
-def run_flow_board(args: BoardArgs) -> None:
-    """Run the flow board command."""
+def _validate_board_args(args: BoardArgs) -> None:
+    """Validate board arguments and configured view selection."""
+    actions.resolve_column_specs(args)
+
+
+def run_board(args: BoardArgs) -> None:
+    """Run the board command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
     if console.width < 80:
@@ -80,11 +89,12 @@ def run_flow_board(args: BoardArgs) -> None:
     if args.days < 0:
         raise typer.BadParameter("--days must be non-negative")
     args.max_results = _resolve_tasks_limit(args.max_results)
+    _validate_board_args(args)
 
     with processing_status(console, color_enabled):
         nodes, discovered_todo_states, discovered_done_states = load_and_process_data(args)
-        nodes = events.filter_recent_completed_nodes(nodes, args.days)
-        todo_states, done_states = events.resolved_states(
+        nodes = actions.filter_recent_completed_nodes(nodes, args.days)
+        todo_states, done_states = actions.resolved_states(
             args,
             discovered_todo_states,
             discovered_done_states,
@@ -94,31 +104,14 @@ def run_flow_board(args: BoardArgs) -> None:
         console.print("No results", markup=False)
         return
 
-    if sys.stdin.isatty() and sys.stdout.isatty():
-        events.run_flow_board_interactive(
-            console,
-            events.create_flow_board_session(
-                args,
-                nodes,
-                todo_states,
-                done_states,
-                color_enabled,
-            ),
-        )
-        return
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise click.UsageError("org board requires a TTY")
 
-    columns = events.build_selector_board_columns(nodes, events.resolve_column_specs(args))
-    layout.render_static_flow_board(
-        console,
-        columns,
-        done_states=done_states,
-        todo_states=todo_states,
-        color_enabled=color_enabled,
-    )
+    run_board_app(args, nodes, todo_states, done_states, color_enabled)
 
 
 def register(app: typer.Typer) -> None:
-    """Register the flow board command."""
+    """Register the board command."""
 
     @app.command(
         "board",
@@ -128,7 +121,7 @@ def register(app: typer.Typer) -> None:
             _BOARD_HELP_ENTRIES,
         ),
     )
-    def flow_board(  # noqa: PLR0913
+    def board(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -318,7 +311,7 @@ def register(app: typer.Typer) -> None:
             help="Preprocess nodes to set category from first tag",
         ),
     ) -> None:
-        """Display tasks as an interactive flow board."""
+        """Display tasks as an interactive board."""
         args = BoardArgs(
             files=files,
             config=config,
@@ -354,7 +347,7 @@ def register(app: typer.Typer) -> None:
             order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "board")
-        config_module.log_command_arguments(args, "board")
-        run_flow_board(args)
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "board")
+        org.logging.log_command_arguments(args, "board")
+        run_board(args)

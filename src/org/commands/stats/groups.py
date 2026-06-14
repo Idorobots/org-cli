@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from org import config as config_module
-from org.analyze import (
+import org.config.app
+import org.logging
+from org.logic.stats import (
     Group,
     TimeRange,
     compute_explicit_groups,
@@ -19,17 +20,13 @@ from org.analyze import (
     compute_per_tag_statistics,
     compute_relations,
     compute_time_ranges,
-)
-from org.cli_common import (
-    load_and_process_data,
-    resolve_date_filters,
-    resolve_exclude_set,
     resolve_group_values,
-    resolve_mapping,
 )
-from org.tui import (
+from org.logic.time import resolve_date_filters
+from org.logic.validation import validate_stats_arguments
+from org.pipeline.load import load_and_process_data
+from org.tui.bits import (
     GroupBlockConfig,
-    TimelineFormatConfig,
     apply_indent,
     build_console,
     format_group_block,
@@ -38,7 +35,7 @@ from org.tui import (
     processing_status,
     setup_output,
 )
-from org.validation import validate_stats_arguments
+from org.tui.plot import TimelineFormatConfig
 
 
 if TYPE_CHECKING:
@@ -146,8 +143,8 @@ def run_stats_groups(args: GroupsArgs) -> None:
     max_results = args.max_results if args.max_results is not None else 10
 
     with processing_status(console, color_enabled):
-        mapping = resolve_mapping(args)
-        exclude_set = resolve_exclude_set(args)
+        mapping = org.config.app.resolve_mapping(args)
+        exclude_set = org.config.app.resolve_exclude_set(args)
         nodes, _, _ = load_and_process_data(args)
 
         if not nodes:
@@ -399,7 +396,7 @@ def register(app: typer.Typer) -> None:
             min_group_size=0,
             max_groups=0,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats groups")
-        config_module.log_command_arguments(args, "stats groups")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "stats groups")
+        org.logging.log_command_arguments(args, "stats groups")
         run_stats_groups(args)

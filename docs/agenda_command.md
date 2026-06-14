@@ -36,9 +36,7 @@ poetry run org agenda [OPTIONS] [FILE ...]
 
 ## Interactive mode
 
-When both stdin and stdout are TTYs, `org agenda` runs in interactive mode.
-When not running in a TTY (for example in tests, piping, or redirected output), it falls back
-to non-interactive rendering.
+`org agenda` runs in interactive mode and requires both stdin and stdout to be TTYs.
 
 Interactive keys:
 

@@ -1,0 +1,26 @@
+Screen {
+    layout: vertical;
+}
+
+#board-body {
+    height: 1fr;
+}
+
+#board-footer,
+#board-footer-rule,
+#board-status {
+    height: auto;
+}
+
+.board-column {
+    width: 1fr;
+    height: 1fr;
+}
+
+.board-column-title {
+    height: auto;
+}
+
+.board-column-body {
+    height: 1fr;
+}

@@ -6932,6 +6932,19 @@ Perform steps in a loop while there are any tasks available for stepping.
 - =--log= - file to log the transitions into
 - =--workflow= to specify which configured workflow to use.
 
+*** Embed a rules-based engine into the workflow
+- Each workflow step is a rule.
+- Org files are the store.
+- Support unification in the query language (=x as $v= and =$v as x= and =$v as $u= and =x as y= should unify the variable/value with the other value/variable). Bindings should be available in the rule body.
+- Use a proper DSL for the rules:
+#+begin_example
+rule Init (.todo as $foo and $foo as null):
+  .id = .category + "-" + str([.document.all_headings[] | select(.id != null)] | length);
+  .todo = "TODO"
+#+end_example
+- Embed a Rete/datalog engine?
+- Alternatively, when the store changes, reload the file, compute a delta and rerun the rules on just the affected tasks.
+
 *** CANCELLED Flow refine command
 :LOGBOOK:
 - State "CANCELLED"  from              [2026-05-05 Tue 18:47] \\
@@ -7243,12 +7256,13 @@ When search is enabled in the board, the currently visibla tasks for each column
 It would be really nice if the search results could be updated live, whenever any input is entered into the search prompt.
 Update all interactive commands that permit search to live-update during search input prompting.
 
-*** All interactive commands should support the =--width= CLI switch
+*** DONE All interactive commands should support the =--width= CLI switch
+:LOGBOOK:
+- State "DONE"       from              [2026-06-07 Sun 10:26]
+:END:
 *** Task IDs
 The tasks IDs of newly created tasks should default to ={{document_category}}-{{count_of_headings_in_file + 1}}=
 Show the task ID (when present) in the board task panels as well as agenda and task list. In all cases, it should preceed the TODO state.
-*** Bulk actions
-It should be possible to mark multiple items in agenda, board & task list and apply an action to them in bulk
 *** Task availability indicators
 The agenda and board commands should accept a =--workflow NAME= CLI switch that adds the following task availability indicators:
 
@@ -7259,7 +7273,6 @@ The agenda list should have a way to indicate that a task is blocked or doesn't 
 To convey that, the task line should be grayed out in the agenda time-breakdown (other sections should not be affected). When hovering a task line in the time-breakdown section of the agenda, if the task is blocked in the =.is_blocked= sense, or some of its workflow requirements aren't met, a suitable message should be displayed in the status bar. Use the =info= property of the requirement or a generic =Task is blocked= string.
 
 *** Do not add =#+TODO:= line to file contents, but rather modify done_states.
-
 *** Better heading & body parsing
 Use stripped =RichText= for body/heading tags.
 *** Parallelize document processing
@@ -7340,19 +7353,882 @@ Please don't leave unused arguments in functions, if an argument is no longer ne
 *** Mark as completed should respect repeaters
 The timestamp advancement should only be used if the new state is a completed state. In such a case, the state should be updated to the first TODO state defined for the document, a logbook repeat should be added to the task (`State {node.todo} to {new_state}`) and the repeaters should be advanced according to its rules.
 
-** Codebase improvements                                                                   :Cleanup:
-*** Extract the =stats= command wrapper into a separate module
-*** Refactor the task CRUD utils into a separate module re-used by all the commands
-*** Refactor config handling so that no global state is mutated
+*** TODO Timestamps without time components should be preserved in math ops                    :Bug:
+Running this query: ~timestamp("<2026-06-06>") + days(1)~  should produce a timestamp without a time component as the original date did not have it.
+
+*** Show configured filters/orderings/mutators in the command help strings
+*** Ability to add extra filter/order-by queries in interactive commands
+Commands should support the following key bindings:
+- `Shift-f` for filtering
+- `Shift-o` for order-by
+- `Shift-m` for mutators
+
+Show a modal with a multi-selection list for all entities in each category. The user should be able to select multiple filters, and each state transition should result in the entity being applied to the org mode files.
+*** Mor uniform key bindings
+- =Control + f= for search.
+- No need for =x= if search can be set to blank.
+- Drop =n=, =p=, =b= and =f= for agenda navigation.
+- Support =t= for todo and =g= for tags in all commands.
+- Support =s=, =c=, =d= for planning in all commands.
+- Support =r= for refile and =$= for archive in all commands.
+- Support =k= for clocking and =e= for effort estimation.
+- Support =C-
+
+** TODO Codebase improvements                                                              :Cleanup:
+*** DONE Extract the =stats= command wrapper into a separate module
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-02 Tue 20:06]
+:END:
+Organize it the same as the other commands (most recentry modified: agenda, board and tasks list).
+
 *** Avoid using =getattr= and =setattr= like the plague
 Refactor all places that currently use either of these functions so that the concrete type is known and concrete field is accessed.
 Introduce linter rules that make sure these function cannot be used.
-*** Avoid monkey patching in tests
-*** Use Textual for better TUI organization
-- Selection for prompts
-- Sparkline for freequency plots
-*** Config handling is too generic
-Split config handling to be per-command and have the config file reflect that.
+*** Avoid monkey patching in tests                                                           :Tests:
+*** DONE Textual for app organization & input handling
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-07 Sun 23:17]
+:END:
+Refine the plan in @plans/textual-migration.md to better reflect the current state of the codebase.
+Focus on just the TUI organization & input handling aspects, we'll handle widgets etc later.
+
+Implement the plan from @plans/textual-migration.md
+**** DONE Broken input/modals
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 11:14]
+:END:
+The help modal (key binding: ?) doesn't show the bindings, just a blank screen. The input prompt doesn't display the text that's being written, nor any message such as "Search term" or similar.
+
+**** DONE Broken modal lifecycle
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 11:14]
+:END:
+Modals that can be cancelled with the Esc key, also cause the whole app to exit. These should only close the modal. The exception should be the key-bindings modal - when any button is pressed, it should close the modal and apply that binding to the underlying screen. The modal should be updated to have a clear title (same as the other input modals) that says "Key bindings". The final line that says "Press any key to return" should be removed.
+
+**** DONE src/org/commands/tasks/list/command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 11:35]
+:END:
+
+In file src/org/commands/tasks/list/command.py around line 375, near the ~def _run_tasks_list_interactive(~
+
+#+begin_example
++    del console
++    run_tasks_list_app(args, data)
+
+#+end_example
+
+It's better to refactor the function call sites not to pass the =console= there.
+
+**** DONE Put CSS into a separate file for better organization
+:PROPERTIES:
+:capture_time: [2026-06-05 Fri 11:13]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*src/org/commands/tasks/list/command.py][src/org/commands/tasks/list/command.py]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 11:20]
+:END:
+**** DONE Tasks capture preview should be on the left of the form.
+:PROPERTIES:
+:CAPTURE_TIME: <2026-06-05 Fri 12:03>
+:ID: Vibes-490
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 13:17]
+:END:
+
+Instead of using two columns, please move the task preview panel to the left of the screen and the form to the right.
+The inputs should support newlines (enter key). The save/cancel buttons should be center-aligned underr the form, but on the same line.
+
+Ideally, the form itself should be part of the preview (as-in, the task preview is displayed as the main panel, with input boxes in place of the placeholders.)
+
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-05 Fri 13:22]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/tests/commands/tasks/test_tasks_capture_app.py::capture.TasksCaptureArgs(
+ template_name="quick",
+ config=".org-cli.yaml",
+ file=None,
+ parent=None,
+ set_values=None,
+ ),
+ "quick",]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/tests/commands/tasks/test_tasks_capture_app.py
+
+#+begin_example
+            capture.TasksCaptureArgs(
+                template_name="quick",
+                config=".org-cli.yaml",
+                file=None,
+                parent=None,
+                set_values=None,
+            ),
+            "quick",
+#+end_example
+
+Please don't rely on the .org-cli.yaml file present in the repository in tests. Substritute a temporary file if the configuration is needed.
+**** DONE The test suite is a lot slower after the Textual rewrite
+:PROPERTIES:
+:capture_time: [2026-06-05 Fri 13:19]
+:context: [[file:~/projects/software/org-cli/VIBES.org::*Code review comment][Code review comment]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-06 Sat 16:04]
+:END:
+It used to be under 8 seconds. Please identify the slow tests and update them to run faster.
+**** DONE src/org/commands/agenda/layout.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-06 Sat 19:56]
+:END:
+
+In file src/org/commands/agenda/layout.py around line 624, near the ~def _selected_row_location(session: AgendaSession) -> tuple[int, int] | None:~
+
+#+begin_example
++def selected_row_location(session: AgendaSession) -> tuple[int, int] | None:
++    """Return the selected interactive row location for one agenda session."""
++    return _selected_row_location(session)
+
+#+end_example
+
+This wrapper should be removed, prefer renaming functions and adjusting callsites.
+*** DONE Use Textual Selection widget for selections from a list of values
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-11 Thu 11:32]
+:END:
+This should be done instead of an input prompt wheneven the set of acceptable values is know before prompting.
+Some examples include: prompting for new state when changing task's todo state, capture template selection, refiling tasks to known files.
+
+*** DONE Reorganize file parsing & formatting
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-11 Thu 12:30]
+:END:
+Add a new package =org/serde= that will contain any parsing/output formatting code. It should contain:
+- =parse= - current contents of =org/parse.py=
+- =format= - current contents of =org/output_format.py=
+
+Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Make sure to update the commands to use this new serialization package.
+
+*** DONE Reorganize the config file handling
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-11 Thu 17:17]
+:END:
+Add a new package =org/config= that will contain:
+- =app= - current config of =org/config.py=
+- =logging= - current config of =org/logging_config.py=
+
+Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Make sure to update the commands to use this new config package.
+
+*** DONE Reorganize the TUI
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-11 Thu 19:32]
+:END:
+With Textual as the backbone of the interactive commands, it makes sense to expand the =org/tui.py= module to be a full package
+=org/tui= that contains:
+- =color= - current =org/color.py=
+- =bits= - current contents of =org/tui.py= that render specific items to Rich renderables,
+- =plot= - current =org/plot.py=
+- =histogram= - current =org/histogram.py=
+- =help= - current contents of =org/commands/runtime.py=, specifically the help modal, and also the help modal rendering from =org/commands/interactive_common.py=
+- =prompt= - current contents of =org/commands/runtime.py=, specifically the input prompt modal
+- =selection= - current contents of =org/commands/runtime.py=, specifically the selection modal
+- =footer= - footer rendering of =org/commands/runtime.py=, current contents of =org/commands/interactive_common.py= pertaining to footer state.
+- =header= - current contents of =org/commands/interactive_common.py= pertaining to header state.
+
+Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Make sure to update the commands to use this new TUI package.
+
+*** TODO Reorganize common command logic
+The shared logic that the commands use are currently present in multiple modules, but should be reorganized into a new package =org/logic= that contains:
+- =tasks= - current contents of =org/commands/interactive_common.py= pertaining to modifying tasks,
+- =archive= - current contents of =org/commands/archive.py=
+- =edit= - current contents of =org/commands/editor.py=
+- =search= - current contents of =org/commands/search_common.py=
+- =stats= - current contents of =org/analyze.py=
+- =filtering= - current contents of =org/cli_common.py=
+- =time= - current contents of =org/timestamp.py= and time-related functions from =org/commands/interactive_common.py=
+- =validation= - current contents of =org/validation.py=
+
+In addition to the above, the =org/tui/bits.py= module now contains a lot of non-UI related functions. These should also be moved to the =org/logic= package to the appropriate submodules.
+
+Remove the modules that are no longer needed. When refactoring the code, please don't use import renames nor "compatibility" adapters and instead change all the invocations sites both in production and test code.
+Make sure to update the commands to use this new logic package.
+
+**** DONE src/org/commands/agenda/command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 00:35]
+:END:
+
+In file src/org/commands/agenda/command.py around line 16, near the ~import typer~
+
+#+begin_example
++from org.logic.filtering import load_and_process_data
+
+#+end_example
+
+Sounds like that function should be in serde module, not logic filtering.
+**** DONE src/org/commands/agenda/ui.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 00:35]
+:END:
+
+In file src/org/commands/agenda/ui.py around line 18, near the ~from rich import box~
+
+#+begin_example
++from org.logic.time import local_now, shift_datetimes_by_unit
++from org.logic.validation import parse_date_argument
+
+#+end_example
+
+The =parse_date_argument= should either be in serde package, or in =logic.time=. I'm leaning towards =logic.time=.
+**** DONE src/org/commands/stats/groups.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 00:35]
+:END:
+
+In file src/org/commands/stats/groups.py around line 20, near the ~import typer~
+
+#+begin_example
++from org.logic.filtering import (
++    load_and_process_data,
++    resolve_date_filters,
++    resolve_exclude_set,
++    resolve_group_values,
++    resolve_mapping,
+
+#+end_example
+
+All of these should be elsewhere than the filtering module.
+**** DONE tests/cli_common/test_filter_construction.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 00:35]
+:END:
+
+In file tests/cli_common/test_filter_construction.py around line 89, near the ~def test_build_query_text_with_ordering_and_slice() -> None:~
+
+#+begin_example
+-    from org.cli_common import build_query_text
++    from org.logic.filtering import build_query_text
+
+#+end_example
+
+Query building should not be a part of the filtering module, it should be in a dedicated module.
+**** DONE tests/cli_common/test_top_tasks.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 00:35]
+:END:
+
+In file tests/cli_common/test_top_tasks.py around line 7, near the ~Merge~
+
+#+begin_example
++from org.logic.filtering import get_most_recent_timestamp, get_top_tasks
+
+#+end_example
+
+=get_most_recent_timestamp= should be in the time module.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 20:58]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/edit.py::def _load_document_from_text(document_text: str, filename: str | None) -> Document:
+ """Parse full document text and preserve original filename when present."""
+ try:
+ document = org_parser.loads(document_text)
+ except (TypeError, ValueError) as err:
+ raise typer.BadParameter(f"Edited document content is invalid: {err}") from err
+
+ document.filename = "" if filename is None else filename
+ return document]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/edit.py
+
+#+begin_example
+
+def _load_document_from_text(document_text: str, filename: str | None) -> Document:
+    """Parse full document text and preserve original filename when present."""
+    try:
+        document = org_parser.loads(document_text)
+    except (TypeError, ValueError) as err:
+        raise typer.BadParameter(f"Edited document content is invalid: {err}") from err
+
+    document.filename = "" if filename is None else filename
+    return document
+
+#+end_example
+
+This should be moved to the =org.pipeline.load=. Ideally, one way to load a file should be used accross the whole app.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 20:58]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def get_top_day_info(time_range: TimeRange | None) -> tuple\[str, int\] | None:
+ """Extract top day and its count from TimeRange."""
+ if not time_range or not time_range.timeline:
+ return None
+ max_count = max(time_range.timeline.values())
+ top_day = min(d for d, count in time_range.timeline.items() if count == max_count)
+ return (top_day.isoformat(), max_count)]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+
+def get_top_day_info(time_range: TimeRange | None) -> tuple[str, int] | None:
+    """Extract top day and its count from TimeRange."""
+    if not time_range or not time_range.timeline:
+        return None
+    max_count = max(time_range.timeline.values())
+    top_day = min(d for d, count in time_range.timeline.items() if count == max_count)
+    return (top_day.isoformat(), max_count)
+
+#+end_example
+
+This should be in the =org.logic.stats= module.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 20:58]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def get_top_tasks(nodes: list\[Heading\], max_results: int) -> list\[Heading\]:
+ """Get top N nodes sorted by most recent timestamp."""
+ nodes_with_timestamps: list\[tuple\[Heading, datetime\]\] = \[\]
+ for node in nodes:
+ timestamp = get_most_recent_timestamp(node)
+ if timestamp:
+ nodes_with_timestamps.append((node, timestamp))
+
+ sorted_nodes = sorted(nodes_with_timestamps, key=lambda x: x\[1\], reverse=True)
+
+ return \[node for node, _ in sorted_nodes\[:max_results\]\]]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+
+def get_top_tasks(nodes: list[Heading], max_results: int) -> list[Heading]:
+    """Get top N nodes sorted by most recent timestamp."""
+    nodes_with_timestamps: list[tuple[Heading, datetime]] = []
+    for node in nodes:
+        timestamp = get_most_recent_timestamp(node)
+        if timestamp:
+            nodes_with_timestamps.append((node, timestamp))
+
+    sorted_nodes = sorted(nodes_with_timestamps, key=lambda x: x[1], reverse=True)
+
+    return [node for node, _ in sorted_nodes[:max_results]]
+
+#+end_example
+
+This should be in the =org.logic.stats= module.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 21:51]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def count_filter_values(value: list\[str\] | None) -> int:
+ """Count filter values for append-style filters."""
+ return len(value) if value else 0]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+
+def count_filter_values(value: list[str] | None) -> int:
+    """Count filter values for append-style filters."""
+    return len(value) if value else 0
+
+#+end_example
+
+This function makes no sense, just do this directly wherever this is invoked.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 21:52]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/edit.py::def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
+ """Edit the original task document, preferring in-place file editing at task line."""
+ return attempt_edit_heading_subtree_in_external_editor(heading)]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/edit.py
+
+#+begin_example
+
+def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditResult:
+    """Edit the original task document, preferring in-place file editing at task line."""
+    return attempt_edit_heading_subtree_in_external_editor(heading)
+
+#+end_example
+
+This wrapper makes no sense, please rename the functions and clean this up.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 21:52]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def get_most_recent_timestamp(node: Heading) -> datetime | None:
+ """Get the most recent timestamp from a node."""
+ timestamps = extract_timestamp_any(node)
+ return max(timestamps) if timestamps else None]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+def get_most_recent_timestamp(node: Heading) -> datetime | None:
+    """Get the most recent timestamp from a node."""
+    timestamps = extract_timestamp_any(node)
+    return max(timestamps) if timestamps else None
+
+#+end_example
+
+This is available in the =Heading= class as =latest_timestamp=, please remove this function and use the built-in way to fetch the timestamp.
+**** DONE Code review comment
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 20:58]
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::def validate_custom_switches(argv: list\[str\], include_builtin_ordering: bool) -> None:
+ """Validate prefixed custom switches against configured/built-in options."""
+ builtin_order_options = set(ORDER_BY_OPTION_TO_VALUE) if include_builtin_ordering else set()
+ allowed_filter_options = FILTER_OPTIONS_WITH_VALUE.union(FILTER_OPTIONS_FLAGS).union(
+ {f"--filter-{name}" for name in org.config.app.CONFIG_CUSTOM_FILTERS},
+ )
+ allowed_order_options = builtin_order_options.union(
+ {f"--order-by-{name}" for name in org.config.app.CONFIG_CUSTOM_ORDER_BY},
+ )
+ allowed_with_options = WITH_OPTIONS_FLAGS.union(
+ {f"--with-{name}" for name in org.config.app.CONFIG_CUSTOM_WITH},
+ )
+
+ for index, token in enumerate(argv):
+ option = _extract_option_token(token)
+ if option.startswith("--filter-") and option not in allowed_filter_options:
+ raise click.NoSuchOption(option)
+ if option.startswith("--order-by-") and option not in allowed_order_options:
+ raise click.NoSuchOption(option)
+ if option.startswith("--with-") and option not in allowed_with_options:
+ raise click.NoSuchOption(option)
+
+ custom_option = _resolve_custom_option(option)
+ if custom_option is None:
+ continue
+
+ _, requires_arg = custom_option
+ if not requires_arg or token.startswith(f"{option}="):
+ continue
+
+ next_index = index + 1
+ if next_index >= len(argv):
+ raise _required_custom_arg_error(option)
+
+ next_token = argv\[next_index\]
+ if next_token.startswith("-"):
+ raise _required_custom_arg_error(option)]]
+:END:
+
+#+begin_example
+
+def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) -> None:
+    """Validate prefixed custom switches against configured/built-in options."""
+    builtin_order_options = set(ORDER_BY_OPTION_TO_VALUE) if include_builtin_ordering else set()
+    allowed_filter_options = FILTER_OPTIONS_WITH_VALUE.union(FILTER_OPTIONS_FLAGS).union(
+        {f"--filter-{name}" for name in org.config.app.CONFIG_CUSTOM_FILTERS},
+    )
+    allowed_order_options = builtin_order_options.union(
+        {f"--order-by-{name}" for name in org.config.app.CONFIG_CUSTOM_ORDER_BY},
+    )
+    allowed_with_options = WITH_OPTIONS_FLAGS.union(
+        {f"--with-{name}" for name in org.config.app.CONFIG_CUSTOM_WITH},
+    )
+
+    for index, token in enumerate(argv):
+        option = _extract_option_token(token)
+        if option.startswith("--filter-") and option not in allowed_filter_options:
+            raise click.NoSuchOption(option)
+        if option.startswith("--order-by-") and option not in allowed_order_options:
+            raise click.NoSuchOption(option)
+        if option.startswith("--with-") and option not in allowed_with_options:
+            raise click.NoSuchOption(option)
+
+        custom_option = _resolve_custom_option(option)
+        if custom_option is None:
+            continue
+
+        _, requires_arg = custom_option
+        if not requires_arg or token.startswith(f"{option}="):
+            continue
+
+        next_index = index + 1
+        if next_index >= len(argv):
+            raise _required_custom_arg_error(option)
+
+        next_token = argv[next_index]
+        if next_token.startswith("-"):
+            raise _required_custom_arg_error(option)
+
+#+end_example
+
+Probably should be moved to the validation module.
+**** CANCELLED Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/validation.py]]
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-06-13 Sat 20:59] \\
+  Meh
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/validation.py
+
+Validation module should be placed in =org.pipeline= package.
+
+**** CANCELLED Code review comment
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-06-13 Sat 20:40] \\
+  Already done.
+:END:
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/logic/filtering.py::class DataLoadArgs(QueryBuildArgs, Protocol):
+ """Protocol for loading and preprocessing data."""
+
+ files: list\[str\] | None
+ todo_states: str
+ done_states: str
+ width: int | None
+
+
+class SlicedDataLoadArgs(Protocol):
+ """Protocol for args that support query slicing."""
+
+ offset: int
+ max_results: int
+
+
+class RootDataLoadArgs(Protocol):
+ """Protocol for loading root nodes without filters or enrichment."""
+
+ files: list\[str\] | None
+ todo_states: str
+ done_states: str
+ width: int | None
+
+
+def _resolve_and_load_roots(
+ args: RootDataLoadArgs,
+) -> tuple\[list\[Document\], list\[str\], list\[str\]\]:
+ """Resolve inputs and load org roots after validating todo/done keys."""
+ todo_states = validate_and_parse_keys(args.todo_states, "--todo-states")
+ done_states = validate_and_parse_keys(args.done_states, "--done-states")
+ return _load_roots_for_inputs(args.files, todo_states, done_states)
+
+
+def _load_roots_for_inputs(
+ files: list\[str\] | None,
+ todo_states: list\[str\],
+ done_states: list\[str\],
+) -> tuple\[list\[Document\], list\[str\], list\[str\]\]:
+ """Resolve file inputs and load all org root nodes."""
+ filenames = resolve_input_paths(files)
+ return load_root_nodes(filenames, todo_states, done_states)
+
+
+def load_root_data(
+ args: RootDataLoadArgs,
+) -> tuple\[list\[Document\], list\[str\], list\[str\]\]:
+ """Load org root nodes without filters, enrichment, or ordering."""
+ return _resolve_and_load_roots(args)
+
+
+def load_and_process_data(
+ args: DataLoadArgs,
+) -> tuple\[list\[Heading\], list\[str\], list\[str\]\]:
+ """Load nodes, preprocess, and apply query-based filters/ordering."""
+ include_ordering = hasattr(args, "order_by_level")
+ validate_custom_switches(sys.argv, include_ordering)
+
+ normalized_files = normalize_cli_files_for_custom_switches(args.files)
+ args.files = normalized_files
+
+ todo_states, done_states = validate_global_arguments(args)
+ roots, todo_states, done_states = _load_roots_for_inputs(
+ normalized_files,
+ todo_states,
+ done_states,
+ )
+ nodes = \[node for root in roots for node in list(root)\]
+
+ include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
+ query = build_query(
+ args,
+ sys.argv,
+ include_ordering=include_ordering,
+ include_slice=include_slice,
+ )
+
+ context_vars: dict\[str, object\] = {
+ "todo_states": todo_states,
+ "done_states": done_states,
+ }
+ context_vars.update(collect_custom_context_vars(sys.argv, normalized_files, include_ordering))
+ if include_slice:
+ sliced_args = cast("SlicedDataLoadArgs", args)
+ context_vars\["offset"\] = sliced_args.offset
+ context_vars\["limit"\] = sliced_args.max_results
+
+ logger.info("Query context: %s", context_vars)
+
+ try:
+ results = query(Stream(\[nodes\]), EvalContext(context_vars))
+ except (QueryParseError, QueryRuntimeError) as exc:
+ raise typer.BadParameter(str(exc)) from exc
+
+ flattened: list\[object\]
+ if len(results) == 1 and isinstance(results\[0\], list):
+ flattened = cast("list\[object\]", results\[0\])
+ else:
+ flattened = list(results)
+ nodes = \[value for value in flattened if isinstance(value, Heading)\]
+
+ return nodes, todo_states, done_states]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/logic/filtering.py
+
+#+begin_example
+
+class DataLoadArgs(QueryBuildArgs, Protocol):
+    """Protocol for loading and preprocessing data."""
+
+    files: list[str] | None
+    todo_states: str
+    done_states: str
+    width: int | None
+
+
+class SlicedDataLoadArgs(Protocol):
+    """Protocol for args that support query slicing."""
+
+    offset: int
+    max_results: int
+
+
+class RootDataLoadArgs(Protocol):
+    """Protocol for loading root nodes without filters or enrichment."""
+
+    files: list[str] | None
+    todo_states: str
+    done_states: str
+    width: int | None
+
+
+def _resolve_and_load_roots(
+    args: RootDataLoadArgs,
+) -> tuple[list[Document], list[str], list[str]]:
+    """Resolve inputs and load org roots after validating todo/done keys."""
+    todo_states = validate_and_parse_keys(args.todo_states, "--todo-states")
+    done_states = validate_and_parse_keys(args.done_states, "--done-states")
+    return _load_roots_for_inputs(args.files, todo_states, done_states)
+
+
+def _load_roots_for_inputs(
+    files: list[str] | None,
+    todo_states: list[str],
+    done_states: list[str],
+) -> tuple[list[Document], list[str], list[str]]:
+    """Resolve file inputs and load all org root nodes."""
+    filenames = resolve_input_paths(files)
+    return load_root_nodes(filenames, todo_states, done_states)
+
+
+def load_root_data(
+    args: RootDataLoadArgs,
+) -> tuple[list[Document], list[str], list[str]]:
+    """Load org root nodes without filters, enrichment, or ordering."""
+    return _resolve_and_load_roots(args)
+
+
+def load_and_process_data(
+    args: DataLoadArgs,
+) -> tuple[list[Heading], list[str], list[str]]:
+    """Load nodes, preprocess, and apply query-based filters/ordering."""
+    include_ordering = hasattr(args, "order_by_level")
+    validate_custom_switches(sys.argv, include_ordering)
+
+    normalized_files = normalize_cli_files_for_custom_switches(args.files)
+    args.files = normalized_files
+
+    todo_states, done_states = validate_global_arguments(args)
+    roots, todo_states, done_states = _load_roots_for_inputs(
+        normalized_files,
+        todo_states,
+        done_states,
+    )
+    nodes = [node for root in roots for node in list(root)]
+
+    include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
+    query = build_query(
+        args,
+        sys.argv,
+        include_ordering=include_ordering,
+        include_slice=include_slice,
+    )
+
+    context_vars: dict[str, object] = {
+        "todo_states": todo_states,
+        "done_states": done_states,
+    }
+    context_vars.update(collect_custom_context_vars(sys.argv, normalized_files, include_ordering))
+    if include_slice:
+        sliced_args = cast("SlicedDataLoadArgs", args)
+        context_vars["offset"] = sliced_args.offset
+        context_vars["limit"] = sliced_args.max_results
+
+    logger.info("Query context: %s", context_vars)
+
+    try:
+        results = query(Stream([nodes]), EvalContext(context_vars))
+    except (QueryParseError, QueryRuntimeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    flattened: list[object]
+    if len(results) == 1 and isinstance(results[0], list):
+        flattened = cast("list[object]", results[0])
+    else:
+        flattened = list(results)
+    nodes = [value for value in flattened if isinstance(value, Heading)]
+
+    return nodes, todo_states, done_states
+
+#+end_example
+
+All of this should be moved to the =org.pipeline.load= module.
+*** CANCELLED Use Textual toasts for status messages.
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-13 Sat 21:02] \\
+  Nah, these are annoying.
+:END:
+*** DONE Reorganize the query execution engine code
+:PROPERTIES:
+:capture_time: [2026-06-13 Sat 00:04]
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-13 Sat 23:13]
+:END:
+
+Introduce a new package =org.query= and move the query-execution-related helpers in there:
+- Current =org.logic.query= should be moved to that package as =org.query.runner=
+- Current =org.query_language= package should be renamed to =org.query.engine=
+- The query compiler (=org.query.engine.compiler=) and execution engine (=org.query.engine.interpreter=) should be separated, with all the operator/function definitions also separated to their own module =org.query.engine.defs=
+
+*** Streamline query execution
+- One way to run a query used by all commands.
+- Error handling left to the caller
+- Runner accepts a list of files, context and a set of query stages that are all piped together, it performs query building, compilation and execution.
+
+*** TODO Streamline data processing.
+:PROPERTIES:
+:capture_time: [2026-06-12 Fri 23:54]
+:context: 
+:END:
+
+The commands use a common ETL pipeline where they load some data from files, apply filters/ordering/mutators and lastly present the results in some way.
+It would be nice to make this as streamlined as possible, ideally, =org.logic.query= would expose a function =run_query= that takes a list of documents, a textlist of query stages to run and the environment for the query to run in, and compiles and executes the query and returns the result.
+That streamlined query execution should be used in all places that extract or transform the org document data - the data should be loaded, then processed with the =run_query= function and used as needed.
+*** TODO Org file repository abstraction
+:PROPERTIES:
+:capture_time: [2026-06-13 Sat 00:12]
+:context: 
+:END:
+
+Add a new package =org.db= that will store the org file repository abstraction.
+In that package, add a repository-pattern abstraction over one or more org files. The abstraction should automatically load all the files, maintain their modification state and automatically perform saving of the modified files whenever they change.
+The abstraction should also support querying the repository using the query language.
+
+All commands should be updated to instantiate this repository and use its querying capabilities for all of their querying needs.
+*** TODO Load configuration first and pass the object to the commands
+Do not use global state for configuration storage. The goal is for the commands to be stateless.
+
+The config processing flow should look like this:
+- create a well-defined structured object that will hold the configuration,
+- populate the config object with code-defaults,
+- determine the configuration file to use,
+- load the configuration file with well-defined sections,
+- update the structured config object with config file values,
+- pass the configuration object to the specific command,
+- overwrite the configuration object with command CLI switch values where applicable,
+- log the effective config object,
+- execute the command with all the configuration values taken from the resulting config object
+
+It might be the case, that the command tree construction will need to be done after the configuration is loaded. That is absolutely fine - update the =main= function to do that.
+
+The shape of the configuration object:
+#+begin_example
+config:
+  defaults: dict[string, string] # for backwards compatibility until we clean this up
+
+  todo_states: list[string], same content as defaults.--todo-states when provided
+  done_states: list[string], same content as defaults.--done-states when provided
+
+  filters: list[current filter config]
+  orderings: list[current order-by config]
+  mutators: list[current with config]
+
+  stats:
+    exclude: file path to the exclude file (same as defaults.--exclude if provided)
+    mapping: file path to the mapping file (same as defaults.--mapping if provided)
+
+  capture:
+    templates: list[current capture templates config]
+
+  agenda:
+    views: list[current agenda view config]
+
+  board:
+    views: list[current board vie config]
+#+end_example
+
+Update the commands to use this new structured configuration object (prefer the command-specific sections for the value, not =config.defaults=).
+Update the tests not to rely on the global state.
+
+*** CANCELLED Use Textual header & footer widgets in the interactive commands
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-11 Thu 09:46] \\
+  Not very useful right now.
+:END:
 *** REWORKED Interactive loop refactor
 :LOGBOOK:
 - State "REWORKED"   from "TODO"       [2026-05-26 Tue 21:27]
@@ -7368,7 +8244,51 @@ A domain should be defined with all common utils reorganized as domain specific 
 For command output rendering, a common toolkit of widgets and widget-adjacent rendering tools should be extracted.
 Lastly, some common logic should be extracted that allows performing actions generically. Views should only trigger those actions and actions should modify the domain.
 
-** TODO Agenda usability improvements                                                           :UX:
+*** DONE Remove legacy non-interactive rendering from interactive commands
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-10 Wed 19:48]
+:END:
+**** DONE src/org/commands/tasks/list/command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-10 Wed 19:48]
+:END:
+
+In file src/org/commands/tasks/list/command.py around line 663, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        if context is not None:
++            details_switch_present = details_switch_present or (
++                context.get_parameter_source("details") == ParameterSource.COMMANDLINE
++            )
++            out_switch_present = out_switch_present or (
++                context.get_parameter_source("out") == ParameterSource.COMMANDLINE
++            )
+
+#+end_example
+
+I absolutely hate this. Please refactor the =out= and =details= switches to be optional and check their existance that way.
+
+*** DONE Extract filter/order/with handling from the query package and into config.
+:PROPERTIES:
+:capture_time: [2026-06-13 Sat 23:09]
+:context: [[file:~/projects/software/org-cli/src/org/query/runner.py::for arg_name, expected in expected_counts.items():]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-14 Sun 11:14]
+:END:
+
+All the functions dealing with CLI argument processing, ordering of filters, etc should be moved to a new module =org.config.cli=. The =org.query= package should only contain query building and execution. The =org.config= package is a suitable place for the default pipeline configuration and user-provided overrides in the form of CLI switches.
+
+** TODO Built-in editor
+*** Use Textual textarea for org-mode syntax highlighting & editing
+- Separate config setting for internal/external editor.
+
+*** Show a Textual modal when performing external edits, instead of suspending the app
+
+** TODO Agenda usability improvements                                                    :UX:Agenda:
 *** Agenda non-interactive output format
 - Should be adjusted to "look and feel" just like the interactive one.
 *** Show state transition for repeats on the timeline
@@ -7652,6 +8572,27 @@ agenda:
           align: right
 #+end_src
 
+*** Customizable agenda actions                                                             :Config:
+Allow defining additional task actions that can be executed in the agenda view.
+#+begin_example
+agenda:
+  actions:
+    - name: Set todo
+      description: Set todo state of a task
+      key: t
+      input: select
+      options: .document.all_states
+      action: .todo = $option
+    - name: Shift date
+      description: Shift the date of a task
+      key: S-right_arrow
+      action: .scheduled.start = .scheduled.start + days(1)
+#+end_example
+
+Built-in task actions that can be expressed in terms of this system, should be refactored to rely on it.
+*** Bulk actions
+It should be possible to mark multiple items in agenda, board & task list and apply an action to them in bulk
+
 *** CANCELLED Agenda review/standalone review command
 :LOGBOOK:
 - State "CANCELLED"  from              [2026-05-31 Sun 22:10] \\
@@ -7684,7 +8625,18 @@ The action will prompt the user for each step multiple times (empty response mov
 
 When typing, the action should propose existing tasks by title. When a newly added task matches an existing recurrent task by title it should be "reused" instead of creating a duplicate (reuse as in, scheduled set to the current day while preserving the repeater if present).
 
-** Query language extensions
+*** Flicker when attempting to edit a non-task row in the agenda.                              :Bug:
+:PROPERTIES:
+:capture_time: [2026-06-11 Thu 15:54]
+:context: 
+:END:
+*** Agenda command allows highlighting the section titles.                                     :Bug:
+Section titles should be omitted when scrolling the highlight.
+:PROPERTIES:
+:capture_time: [2026-06-11 Thu 15:54]
+:context: 
+:END:
+** Query language & command improvements                                                  :UX:Query:
 *** Query language improvements
 - Uniform function calling: =foo | not= is the same as =not(foo)=
 - Field assignment should return the mutated object: =foo.title = "bar"= evaluates to =foo= after the change.
@@ -7717,9 +8669,52 @@ Introduce wrappers for the analysis results functions that can be visualized aut
 - =histogram()= - histogram plot
 - =progress()= - progress plot
 
-** Board command improvements                                                                   :UX:
+*** Search sigil
+Searches documents for a specific node either by title or by id. Makes use of that documents cache.
+#+begin_example
+.[] | #"id-or-title"
+.[][] | select(.id == "id-or-title" or .title.text == "id-or-title")
+#+end_example
+
+*** TODO sort_by accepting multiple criteria
+Currently, =sort_by()= only accepts one criteria for ordering the stream. It should accept multiple criteria as well, so things like the following are possible:
+#+begin_example
+sort_by(.priority) # sort by priority alone
+sort_by(.priority, .latest_timestamp) # sort by priority first, break ties by latest timestamp
+sort_by(.priority, .category, .title) # sort by multiple values in order
+sort_by(-.property.some_val, .latest_timestamp.start.month) # sort by multiple compound subqueries
+#+end_example
+*** Saved queries                                                                           :Config:
+Add a configuration file section for saved queries that can be invoked with =org tasks query= in place of the actual query string.
+
+#+begin_example
+query:
+  - name: all-todos
+    query: .[][] | select(.todo == "TODO")
+#+end_example
+
+Invocation:
+#+begin_example
+org tasks query all-todos
+#+end_example
+
+*** Query data visualization
+- Functions that encode stats into widget objects
+- Show stats widgets when query return widget objects
+- Support mixed data (title string + histogram widget, etc)
+
+** Board command improvements                                                             :UX:Board:
 *** Board plan command
 Shows long term plan including completeness of tasks that have children and gannt-style chart for execution.
+*** Customizable agenda actions                                                             :Config:
+Allow defining additional task actions that can be executed in the board view.
+#+begin_example
+board :
+  actions:
+    - key: C-i
+      description: Set the ID property on a tasks
+      action: .id = .id or (.category + "-" + str(.document.all_nodes | length))
+#+end_example
 *** Gantt chart
 - Show a gantt chart of tasks and their dependencies
 *** Progress view
@@ -7728,6 +8723,14 @@ Shows long term plan including completeness of tasks that have children and gann
 - List to be oredered by tree order (top-level tasks followed by their children)
 *** High CPU usage when browsing the board                                                     :Bug:
 
+*** Bulk actions
+It should be possible to mark multiple items in agenda, board & task list and apply an action to them in bulk
+
+*** Copy & copy as markdown actions
+** Tasks list command improvements
+*** Configurable column view
+Should work the same as the configurable agenda view columns.
+
 ** Stats command improvements
 *** =--days= switch for =stats= commands
 - Same as =--filter-date-from= with date X days ago.
@@ -7735,8 +8738,16 @@ Shows long term plan including completeness of tasks that have children and gann
 - Distribution of task durations - for tasks that have a =capture_time= property and are completed, a time the task was "up" can be computed and put on a chart (needs special handling for recurrent tasks)
 - Effort distribution - for tasks that have an =effort= property, convert that to minutes and show on chart
 - Gamify exp progression on various skills
-** Per-project config
+*** Interactive UI
+- Watch input files for changes and recompute stats live
+- Use collapsiple sections for summary (open by default), tags and groups
+- Allow adjusting filters/analysis parameters live
+- Support =--out json/plain= for non-interactive results
+
+** Per-project config                                                                       :Config:
 - Use =.org= directory to store the config file and any other useful bits such as indeces.
+- Cache parsed nodes in the =.org= dir.
+- Default views config for each command that supports it, no global CLI switch defaults.
 
 *** Init command
 - Initializes the config file with some defaults.
@@ -7762,7 +8773,17 @@ Shows long term plan including completeness of tasks that have children and gann
 - Set workflow states, etc automatically.
 - Lint/Format files
 **** Check for file errors and log them
-** Dashboard command
+*** Config handling is too generic
+Split config handling to be per-command and have the config file reflect that.
+*** Refactor config handling so that no global state is mutated
+*** TODO Built-in filters/orderings/mutators should be treated the same as custom ones
+:PROPERTIES:
+:capture_time: [2026-06-13 Sat 00:01]
+:context: 
+:END:
+
+After loading the config defaults, these should be populated in their respective config object sections.
+** Dashboard command                                                                     :Dashboard:
 - Reads a dashboard config and shows a visualization on a server.
 - Tabbed views for the agenda, board, backlog and stats
 - Live updating.
@@ -7783,7 +8804,7 @@ It should apply to each of the available commands. This parameter should be made
 - Document the config format
 - Update the help strings in the CLI commands to better match the usage
 
-** Website for org-cli
+*** Website for org-cli
 - Publish the package
 - Add a static site for org-cli.idorobots.org on github pages.
 - Documentation with mkDocs
@@ -7811,12 +8832,20 @@ Extend =org tasks find= with =--search-rag=.
   This is better served with data export & a separate script.
 :END:
 To be done as a separate script that get's the analysis result JSON.
-*** D3 visualization - tag cloud
-
-*** D3 visualization - relations graph
+*** CANCELLED D3 visualization - tag cloud
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
+:END:
+*** CANCELLED D3 visualization - relations graph
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
+:END:
 Node size is how many tasks are related to a tag. Closeness is how related these are.
 
-*** D3 visualization - tag charts over time
+*** CANCELLED D3 visualization - tag charts over time
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
+:END:
 Allow selecting specific tags or top tags.
 
 ** CANCELLED Agents command
@@ -7828,22 +8857,31 @@ Spawn agents based on workflow config, all tasks that can be done in parallel, s
 Should be able to daemonize and hook up to a running daemon.
 Show spawned agents, their status, what they are working on, etc.
 
-*** Agents command: multi-session screen UI
+*** CANCELLED Agents command: multi-session screen UI
 :PROPERTIES:
 :CAPTURE_TIME: <2026-05-05 Tue 09:24>
 :ID: Vibes-425
 :END:
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
+:END:
 Implement an Agents command UI that supports running multiple agent harness sessions in the background and browsing them in a split-screen TUI. Add a left sidebar listing open sessions with current task and a clear indicator for sessions waiting for human input (for example permissions). Show the active session view on the right. Initial focus should be on the sidebar; moving focus right should enter session interaction mode; provide a keybinding to detach and return focus to the session list; sessions must remain attachable at any time while continuing to run in the background.
-*** Agents command: workflow loop daemon run (--deamon)
+*** CANCELLED Agents command: workflow loop daemon run (--deamon)
 :PROPERTIES:
 :CAPTURE_TIME: <2026-05-05 Tue 11:45>
 :ID: Vibes-427
 :END:
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
+:END:
 Add org agents run --deamon to run the workflow loop using separate agent sessions for each available task until completion or human input is required. Loop: pick a task in the earliest available state, assign the specified agent, create a git worktree and a branch for the task, spawn a session, let the agent do its job, and use skills to push tasks along.
-*** Agents command: notify only on human intervention required
+*** CANCELLED Agents command: notify only on human intervention required
 :PROPERTIES:
 :CAPTURE_TIME: <2026-05-05 Tue 11:45>
 :ID: Vibes-428
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from              [2026-06-07 Sun 10:25]
 :END:
 Add a notification command integration (for instance notify-send) when human intervention is required, such as permission approval. Notifications should be sent only when the agent requires human intervention, and not for normal progress updates.
 ** CANCELLED Spec command

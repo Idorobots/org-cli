@@ -11,11 +11,9 @@ import click
 import typer
 from rich.syntax import Syntax
 
-from org import config as config_module
-from org.cli_common import load_and_process_data
-from org.commands.interactive_common import interactive_help_command_text, interactive_loop
-from org.commands.search_common import filter_nodes_by_search
-from org.output_format import (
+import org.config.app
+import org.logging
+from org.pipeline.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,
@@ -29,7 +27,8 @@ from org.output_format import (
     _prepare_output,
     print_prepared_output,
 )
-from org.tui import (
+from org.pipeline.load import load_and_process_data
+from org.tui.bits import (
     TaskLineConfig,
     build_console,
     format_task_line,
@@ -37,13 +36,13 @@ from org.tui import (
     processing_status,
     setup_output,
 )
+from org.tui.help import interactive_help_command_text
 
-from . import events, layout
+from . import actions
+from .app import run_tasks_list_app
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from org_parser.document import Heading
     from rich.console import Console
 
@@ -117,8 +116,6 @@ class _TasksListSessionData:
 class TasksListOutputFormatter(Protocol):
     """Formatter interface for the tasks list command."""
 
-    include_filenames: bool
-
     def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
         """Prepare tasks list output for rendering."""
         ...
@@ -169,8 +166,6 @@ def _prepare_detailed_task_list(nodes: list[Heading], out_theme: str) -> Prepare
 class OrgTasksListOutputFormatter:
     """Org output formatter for tasks list command."""
 
-    include_filenames = True
-
     def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
         """Prepare tasks list output in org or short-list form."""
         if not data.nodes:
@@ -204,8 +199,6 @@ class OrgTasksListOutputFormatter:
 class PandocTasksListOutputFormatter:
     """Pandoc-based output formatter for tasks list command."""
 
-    include_filenames = False
-
     def __init__(self, output_format: str, pandoc_args: str | None) -> None:
         """Initialize formatter options for pandoc-based task rendering."""
         self.output_format = output_format
@@ -234,8 +227,6 @@ class PandocTasksListOutputFormatter:
 
 class JsonTasksListOutputFormatter:
     """JSON output formatter for tasks list command."""
-
-    include_filenames = False
 
     def prepare(self, data: TasksListRenderInput) -> PreparedOutput:
         """Prepare tasks list output as JSON."""
@@ -354,54 +345,21 @@ def _run_tasks_list_static(
     print_prepared_output(console, prepared_output)
 
 
-def _filter_nodes_by_search(nodes: list[Heading], search_text: str) -> list[Heading]:
-    """Filter nodes by case-insensitive substring match over one node's own text."""
-    return filter_nodes_by_search(nodes, search_text)
-
-
 def _run_tasks_list_interactive(
-    console: Console,
     args: ListArgs,
     data: _TasksListSessionData,
 ) -> None:
-    """Run interactive tasks-list UI session."""
+    """Run interactive tasks-list UI session via Textual."""
     if not data.nodes:
+        console = build_console(data.color_enabled, args.width)
         console.print("No results", markup=False)
         return
-
-    session = events.create_tasks_list_session(args, data)
-
-    run_external: list[Callable[[Callable[[], None]], None]] = [events.passthrough_run_external]
-
-    def _bind_run_external(callback: Callable[[Callable[[], None]], None]) -> None:
-        run_external[0] = callback
-        session.run_external = callback
-
-    session.run_external = run_external[0]
-
-    interactive_loop(
-        console=console,
-        render=lambda: layout.interactive_tasks_list_renderable(console, session),
-        on_event=lambda event: events.handle_interactive_event(session, event, run_external[0]),
-        bind_run_external=_bind_run_external,
-        timeout_seconds=None,
-    )
-
-
-def _is_cli_option_present(argv: list[str], option: str) -> bool:
-    """Return True when a long option token is present in argv."""
-    return any(token == option or token.startswith(f"{option}=") for token in argv)
+    run_tasks_list_app(args, data)
 
 
 def _is_interactive_tty() -> bool:
     """Return whether both stdin and stdout are attached to a TTY."""
     return sys.stdin.isatty() and sys.stdout.isatty()
-
-
-def _effective_noninteractive_mode(args: ListArgs) -> bool:
-    """Resolve whether tasks list should run in non-interactive mode."""
-    out_is_org = args.out.strip().lower() == OutputFormat.ORG
-    return args.noninteractive or args.details or not out_is_org or not _is_interactive_tty()
 
 
 def run_tasks_list(args: ListArgs) -> None:
@@ -423,11 +381,16 @@ def run_tasks_list(args: ListArgs) -> None:
         color_enabled=color_enabled,
     )
 
-    if not _effective_noninteractive_mode(args):
-        _run_tasks_list_interactive(console, args, session_data)
+    if args.noninteractive:
+        _run_tasks_list_static(console, args, session_data)
         return
 
-    _run_tasks_list_static(console, args, session_data)
+    if not _is_interactive_tty():
+        raise click.UsageError(
+            "org tasks list requires a TTY unless --details or --out is provided",
+        )
+
+    _run_tasks_list_interactive(args, session_data)
 
 
 def register(app: typer.Typer) -> None:
@@ -438,7 +401,7 @@ def register(app: typer.Typer) -> None:
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         help=interactive_help_command_text(
             "List tasks matching filters.",
-            events.TASKS_LIST_HELP_ENTRIES,
+            actions.TASKS_LIST_HELP_ENTRIES,
         ),
     )
     def tasks_list(  # noqa: PLR0913
@@ -583,8 +546,8 @@ def register(app: typer.Typer) -> None:
             metavar="N",
             help="Number of results to skip before displaying",
         ),
-        details: bool = typer.Option(
-            False,
+        details: bool | None = typer.Option(
+            None,
             "--details",
             help="Show full org node details",
         ),
@@ -623,8 +586,8 @@ def register(app: typer.Typer) -> None:
             "--with-tags-as-category",
             help="Preprocess nodes to set category from first tag",
         ),
-        out: str = typer.Option(
-            OutputFormat.ORG,
+        out: str | None = typer.Option(
+            None,
             "--out",
             help="Output format: org, json, or any pandoc writer format",
         ),
@@ -641,6 +604,8 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """List tasks matching filters."""
+        details_switch_present = details is not None
+        out_switch_present = out is not None
         args = ListArgs(
             files=files,
             config=config,
@@ -665,7 +630,7 @@ def register(app: typer.Typer) -> None:
             color_flag=color_flag,
             width=width,
             max_results=max_results,
-            details=details,
+            details=False if details is None else details,
             offset=offset,
             order_by_level=order_by_level,
             order_by_file_order=order_by_file_order,
@@ -674,16 +639,12 @@ def register(app: typer.Typer) -> None:
             order_by_timestamp_asc=order_by_timestamp_asc,
             order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
-            out=out,
+            out=OutputFormat.ORG if out is None else out,
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        config_module.apply_config_defaults(args)
-        details_switch_present = _is_cli_option_present(sys.argv[1:], "--details")
-        out_switch_present = _is_cli_option_present(sys.argv[1:], "--out")
-        args.noninteractive = (
-            details_switch_present or out_switch_present or not _is_interactive_tty()
-        )
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks list")
-        config_module.log_command_arguments(args, "tasks list")
+        org.config.app.apply_config_defaults(args)
+        args.noninteractive = details_switch_present or out_switch_present
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks list")
+        org.logging.log_command_arguments(args, "tasks list")
         run_tasks_list(args)

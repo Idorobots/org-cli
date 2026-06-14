@@ -8,9 +8,11 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from org import config as config_module
-from org.analyze import (
+import org.config.app
+import org.logging
+from org.logic.stats import (
     AnalysisResult,
+    Distribution,
     compute_avg_tasks_per_day,
     compute_category_histogram,
     compute_day_of_week_histogram,
@@ -20,21 +22,19 @@ from org.analyze import (
     compute_task_state_histogram,
     compute_task_stats,
 )
-from org.cli_common import load_and_process_data, resolve_date_filters
-from org.color import magenta
-from org.histogram import Histogram, RenderConfig
-from org.tui import (
-    HistogramSectionConfig,
-    TimelineFormatConfig,
+from org.logic.time import resolve_date_filters
+from org.pipeline.load import load_and_process_data
+from org.tui.bits import (
     apply_indent,
     build_console,
-    format_histogram_section,
-    format_timeline_lines,
     lines_to_text,
     print_output,
     processing_status,
     setup_output,
 )
+from org.tui.color import magenta
+from org.tui.histogram import HistogramSectionConfig, RenderConfig, format_histogram_section
+from org.tui.plot import TimelineFormatConfig, format_timeline_lines
 
 
 if TYPE_CHECKING:
@@ -89,7 +89,7 @@ def _validate_summary_arguments(args: SummaryArgs) -> None:
 
 
 def _build_task_state_order(
-    task_states: Histogram,
+    task_states: Distribution,
     done_states: list[str],
     todo_states: list[str],
 ) -> list[str]:
@@ -447,7 +447,7 @@ def register(app: typer.Typer) -> None:
             max_results=max_results,
             with_tags_as_category=with_tags_as_category,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats summary")
-        config_module.log_command_arguments(args, "stats summary")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "stats summary")
+        org.logging.log_command_arguments(args, "stats summary")
         run_stats_summary(args)

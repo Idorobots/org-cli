@@ -12,24 +12,19 @@ import click
 import typer
 from org_parser.document import Heading
 
-from org import config as config_module
-from org.cli_common import load_root_data
+import org.config.app
+import org.logging
 from org.commands.tasks.common import normalize_selector
 from org.commands.tasks.query import get_query_formatter
-from org.output_format import (
+from org.pipeline.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,
     print_prepared_output,
 )
-from org.query_language import (
-    EvalContext,
-    QueryParseError,
-    QueryRuntimeError,
-    Stream,
-    compile_query_text,
-)
-from org.tui import build_console, processing_status, setup_output
+from org.pipeline.load import load_root_data
+from org.query.runner import compile_query_or_raise, execute_query_or_raise
+from org.tui.bits import build_console, processing_status, setup_output
 
 
 @dataclass
@@ -145,18 +140,16 @@ def run_tasks_find(args: TasksFindArgs) -> None:
 
     with processing_status(console, color_enabled):
         query_text = _build_find_query(args)
-        try:
-            compiled_query = compile_query_text(query_text)
-        except QueryParseError as exc:
-            raise click.UsageError(str(exc)) from exc
+        compiled_query = compile_query_or_raise(query_text, click.UsageError)
 
         roots, todo_states, done_states = load_root_data(args)
         nodes = [node for root in roots for node in list(root)]
-        context = EvalContext({"todo_states": todo_states, "done_states": done_states})
-        try:
-            results = compiled_query(Stream([nodes]), context)
-        except QueryRuntimeError as exc:
-            raise click.UsageError(str(exc)) from exc
+        results = execute_query_or_raise(
+            compiled_query,
+            [nodes],
+            {"todo_states": todo_states, "done_states": done_states},
+            click.UsageError,
+        )
 
         matched_nodes = [value for value in results if isinstance(value, Heading)]
         output_nodes = _nodes_with_context(matched_nodes, args.include_context)
@@ -307,7 +300,7 @@ def register(app: typer.Typer) -> None:
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks find")
-        config_module.log_command_arguments(args, "tasks find")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks find")
+        org.logging.log_command_arguments(args, "tasks find")
         run_tasks_find(args)

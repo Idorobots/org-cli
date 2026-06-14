@@ -16,9 +16,9 @@ from org_parser.text import RichText
 from org_parser.time import Timestamp
 from rich.syntax import Syntax
 
-from org import config as config_module
-from org.cli_common import load_root_data
-from org.output_format import (
+import org.config.app
+import org.logging
+from org.pipeline.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,
@@ -32,14 +32,9 @@ from org.output_format import (
     _prepare_output,
     print_prepared_output,
 )
-from org.query_language import (
-    EvalContext,
-    QueryParseError,
-    QueryRuntimeError,
-    Stream,
-    compile_query_text,
-)
-from org.tui import build_console, processing_status, setup_output
+from org.pipeline.load import load_root_data
+from org.query.runner import compile_query_or_raise, execute_query_or_raise
+from org.tui.bits import build_console, processing_status, setup_output
 
 
 if TYPE_CHECKING:
@@ -48,8 +43,6 @@ if TYPE_CHECKING:
 
 class QueryOutputFormatter(Protocol):
     """Formatter interface for the query command."""
-
-    include_filenames: bool
 
     def prepare(
         self,
@@ -82,8 +75,6 @@ def _format_org_block(value: object) -> str:
 
 class OrgQueryOutputFormatter:
     """Org output formatter for query command."""
-
-    include_filenames = True
 
     def prepare(
         self,
@@ -145,8 +136,6 @@ class OrgQueryOutputFormatter:
 class PandocQueryOutputFormatter:
     """Pandoc-based output formatter for query command."""
 
-    include_filenames = False
-
     def __init__(self, output_format: str, pandoc_args: str | None) -> None:
         """Initialize formatter options for pandoc-based rendering."""
         self.output_format = output_format
@@ -177,8 +166,6 @@ class PandocQueryOutputFormatter:
 
 class JsonQueryOutputFormatter:
     """JSON output formatter for query command."""
-
-    include_filenames = False
 
     def prepare(
         self,
@@ -247,26 +234,17 @@ def run_tasks_query(args: TasksQueryArgs) -> None:
         raise click.UsageError(str(exc)) from exc
 
     with processing_status(console, color_enabled):
-        try:
-            compiled_query = compile_query_text(args.query)
-        except QueryParseError as exc:
-            raise click.UsageError(str(exc)) from exc
+        compiled_query = compile_query_or_raise(args.query, click.UsageError)
 
         roots, todo_states, done_states = load_root_data(args)
 
-        context = EvalContext(
-            {
-                "offset": args.offset,
-                "limit": args.max_results,
-                "todo_states": todo_states,
-                "done_states": done_states,
-            },
-        )
-        try:
-            stream_nodes = Stream([roots])
-            results = compiled_query(stream_nodes, context)
-        except QueryRuntimeError as exc:
-            raise click.UsageError(str(exc)) from exc
+        context = {
+            "offset": args.offset,
+            "limit": args.max_results,
+            "todo_states": todo_states,
+            "done_states": done_states,
+        }
+        results = execute_query_or_raise(compiled_query, [roots], context, click.UsageError)
 
         first_result = results[0] if results else None
         if len(results) == 1 and isinstance(first_result, list | tuple | set):
@@ -389,7 +367,7 @@ def register(app: typer.Typer) -> None:
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks query")
-        config_module.log_command_arguments(args, "tasks query")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks query")
+        org.logging.log_command_arguments(args, "tasks query")
         run_tasks_query(args)

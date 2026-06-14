@@ -1,0 +1,15 @@
+Screen {
+    align: center middle;
+}
+
+#selection-root {
+    width: 60%;
+    max-width: 80;
+    border: round $primary;
+    background: $panel;
+    padding: 1 2;
+}
+
+#selection-title {
+    margin-bottom: 1;
+}

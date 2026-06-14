@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from org.plot import TimelineRenderConfig, _map_value_to_bar, render_timeline_chart
+from org.tui.plot import TimelineRenderConfig, _map_value_to_bar, render_timeline_chart
 
 
 def test_map_value_to_bar_zero_max() -> None:

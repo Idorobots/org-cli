@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Literal
 
@@ -14,15 +13,8 @@ from org_parser.document import Heading
 from org_parser.text import CompletionCounter
 from org_parser.time import Timestamp
 
-from org import config as config_module
-from org.commands.interactive_common import FooterPromptState
-from org.query_language import (
-    EvalContext,
-    QueryParseError,
-    QueryRuntimeError,
-    Stream,
-    compile_query_text,
-)
+import org.config.app
+from org.query.runner import compile_query_or_raise, execute_query_or_raise
 
 
 if TYPE_CHECKING:
@@ -31,15 +23,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("org")
 PlanningTimestampField = Literal["scheduled", "deadline", "closed"]
-
-
-@dataclass(frozen=True)
-class PromptActionConfig:
-    """Standardized interactive prompt texts for one user-input action."""
-
-    prompt: FooterPromptState
-    cancel_status: str
-    invalid_status: str
 
 
 def parse_comment_flag(value: str) -> bool:
@@ -94,17 +77,6 @@ def iter_descendants(heading: Heading) -> list[Heading]:
         descendants.append(child)
         descendants.extend(iter_descendants(child))
     return descendants
-
-
-def apply_subtree_level(heading: Heading, new_level: int) -> None:
-    """Apply heading level and shift descendants by the same delta."""
-    level_delta = new_level - heading.level
-    if level_delta == 0:
-        return
-
-    heading.level = new_level
-    for descendant in iter_descendants(heading):
-        descendant.level += level_delta
 
 
 def normalize_selector(value: str | None, option_name: str) -> str | None:
@@ -219,48 +191,9 @@ def todo_states_for_heading(heading: Heading) -> list[str]:
     return list(dict.fromkeys(heading.document.all_states))
 
 
-def resolve_todo_state_selection(selection: str, states: list[str]) -> str | None:
-    """Resolve TODO state from numeric shortcut or explicit value."""
-    normalized = selection.strip()
-    if not normalized:
-        return None
-    if normalized.isdigit():
-        index = int(normalized) - 1
-        if 0 <= index < len(states):
-            return states[index]
-        return None
-    if normalized in states:
-        return normalized
-    return None
-
-
-def state_selection_prompt_label(states: list[str]) -> str:
-    """Return standard interactive prompt label for TODO state selection."""
-    options = ", ".join(f"{index}:{state}" for index, state in enumerate(states, start=1))
-    return f"State number or value ({options})"
-
-
-def state_selection_prompt_config(states: list[str]) -> PromptActionConfig:
-    """Return standardized prompt config for TODO state selection."""
-    return PromptActionConfig(
-        prompt=FooterPromptState(label=state_selection_prompt_label(states)),
-        cancel_status="State change cancelled",
-        invalid_status="Invalid TODO state selection",
-    )
-
-
 def tags_prompt_label() -> str:
     """Return standard interactive prompt label for tags editing."""
     return "Tags CSV (blank clears)"
-
-
-def tags_prompt_config() -> PromptActionConfig:
-    """Return standardized prompt config for tags editing."""
-    return PromptActionConfig(
-        prompt=FooterPromptState(label=tags_prompt_label()),
-        cancel_status="Tags edit cancelled",
-        invalid_status="Invalid tags input",
-    )
 
 
 def planning_prompt_label(field: PlanningTimestampField) -> str:
@@ -273,58 +206,9 @@ def planning_prompt_label(field: PlanningTimestampField) -> str:
     return f"{labels[field]} (blank clears)"
 
 
-def planning_prompt_config(field: PlanningTimestampField) -> PromptActionConfig:
-    """Return standardized prompt config for planning timestamp editing."""
-    return PromptActionConfig(
-        prompt=FooterPromptState(label=planning_prompt_label(field)),
-        cancel_status="Planning timestamp edit cancelled",
-        invalid_status="Invalid planning timestamp",
-    )
-
-
-def refile_prompt_label(paths: list[str]) -> str:
-    """Return standard interactive prompt label for refile destination."""
-    options = ", ".join(f"{index}:{filename}" for index, filename in enumerate(paths, start=1))
-    return f"Destination file (# or path, blank cancels) [{options}]"
-
-
-def refile_prompt_config(paths: list[str]) -> PromptActionConfig:
-    """Return standardized prompt config for task refile destination."""
-    return PromptActionConfig(
-        prompt=FooterPromptState(label=refile_prompt_label(paths)),
-        cancel_status="Refile cancelled",
-        invalid_status="Invalid destination shortcut",
-    )
-
-
-def resolve_refile_destination_input(
-    destination_input: str,
-    paths: list[str],
-) -> tuple[str | None, str | None]:
-    """Resolve refile destination path or return a validation error message."""
-    normalized = destination_input.strip()
-    if not normalized:
-        return None, None
-    if normalized.isdigit():
-        index = int(normalized) - 1
-        if 0 <= index < len(paths):
-            return paths[index], None
-        return None, "Invalid destination shortcut"
-    return normalized, None
-
-
 def clock_duration_prompt_label() -> str:
     """Return standard interactive prompt label for clock duration input."""
     return "Clock duration (H:MM, Xm, Xh, minutes; blank cancels)"
-
-
-def clock_duration_prompt_config() -> PromptActionConfig:
-    """Return standardized prompt config for clock duration input."""
-    return PromptActionConfig(
-        prompt=FooterPromptState(label=clock_duration_prompt_label()),
-        cancel_status="Clock action cancelled",
-        invalid_status="Invalid clock duration",
-    )
 
 
 def capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:
@@ -334,36 +218,7 @@ def capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:
 
 def configured_capture_template_names() -> list[str]:
     """Return stable capture template names from loaded config."""
-    return capture_template_names(config_module.CONFIG_CAPTURE_TEMPLATES)
-
-
-def capture_template_prompt_label(template_names: list[str]) -> str:
-    """Return standard interactive prompt label for capture template selection."""
-    options = ", ".join(f"{index}:{name}" for index, name in enumerate(template_names, start=1))
-    return f"Capture template number (blank cancels) [{options}]"
-
-
-def capture_template_prompt_config(template_names: list[str] | None = None) -> PromptActionConfig:
-    """Return standardized prompt config for capture template selection."""
-    names = configured_capture_template_names() if template_names is None else template_names
-    return PromptActionConfig(
-        prompt=FooterPromptState(label=capture_template_prompt_label(names)),
-        cancel_status="Capture cancelled",
-        invalid_status="Invalid capture template shortcut",
-    )
-
-
-def resolve_capture_template_selection(selection: str, template_names: list[str]) -> str | None:
-    """Resolve capture template from numeric shortcut input."""
-    normalized = selection.strip()
-    if not normalized:
-        return None
-    if not normalized.isdigit():
-        return None
-    index = int(normalized) - 1
-    if 0 <= index < len(template_names):
-        return template_names[index]
-    return None
+    return capture_template_names(org.config.app.CONFIG_CAPTURE_TEMPLATES)
 
 
 def parse_clock_duration(value: str) -> timedelta:
@@ -507,20 +362,22 @@ def resolve_headings_by_query(
     selector_query: str,
 ) -> list[Heading]:
     """Resolve matching headings across files from selector query."""
-    try:
-        compiled_query = compile_query_text(selector_query)
-    except QueryParseError as err:
-        raise typer.BadParameter(f"Invalid task selector query: {err}") from err
+    compiled_query = compile_query_or_raise(
+        selector_query,
+        lambda message: typer.BadParameter(f"Invalid task selector query: {message}"),
+    )
 
     logger.info("Task selector query: %s", selector_query)
     matches_by_identity: dict[int, Heading] = {}
     for filename in filenames:
         document = load_document(filename)
         logger.info("Running task selector query against file: %s", filename)
-        try:
-            results = compiled_query(Stream([document]), EvalContext({}))
-        except QueryRuntimeError as err:
-            raise typer.BadParameter(f"Task selector query failed: {err}") from err
+        results = execute_query_or_raise(
+            compiled_query,
+            [document],
+            {},
+            lambda message: typer.BadParameter(f"Task selector query failed: {message}"),
+        )
 
         for value in results:
             if not isinstance(value, Heading):

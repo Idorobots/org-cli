@@ -47,9 +47,7 @@ When omitted, column results keep the processed order from the main board pipeli
 
 ## Interactive mode
 
-When both stdin and stdout are TTYs, `org board` runs in interactive mode.
-When not running in a TTY (for example in tests, piping, or redirected output), it falls back
-to non-interactive rendering.
+`org board` runs in interactive mode and requires both stdin and stdout to be TTYs.
 
 Interactive keys:
 
@@ -136,5 +134,4 @@ poetry run org board \
 ## Output
 
 - The command always renders a Rich board layout (no `--out` format selection).
-- In non-interactive mode, when rendered board height exceeds the viewport, output is shown in a pager.
 - Empty result set prints `No results`.

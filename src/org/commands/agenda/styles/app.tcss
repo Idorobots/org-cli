@@ -1,0 +1,20 @@
+Screen {
+    layout: vertical;
+}
+
+#agenda-header,
+#agenda-header-rule,
+#agenda-footer,
+#agenda-footer-rule,
+#agenda-status {
+    height: auto;
+}
+
+#agenda-body {
+    height: 1fr;
+    overflow: hidden;
+}
+
+.agenda-row {
+    height: 1;
+}

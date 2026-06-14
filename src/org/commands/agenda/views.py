@@ -7,11 +7,13 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from org import config as config_module
-from org.query_language import CompiledQuery, QueryParseError, compile_query_text
+import org.config.app
+from org.query.runner import compile_filter_order_query
 
 
 if TYPE_CHECKING:
+    from org.query.engine.compiler import CompiledQuery
+
     from .command import AgendaArgs
 
 
@@ -35,18 +37,15 @@ class AgendaViewContext:
 
 def _compile_section_query(filter_query: str, order_by: str | None) -> CompiledQuery:
     """Compile one agenda section filter/order query text."""
-    base_query = f"select({filter_query})"
-    if order_by is None:
-        return compile_query_text(base_query)
-    return compile_query_text(f"{base_query} | sort_by({order_by})")
+    return compile_filter_order_query(filter_query, order_by)
 
 
-def _fallback_agenda_view() -> config_module.AgendaViewConfig:
+def _fallback_agenda_view() -> org.config.app.AgendaViewConfig:
     """Return built-in fallback agenda view definition."""
-    return config_module.AgendaViewConfig(
+    return org.config.app.AgendaViewConfig(
         name="default",
         sections=[
-            config_module.AgendaSectionConfig(
+            org.config.app.AgendaSectionConfig(
                 name="[bold dim white]Agenda[/]",
                 filter="true",
                 order_by=None,
@@ -57,13 +56,13 @@ def _fallback_agenda_view() -> config_module.AgendaViewConfig:
     )
 
 
-def _compile_view_section_specs(view: config_module.AgendaViewConfig) -> list[AgendaSectionSpec]:
+def _compile_view_section_specs(view: org.config.app.AgendaViewConfig) -> list[AgendaSectionSpec]:
     """Compile one agenda view's filters into renderable section specs."""
     section_specs: list[AgendaSectionSpec] = []
     for section in view.sections:
         try:
             query = _compile_section_query(section.filter, section.order_by)
-        except QueryParseError as err:
+        except Exception as err:
             raise typer.BadParameter(
                 f"Invalid agenda filter/order-by (view={view.name}, section={section.name}): {err}",
             ) from err
@@ -81,7 +80,7 @@ def _compile_view_section_specs(view: config_module.AgendaViewConfig) -> list[Ag
 def resolve_view_context(args: AgendaArgs) -> AgendaViewContext:
     """Resolve configured or fallback view context for agenda rendering."""
     selected_view = args.view.strip() if args.view else None
-    configured_views = config_module.CONFIG_AGENDA_VIEWS
+    configured_views = org.config.app.CONFIG_AGENDA_VIEWS
 
     if selected_view is None:
         view = _fallback_agenda_view()

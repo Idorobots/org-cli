@@ -1,0 +1,29 @@
+SelectionModalScreen {
+    align: center middle;
+    background: $surface 60%;
+}
+
+#selection-dialog {
+    width: 80%;
+    max-width: 100;
+    height: auto;
+    max-height: 24;
+    border: round $primary;
+    background: $panel;
+    padding: 1 2;
+}
+
+#selection-label {
+    margin-bottom: 1;
+}
+
+#selection-instructions {
+    margin-bottom: 1;
+}
+
+#selection-options {
+    width: 1fr;
+    min-width: 20;
+    height: auto;
+    max-height: 16;
+}

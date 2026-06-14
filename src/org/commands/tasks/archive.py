@@ -9,14 +9,15 @@ from dataclasses import dataclass
 import typer
 from org_parser.document import Document, Heading
 
-from org import config as config_module
-from org.cli_common import resolve_input_paths
-from org.commands.archive import archive_heading_subtree, archive_result_documents_to_save
+import org.config.app
+import org.logging
 from org.commands.tasks.common import (
     resolve_headings_by_query,
     resolve_task_selector_query,
     save_document,
 )
+from org.logic.archive import archive_heading_subtree, archive_result_documents_to_save
+from org.pipeline.load import resolve_input_paths
 
 
 logger = logging.getLogger("org")
@@ -126,7 +127,7 @@ def register(app: typer.Typer) -> None:
             query_id=query_id,
             query=query,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks archive")
-        config_module.log_command_arguments(args, "tasks archive")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks archive")
+        org.logging.log_command_arguments(args, "tasks archive")
         run_tasks_archive(args)

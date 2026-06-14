@@ -14,9 +14,8 @@ from org_parser.time import Clock
 from rich.console import Console
 from rich.prompt import Confirm
 
-from org import config as config_module
-from org.cli_common import resolve_input_paths
-from org.color import should_use_color
+import org.config.app
+import org.logging
 from org.commands.tasks.common import (
     iter_descendants,
     load_document,
@@ -32,6 +31,8 @@ from org.commands.tasks.common import (
     resolve_task_selector_query,
     save_document,
 )
+from org.pipeline.load import resolve_input_paths
+from org.tui.color import should_use_color
 
 
 if TYPE_CHECKING:
@@ -685,7 +686,7 @@ def register(app: typer.Typer) -> None:
             yes=yes,
             color_flag=color_flag,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "tasks update")
-        config_module.log_command_arguments(args, "tasks update")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks update")
+        org.logging.log_command_arguments(args, "tasks update")
         run_tasks_update(args)

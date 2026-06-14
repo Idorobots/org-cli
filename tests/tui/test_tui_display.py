@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from org.analyze import Group, TimeRange
-from org.tui import (
+from org.logic.stats import Group, TimeRange
+from org.tui.bits import (
     TopTasksSectionConfig,
     format_groups_section,
     format_top_tasks_section,

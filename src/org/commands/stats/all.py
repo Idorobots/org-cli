@@ -11,41 +11,30 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.text import Text
 
-from org import config as config_module
-from org.analyze import AnalysisResult, Tag, TimeRange, analyze, clean
-from org.analyze import Group as TagGroup
-from org.cli_common import (
-    CATEGORY_NAMES,
-    get_top_tasks,
-    load_and_process_data,
-    resolve_date_filters,
-    resolve_exclude_set,
-    resolve_mapping,
-)
+import org.config.app
+import org.logging
 from org.commands.stats.summary import SummaryDisplayConfig, format_tasks_summary
-from org.tui import (
+from org.logic.stats import AnalysisResult, Tag, TimeRange, analyze, clean, get_top_tasks
+from org.logic.stats import Group as TagGroup
+from org.logic.time import resolve_date_filters
+from org.logic.validation import validate_stats_arguments
+from org.pipeline.load import load_and_process_data
+from org.tui.bits import (
     GroupBlockConfig,
     TagBlockConfig,
     TaskLineConfig,
-    TimelineFormatConfig,
-    TopTasksSectionConfig,
-    apply_indent,
     build_console,
     format_group_block,
-    format_groups_section,
     format_tag_block,
     format_task_line,
-    format_top_tasks_section,
     lines_to_text,
     processing_status,
-    section_header_lines,
     setup_output,
 )
-from org.validation import validate_stats_arguments
+from org.tui.plot import TimelineFormatConfig
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from datetime import datetime
 
     from org_parser.document import Heading
@@ -121,20 +110,6 @@ class _TagsDisplayConfig:
 
 
 @dataclass(frozen=True)
-class _TagsSectionConfig:
-    """Configuration for rendering a single tags section."""
-
-    max_relations: int
-    plot_width: int
-    date_from: datetime | None
-    date_until: datetime | None
-    global_timerange: TimeRange
-    max_items: int
-    exclude_set: set[str]
-    color_enabled: bool
-
-
-@dataclass(frozen=True)
 class _StatsAllDisplayConfig:
     """Configuration shared across stats all layout sections."""
 
@@ -160,129 +135,6 @@ class _StatsAllSectionBuildConfig:
 
     panel_content_width: int
     use_summary_based_default: bool
-
-
-def format_tags_section(
-    category_name: str,
-    tags: dict[str, Tag],
-    config: _TagsSectionConfig,
-    order_fn: Callable[[tuple[str, Tag]], int],
-    indent: str = "",
-) -> str:
-    """Return formatted output for a single tags section."""
-    if config.max_items == 0:
-        return ""
-
-    cleaned = clean(config.exclude_set, tags)
-    sorted_items = sorted(cleaned.items(), key=order_fn)[0 : config.max_items]
-
-    lines = section_header_lines(category_name.upper(), config.color_enabled)
-
-    if not sorted_items:
-        lines.append("  No results")
-        return lines_to_text(apply_indent(lines, indent))
-
-    for idx, (name, tag) in enumerate(sorted_items):
-        if idx > 0:
-            lines.append("")
-        lines.extend(
-            format_tag_block(
-                name,
-                tag,
-                TagBlockConfig(
-                    max_relations=config.max_relations,
-                    exclude_set=config.exclude_set,
-                    date_from=config.date_from,
-                    date_until=config.date_until,
-                    global_timerange=config.global_timerange,
-                    timeline=TimelineFormatConfig(
-                        color_enabled=config.color_enabled,
-                        indent="  ",
-                        plot_width=config.plot_width,
-                    ),
-                    name_indent="  ",
-                    stats_indent="    ",
-                ),
-            ),
-        )
-
-    return lines_to_text(apply_indent(lines, indent))
-
-
-def format_stats_all_output(
-    result: AnalysisResult,
-    nodes: list[Heading],
-    args: StatsAllArgs,
-    display_config: _StatsAllDisplayConfig,
-    plot_width: int,
-) -> str:
-    """Return formatted output for the stats all command."""
-
-    def order_by_total(item: tuple[str, Tag]) -> int:
-        """Sort by total count (descending)."""
-        return -item[1].total_tasks
-
-    category_name = CATEGORY_NAMES[args.use]
-    task_limit = args.max_results if args.max_results is not None else 10
-
-    return "".join(
-        section
-        for section in (
-            format_tasks_summary(
-                result,
-                SummaryDisplayConfig(
-                    date_from=display_config.date_from,
-                    date_until=display_config.date_until,
-                    done_states=display_config.done_states,
-                    todo_states=display_config.todo_states,
-                    color_enabled=display_config.color_enabled,
-                ),
-                plot_width,
-            ),
-            format_top_tasks_section(
-                nodes,
-                TopTasksSectionConfig(
-                    max_results=task_limit,
-                    color_enabled=display_config.color_enabled,
-                    done_states=display_config.done_states,
-                    todo_states=display_config.todo_states,
-                    line_width=plot_width,
-                    indent="",
-                ),
-            ),
-            format_tags_section(
-                category_name,
-                result.tags,
-                _TagsSectionConfig(
-                    max_relations=args.max_relations,
-                    plot_width=plot_width,
-                    date_from=display_config.date_from,
-                    date_until=display_config.date_until,
-                    global_timerange=result.timerange,
-                    max_items=args.max_tags,
-                    exclude_set=display_config.exclude_set,
-                    color_enabled=display_config.color_enabled,
-                ),
-                order_by_total,
-                indent="  ",
-            ),
-            format_groups_section(
-                result.tag_groups,
-                display_config.exclude_set,
-                (
-                    args.min_group_size,
-                    plot_width,
-                    display_config.date_from,
-                    display_config.date_until,
-                    result.timerange,
-                    display_config.color_enabled,
-                ),
-                args.max_groups,
-                indent="  ",
-            ),
-        )
-        if section
-    )
 
 
 def _line_count(text: str) -> int:
@@ -395,7 +247,7 @@ def _build_stats_all_panel_sections(
         )
         sections.append(
             _StatsAllPanelSection(
-                title=CATEGORY_NAMES[args.use].upper(),
+                title=org.config.app.CATEGORY_NAMES[args.use].upper(),
                 body=_normalize_panel_body(tags_body),
             ),
         )
@@ -677,8 +529,8 @@ def run_stats(args: StatsAllArgs) -> None:
     layout_height = 0
 
     with processing_status(console, color_enabled):
-        mapping = resolve_mapping(args)
-        exclude_set = resolve_exclude_set(args)
+        mapping = org.config.app.resolve_mapping(args)
+        exclude_set = org.config.app.resolve_exclude_set(args)
         nodes, todo_states, done_states = load_and_process_data(args)
         if nodes:
             result = analyze(nodes, mapping, args.use, args.max_relations)
@@ -914,7 +766,7 @@ def register(app: typer.Typer) -> None:
             min_group_size=min_group_size,
             max_groups=max_groups,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "stats all")
-        config_module.log_command_arguments(args, "stats all")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "stats all")
+        org.logging.log_command_arguments(args, "stats all")
         run_stats(args)

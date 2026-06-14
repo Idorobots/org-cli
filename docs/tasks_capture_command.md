@@ -73,6 +73,12 @@ capture:
 - `--set` values are used directly and skip prompting for those placeholders.
 - Placeholder matching supports whitespace: `{{ title }}` and `{{title}}` are equivalent.
 
+Outside a TTY, capture only works when the CLI fully resolves the request up front:
+
+- `TEMPLATE_NAME` must be provided explicitly.
+- Every non-built-in placeholder must already be resolved by `--set`, document metadata, or parent metadata.
+- If template selection or placeholder prompting would be required, the command exits with an error.
+
 ## Validation and insertion
 
 - Rendered template content is parsed with `Heading.from_source` before file mutation.

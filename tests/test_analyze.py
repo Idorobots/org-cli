@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from org.analyze import analyze
+from org.logic.stats import analyze
 from tests.conftest import node_from_org
 
 

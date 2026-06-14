@@ -6,20 +6,21 @@ import logging
 import sys
 from dataclasses import dataclass
 
+import click
 import typer
 
-from org import config as config_module
-from org.cli_common import load_and_process_data
-from org.commands.interactive_common import interactive_help_command_text, local_now
-from org.tui import build_console, processing_status, setup_output
+import org.config.app
+import org.logging
+from org.pipeline.load import load_and_process_data
+from org.tui.bits import build_console, processing_status, setup_output
+from org.tui.help import interactive_help_command_text
 
-from . import events, layout
+from . import ui
+from .app import run_agenda_app
 from .views import resolve_view_context
 
 
 logger = logging.getLogger("org")
-_HIGHLIGHT_ROW_STYLE = "on grey23"
-_INTERACTIVE_INPUT_TIMEOUT_SECONDS = 1.0
 
 
 @dataclass
@@ -73,6 +74,11 @@ def _resolve_tasks_limit(max_results: int | None) -> int:
     return max_results
 
 
+def _validate_agenda_args(args: AgendaArgs) -> None:
+    """Validate agenda arguments, including date parsing."""
+    ui.resolve_agenda_start_date(args.date)
+
+
 def run_agenda(args: AgendaArgs) -> None:
     """Run the agenda command."""
     color_enabled = setup_output(args)
@@ -86,6 +92,7 @@ def run_agenda(args: AgendaArgs) -> None:
         raise typer.BadParameter("--days must be at least 1")
 
     args.max_results = _resolve_tasks_limit(args.max_results)
+    _validate_agenda_args(args)
 
     view_ctx = resolve_view_context(args)
 
@@ -96,33 +103,16 @@ def run_agenda(args: AgendaArgs) -> None:
         console.print("No results", markup=False)
         return
 
-    if sys.stdin.isatty() and sys.stdout.isatty():
-        events.run_agenda_interactive(
-            console,
-            events.create_agenda_session(
-                args,
-                nodes,
-                layout.RenderContext(
-                    color_enabled=color_enabled,
-                    done_states=done_states,
-                    todo_states=todo_states,
-                ),
-                view_ctx,
-            ),
-        )
-        return
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise click.UsageError("org agenda requires a TTY")
 
-    layout.render_agenda(
-        console,
-        layout.AgendaRenderInput(
-            args=args,
-            nodes=nodes,
-            now=local_now(),
-            render=layout.RenderContext(
-                color_enabled=color_enabled,
-                done_states=done_states,
-                todo_states=todo_states,
-            ),
+    run_agenda_app(
+        args,
+        nodes,
+        ui.RenderContext(
+            color_enabled=color_enabled,
+            done_states=done_states,
+            todo_states=todo_states,
         ),
         view_ctx,
     )
@@ -136,7 +126,7 @@ def register(app: typer.Typer) -> None:
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         help=interactive_help_command_text(
             "Show agenda for one day or a date range.",
-            layout.AGENDA_HELP_ENTRIES,
+            ui.AGENDA_HELP_ENTRIES,
         ),
     )
     def agenda(  # noqa: PLR0913
@@ -397,7 +387,7 @@ def register(app: typer.Typer) -> None:
             future_repeats=future_repeats,
             view=view,
         )
-        config_module.apply_config_defaults(args)
-        config_module.log_applied_config_defaults(args, sys.argv[1:], "agenda")
-        config_module.log_command_arguments(args, "agenda")
+        org.config.app.apply_config_defaults(args)
+        org.logging.log_applied_config_defaults(args, sys.argv[1:], "agenda")
+        org.logging.log_command_arguments(args, "agenda")
         run_agenda(args)

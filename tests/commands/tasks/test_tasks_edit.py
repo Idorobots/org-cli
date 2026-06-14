@@ -9,8 +9,8 @@ import org_parser
 import pytest
 import typer
 
-from org.commands import editor as editor_command
 from org.commands.tasks import edit as tasks_edit
+from org.logic import edit as editor_command
 
 
 if TYPE_CHECKING:
@@ -170,25 +170,14 @@ def test_run_tasks_edit_errors_on_non_zero_editor_exit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Edit should report a clear error when line-open fallback is declined."""
+    """Edit should report a clear error when opening the file in the editor fails."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n", encoding="utf-8")
 
-    prompts: list[str] = []
-
-    def _confirm(prompt: str) -> bool:
-        prompts.append(prompt)
-        return False
-
     monkeypatch.setenv("EDITOR", "sh -c 'exit 7'")
-    monkeypatch.setattr(editor_command, "_confirm_temporary_file_edit", _confirm)
 
     with pytest.raises(typer.BadParameter, match="Editor failed to open"):
         tasks_edit.run_tasks_edit(make_edit_args([str(source)]))
-
-    assert prompts == [
-        "Opening the original file at the task line failed. Edit a temporary copy instead?",
-    ]
 
 
 def test_run_tasks_edit_skips_save_when_content_is_unchanged(
@@ -246,70 +235,34 @@ def test_edit_heading_subtree_opens_original_file_at_task_line(
     assert updated_heading.title_text.strip() == "Updated"
 
 
-def test_edit_heading_subtree_prompts_for_temp_file_when_document_has_no_filename(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Helper should prompt before using temp-file editing without a backing file."""
+def test_edit_heading_subtree_errors_when_document_has_no_filename() -> None:
+    """Helper should reject editing tasks without a backing file."""
     root = org_parser.loads("* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n")
     heading = root.heading_by_id("task-1")
     assert heading is not None
 
-    prompts: list[str] = []
-
-    def _confirm(prompt: str) -> bool:
-        prompts.append(prompt)
-        return True
-
-    monkeypatch.setattr(editor_command, "_confirm_temporary_file_edit", _confirm)
-    monkeypatch.setattr(
-        editor_command,
-        "edit_text_in_external_editor",
-        lambda _text: "* TODO Updated\n:PROPERTIES:\n:ID: task-1\n:END:\n",
-    )
-
-    result = editor_command.edit_heading_subtree_in_external_editor(heading)
-
-    assert prompts == ["This task is not associated with a file. Edit a temporary copy instead?"]
-    assert result.changed is True
-    assert heading.title_text.strip() == "Keep"
+    with pytest.raises(
+        typer.BadParameter,
+        match=r"This task is not associated with a file and cannot be edited\.",
+    ):
+        editor_command.edit_heading_subtree_in_external_editor(heading)
 
 
-def test_edit_heading_subtree_falls_back_to_temp_file_after_line_open_failure(
+def test_edit_heading_subtree_errors_after_line_open_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Helper should prompt and write back edited temp-file content after line-open failure."""
+    """Helper should error when opening the file in the editor fails."""
     source = tmp_path / "tasks.org"
     source.write_text("* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n", encoding="utf-8")
     root = org_parser.load(str(source))
     heading = root.heading_by_id("task-1")
     assert heading is not None
 
-    prompts: list[str] = []
-
-    def _confirm(prompt: str) -> bool:
-        prompts.append(prompt)
-        return True
-
     monkeypatch.setattr(editor_command, "_run_editor_at_line", lambda _filename, _line: 7)
-    monkeypatch.setattr(
-        editor_command,
-        "_confirm_temporary_file_edit",
-        _confirm,
-    )
-    monkeypatch.setattr(
-        editor_command,
-        "edit_text_in_external_editor",
-        lambda _text: "* TODO Updated\n:PROPERTIES:\n:ID: task-1\n:END:\n",
-    )
 
-    result = editor_command.edit_heading_subtree_in_external_editor(heading)
-
-    assert prompts == [
-        "Opening the original file at the task line failed. Edit a temporary copy instead?",
-    ]
-    assert result.changed is True
-    assert source.read_text(encoding="utf-8").startswith("* TODO Updated\n")
+    with pytest.raises(typer.BadParameter, match="Editor failed to open"):
+        editor_command.edit_heading_subtree_in_external_editor(heading)
 
 
 def test_edit_heading_subtree_rejects_invalid_full_document_content(
@@ -323,12 +276,13 @@ def test_edit_heading_subtree_rejects_invalid_full_document_content(
     heading = root.heading_by_id("task-1")
     assert heading is not None
 
-    monkeypatch.setattr(editor_command, "_run_editor_at_line", lambda _filename, _line: 7)
-    monkeypatch.setattr(editor_command, "_confirm_temporary_file_edit", lambda _prompt: True)
-    monkeypatch.setattr(editor_command, "edit_text_in_external_editor", lambda _text: "***")
+    def _edit_file(filename: str, _line: int) -> int:
+        Path(filename).write_text("***", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(editor_command, "_run_editor_at_line", _edit_file)
     monkeypatch.setattr(
-        org_parser,
-        "loads",
+        "org.pipeline.load.loads",
         lambda _text: (_ for _ in ()).throw(ValueError("boom")),
     )
 

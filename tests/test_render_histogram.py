@@ -1,11 +1,12 @@
 """Tests for the render_histogram() function."""
 
-from org.histogram import Histogram, render_histogram
+from org.logic.stats import Distribution
+from org.tui.histogram import render_histogram
 
 
 def test_render_histogram_empty() -> None:
     """Test empty histogram with no values."""
-    histogram = Histogram(values={})
+    histogram = Distribution(values={})
     category_order = ["Some", "Value", "unknown"]
 
     lines = render_histogram(histogram, 40, category_order)
@@ -18,7 +19,7 @@ def test_render_histogram_empty() -> None:
 
 def test_render_histogram_single_value_100_percent() -> None:
     """Test one category with all the count."""
-    histogram = Histogram(values={"Value": 100})
+    histogram = Distribution(values={"Value": 100})
     category_order = ["Some", "Value"]
 
     lines = render_histogram(histogram, 40, category_order)
@@ -30,7 +31,7 @@ def test_render_histogram_single_value_100_percent() -> None:
 
 def test_render_histogram_all_equal_values() -> None:
     """Test multiple categories with equal counts."""
-    histogram = Histogram(values={"Some": 50, "Value": 50})
+    histogram = Distribution(values={"Some": 50, "Value": 50})
     category_order = ["Some", "Value"]
 
     lines = render_histogram(histogram, 40, category_order)
@@ -42,7 +43,7 @@ def test_render_histogram_all_equal_values() -> None:
 
 def test_render_histogram_normal_distribution() -> None:
     """Test realistic distribution."""
-    histogram = Histogram(
+    histogram = Distribution(
         values={
             "Monday": 3526,
             "Tuesday": 3273,
@@ -79,7 +80,7 @@ def test_render_histogram_normal_distribution() -> None:
 
 def test_render_histogram_zero_values_shown() -> None:
     """Test explicit categories render even when keys are missing."""
-    histogram = Histogram(values={"DONE": 30})
+    histogram = Distribution(values={"DONE": 30})
     category_order = ["DONE", "TODO", "CANCELLED"]
 
     lines = render_histogram(histogram, 40, category_order)
@@ -92,7 +93,7 @@ def test_render_histogram_zero_values_shown() -> None:
 
 def test_render_histogram_zero_value_key_included() -> None:
     """Test zero-value key renders when present in histogram."""
-    histogram = Histogram(values={"DONE": 30, "TODO": 0})
+    histogram = Distribution(values={"DONE": 30, "TODO": 0})
     category_order = ["DONE", "TODO", "CANCELLED"]
 
     lines = render_histogram(histogram, 40, category_order)
@@ -105,7 +106,7 @@ def test_render_histogram_zero_value_key_included() -> None:
 
 def test_render_histogram_category_truncation() -> None:
     """Test long category names truncated."""
-    histogram = Histogram(values={"verylongname": 50, "short": 50})
+    histogram = Distribution(values={"verylongname": 50, "short": 50})
     category_order = ["verylongname", "short"]
 
     lines = render_histogram(histogram, 40, category_order)
@@ -117,7 +118,7 @@ def test_render_histogram_category_truncation() -> None:
 
 def test_render_histogram_category_padding() -> None:
     """Test short names padded."""
-    histogram = Histogram(values={"a": 50, "ab": 25, "abc": 25})
+    histogram = Distribution(values={"a": 50, "ab": 25, "abc": 25})
     category_order = ["a", "ab", "abc"]
 
     lines = render_histogram(histogram, 40, category_order)
@@ -130,7 +131,7 @@ def test_render_histogram_category_padding() -> None:
 
 def test_render_histogram_custom_order() -> None:
     """Test respects category_order parameter."""
-    histogram = Histogram(values={"DONE": 30, "TODO": 10, "CANCELLED": 5})
+    histogram = Distribution(values={"DONE": 30, "TODO": 10, "CANCELLED": 5})
     category_order = ["TODO", "DONE", "CANCELLED"]
 
     lines = render_histogram(histogram, 40, category_order)
@@ -143,7 +144,7 @@ def test_render_histogram_custom_order() -> None:
 
 def test_render_histogram_no_order_alphabetical() -> None:
     """Test alphabetical when no order given."""
-    histogram = Histogram(values={"DONE": 30, "TODO": 10, "CANCELLED": 5})
+    histogram = Distribution(values={"DONE": 30, "TODO": 10, "CANCELLED": 5})
 
     lines = render_histogram(histogram, 40, None)
 
@@ -155,7 +156,7 @@ def test_render_histogram_no_order_alphabetical() -> None:
 
 def test_render_histogram_different_bucket_widths() -> None:
     """Test various bucket sizes."""
-    histogram = Histogram(values={"Value": 100})
+    histogram = Distribution(values={"Value": 100})
 
     lines_20 = render_histogram(histogram, 20, ["Value"])
     lines_50 = render_histogram(histogram, 50, ["Value"])
@@ -168,7 +169,7 @@ def test_render_histogram_different_bucket_widths() -> None:
 
 def test_render_histogram_proper_rounding() -> None:
     """Test bar lengths round correctly."""
-    histogram = Histogram(values={"A": 33, "B": 33, "C": 34})
+    histogram = Distribution(values={"A": 33, "B": 33, "C": 34})
 
     lines = render_histogram(histogram, 30, ["A", "B", "C"])
 
@@ -184,7 +185,7 @@ def test_render_histogram_proper_rounding() -> None:
 
 def test_render_histogram_with_unknown_category() -> None:
     """Test unknown category handling."""
-    histogram = Histogram(values={"Monday": 5, "Tuesday": 5, "Wednesday": 7, "unknown": 2})
+    histogram = Distribution(values={"Monday": 5, "Tuesday": 5, "Wednesday": 7, "unknown": 2})
     category_order = ["Monday", "Tuesday", "Wednesday", "unknown"]
 
     lines = render_histogram(histogram, 40, category_order)
@@ -195,7 +196,7 @@ def test_render_histogram_with_unknown_category() -> None:
 
 def test_render_histogram_wednesday_no_truncation() -> None:
     """Test Wednesday (9 chars) fits exactly without truncation."""
-    histogram = Histogram(values={"Wednesday": 100})
+    histogram = Distribution(values={"Wednesday": 100})
 
     lines = render_histogram(histogram, 40, ["Wednesday"])
 
@@ -204,7 +205,7 @@ def test_render_histogram_wednesday_no_truncation() -> None:
 
 def test_render_histogram_exact_nine_chars() -> None:
     """Test category with exactly 9 characters."""
-    histogram = Histogram(values={"ExactNine": 100})
+    histogram = Distribution(values={"ExactNine": 100})
 
     lines = render_histogram(histogram, 40, ["ExactNine"])
 
@@ -213,7 +214,7 @@ def test_render_histogram_exact_nine_chars() -> None:
 
 def test_render_histogram_ten_chars_truncated() -> None:
     """Test category with 10 characters gets truncated."""
-    histogram = Histogram(values={"TenCharact": 100})
+    histogram = Distribution(values={"TenCharact": 100})
 
     lines = render_histogram(histogram, 40, ["TenCharact"])
 
@@ -222,7 +223,7 @@ def test_render_histogram_ten_chars_truncated() -> None:
 
 def test_render_histogram_proportional_to_sum() -> None:
     """Test bars are proportional to sum, not max value."""
-    histogram = Histogram(values={"A": 10, "B": 90})
+    histogram = Distribution(values={"A": 10, "B": 90})
 
     lines = render_histogram(histogram, 100, ["A", "B"])
 
@@ -232,7 +233,7 @@ def test_render_histogram_proportional_to_sum() -> None:
 
 def test_render_histogram_preserves_category_order_with_missing() -> None:
     """Test that explicit categories render before histogram extras."""
-    histogram = Histogram(values={"B": 50})
+    histogram = Distribution(values={"B": 50})
     category_order = ["A", "B", "C"]
 
     lines = render_histogram(histogram, 40, category_order)
@@ -245,7 +246,7 @@ def test_render_histogram_preserves_category_order_with_missing() -> None:
 
 def test_render_histogram_ordered_categories_then_remaining_alphabetical() -> None:
     """Render order should prefer provided categories, then append remaining sorted."""
-    histogram = Histogram(values={"C": 5, "A": 3, "B": 4, "Z": 1})
+    histogram = Distribution(values={"C": 5, "A": 3, "B": 4, "Z": 1})
 
     lines = render_histogram(histogram, 40, ["B", "missing", "A"])
 
@@ -254,7 +255,7 @@ def test_render_histogram_ordered_categories_then_remaining_alphabetical() -> No
 
 def test_render_histogram_empty_with_no_order() -> None:
     """Test empty histogram with no order produces empty list."""
-    histogram = Histogram(values={})
+    histogram = Distribution(values={})
 
     lines = render_histogram(histogram, 40, None)
 
@@ -263,7 +264,7 @@ def test_render_histogram_empty_with_no_order() -> None:
 
 def test_render_histogram_single_bar_with_small_value() -> None:
     """Test that small values still show correctly."""
-    histogram = Histogram(values={"A": 1, "B": 99})
+    histogram = Distribution(values={"A": 1, "B": 99})
 
     lines = render_histogram(histogram, 100, ["A", "B"])
 

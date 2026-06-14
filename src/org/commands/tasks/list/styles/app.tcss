@@ -1,0 +1,13 @@
+Screen {
+    layout: vertical;
+}
+
+#tasks-body {
+    height: 1fr;
+}
+
+#tasks-footer,
+#tasks-footer-rule,
+#tasks-status {
+    height: auto;
+}

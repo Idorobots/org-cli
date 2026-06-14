@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from org.plot import expand_timeline
+from org.tui.plot import expand_timeline
 
 
 def test_expand_timeline_single_day() -> None:

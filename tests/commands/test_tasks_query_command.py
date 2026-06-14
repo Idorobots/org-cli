@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 
 from org.cli import app
 from org.commands.tasks.query import TasksQueryArgs, _is_org_object, run_tasks_query
-from org.output_format import OutputFormat, OutputFormatError
+from org.pipeline.format import OutputFormat, OutputFormatError
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -95,8 +95,8 @@ def test_run_query_default_org_uses_plain_formatter_for_string_results(
         return ["alpha", "beta"]
 
     monkeypatch.setattr(
-        "org.commands.tasks.query.compile_query_text",
-        lambda _query: _fake_compiled_query,
+        "org.commands.tasks.query.compile_query_or_raise",
+        lambda _query, _error_builder: _fake_compiled_query,
     )
     monkeypatch.setattr(
         "org.commands.tasks.query.load_root_data",
@@ -121,8 +121,8 @@ def test_run_query_default_org_uses_json_formatter_for_mixed_results(
         return ["alpha", 1, None]
 
     monkeypatch.setattr(
-        "org.commands.tasks.query.compile_query_text",
-        lambda _query: _fake_compiled_query,
+        "org.commands.tasks.query.compile_query_or_raise",
+        lambda _query, _error_builder: _fake_compiled_query,
     )
     monkeypatch.setattr(
         "org.commands.tasks.query.load_root_data",
@@ -147,8 +147,8 @@ def test_run_query_default_org_uses_json_formatter_for_none_result(
         return [None]
 
     monkeypatch.setattr(
-        "org.commands.tasks.query.compile_query_text",
-        lambda _query: _fake_compiled_query,
+        "org.commands.tasks.query.compile_query_or_raise",
+        lambda _query, _error_builder: _fake_compiled_query,
     )
     monkeypatch.setattr(
         "org.commands.tasks.query.load_root_data",
@@ -295,8 +295,6 @@ def test_run_query_markdown_pandoc_error_is_usage_error(monkeypatch: pytest.Monk
     """Markdown formatter failures should be surfaced as CLI usage errors."""
 
     class _FailingFormatter:
-        include_filenames = False
-
         def prepare(
             self,
             values: list[object],

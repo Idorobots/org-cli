@@ -1,7 +1,7 @@
 """Tests for the clean() function."""
 
-from org.analyze import Tag, TimeRange, clean
-from org.cli_common import DEFAULT_EXCLUDE
+from org.config.app import DEFAULT_EXCLUDE
+from org.logic.stats import Tag, TimeRange, clean
 
 
 def tag_dict_from_ints(d: dict[str, int]) -> dict[str, Tag]:
