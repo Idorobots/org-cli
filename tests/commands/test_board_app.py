@@ -268,7 +268,7 @@ def test_board_app_shift_bindings_trigger_state_and_priority_actions(
     asyncio.run(_run())
 
 
-def test_run_flow_board_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_board_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     """Interactive board path should delegate to the Textual app runner."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], days=100000)
@@ -292,6 +292,6 @@ def test_run_flow_board_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     monkeypatch.setattr("org.commands.board.command.run_board_app", _fake_run)
 
-    board_command.run_flow_board(args)
+    board_command.run_board(args)
 
     assert called["value"] is True

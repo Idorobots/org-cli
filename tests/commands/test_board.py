@@ -156,7 +156,7 @@ def _render_board_output(args: board_command.BoardArgs) -> str:
     if not nodes:
         return "No results\n"
     columns = actions.build_selector_board_columns(nodes, actions.resolve_column_specs(args))
-    ui.render_static_flow_board(
+    ui.render_static_board(
         console,
         columns,
         done_states=done_states,
@@ -203,7 +203,7 @@ def test_filter_recent_completed_nodes_respects_days_override(
     ]
 
 
-def test_run_flow_board_renders_expected_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_board_renders_expected_columns(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board should render built-in selector fallback columns."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args(
@@ -234,7 +234,7 @@ def test_run_flow_board_renders_expected_columns(monkeypatch: pytest.MonkeyPatch
     assert "DONE" in output
 
 
-def test_run_flow_board_column_order_follows_document_todo_order(
+def test_run_board_column_order_follows_document_todo_order(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -269,7 +269,7 @@ def test_run_flow_board_column_order_follows_document_todo_order(
     assert pos_todo < pos_done
 
 
-def test_run_flow_board_preserves_order_in_column_when_priorities_equal(
+def test_run_board_preserves_order_in_column_when_priorities_equal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Board should keep stable per-column order when priorities are equal."""
@@ -667,7 +667,7 @@ def test_archive_selected_task_archives_selected_heading(
     assert session.status_message == "Task archived"
 
 
-def test_run_flow_board_does_not_hide_unknown_or_empty_states(
+def test_run_board_does_not_hide_unknown_or_empty_states(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unknown and empty task states should still be visible on the board."""
@@ -681,7 +681,7 @@ def test_run_flow_board_does_not_hide_unknown_or_empty_states(
     assert "WAITING Custom todo state" in output
 
 
-def test_run_flow_board_no_results(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_board_no_results(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board should print No results when filters remove all tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], filter_tags=["nomatch$"])
@@ -692,17 +692,17 @@ def test_run_flow_board_no_results(monkeypatch: pytest.MonkeyPatch) -> None:
     assert output.strip() == "No results"
 
 
-def test_run_flow_board_rejects_width_below_80(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_board_rejects_width_below_80(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board should reject console widths below the minimum."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], width=79)
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "79"])
     with pytest.raises(typer.BadParameter, match="--width must be at least 80"):
-        board_command.run_flow_board(args)
+        board_command.run_board(args)
 
 
-def test_run_flow_board_limit_applies_before_grouping(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_board_limit_applies_before_grouping(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board should respect --limit when selecting processed tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], max_results=1)
@@ -714,7 +714,7 @@ def test_run_flow_board_limit_applies_before_grouping(monkeypatch: pytest.Monkey
     assert "Fix bug in parser" not in output
 
 
-def test_run_flow_board_offset_applies_before_grouping(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_board_offset_applies_before_grouping(monkeypatch: pytest.MonkeyPatch) -> None:
     """Board should respect --offset when selecting processed tasks."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], max_results=1, offset=1, days=100000)
@@ -726,7 +726,7 @@ def test_run_flow_board_offset_applies_before_grouping(monkeypatch: pytest.Monke
     assert "Fix bug in parser" in output
 
 
-def test_run_flow_board_negative_max_results_raises_bad_parameter(
+def test_run_board_negative_max_results_raises_bad_parameter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Board should reject negative --limit values."""
@@ -735,10 +735,10 @@ def test_run_flow_board_negative_max_results_raises_bad_parameter(
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--limit", "-1"])
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        board_command.run_flow_board(args)
+        board_command.run_board(args)
 
 
-def test_run_flow_board_negative_offset_raises_bad_parameter(
+def test_run_board_negative_offset_raises_bad_parameter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Board should reject negative --offset values."""
@@ -747,10 +747,10 @@ def test_run_flow_board_negative_offset_raises_bad_parameter(
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--offset", "-1"])
     with pytest.raises(typer.BadParameter, match="--offset must be non-negative"):
-        board_command.run_flow_board(args)
+        board_command.run_board(args)
 
 
-def test_run_flow_board_uses_pager_when_render_exceeds_console_height(
+def test_run_board_uses_pager_when_render_exceeds_console_height(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -789,7 +789,7 @@ def test_run_flow_board_uses_pager_when_render_exceeds_console_height(
         discovered_done_states,
     )
     columns = actions.build_selector_board_columns(nodes, actions.resolve_column_specs(args))
-    ui.render_static_flow_board(
+    ui.render_static_board(
         console,
         columns,
         done_states=done_states,
@@ -800,7 +800,7 @@ def test_run_flow_board_uses_pager_when_render_exceeds_console_height(
     assert pager_called["value"]
 
 
-def test_run_flow_board_selector_uses_full_nodes_from_multiple_files(
+def test_run_board_selector_uses_full_nodes_from_multiple_files(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:
@@ -832,7 +832,7 @@ def test_run_flow_board_selector_uses_full_nodes_from_multiple_files(
         org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_coalesce_completed_true_shows_completed_column(
+def test_run_board_coalesce_completed_true_shows_completed_column(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fallback selector view should include DONE column for completed tasks."""
@@ -852,7 +852,7 @@ def test_run_flow_board_coalesce_completed_true_shows_completed_column(
     assert "Completed task" in output
 
 
-def test_run_flow_board_coalesce_completed_true_prefixes_state_in_panel(
+def test_run_board_coalesce_completed_true_prefixes_state_in_panel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fallback DONE selector should include all completed state tasks."""
@@ -873,7 +873,7 @@ def test_run_flow_board_coalesce_completed_true_prefixes_state_in_panel(
     assert "Another done state" in output
 
 
-def test_run_flow_board_coalesce_completed_false_shows_individual_done_columns(
+def test_run_board_coalesce_completed_false_shows_individual_done_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fallback selector view should not render legacy COMPLETED header."""
@@ -895,7 +895,7 @@ def test_run_flow_board_coalesce_completed_false_shows_individual_done_columns(
     assert "Another done state" in output
 
 
-def test_run_flow_board_coalesce_completed_false_done_columns_ordered_after_todo_columns(
+def test_run_board_coalesce_completed_false_done_columns_ordered_after_todo_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fallback selector headers should stay in Backlog/TODO/DONE order."""
@@ -919,7 +919,7 @@ def test_run_flow_board_coalesce_completed_false_done_columns_ordered_after_todo
     assert pos_in_progress < pos_done
 
 
-def test_run_flow_board_coalesce_completed_false_tasks_in_correct_columns(
+def test_run_board_coalesce_completed_false_tasks_in_correct_columns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fallback DONE selector should show all completed-state tasks."""
@@ -940,7 +940,7 @@ def test_run_flow_board_coalesce_completed_false_tasks_in_correct_columns(
     assert "Another done state" in output
 
 
-def test_run_flow_board_uses_configured_view_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_board_uses_configured_view_columns(monkeypatch: pytest.MonkeyPatch) -> None:
     """Requested configured view should render configured columns."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args([fixture_path], view="kanban", width=150)
@@ -970,7 +970,7 @@ def test_run_flow_board_uses_configured_view_columns(monkeypatch: pytest.MonkeyP
         org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_missing_requested_view_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_board_missing_requested_view_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """Missing requested view should return explicit BadParameter."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="missing")
@@ -989,13 +989,13 @@ def test_run_flow_board_missing_requested_view_raises(monkeypatch: pytest.Monkey
         monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
         monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
         with pytest.raises(typer.BadParameter, match="Requested board view not found"):
-            board_command.run_flow_board(args)
+            board_command.run_board(args)
     finally:
         org.config.app.CONFIG_BOARD_VIEWS.clear()
         org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_requested_view_without_configured_views_raises(
+def test_run_board_requested_view_without_configured_views_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Explicit --view should fail when no configured views exist."""
@@ -1007,13 +1007,13 @@ def test_run_flow_board_requested_view_without_configured_views_raises(
         monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
         monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
         with pytest.raises(typer.BadParameter, match="no board views are configured"):
-            board_command.run_flow_board(args)
+            board_command.run_board(args)
     finally:
         org.config.app.CONFIG_BOARD_VIEWS.clear()
         org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_uses_default_view_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_board_uses_default_view_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """Config-defaulted view value should drive board view resolution."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args([fixture_path], view=None, width=150)
@@ -1043,7 +1043,7 @@ def test_run_flow_board_uses_default_view_from_config(monkeypatch: pytest.Monkey
         org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_invalid_filter_or_order_by_parse_error_has_context(
+def test_run_board_invalid_filter_or_order_by_parse_error_has_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Filter/order-by parse failures should include view and column context."""
@@ -1061,13 +1061,13 @@ def test_run_flow_board_invalid_filter_or_order_by_parse_error_has_context(
         monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
         monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
         with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
-            board_command.run_flow_board(args)
+            board_command.run_board(args)
     finally:
         org.config.app.CONFIG_BOARD_VIEWS.clear()
         org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_invalid_filter_or_order_by_runtime_error_has_context(
+def test_run_board_invalid_filter_or_order_by_runtime_error_has_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Filter/order-by runtime failures should include view and column context."""
@@ -1093,13 +1093,13 @@ def test_run_flow_board_invalid_filter_or_order_by_runtime_error_has_context(
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     try:
         with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
-            board_command.run_flow_board(args)
+            board_command.run_board(args)
     finally:
         org.config.app.CONFIG_BOARD_VIEWS.clear()
         org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
 
 
-def test_run_flow_board_invalid_order_by_parse_error_has_context(
+def test_run_board_invalid_order_by_parse_error_has_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Invalid order-by parse should include view and column context."""
@@ -1124,7 +1124,7 @@ def test_run_flow_board_invalid_order_by_parse_error_has_context(
             typer.BadParameter,
             match=r"Invalid board filter/order-by \(view=kanban, column=Broken\)",
         ):
-            board_command.run_flow_board(args)
+            board_command.run_board(args)
     finally:
         org.config.app.CONFIG_BOARD_VIEWS.clear()
         org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
@@ -1236,7 +1236,7 @@ def test_build_task_panel_renders_rich_title_content() -> None:
     assert "call_fn(1)" in plain
 
 
-def test_run_flow_board_renders_rich_title_plain_output(
+def test_run_board_renders_rich_title_plain_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],
 ) -> None:

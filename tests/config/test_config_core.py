@@ -770,7 +770,7 @@ def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
     assert tasks_query_defaults["order_by_timestamp_desc"] is False
 
 
-def test_build_default_map_strips_flow_board_unsupported_defaults() -> None:
+def test_build_default_map_strips_board_unsupported_defaults() -> None:
     """Board default map should omit list-only output options."""
     default_map = org.config.app.build_default_map(
         {

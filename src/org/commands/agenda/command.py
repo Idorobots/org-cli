@@ -74,6 +74,11 @@ def _resolve_tasks_limit(max_results: int | None) -> int:
     return max_results
 
 
+def _validate_agenda_args(args: AgendaArgs) -> None:
+    """Validate agenda arguments, including date parsing."""
+    ui.resolve_agenda_start_date(args.date)
+
+
 def run_agenda(args: AgendaArgs) -> None:
     """Run the agenda command."""
     color_enabled = setup_output(args)
@@ -87,7 +92,7 @@ def run_agenda(args: AgendaArgs) -> None:
         raise typer.BadParameter("--days must be at least 1")
 
     args.max_results = _resolve_tasks_limit(args.max_results)
-    ui.resolve_agenda_start_date(args.date)
+    _validate_agenda_args(args)
 
     view_ctx = resolve_view_context(args)
 

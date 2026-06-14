@@ -71,8 +71,13 @@ def _resolve_tasks_limit(max_results: int | None) -> int:
     return max_results
 
 
-def run_flow_board(args: BoardArgs) -> None:
-    """Run the flow board command."""
+def _validate_board_args(args: BoardArgs) -> None:
+    """Validate board arguments and configured view selection."""
+    actions.resolve_column_specs(args)
+
+
+def run_board(args: BoardArgs) -> None:
+    """Run the board command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
     if console.width < 80:
@@ -84,7 +89,7 @@ def run_flow_board(args: BoardArgs) -> None:
     if args.days < 0:
         raise typer.BadParameter("--days must be non-negative")
     args.max_results = _resolve_tasks_limit(args.max_results)
-    actions.resolve_column_specs(args)
+    _validate_board_args(args)
 
     with processing_status(console, color_enabled):
         nodes, discovered_todo_states, discovered_done_states = load_and_process_data(args)
@@ -106,7 +111,7 @@ def run_flow_board(args: BoardArgs) -> None:
 
 
 def register(app: typer.Typer) -> None:
-    """Register the flow board command."""
+    """Register the board command."""
 
     @app.command(
         "board",
@@ -116,7 +121,7 @@ def register(app: typer.Typer) -> None:
             _BOARD_HELP_ENTRIES,
         ),
     )
-    def flow_board(  # noqa: PLR0913
+    def board(  # noqa: PLR0913
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -306,7 +311,7 @@ def register(app: typer.Typer) -> None:
             help="Preprocess nodes to set category from first tag",
         ),
     ) -> None:
-        """Display tasks as an interactive flow board."""
+        """Display tasks as an interactive board."""
         args = BoardArgs(
             files=files,
             config=config,
@@ -345,4 +350,4 @@ def register(app: typer.Typer) -> None:
         org.config.app.apply_config_defaults(args)
         org.logging.log_applied_config_defaults(args, sys.argv[1:], "board")
         org.logging.log_command_arguments(args, "board")
-        run_flow_board(args)
+        run_board(args)

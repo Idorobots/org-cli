@@ -22,7 +22,7 @@ from org.commands.tasks.common import (
 )
 
 from . import actions, ui
-from .actions import BoardSession, create_flow_board_session
+from .actions import BoardSession, create_board_session
 
 
 if TYPE_CHECKING:
@@ -422,5 +422,5 @@ def run_board_app(
     color_enabled: bool,
 ) -> None:
     """Run the Textual-backed interactive board app."""
-    session = create_flow_board_session(args, nodes, todo_states, done_states, color_enabled)
+    session = create_board_session(args, nodes, todo_states, done_states, color_enabled)
     BoardApp(session).run()

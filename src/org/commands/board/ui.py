@@ -235,7 +235,7 @@ def _estimate_board_height(columns: Sequence[_BoardColumnLike], panel_content_wi
     return content_row_height + 3
 
 
-def render_static_flow_board(
+def render_static_board(
     console: Console,
     columns: Sequence[_BoardColumnLike],
     *,
@@ -243,7 +243,7 @@ def render_static_flow_board(
     todo_states: list[str],
     color_enabled: bool,
 ) -> None:
-    """Render non-interactive flow board output."""
+    """Render non-interactive board output."""
     table = Table(expand=True, box=box.SQUARE, show_lines=False, show_header=False)
     for _ in columns:
         table.add_column(ratio=1)

@@ -338,14 +338,14 @@ def reload_session(
     refresh_visible_columns(session, preserve_identity)
 
 
-def create_flow_board_session(
+def create_board_session(
     args: BoardArgs,
     nodes: list[Heading],
     todo_states: list[str],
     done_states: list[str],
     color_enabled: bool,
 ) -> BoardSession:
-    """Create interactive flow board session state."""
+    """Create interactive board session state."""
     columns = build_selector_board_columns(nodes, resolve_column_specs(args))
     selected_column_index = 0
     for index, column in enumerate(columns):
