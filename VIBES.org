@@ -7273,7 +7273,6 @@ The agenda list should have a way to indicate that a task is blocked or doesn't 
 To convey that, the task line should be grayed out in the agenda time-breakdown (other sections should not be affected). When hovering a task line in the time-breakdown section of the agenda, if the task is blocked in the =.is_blocked= sense, or some of its workflow requirements aren't met, a suitable message should be displayed in the status bar. Use the =info= property of the requirement or a generic =Task is blocked= string.
 
 *** Do not add =#+TODO:= line to file contents, but rather modify done_states.
-
 *** Better heading & body parsing
 Use stripped =RichText= for body/heading tags.
 *** Parallelize document processing
@@ -8141,10 +8140,6 @@ All of this should be moved to the =org.pipeline.load= module.
 - State "CANCELLED"  from              [2026-06-13 Sat 21:02] \\
   Nah, these are annoying.
 :END:
-*** Use Textual textarea for any org-mode syntax highlighting
-- Limit to just the interactive commands.
-- Potentially use it for code edits of the files?
-**** Show a Textual modal when performing external edits, instead of suspending the app
 *** DONE Reorganize the query execution engine code
 :PROPERTIES:
 :capture_time: [2026-06-13 Sat 00:04]
@@ -8286,6 +8281,12 @@ I absolutely hate this. Please refactor the =out= and =details= switches to be o
 :END:
 
 All the functions dealing with CLI argument processing, ordering of filters, etc should be moved to a new module =org.config.cli=. The =org.query= package should only contain query building and execution. The =org.config= package is a suitable place for the default pipeline configuration and user-provided overrides in the form of CLI switches.
+
+** TODO Built-in editor
+*** Use Textual textarea for org-mode syntax highlighting & editing
+- Separate config setting for internal/external editor.
+
+*** Show a Textual modal when performing external edits, instead of suspending the app
 
 ** TODO Agenda usability improvements                                                    :UX:Agenda:
 *** Agenda non-interactive output format
@@ -8624,7 +8625,18 @@ The action will prompt the user for each step multiple times (empty response mov
 
 When typing, the action should propose existing tasks by title. When a newly added task matches an existing recurrent task by title it should be "reused" instead of creating a duplicate (reuse as in, scheduled set to the current day while preserving the repeater if present).
 
-** TODO Query language extensions
+*** Flicker when attempting to edit a non-task row in the agenda.                              :Bug:
+:PROPERTIES:
+:capture_time: [2026-06-11 Thu 15:54]
+:context: 
+:END:
+*** Agenda command allows highlighting the section titles.                                     :Bug:
+Section titles should be omitted when scrolling the highlight.
+:PROPERTIES:
+:capture_time: [2026-06-11 Thu 15:54]
+:context: 
+:END:
+** Query language & command improvements                                                  :UX:Query:
 *** Query language improvements
 - Uniform function calling: =foo | not= is the same as =not(foo)=
 - Field assignment should return the mutated object: =foo.title = "bar"= evaluates to =foo= after the change.
@@ -8672,7 +8684,6 @@ sort_by(.priority, .latest_timestamp) # sort by priority first, break ties by la
 sort_by(.priority, .category, .title) # sort by multiple values in order
 sort_by(-.property.some_val, .latest_timestamp.start.month) # sort by multiple compound subqueries
 #+end_example
-** Query command improvements                                                             :UX:Query:
 *** Saved queries                                                                           :Config:
 Add a configuration file section for saved queries that can be invoked with =org tasks query= in place of the actual query string.
 
@@ -8686,6 +8697,11 @@ Invocation:
 #+begin_example
 org tasks query all-todos
 #+end_example
+
+*** Query data visualization
+- Functions that encode stats into widget objects
+- Show stats widgets when query return widget objects
+- Support mixed data (title string + histogram widget, etc)
 
 ** Board command improvements                                                             :UX:Board:
 *** Board plan command
@@ -8760,6 +8776,13 @@ Should work the same as the configurable agenda view columns.
 *** Config handling is too generic
 Split config handling to be per-command and have the config file reflect that.
 *** Refactor config handling so that no global state is mutated
+*** TODO Built-in filters/orderings/mutators should be treated the same as custom ones
+:PROPERTIES:
+:capture_time: [2026-06-13 Sat 00:01]
+:context: 
+:END:
+
+After loading the config defaults, these should be populated in their respective config object sections.
 ** Dashboard command                                                                     :Dashboard:
 - Reads a dashboard config and shows a visualization on a server.
 - Tabbed views for the agenda, board, backlog and stats
@@ -8867,13 +8890,3 @@ Add a notification command integration (for instance notify-send) when human int
   Should be handled by workflow configuration, no need for a dedicated command.
 :END:
 Similar to flow, but for full specifications, easy extension, replacement, validation etc.
-* TODO Flicker when attempting to edit a non-task row in the agenda.
-:PROPERTIES:
-:capture_time: [2026-06-11 Thu 15:54]
-:context: 
-:END:
-* TODO Agenda command allows highlighting the section titles. Section titles should be omitted when scrolling the highlight.
-:PROPERTIES:
-:capture_time: [2026-06-11 Thu 15:54]
-:context: 
-:END:
