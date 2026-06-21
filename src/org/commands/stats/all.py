@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -181,7 +180,7 @@ def _build_panel(
     color_enabled: bool,
     height: int | None = None,
 ) -> Panel:
-    """Create a Panel for a section using shared config."""
+    """Create a Panel for a section using shared app_config."""
     panel_height = _section_height(section) if height is None else height
     return Panel(
         _panel_body(section.body, color_enabled),
@@ -558,7 +557,7 @@ def run_stats(args: StatsAllArgs, config: org.config.app.AppConfig) -> None:
     console.print(layout)
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
     """Register the stats all command."""
 
     @app.command("all", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -576,55 +575,55 @@ def register(app: typer.Typer) -> None:
             help="Config file name to load from current directory",
         ),
         exclude: str | None = typer.Option(
-            None,
+            app_config.exclude,
             "--exclude",
             metavar="FILE",
             help="File containing words to exclude (one per line)",
         ),
         mapping: str | None = typer.Option(
-            None,
+            app_config.mapping,
             "--mapping",
             metavar="FILE",
             help="JSON file containing tag mappings (dict[str, str])",
         ),
         todo_states: str = typer.Option(
-            "TODO",
+            ",".join(app_config.todo_states),
             "--todo-states",
             metavar="KEYS",
             help="Comma-separated list of incomplete task states",
         ),
         done_states: str = typer.Option(
-            "DONE",
+            ",".join(app_config.done_states),
             "--done-states",
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
         filter_priority: str | None = typer.Option(
-            None,
+            app_config.filter_priority,
             "--filter-priority",
             metavar="P",
             help="Filter tasks where priority equals P",
         ),
         filter_level: int | None = typer.Option(
-            None,
+            app_config.filter_level,
             "--filter-level",
             metavar="N",
             help="Filter tasks where heading level equals N",
         ),
         filter_repeats_above: int | None = typer.Option(
-            None,
+            app_config.filter_repeats_above,
             "--filter-repeats-above",
             metavar="N",
             help="Filter tasks where repeat count > N (non-inclusive)",
         ),
         filter_repeats_below: int | None = typer.Option(
-            None,
+            app_config.filter_repeats_below,
             "--filter-repeats-below",
             metavar="N",
             help="Filter tasks where repeat count < N (non-inclusive)",
         ),
         filter_date_from: str | None = typer.Option(
-            None,
+            app_config.filter_date_from,
             "--filter-date-from",
             metavar="TIMESTAMP",
             help=(
@@ -634,7 +633,7 @@ def register(app: typer.Typer) -> None:
             ),
         ),
         filter_date_until: str | None = typer.Option(
-            None,
+            app_config.filter_date_until,
             "--filter-date-until",
             metavar="TIMESTAMP",
             help=(
@@ -644,25 +643,25 @@ def register(app: typer.Typer) -> None:
             ),
         ),
         filter_properties: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_properties,
             "--filter-property",
             metavar="KEY=VALUE",
             help="Filter tasks with exact property match (case-sensitive, can specify multiple)",
         ),
         filter_tags: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_tags,
             "--filter-tag",
             metavar="REGEX",
             help="Filter tasks where any tag matches regex (case-sensitive, can specify multiple)",
         ),
         filter_headings: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_headings,
             "--filter-heading",
             metavar="REGEX",
             help="Filter tasks where heading matches regex (case-sensitive, can specify multiple)",
         ),
         filter_bodies: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_bodies,
             "--filter-body",
             metavar="REGEX",
             help=(
@@ -671,17 +670,17 @@ def register(app: typer.Typer) -> None:
             ),
         ),
         filter_completed: bool = typer.Option(
-            False,
+            app_config.filter_completed,
             "--filter-completed",
             help="Filter tasks with todo state in done keys",
         ),
         filter_not_completed: bool = typer.Option(
-            False,
+            app_config.filter_not_completed,
             "--filter-not-completed",
             help="Filter tasks with todo state in todo keys or without a todo state",
         ),
         color_flag: bool | None = typer.Option(
-            None,
+            app_config.color_flag,
             "--color/--no-color",
             help="Force colored output",
         ),
@@ -693,56 +692,57 @@ def register(app: typer.Typer) -> None:
             help="Override auto-derived console width (minimum: 50)",
         ),
         max_results: int | None = typer.Option(
-            None,
+            app_config.stats.max_results,
             "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
         ),
         max_tags: int = typer.Option(
-            5,
+            5 if app_config.stats.max_tags is None else app_config.stats.max_tags,
             "--max-tags",
             metavar="N",
             help="Maximum number of tags to display in TAGS section (use 0 to omit section)",
         ),
         use: str = typer.Option(
-            "tags",
+            "tags" if app_config.stats.use is None else app_config.stats.use,
             "--use",
             metavar="CATEGORY",
             help="Category to display: tags, heading, or body",
         ),
         with_tags_as_category: bool = typer.Option(
-            False,
+            app_config.with_tags_as_category,
             "--with-tags-as-category",
             help="Preprocess nodes to set category from first tag",
         ),
         max_relations: int = typer.Option(
-            5,
+            5 if app_config.stats.max_relations is None else app_config.stats.max_relations,
             "--max-relations",
             metavar="N",
             help="Maximum number of relations to display per item (use 0 to omit sections)",
         ),
         min_group_size: int = typer.Option(
-            2,
+            2 if app_config.stats.min_group_size is None else app_config.stats.min_group_size,
             "--min-group-size",
             metavar="N",
             help="Minimum group size to display",
         ),
         max_groups: int = typer.Option(
-            5,
+            5 if app_config.stats.max_groups is None else app_config.stats.max_groups,
             "--max-groups",
             metavar="N",
             help="Maximum number of tag groups to display (use 0 to omit section)",
         ),
     ) -> None:
         """Show overall task stats."""
+        app_config = org.config.app.require_app_config(ctx)
         args = StatsAllArgs(
             files=files,
             config=config,
             exclude=exclude,
             mapping=mapping,
-            mapping_inline=None,
-            exclude_inline=None,
+            mapping_inline=app_config.mapping_inline,
+            exclude_inline=app_config.exclude_inline,
             todo_states=todo_states,
             done_states=done_states,
             filter_priority=filter_priority,
@@ -767,8 +767,6 @@ def register(app: typer.Typer) -> None:
             min_group_size=min_group_size,
             max_groups=max_groups,
         )
-        app_config = org.config.app.require_app_config(ctx)
-        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
-        org.logging.log_applied_config_defaults(app_config, args, "stats all")
+        org.logging.log_command_config(app_config, "stats all")
         org.logging.log_command_arguments(args, "stats all")
         run_stats(args, app_config)

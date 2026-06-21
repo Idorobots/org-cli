@@ -10,7 +10,13 @@ import org_parser
 import pytest
 import typer
 
+import org.config.app
 from org.commands.tasks import add as tasks_add
+
+
+def _run_tasks_add(args: tasks_add.AddArgs) -> None:
+    """Run tasks add with a default app config for direct tests."""
+    tasks_add.run_tasks_add(args, org.config.app.build_default_app_config())
 
 
 if TYPE_CHECKING:
@@ -59,7 +65,7 @@ def test_run_tasks_add_appends_top_level_heading_to_first_resolved_file(tmp_path
         body="Body text",
     )
 
-    tasks_add.run_tasks_add(args)
+    _run_tasks_add(args)
 
     first_root = org_parser.loads(first.read_text(encoding="utf-8"))
     first_nodes = list(first_root)
@@ -85,7 +91,7 @@ def test_run_tasks_add_uses_file_override_when_provided(tmp_path: Path) -> None:
         file=str(second),
     )
 
-    tasks_add.run_tasks_add(args)
+    _run_tasks_add(args)
 
     assert "Target second" not in first.read_text(encoding="utf-8")
     assert "* TODO Target second" in second.read_text(encoding="utf-8")
@@ -101,7 +107,7 @@ def test_run_tasks_add_inserts_child_of_parent_title_with_default_level(tmp_path
 
     args = make_add_args([str(source)], title="Added child", parent="Parent")
 
-    tasks_add.run_tasks_add(args)
+    _run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     nodes = list(root)
@@ -122,7 +128,7 @@ def test_run_tasks_add_inserts_child_of_parent_id(tmp_path: Path) -> None:
 
     args = make_add_args([str(source)], title="Added child", parent="parent-1")
 
-    tasks_add.run_tasks_add(args)
+    _run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     nodes = list(root)
@@ -137,7 +143,7 @@ def test_run_tasks_add_errors_when_parent_not_found(tmp_path: Path) -> None:
     args = make_add_args([str(source)], title="Child", parent="missing")
 
     with pytest.raises(typer.BadParameter, match="was not found"):
-        tasks_add.run_tasks_add(args)
+        _run_tasks_add(args)
 
 
 def test_run_tasks_add_errors_when_parent_is_ambiguous(tmp_path: Path) -> None:
@@ -147,7 +153,7 @@ def test_run_tasks_add_errors_when_parent_is_ambiguous(tmp_path: Path) -> None:
     args = make_add_args([str(source)], title="Child", parent="Same")
 
     with pytest.raises(typer.BadParameter, match="ambiguous"):
-        tasks_add.run_tasks_add(args)
+        _run_tasks_add(args)
 
 
 def test_run_tasks_add_rejects_heading_with_mutually_exclusive_switches(tmp_path: Path) -> None:
@@ -157,7 +163,7 @@ def test_run_tasks_add_rejects_heading_with_mutually_exclusive_switches(tmp_path
     args = make_add_args([str(source)], heading="* TODO One", title="Two")
 
     with pytest.raises(typer.BadParameter, match="--heading cannot be combined"):
-        tasks_add.run_tasks_add(args)
+        _run_tasks_add(args)
 
 
 def test_run_tasks_add_reads_task_source_from_stdin_when_heading_components_missing(
@@ -177,7 +183,7 @@ def test_run_tasks_add_reads_task_source_from_stdin_when_heading_components_miss
 
     monkeypatch.setattr("sys.stdin", io.StringIO("* TODO From stdin\n"))
 
-    tasks_add.run_tasks_add(args)
+    _run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     created = list(root)[-1]
@@ -212,7 +218,7 @@ def test_run_tasks_add_applies_edits_to_stdin_task_source(
 
     monkeypatch.setattr("sys.stdin", io.StringIO("* TODO Base :old:\n** TODO Child\n"))
 
-    tasks_add.run_tasks_add(args)
+    _run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     nodes = list(root)
@@ -249,7 +255,7 @@ def test_run_tasks_add_stdin_parent_attach_relies_on_parser_normalization(
 
     monkeypatch.setattr("sys.stdin", io.StringIO("* TODO Child\n"))
 
-    tasks_add.run_tasks_add(args)
+    _run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     child = next(node for node in root if node.title_text.strip() == "Child")
@@ -274,7 +280,7 @@ def test_run_tasks_add_errors_when_stdin_task_source_is_empty(
     monkeypatch.setattr("sys.stdin", io.StringIO("  \n\t\n"))
 
     with pytest.raises(typer.BadParameter, match="Task heading is empty"):
-        tasks_add.run_tasks_add(args)
+        _run_tasks_add(args)
 
 
 def test_run_tasks_add_surfaces_invalid_template_parse_errors(tmp_path: Path) -> None:
@@ -284,7 +290,7 @@ def test_run_tasks_add_surfaces_invalid_template_parse_errors(tmp_path: Path) ->
     args = make_add_args([str(source)], title="Two", scheduled="not-a-timestamp")
 
     with pytest.raises(typer.BadParameter, match="Invalid task template"):
-        tasks_add.run_tasks_add(args)
+        _run_tasks_add(args)
 
 
 def test_run_tasks_add_allows_heading_without_title_when_metadata_is_set(tmp_path: Path) -> None:
@@ -293,7 +299,7 @@ def test_run_tasks_add_allows_heading_without_title_when_metadata_is_set(tmp_pat
     source.write_text("* TODO Parent\n", encoding="utf-8")
     args = make_add_args([str(source)], title=None, todo="TODO", priority="A", comment="true")
 
-    tasks_add.run_tasks_add(args)
+    _run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = list(root)[-1]
@@ -310,7 +316,7 @@ def test_run_tasks_add_rejects_invalid_comment_value(tmp_path: Path) -> None:
     args = make_add_args([str(source)], todo=None, title=None, comment="yes")
 
     with pytest.raises(typer.BadParameter, match="--comment must be either"):
-        tasks_add.run_tasks_add(args)
+        _run_tasks_add(args)
 
 
 def test_run_tasks_add_applies_json_properties_and_generates_default_id(tmp_path: Path) -> None:
@@ -324,7 +330,7 @@ def test_run_tasks_add_applies_json_properties_and_generates_default_id(tmp_path
         id_value=None,
     )
 
-    tasks_add.run_tasks_add(args)
+    _run_tasks_add(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = list(root)[-1]
@@ -341,4 +347,4 @@ def test_run_tasks_add_rejects_invalid_properties_json(tmp_path: Path) -> None:
     args = make_add_args([str(source)], properties='["x"]')
 
     with pytest.raises(typer.BadParameter, match="--properties must be a JSON object"):
-        tasks_add.run_tasks_add(args)
+        _run_tasks_add(args)

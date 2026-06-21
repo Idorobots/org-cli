@@ -10,7 +10,13 @@ import pytest
 import typer
 from org_parser.document import Heading
 
+import org.config.app
 from org.commands.tasks import archive as tasks_archive
+
+
+def _run_tasks_archive(args: tasks_archive.ArchiveArgs) -> None:
+    """Run tasks archive with a default app config for direct tests."""
+    tasks_archive.run_tasks_archive(args, org.config.app.build_default_app_config())
 
 
 if TYPE_CHECKING:
@@ -38,7 +44,7 @@ def test_run_tasks_archive_uses_default_archive_pattern(tmp_path: Path) -> None:
     source.write_text("* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n", encoding="utf-8")
     archive.write_text("", encoding="utf-8")
 
-    tasks_archive.run_tasks_archive(make_archive_args([str(source)]))
+    _run_tasks_archive(make_archive_args([str(source)]))
 
     source_root = org_parser.loads(source.read_text(encoding="utf-8"))
     archive_root = org_parser.loads(archive.read_text(encoding="utf-8"))
@@ -65,7 +71,7 @@ def test_run_tasks_archive_prefers_heading_archive_property(tmp_path: Path) -> N
     by_property.write_text("", encoding="utf-8")
     by_keyword.write_text("", encoding="utf-8")
 
-    tasks_archive.run_tasks_archive(make_archive_args([str(source)]))
+    _run_tasks_archive(make_archive_args([str(source)]))
 
     property_root = org_parser.loads(by_property.read_text(encoding="utf-8"))
     keyword_root = org_parser.loads(by_keyword.read_text(encoding="utf-8"))
@@ -83,7 +89,7 @@ def test_run_tasks_archive_uses_document_archive_keyword(tmp_path: Path) -> None
     )
     destination.write_text("", encoding="utf-8")
 
-    tasks_archive.run_tasks_archive(make_archive_args([str(source)]))
+    _run_tasks_archive(make_archive_args([str(source)]))
 
     destination_root = org_parser.loads(destination.read_text(encoding="utf-8"))
     assert [node.title_text.strip() for node in list(destination_root)] == ["Keep"]
@@ -97,7 +103,7 @@ def test_run_tasks_archive_moves_to_named_parent_heading_in_same_file(tmp_path: 
         encoding="utf-8",
     )
 
-    tasks_archive.run_tasks_archive(make_archive_args([str(source)]))
+    _run_tasks_archive(make_archive_args([str(source)]))
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     nodes = list(root)
@@ -125,7 +131,7 @@ def test_run_tasks_archive_moves_to_named_parent_heading_in_other_file(tmp_path:
     )
     destination.write_text("* TODO Archived\n", encoding="utf-8")
 
-    tasks_archive.run_tasks_archive(make_archive_args([str(source)]))
+    _run_tasks_archive(make_archive_args([str(source)]))
 
     source_root = org_parser.loads(source.read_text(encoding="utf-8"))
     destination_root = org_parser.loads(destination.read_text(encoding="utf-8"))
@@ -144,10 +150,10 @@ def test_run_tasks_archive_requires_exactly_one_selector(tmp_path: Path) -> None
     source.write_text("* TODO Keep\n", encoding="utf-8")
 
     with pytest.raises(typer.BadParameter, match="exactly one task selector"):
-        tasks_archive.run_tasks_archive(make_archive_args([str(source)], query_id=None))
+        _run_tasks_archive(make_archive_args([str(source)], query_id=None))
 
     with pytest.raises(typer.BadParameter, match="exactly one task selector"):
-        tasks_archive.run_tasks_archive(
+        _run_tasks_archive(
             make_archive_args(
                 [str(source)],
                 query_title="Keep",
@@ -163,10 +169,10 @@ def test_run_tasks_archive_supports_query_title_and_query(tmp_path: Path) -> Non
     source.write_text("* TODO A\n* TODO B\n", encoding="utf-8")
     archive.write_text("", encoding="utf-8")
 
-    tasks_archive.run_tasks_archive(
+    _run_tasks_archive(
         make_archive_args([str(source)], query_id=None, query_title="A"),
     )
-    tasks_archive.run_tasks_archive(
+    _run_tasks_archive(
         make_archive_args(
             [str(source)],
             query_id=None,
@@ -189,7 +195,7 @@ def test_run_tasks_archive_reports_missing_archive_file(tmp_path: Path) -> None:
     )
 
     with pytest.raises(typer.BadParameter, match="not found"):
-        tasks_archive.run_tasks_archive(make_archive_args([str(source)]))
+        _run_tasks_archive(make_archive_args([str(source)]))
 
 
 def test_run_tasks_archive_reports_missing_archive_heading(tmp_path: Path) -> None:
@@ -203,7 +209,7 @@ def test_run_tasks_archive_reports_missing_archive_heading(tmp_path: Path) -> No
     destination.write_text("* TODO Other\n", encoding="utf-8")
 
     with pytest.raises(typer.BadParameter, match="--parent 'Missing' was not found"):
-        tasks_archive.run_tasks_archive(make_archive_args([str(source)]))
+        _run_tasks_archive(make_archive_args([str(source)]))
 
 
 def test_run_tasks_archive_skips_descendant_matches_when_parent_selected(
@@ -219,7 +225,7 @@ def test_run_tasks_archive_skips_descendant_matches_when_parent_selected(
     )
     archive.write_text("", encoding="utf-8")
 
-    tasks_archive.run_tasks_archive(
+    _run_tasks_archive(
         make_archive_args(
             [str(source)],
             query_id=None,
@@ -242,7 +248,7 @@ def test_run_tasks_archive_sets_archive_metadata_properties(tmp_path: Path) -> N
     )
     archive.write_text("", encoding="utf-8")
 
-    tasks_archive.run_tasks_archive(make_archive_args([str(source)]))
+    _run_tasks_archive(make_archive_args([str(source)]))
 
     archive_root = org_parser.loads(archive.read_text(encoding="utf-8"))
     archived_heading = next(iter(archive_root))

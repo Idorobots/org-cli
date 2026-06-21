@@ -394,7 +394,7 @@ def run_tasks_list(args: ListArgs, config: org.config.app.AppConfig) -> None:
     _run_tasks_list_interactive(args, config, session_data)
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
     """Register the tasks list command."""
 
     @app.command(
@@ -419,55 +419,55 @@ def register(app: typer.Typer) -> None:
             help="Config file name to load from current directory",
         ),
         exclude: str | None = typer.Option(
-            None,
+            app_config.exclude,
             "--exclude",
             metavar="FILE",
             help="File containing words to exclude (one per line)",
         ),
         mapping: str | None = typer.Option(
-            None,
+            app_config.mapping,
             "--mapping",
             metavar="FILE",
             help="JSON file containing tag mappings (dict[str, str])",
         ),
         todo_states: str = typer.Option(
-            "TODO",
+            ",".join(app_config.todo_states),
             "--todo-states",
             metavar="KEYS",
             help="Comma-separated list of incomplete task states",
         ),
         done_states: str = typer.Option(
-            "DONE",
+            ",".join(app_config.done_states),
             "--done-states",
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
         filter_priority: str | None = typer.Option(
-            None,
+            app_config.filter_priority,
             "--filter-priority",
             metavar="P",
             help="Filter tasks where priority equals P",
         ),
         filter_level: int | None = typer.Option(
-            None,
+            app_config.filter_level,
             "--filter-level",
             metavar="N",
             help="Filter tasks where heading level equals N",
         ),
         filter_repeats_above: int | None = typer.Option(
-            None,
+            app_config.filter_repeats_above,
             "--filter-repeats-above",
             metavar="N",
             help="Filter tasks where repeat count > N (non-inclusive)",
         ),
         filter_repeats_below: int | None = typer.Option(
-            None,
+            app_config.filter_repeats_below,
             "--filter-repeats-below",
             metavar="N",
             help="Filter tasks where repeat count < N (non-inclusive)",
         ),
         filter_date_from: str | None = typer.Option(
-            None,
+            app_config.filter_date_from,
             "--filter-date-from",
             metavar="TIMESTAMP",
             help=(
@@ -477,7 +477,7 @@ def register(app: typer.Typer) -> None:
             ),
         ),
         filter_date_until: str | None = typer.Option(
-            None,
+            app_config.filter_date_until,
             "--filter-date-until",
             metavar="TIMESTAMP",
             help=(
@@ -487,25 +487,25 @@ def register(app: typer.Typer) -> None:
             ),
         ),
         filter_properties: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_properties,
             "--filter-property",
             metavar="KEY=VALUE",
             help="Filter tasks with exact property match (case-sensitive, can specify multiple)",
         ),
         filter_tags: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_tags,
             "--filter-tag",
             metavar="REGEX",
             help="Filter tasks where any tag matches regex (case-sensitive, can specify multiple)",
         ),
         filter_headings: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_headings,
             "--filter-heading",
             metavar="REGEX",
             help="Filter tasks where heading matches regex (case-sensitive, can specify multiple)",
         ),
         filter_bodies: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_bodies,
             "--filter-body",
             metavar="REGEX",
             help=(
@@ -514,17 +514,17 @@ def register(app: typer.Typer) -> None:
             ),
         ),
         filter_completed: bool = typer.Option(
-            False,
+            app_config.filter_completed,
             "--filter-completed",
             help="Filter tasks with todo state in done keys",
         ),
         filter_not_completed: bool = typer.Option(
-            False,
+            app_config.filter_not_completed,
             "--filter-not-completed",
             help="Filter tasks with todo state in todo keys or without a todo state",
         ),
         color_flag: bool | None = typer.Option(
-            None,
+            app_config.color_flag,
             "--color/--no-color",
             help="Force colored output",
         ),
@@ -536,7 +536,7 @@ def register(app: typer.Typer) -> None:
             help="Override auto-derived console width (minimum: 50)",
         ),
         max_results: int | None = typer.Option(
-            None,
+            app_config.tasks.max_results,
             "--limit",
             "-n",
             metavar="N",
@@ -549,63 +549,66 @@ def register(app: typer.Typer) -> None:
             help="Number of results to skip before displaying",
         ),
         details: bool | None = typer.Option(
-            None,
+            app_config.tasks.details,
             "--details",
             help="Show full org node details",
         ),
         order_by_level: bool = typer.Option(
-            False,
+            app_config.order_by_level,
             "--order-by-level",
             help="Order tasks by heading level (repeatable)",
         ),
         order_by_file_order: bool = typer.Option(
-            False,
+            app_config.order_by_file_order,
             "--order-by-file-order",
             help="Keep tasks in source file order (repeatable)",
         ),
         order_by_file_order_reversed: bool = typer.Option(
-            False,
+            app_config.order_by_file_order_reversed,
             "--order-by-file-order-reversed",
             help="Reverse source file order (repeatable)",
         ),
         order_by_priority: bool = typer.Option(
-            False,
+            app_config.order_by_priority,
             "--order-by-priority",
             help="Order by priority (repeatable)",
         ),
         order_by_timestamp_asc: bool = typer.Option(
-            False,
+            app_config.order_by_timestamp_asc,
             "--order-by-timestamp-asc",
             help="Order by oldest timestamp first (repeatable)",
         ),
         order_by_timestamp_desc: bool = typer.Option(
-            False,
+            app_config.order_by_timestamp_desc,
             "--order-by-timestamp-desc",
             help="Order by newest timestamp first (repeatable)",
         ),
         with_tags_as_category: bool = typer.Option(
-            False,
+            app_config.with_tags_as_category,
             "--with-tags-as-category",
             help="Preprocess nodes to set category from first tag",
         ),
         out: str | None = typer.Option(
-            None,
+            app_config.tasks.out,
             "--out",
             help="Output format: org, json, or any pandoc writer format",
         ),
         out_theme: str = typer.Option(
-            DEFAULT_OUTPUT_THEME,
+            DEFAULT_OUTPUT_THEME
+            if app_config.tasks.out_theme is None
+            else app_config.tasks.out_theme,
             "--out-theme",
             help="Syntax theme for highlighted output blocks",
         ),
         pandoc_args: str | None = typer.Option(
-            None,
+            app_config.tasks.pandoc_args,
             "--pandoc-args",
             metavar="ARGS",
             help="Additional arguments forwarded to pandoc export",
         ),
     ) -> None:
         """List tasks matching filters."""
+        app_config = org.config.app.require_app_config(ctx)
         details_switch_present = details is not None
         out_switch_present = out is not None
         args = ListArgs(
@@ -613,8 +616,8 @@ def register(app: typer.Typer) -> None:
             config=config,
             exclude=exclude,
             mapping=mapping,
-            mapping_inline=None,
-            exclude_inline=None,
+            mapping_inline=app_config.mapping_inline,
+            exclude_inline=app_config.exclude_inline,
             todo_states=todo_states,
             done_states=done_states,
             filter_priority=filter_priority,
@@ -645,9 +648,7 @@ def register(app: typer.Typer) -> None:
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        app_config = org.config.app.require_app_config(ctx)
-        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
         args.noninteractive = details_switch_present or out_switch_present
-        org.logging.log_applied_config_defaults(app_config, args, "tasks list")
+        org.logging.log_command_config(app_config, "tasks list")
         org.logging.log_command_arguments(args, "tasks list")
         run_tasks_list(args, app_config)

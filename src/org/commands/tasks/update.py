@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -399,8 +398,9 @@ def _apply_field_updates(args: UpdateArgs, heading: Heading) -> None:
         heading.body = args.body
 
 
-def run_tasks_update(args: UpdateArgs) -> None:
+def run_tasks_update(args: UpdateArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks update command."""
+    del config
     selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
     _validate_update_option_conflicts(args)
     filenames = resolve_input_paths(args.files)
@@ -463,7 +463,7 @@ def run_tasks_update(args: UpdateArgs) -> None:
     typer.echo(f"Updated {selected_count} tasks.")
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, config: org.config.app.AppConfig) -> None:
     """Register the tasks update command."""
 
     @app.command("update")
@@ -648,12 +648,13 @@ def register(app: typer.Typer) -> None:
             help="Automatically confirm without prompting",
         ),
         color_flag: bool | None = typer.Option(
-            None,
+            config.color_flag,
             "--color/--no-color",
             help="Force colored output",
         ),
     ) -> None:
         """Update one task heading and persist the modified org document."""
+        app_config = org.config.app.require_app_config(ctx)
         args = UpdateArgs(
             files=files,
             config=config,
@@ -687,8 +688,6 @@ def register(app: typer.Typer) -> None:
             yes=yes,
             color_flag=color_flag,
         )
-        app_config = org.config.app.require_app_config(ctx)
-        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
-        org.logging.log_applied_config_defaults(app_config, args, "tasks update")
+        org.logging.log_command_config(app_config, "tasks update")
         org.logging.log_command_arguments(args, "tasks update")
-        run_tasks_update(args)
+        run_tasks_update(args, app_config)

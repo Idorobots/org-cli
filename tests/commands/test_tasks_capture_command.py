@@ -9,11 +9,21 @@ import org_parser
 import pytest
 import typer
 
+import org.config.app
 from org.commands.tasks import capture
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def _app_config_with_templates(
+    templates: dict[str, dict[str, str]],
+) -> org.config.app.AppConfig:
+    """Build app config with capture templates for command-entrypoint tests."""
+    config = org.config.app.build_default_app_config()
+    config.capture.templates = templates
+    return config
 
 
 def _make_capture_args(
@@ -46,7 +56,10 @@ def _restore_capture_templates(_previous: dict[str, dict[str, str]]) -> None:
 def test_run_capture_errors_when_no_templates_configured() -> None:
     """Capture should fail with a clear error when templates are missing."""
     with pytest.raises(typer.BadParameter, match="No capture templates configured"):
-        capture.run_tasks_capture(_make_capture_args(template_name="quick"), {})
+        capture.run_tasks_capture(
+            _make_capture_args(template_name="quick"),
+            _app_config_with_templates({}),
+        )
 
 
 def test_run_capture_errors_for_unknown_template_name() -> None:
@@ -204,7 +217,7 @@ def test_run_tasks_capture_noninteractive_prints_created_task_id(
     try:
         capture.run_tasks_capture(
             _make_capture_args("quick", set_values=["title=From set"]),
-            previous,
+            _app_config_with_templates(previous),
         )
     finally:
         _restore_capture_templates(previous)
@@ -232,7 +245,10 @@ def test_run_tasks_capture_interactive_does_not_print_identifier(
             "org.commands.tasks.capture.command.run_capture_form_app",
             lambda plan: {**plan.values, "title": "Write docs"},
         )
-        capture.run_tasks_capture(_make_capture_args(template_name="quick"), previous)
+        capture.run_tasks_capture(
+            _make_capture_args(template_name="quick"),
+            _app_config_with_templates(previous),
+        )
     finally:
         _restore_capture_templates(previous)
 
@@ -316,7 +332,10 @@ def test_run_capture_inserts_under_parent_query(
             "org.commands.tasks.capture.command.run_capture_form_app",
             lambda plan: {**plan.values, "title": "Child task"},
         )
-        capture.run_tasks_capture(_make_capture_args(template_name="child"), previous)
+        capture.run_tasks_capture(
+            _make_capture_args(template_name="child"),
+            _app_config_with_templates(previous),
+        )
     finally:
         _restore_capture_templates(previous)
 
@@ -352,7 +371,10 @@ def test_run_capture_cli_file_override_takes_precedence(
             "org.commands.tasks.capture.command.run_capture_form_app",
             lambda plan: {**plan.values, "title": "From override"},
         )
-        capture.run_tasks_capture(_make_capture_args("quick", file=str(override_target)), previous)
+        capture.run_tasks_capture(
+            _make_capture_args("quick", file=str(override_target)),
+            _app_config_with_templates(previous),
+        )
     finally:
         _restore_capture_templates(previous)
 
@@ -374,7 +396,10 @@ def test_run_capture_set_values_reject_invalid_format(tmp_path: Path) -> None:
     )
     try:
         with pytest.raises(typer.BadParameter, match="--set must be KEY=VALUE"):
-            capture.run_tasks_capture(_make_capture_args("quick", set_values=["title"]), previous)
+            capture.run_tasks_capture(
+                _make_capture_args("quick", set_values=["title"]),
+                _app_config_with_templates(previous),
+            )
     finally:
         _restore_capture_templates(previous)
 
@@ -392,7 +417,10 @@ def test_run_capture_static_placeholders_use_org_timestamp_format(tmp_path: Path
         },
     )
     try:
-        capture.run_tasks_capture(_make_capture_args("quick"), previous)
+        capture.run_tasks_capture(
+            _make_capture_args("quick"),
+            _app_config_with_templates(previous),
+        )
     finally:
         _restore_capture_templates(previous)
 
@@ -417,7 +445,10 @@ def test_run_capture_static_id_placeholder_uses_next_heading_number(tmp_path: Pa
         },
     )
     try:
-        capture.run_tasks_capture(_make_capture_args("quick"), previous)
+        capture.run_tasks_capture(
+            _make_capture_args("quick"),
+            _app_config_with_templates(previous),
+        )
     finally:
         _restore_capture_templates(previous)
 

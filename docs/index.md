@@ -19,7 +19,7 @@
 
 For query syntax details, use [query_language.md](query_language.md).
 
-## Configuration and Defaults
+## Configuration
 
 - Default config file: `.org-cli.yaml` in the current directory.
 - Override config file: `--config FILE`.
@@ -28,15 +28,17 @@ For query syntax details, use [query_language.md](query_language.md).
 
 ### Config file layout
 
-Config uses seven top-level sections:
+Config uses shared top-level keys plus structured command sections:
 
-- `defaults`: built-in option defaults (for example `--done-states`, `--limit`, `--filter-priority`, `--order-by-priority`).
+- Shared top-level keys: `mapping`, `exclude`, `todo_states`, `done_states`, shared filters, shared ordering flags, `color_flag`, `verbose`, and `with_tags_as_category`.
 - `filter`: custom `--filter-<name>` query snippets.
 - `order-by`: custom `--order-by-<name>` query snippets.
 - `with`: custom `--with-<name>` query snippets.
 - `capture`: named capture templates under `capture.templates`.
-- `agenda`: named agenda views under `agenda.views` with filter-based sections.
-- `board`: named board views under `board.views` with filter-based columns.
+- `tasks`: task output/list defaults such as `max_results`, `details`, `out`, `out_theme`, `pandoc_args`.
+- `stats`: stats defaults such as `max_results`, `max_tags`, `max_relations`, `min_group_size`, `max_groups`, `use`, `tags`, `groups`.
+- `agenda`: agenda defaults and named views under `agenda.views`.
+- `board`: board defaults and named views under `board.views`.
 
 Custom switch argument handling:
 
@@ -46,12 +48,12 @@ Custom switch argument handling:
 Example:
 
 ```yaml
-defaults:
-  --done-states: DONE,CANCELLED,DELEGATED
-  --limit: 10
-  --mapping: examples/mapping_example.json
-  --exclude: examples/exclude_example.txt
-  --filter-priority: A
+done_states: DONE,CANCELLED,DELEGATED
+mapping: examples/mapping_example.json
+exclude: examples/exclude_example.txt
+filter_priority: A
+stats:
+  max_results: 10
 filter:
   level-above: select(.level > $arg)
   has-todo: select(.todo != null)
@@ -73,12 +75,13 @@ Built-in argument defaults:
 - Tasks list/board built-in ordering: `--order-by-priority`, `--order-by-level`, `--order-by-file-order`, `--order-by-file-order-reversed`, `--order-by-timestamp-asc`, `--order-by-timestamp-desc`.
 - Tasks list default ordering remains timestamp-desc (same as `--order-by-timestamp-desc`).
 
-Repository-local defaults may override built-ins. In this repository, `.org-cli.yaml` sets:
+Repository-local config may override built-ins. In this repository, `.org-cli.yaml` sets:
 
-- `--done-states DONE,CANCELLED,DELEGATED`
-- `--limit 10`
-- `--mapping examples/mapping_example.json`
-- `--exclude examples/exclude_example.txt`
+- `done_states: DONE,CANCELLED`
+- `todo_states: TODO,SUSPENDED`
+- `mapping: examples/mapping_example.json`
+- `exclude: examples/exclude_example.txt`
+- `board.view: default`
 
 Common date formats for date filters:
 

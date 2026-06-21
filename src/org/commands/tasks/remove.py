@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from dataclasses import dataclass
 
 import typer
@@ -63,8 +62,9 @@ def _selected_delete_roots(headings: list[Heading]) -> list[Heading]:
     return roots
 
 
-def run_tasks_remove(args: RemoveArgs) -> None:
+def run_tasks_remove(args: RemoveArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks remove command."""
+    del config
     filenames = resolve_input_paths(args.files)
     selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
 
@@ -108,7 +108,7 @@ def run_tasks_remove(args: RemoveArgs) -> None:
     typer.echo(f"Deleted {selected_count} tasks.")
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, config: org.config.app.AppConfig) -> None:
     """Register the tasks remove command."""
 
     @app.command("remove")
@@ -149,12 +149,13 @@ def register(app: typer.Typer) -> None:
             help="Automatically confirm without prompting",
         ),
         color_flag: bool | None = typer.Option(
-            None,
+            config.color_flag,
             "--color/--no-color",
             help="Force colored output",
         ),
     ) -> None:
         """Delete one task heading and its subtree from a selected org document."""
+        app_config = org.config.app.require_app_config(ctx)
         args = RemoveArgs(
             files=files,
             config=config,
@@ -164,8 +165,6 @@ def register(app: typer.Typer) -> None:
             yes=yes,
             color_flag=color_flag,
         )
-        app_config = org.config.app.require_app_config(ctx)
-        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
-        org.logging.log_applied_config_defaults(app_config, args, "tasks remove")
+        org.logging.log_command_config(app_config, "tasks remove")
         org.logging.log_command_arguments(args, "tasks remove")
-        run_tasks_remove(args)
+        run_tasks_remove(args, app_config)

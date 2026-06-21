@@ -8,7 +8,13 @@ import org_parser
 import pytest
 import typer
 
+import org.config.app
 from org.commands.tasks import remove as tasks_remove
+
+
+def _run_tasks_remove(args: tasks_remove.RemoveArgs) -> None:
+    """Run tasks remove with a default app config for direct tests."""
+    tasks_remove.run_tasks_remove(args, org.config.app.build_default_app_config())
 
 
 if TYPE_CHECKING:
@@ -40,7 +46,7 @@ def test_run_tasks_remove_removes_matching_title_subtree(tmp_path: Path) -> None
     )
     args = make_remove_args([str(source)], query_title="Remove me")
 
-    tasks_remove.run_tasks_remove(args)
+    _run_tasks_remove(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     titles = [node.title_text.strip() for node in list(root)]
@@ -64,7 +70,7 @@ def test_run_tasks_remove_removes_matching_id_subtree(tmp_path: Path) -> None:
     )
     args = make_remove_args([str(source)], query_id="task-123")
 
-    tasks_remove.run_tasks_remove(args)
+    _run_tasks_remove(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     titles = [node.title_text.strip() for node in list(root)]
@@ -78,7 +84,7 @@ def test_run_tasks_remove_requires_at_least_one_identifier(tmp_path: Path) -> No
     args = make_remove_args([str(source)])
 
     with pytest.raises(typer.BadParameter, match="exactly one task selector"):
-        tasks_remove.run_tasks_remove(args)
+        _run_tasks_remove(args)
 
 
 def test_run_tasks_remove_rejects_title_and_id_together(tmp_path: Path) -> None:
@@ -88,7 +94,7 @@ def test_run_tasks_remove_rejects_title_and_id_together(tmp_path: Path) -> None:
     args = make_remove_args([str(source)], query_title="Keep", query_id="task-123")
 
     with pytest.raises(typer.BadParameter, match="exactly one task selector"):
-        tasks_remove.run_tasks_remove(args)
+        _run_tasks_remove(args)
 
 
 def test_run_tasks_remove_deletes_all_matching_tasks(tmp_path: Path) -> None:
@@ -97,7 +103,7 @@ def test_run_tasks_remove_deletes_all_matching_tasks(tmp_path: Path) -> None:
     source.write_text("* TODO Same\n* TODO Same\n* TODO Tail\n", encoding="utf-8")
     args = make_remove_args([str(source)], query_title="Same")
 
-    tasks_remove.run_tasks_remove(args)
+    _run_tasks_remove(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     titles = [node.title_text.strip() for node in list(root)]
@@ -111,7 +117,7 @@ def test_run_tasks_remove_selects_query_title_with_escaped_characters(tmp_path: 
     source.write_text(f"* TODO Keep\n* TODO {title}\n* TODO Tail\n", encoding="utf-8")
     args = make_remove_args([str(source)], query_title=title)
 
-    tasks_remove.run_tasks_remove(args)
+    _run_tasks_remove(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     titles = [node.title_text.strip() for node in list(root)]
@@ -125,7 +131,7 @@ def test_run_tasks_remove_errors_when_no_tasks_match(tmp_path: Path) -> None:
     args = make_remove_args([str(source)], query_title="Missing")
 
     with pytest.raises(typer.BadParameter, match="No task matches"):
-        tasks_remove.run_tasks_remove(args)
+        _run_tasks_remove(args)
 
 
 def test_run_tasks_remove_removes_matching_query_subtree(tmp_path: Path) -> None:
@@ -137,7 +143,7 @@ def test_run_tasks_remove_removes_matching_query_subtree(tmp_path: Path) -> None
     )
     args = make_remove_args([str(source)], query='str(.title_text) == "Remove me"')
 
-    tasks_remove.run_tasks_remove(args)
+    _run_tasks_remove(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     titles = [node.title_text.strip() for node in list(root)]
@@ -155,7 +161,7 @@ def test_run_tasks_remove_rejects_multiple_selector_switches(tmp_path: Path) -> 
     )
 
     with pytest.raises(typer.BadParameter, match="exactly one task selector"):
-        tasks_remove.run_tasks_remove(args)
+        _run_tasks_remove(args)
 
 
 def test_run_tasks_remove_cancels_when_confirmation_declined(
@@ -172,7 +178,7 @@ def test_run_tasks_remove_cancels_when_confirmation_declined(
 
     monkeypatch.setattr("rich.prompt.Confirm.ask", _decline_confirmation)
 
-    tasks_remove.run_tasks_remove(args)
+    _run_tasks_remove(args)
 
     updated = source.read_text(encoding="utf-8")
     assert "Remove me" in updated

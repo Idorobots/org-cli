@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from dataclasses import dataclass
 
 import typer
@@ -51,8 +50,9 @@ def _selected_archive_roots(headings: list[Heading]) -> list[Heading]:
     return roots
 
 
-def run_tasks_archive(args: ArchiveArgs) -> None:
+def run_tasks_archive(args: ArchiveArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks archive command."""
+    del config
     filenames = resolve_input_paths(args.files)
     selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
     selected_headings = resolve_headings_by_query(filenames, selector_query)
@@ -84,8 +84,9 @@ def run_tasks_archive(args: ArchiveArgs) -> None:
     typer.echo(f"Archived {len(archive_roots)} tasks.")
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, config: org.config.app.AppConfig) -> None:
     """Register the tasks archive command."""
+    del config
 
     @app.command("archive")
     def tasks_archive(  # noqa: PLR0913
@@ -121,6 +122,7 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Archive selected task heading and subtree."""
+        app_config = org.config.app.require_app_config(ctx)
         args = ArchiveArgs(
             files=files,
             config=config,
@@ -128,8 +130,6 @@ def register(app: typer.Typer) -> None:
             query_id=query_id,
             query=query,
         )
-        app_config = org.config.app.require_app_config(ctx)
-        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
-        org.logging.log_applied_config_defaults(app_config, args, "tasks archive")
+        org.logging.log_command_config(app_config, "tasks archive")
         org.logging.log_command_arguments(args, "tasks archive")
-        run_tasks_archive(args)
+        run_tasks_archive(args, app_config)

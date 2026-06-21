@@ -73,20 +73,21 @@ def capture_task(
     return finalize_capture_plan(plan, plan.values, interactive_used=interactive_used)
 
 
-def run_tasks_capture(args: TasksCaptureArgs, templates: dict[str, dict[str, str]]) -> None:
+def run_tasks_capture(args: TasksCaptureArgs, config: org.config.app.AppConfig) -> None:
     """Run tasks capture command using configured templates."""
     if args.template_name is None and not _is_interactive_terminal():
         raise click.UsageError(
             "org tasks capture requires a TTY unless TEMPLATE_NAME and all values are provided",
         )
 
-    result = capture_task(args, templates)
+    result = capture_task(args, config.capture.templates)
     if not result.interactive_used:
         typer.echo(result.heading.id or result.heading.title_text)
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, config: org.config.app.AppConfig) -> None:
     """Register the tasks capture command."""
+    del config
 
     @app.command(
         "capture",
@@ -137,7 +138,7 @@ def register(app: typer.Typer) -> None:
             set_values=set_values,
         )
         org.logging.log_command_arguments(args, "tasks capture")
-        run_tasks_capture(args, app_config.capture.templates)
+        run_tasks_capture(args, app_config)
 
 
 __all__ = ["TasksCaptureArgs", "TasksCaptureResult", "register", "run_tasks_capture"]

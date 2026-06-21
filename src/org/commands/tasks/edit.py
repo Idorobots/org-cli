@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from dataclasses import dataclass
 
 import typer
@@ -32,8 +31,9 @@ class EditArgs:
     query: str | None
 
 
-def run_tasks_edit(args: EditArgs) -> None:
+def run_tasks_edit(args: EditArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks edit command."""
+    del config
     filenames = resolve_input_paths(args.files)
     selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
     selected_headings = resolve_headings_by_query(filenames, selector_query)
@@ -59,8 +59,9 @@ def run_tasks_edit(args: EditArgs) -> None:
     typer.echo("Edited 1 task.")
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, config: org.config.app.AppConfig) -> None:
     """Register the tasks edit command."""
+    del config
 
     @app.command("edit")
     def tasks_edit(  # noqa: PLR0913
@@ -104,7 +105,6 @@ def register(app: typer.Typer) -> None:
             query=query,
         )
         app_config = org.config.app.require_app_config(ctx)
-        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
-        org.logging.log_applied_config_defaults(app_config, args, "tasks edit")
+        org.logging.log_command_config(app_config, "tasks edit")
         org.logging.log_command_arguments(args, "tasks edit")
-        run_tasks_edit(args)
+        run_tasks_edit(args, app_config)

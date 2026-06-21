@@ -8303,9 +8303,12 @@ In file src/org/commands/tasks/archive.py around line 141, near the ~def registe
 
 Context should be passed to this command exactly the same way as for all the other commands. Don't use =click= to extract the global context. This should apply to all the commands - use the same pattern - extract the config from the typer context in the main command function and pass the config along to command execution functions.
 
-**** TODO src/org/commands/tasks/capture/command.py
+**** DONE src/org/commands/tasks/capture/command.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 20:56]
 :END:
 
 In file src/org/commands/tasks/capture/command.py around line 77, near the ~def capture_task(~
@@ -8316,9 +8319,13 @@ In file src/org/commands/tasks/capture/command.py around line 77, near the ~def 
 #+end_example
 
 It makes more sense to pass =AppConfig= here instead of just the templates. All command execution functions should receive command-specific arguments and the =AppConfig= object.
-**** TODO src/org/config/app.py
+**** REWORKED src/org/config/app.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-06-21 Sun 20:56] \\
+  Needs rework.
 :END:
 
 In file src/org/config/app.py around line 1556, near the ~def build_config_defaults(~
@@ -8363,9 +8370,12 @@ In file src/org/config/app.py around line 1556, near the ~def build_config_defau
 This should be done in the respective command's implementation instead. There's no need to handle the config generically for all commands.
 Ideally, each command's config object (=AgendaConfig=, etc) should be used in the main command function to populate the defaults in command args object (=AgendaArgs=). The command should retrieve the config object passed to it, then apply config defaults, then apply CLI overrides and lastly thread those updated objects through all the command execution functions that require either.
 
-**** TODO src/org/commands/agenda/command.py
+**** DONE src/org/commands/agenda/command.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 20:56]
 :END:
 
 In file src/org/commands/agenda/command.py around line 403, near the ~def register(app: typer.Typer) -> None:~
@@ -8376,6 +8386,128 @@ In file src/org/commands/agenda/command.py around line 403, near the ~def regist
 #+end_example
 
 Sounds like this should be a local function, as each command will have a distinct way of populating the defaults. Refactor so that each command has a custom way to apply defaults on top of config passed to the command.
+**** DONE src/org/commandds/agenda/command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 22:20]
+:END:
+
+In file src/org/commands/agenda/command.py around line 392, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
+         app_config = org.config.app.require_app_config(ctx)
+-        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+-        org.logging.log_applied_config_defaults(app_config, args, "agenda")
++        argv = sys.argv[1:]
++        applied_defaults: dict[str, object] = {}
++        for dest, value in (
++            ("exclude", app_config.exclude),
++            ("exclude_inline", app_config.exclude_inline),
++            ("mapping", app_config.mapping),
++            ("mapping_inline", app_config.mapping_inline),
++            ("todo_states", ",".join(app_config.todo_states)),
++            ("done_states", ",".join(app_config.done_states)),
++            ("filter_priority", app_config.filter_priority),
++            ("filter_level", app_config.filter_level),
++            ("filter_repeats_above", app_config.filter_repeats_above),
++            ("filter_repeats_below", app_config.filter_repeats_below),
++            ("filter_date_from", app_config.filter_date_from),
++            ("filter_date_until", app_config.filter_date_until),
++            ("filter_properties", app_config.filter_properties),
++            ("filter_tags", app_config.filter_tags),
++            ("filter_headings", app_config.filter_headings),
++            ("filter_bodies", app_config.filter_bodies),
++            ("filter_completed", app_config.filter_completed),
++            ("filter_not_completed", app_config.filter_not_completed),
++            ("color_flag", app_config.color_flag),
++            ("order_by_file_order", app_config.order_by_file_order),
++            ("order_by_file_order_reversed", app_config.order_by_file_order_reversed),
++            ("order_by_priority", app_config.order_by_priority),
++            ("order_by_level", app_config.order_by_level),
++            ("order_by_timestamp_asc", app_config.order_by_timestamp_asc),
++            ("order_by_timestamp_desc", app_config.order_by_timestamp_desc),
++            ("with_tags_as_category", app_config.with_tags_as_category),
++            ("date", app_config.agenda.date),
++            ("days", app_config.agenda.days),
++            ("no_completed", app_config.agenda.no_completed),
++            ("no_overdue", app_config.agenda.no_overdue),
++            ("no_upcoming", app_config.agenda.no_upcoming),
++            ("future_repeats", app_config.agenda.future_repeats),
++            ("view", app_config.agenda.view),
++            ("max_results", app_config.agenda.max_results),
++            ("offset", app_config.agenda.offset),
++            ("width", app_config.agenda.width),
++        ):
++            org.config.app.apply_arg_default(args, argv, applied_defaults, dest, value)
++        org.logging.log_applied_config_defaults(applied_defaults, "agenda")
+
+#+end_example
+
+This is poor style. You already have =args= available along with all command arguments (=typer.Option= instances). You should extract the config from context first, then instantiate the options using defaults from the config object when provided.
+**** DONE src/org/commands/tasks/edit.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 22:23]
+:END:
+
+In file src/org/commands/tasks/edit.py around line 111, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        applied_defaults: dict[str, object] = {}
++        org.logging.log_applied_config_defaults(applied_defaults, "tasks edit")
+
+#+end_example
+
+This now makes no sense. Log the config object passed to the commands and their final args object.
+**** DONE src/org/config/app.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 22:23]
+:END:
+
+In file src/org/config/app.py around line 878, near the ~def parse_config_sections(~
+
+#+begin_example
++    """Legacy defaults-based config parsing is no longer supported."""
++    del raw_config
++    return None
+
+#+end_example
+
+... Then remove the function together with the associated tests.
+
+**** CANCELLED src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-06-22 Mon 00:18] \\
+  No longer needed.
+:END:
+
+In file src/org/commands/tasks/update.py around line 660, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        app_config = org.config.app.require_app_config(ctx)
++        argv = sys.argv[1:]
+
+#+end_example
+
+It makes more sense to extract =sys.argv= in the implementation of =resolve_cli_value=. No reason to extract it here and pass it to the function.
+
+**** TODO Config section for tasks sub-commands
+:PROPERTIES:
+:capture_time: [2026-06-21 Sun 21:06]
+:context: 
+:END:
+
+Add a top-level config section for tasks commands, name it =tasks=. Move the current top-level =capture= config into =tasks.capture=. Define a new section for the =tasks.list= that will contain all of its configuration & defaults.
 **** TODO src/org/config/app.py
 :PROPERTIES:
 :context: 
@@ -8636,6 +8768,20 @@ In file tests/commands/test_tasks_capture_command.py around line 53, near the ~d
 #+end_example
 
 Sounds like these two are no longer needed, clean this up.
+
+**** TODO src/org/commands/tasks/find.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/tasks/find.py around line 287, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        resolve_cli_value = org.config.app.resolve_cli_value
+
+#+end_example
+
+Don't do this. Import the function directly.
 
 *** TODO Streamline query execution
 The commands use a common ETL pipeline where they load some data from files, apply filters/ordering/mutators and lastly present the results in some way. Sometimes the documents are then saved.

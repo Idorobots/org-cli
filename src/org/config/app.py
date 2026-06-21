@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol, TypedDict, TypeGuard, cast
+from typing import TYPE_CHECKING, Protocol, TypedDict, TypeGuard, TypeVar, cast
 
 import typer
 import yaml
@@ -147,58 +147,10 @@ DEFAULT_EXCLUDE = TAGS.union(HEADING).union(
 
 CATEGORY_NAMES = {"tags": "tags", "heading": "heading words", "body": "body words"}
 
+T = TypeVar("T")
 
-DEST_TO_OPTION_NAME: dict[str, str] = {
-    "date": "--date",
-    "days": "--days",
-    "color_flag": "--color/--no-color",
-    "config": "--config",
-    "details": "--details",
-    "done_states": "--done-states",
-    "exclude": "--exclude",
-    "exclude_inline": "--exclude",
-    "filter_bodies": "--filter-body",
-    "filter_completed": "--filter-completed",
-    "filter_date_from": "--filter-date-from",
-    "filter_date_until": "--filter-date-until",
-    "filter_priority": "--filter-priority",
-    "filter_headings": "--filter-heading",
-    "filter_level": "--filter-level",
-    "filter_not_completed": "--filter-not-completed",
-    "filter_properties": "--filter-property",
-    "filter_repeats_above": "--filter-repeats-above",
-    "filter_repeats_below": "--filter-repeats-below",
-    "filter_tags": "--filter-tag",
-    "groups": "--group",
-    "mapping": "--mapping",
-    "mapping_inline": "--mapping",
-    "max_groups": "--max-groups",
-    "max_relations": "--max-relations",
-    "max_results": "--limit",
-    "max_tags": "--max-tags",
-    "min_group_size": "--min-group-size",
-    "no_completed": "--no-completed",
-    "no_overdue": "--no-overdue",
-    "no_upcoming": "--no-upcoming",
-    "future_repeats": "--future-repeats/--no-future-repeats",
-    "offset": "--offset",
-    "out": "--out",
-    "out_theme": "--out-theme",
-    "pandoc_args": "--pandoc-args",
-    "order_by_file_order": "--order-by-file-order",
-    "order_by_file_order_reversed": "--order-by-file-order-reversed",
-    "order_by_priority": "--order-by-priority",
-    "order_by_level": "--order-by-level",
-    "order_by_timestamp_asc": "--order-by-timestamp-asc",
-    "order_by_timestamp_desc": "--order-by-timestamp-desc",
-    "tags": "--tag",
-    "todo_states": "--todo-states",
-    "use": "--use",
-    "view": "--view",
-    "verbose": "--verbose",
-    "with_tags_as_category": "--with-tags-as-category",
-    "width": "--width",
-}
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def normalize_exclude_values(values: list[str]) -> set[str]:
@@ -291,27 +243,6 @@ def resolve_exclude_set(args: object) -> set[str]:
         return normalize_exclude_values(exclude_inline) or DEFAULT_EXCLUDE
     exclude_file = getattr(args, "exclude", None)
     return load_exclude_list(exclude_file) or DEFAULT_EXCLUDE
-
-
-@dataclass
-class ConfigOptions:
-    """Config option mapping metadata."""
-
-    int_options: dict[str, tuple[str, int | None]]
-    bool_options: dict[str, tuple[str, bool | None]]
-    str_options: dict[str, str]
-    list_options: dict[str, str]
-
-
-@dataclass
-class ConfigContext:
-    """Config default targets and option metadata."""
-
-    defaults: dict[str, object]
-    stats_defaults: dict[str, object]
-    append_defaults: dict[str, list[str]]
-    global_options: ConfigOptions
-    stats_options: ConfigOptions
 
 
 @dataclass(frozen=True)
@@ -432,6 +363,10 @@ class AppConfig:
     verbose: bool
     todo_states: list[str]
     done_states: list[str]
+    exclude: str | None
+    exclude_inline: list[str] | None
+    mapping: str | None
+    mapping_inline: dict[str, str] | None
     filter_priority: str | None
     filter_level: int | None
     filter_repeats_above: int | None
@@ -471,11 +406,6 @@ class AppConfig:
     def custom_with_map(self) -> dict[str, str]:
         """Return configured custom mutators keyed by name."""
         return {item.name: item.query for item in self.mutators}
-
-    @property
-    def defaults(self) -> dict[str, object]:
-        """Compatibility accessor for flattened default values."""
-        return command_config_values(self)
 
     @property
     def capture_templates(self) -> dict[str, dict[str, str]]:
@@ -609,20 +539,6 @@ def is_string_dict(value: object) -> TypeGuard[dict[str, str]]:
     )
 
 
-def parse_color_defaults(config: dict[str, object]) -> tuple[dict[str, object], bool]:
-    """Parse color-related config defaults."""
-    defaults: dict[str, object] = {}
-    if "--color" in config and "--no-color" in config:
-        return ({}, False)
-
-    if "--color" in config:
-        defaults["color_flag"] = True
-    if "--no-color" in config:
-        defaults["color_flag"] = False
-
-    return (defaults, True)
-
-
 def validate_int_option(value: object, min_value: int | None) -> int | None:
     """Validate integer option value."""
     if not isinstance(value, int):
@@ -681,235 +597,190 @@ def validate_list_option(key: str, value: object) -> list[str] | None:
     return list(value)
 
 
-def apply_mapping_config(value: object, defaults: dict[str, object]) -> bool:
-    """Apply mapping config entry."""
-    if isinstance(value, str):
-        if not value.strip():
-            return False
-        defaults["mapping"] = value
-        return True
-    if is_string_dict(value):
-        defaults["mapping_inline"] = value
-        return True
-    return False
+def _parse_optional_string_field(
+    section: dict[str, object],
+    key: str,
+    option_name: str,
+) -> tuple[bool, str | None]:
+    """Parse one optional string field from a config section."""
+    if key not in section:
+        return (True, None)
+    value = validate_str_option(option_name, section[key])
+    return (value is not None, value)
 
 
-def apply_exclude_config(value: object, defaults: dict[str, object]) -> bool:
-    """Apply exclude config entry."""
-    if isinstance(value, str):
-        if not value.strip():
-            return False
-        defaults["exclude"] = value
-        return True
-    if is_string_list(value):
-        defaults["exclude_inline"] = list(value)
-        return True
-    return False
-
-
-def apply_int_option(
-    value: object,
-    dest: str,
+def _parse_optional_int_field(
+    section: dict[str, object],
+    key: str,
     min_value: int | None,
-    defaults: dict[str, object],
-) -> bool:
-    """Apply integer config option."""
-    int_value = validate_int_option(value, min_value)
-    if int_value is None:
-        return False
-    defaults[dest] = int_value
-    return True
+) -> tuple[bool, int | None]:
+    """Parse one optional integer field from a config section."""
+    if key not in section:
+        return (True, None)
+    value = validate_int_option(section[key], min_value)
+    return (value is not None, value)
 
 
-def apply_bool_option(
-    value: object,
-    dest: str,
-    configured_value: bool | None,
-    defaults: dict[str, object],
-) -> bool:
-    """Apply boolean config option."""
-    if configured_value is None and not isinstance(value, bool):
-        return False
-
-    defaults[dest] = value if configured_value is None else configured_value
-    return True
-
-
-def apply_str_option(
+def _parse_optional_bool_field(
+    section: dict[str, object],
     key: str,
-    value: object,
-    dest: str,
-    defaults: dict[str, object],
-) -> bool:
-    """Apply string config option."""
-    str_value = validate_str_option(key, value)
-    if str_value is None:
-        return False
-    defaults[dest] = str_value
-    return True
+) -> tuple[bool, bool | None]:
+    """Parse one optional boolean field from a config section."""
+    if key not in section:
+        return (True, None)
+    value = section[key]
+    if not isinstance(value, bool):
+        return (False, None)
+    return (True, value)
 
 
-def apply_list_option(
-    key: str,
-    value: object,
-    dest: str,
-    append_defaults: dict[str, list[str]],
-) -> bool:
-    """Apply list config option."""
-    list_value = validate_list_option(key, value)
-    if list_value is None:
-        return False
-    append_defaults[dest] = list_value
-    return True
-
-
-def apply_config_entry_by_options(
-    key: str,
-    value: object,
-    defaults: dict[str, object],
-    append_defaults: dict[str, list[str]],
-    options: ConfigOptions,
-) -> bool:
-    """Apply a config entry using option metadata."""
-    if key in options.int_options:
-        dest, min_value = options.int_options[key]
-        return apply_int_option(value, dest, min_value, defaults)
-    if key in options.bool_options:
-        dest, configured_value = options.bool_options[key]
-        return apply_bool_option(value, dest, configured_value, defaults)
-    if key in options.str_options:
-        return apply_str_option(key, value, options.str_options[key], defaults)
-    if key in options.list_options:
-        return apply_list_option(key, value, options.list_options[key], append_defaults)
-
-    return True
-
-
-def apply_config_entry(
-    key: str,
-    value: object,
-    context: ConfigContext,
-) -> bool:
-    """Apply a config entry to defaults if valid."""
-    if key == "--mapping":
-        return apply_mapping_config(value, context.defaults)
-
-    if key == "--exclude":
-        return apply_exclude_config(value, context.defaults)
-
-    option_sets = (
-        (context.global_options, context.defaults),
-        (context.stats_options, context.stats_defaults),
-    )
-
-    for options, defaults in option_sets:
-        if (
-            key in options.int_options
-            or key in options.bool_options
-            or key in options.str_options
-            or key in options.list_options
-        ):
-            return apply_config_entry_by_options(
-                key,
-                value,
-                defaults,
-                context.append_defaults,
-                options,
-            )
-
-    return False
-
-
-def parse_config_sections(
-    raw_config: dict[str, object],
-) -> (
-    tuple[
-        dict[str, object],
-        dict[str, str],
-        dict[str, str],
-        dict[str, str],
-        dict[str, dict[str, str]],
-        dict[str, BoardViewConfig],
-        dict[str, AgendaViewConfig],
-    ]
-    | None
-):
-    """Parse top-level config sections.
-
-    Accepted shape:
-      {
-        "defaults": { ... },
-        "filter": {"name": "query"},
-        "order-by": {"name": "query"},
-        "with": {"name": "query"},
-        "capture": {
-          "templates": {
-            "name": {
-              "file": "path",
-              "content": "* TODO {{title}}",
-              "parent": ".id == 'project-1'"
-            }
-          }
-        }
-      }
-    """
-    allowed_keys = {"defaults", "filter", "order-by", "with", "capture", "board", "agenda"}
-    defaults_section = raw_config.get("defaults", {})
-    filter_section = raw_config.get("filter", {})
-    order_by_section = raw_config.get("order-by", {})
-    with_section = raw_config.get("with", {})
-
-    sections_are_valid = (
-        not any(key not in allowed_keys for key in raw_config)
-        and isinstance(defaults_section, dict)
-        and is_string_dict(filter_section)
-        and is_string_dict(order_by_section)
-        and is_string_dict(with_section)
-    )
-    if not sections_are_valid:
+def _parse_named_query_sections(
+    config: dict[str, object],
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]] | None:
+    """Parse the custom filter/order-by/with sections."""
+    filter_section = config.get("filter", {})
+    order_by_section = config.get("order-by", {})
+    with_section = config.get("with", {})
+    if (
+        not is_string_dict(filter_section)
+        or not is_string_dict(order_by_section)
+        or not is_string_dict(with_section)
+    ):
         return None
-
-    capture_templates = parse_capture_templates_section(raw_config.get("capture", {}))
-    if capture_templates is None:
-        return None
-
-    board_views: dict[str, BoardViewConfig] = {}
-    if "board" in raw_config:
-        parsed_board_views = parse_board_section(raw_config["board"])
-        if parsed_board_views is None:
-            return None
-        board_views = parsed_board_views
-
-    agenda_views: dict[str, AgendaViewConfig] = {}
-    if "agenda" in raw_config:
-        parsed_agenda_views = parse_agenda_section(raw_config["agenda"])
-        if parsed_agenda_views is None:
-            return None
-        agenda_views = parsed_agenda_views
-
-    return (
-        cast("dict[str, object]", defaults_section),
-        cast("dict[str, str]", filter_section),
-        cast("dict[str, str]", order_by_section),
-        cast("dict[str, str]", with_section),
-        capture_templates,
-        board_views,
-        agenda_views,
-    )
+    return (filter_section, order_by_section, with_section)
 
 
-def parse_board_section(value: object) -> dict[str, BoardViewConfig] | None:
+def _parse_optional_string_list_field(
+    section: dict[str, object],
+    key: str,
+) -> tuple[bool, list[str] | None]:
+    """Parse one optional raw string-list field from a config section."""
+    if key not in section:
+        return (True, None)
+    value = section[key]
+    if not is_string_list(value):
+        return (False, None)
+    return (True, list(value))
+
+
+def _parse_shared_simple_entry(key: str, value: object) -> tuple[bool, dict[str, object]]:
+    """Parse one simple shared top-level config entry."""
+    if key == "color_flag":
+        return (isinstance(value, bool), {key: value} if isinstance(value, bool) else {})
+
+    bool_keys = {
+        "verbose",
+        "filter_completed",
+        "filter_not_completed",
+        "order_by_file_order",
+        "order_by_file_order_reversed",
+        "order_by_priority",
+        "order_by_level",
+        "order_by_timestamp_asc",
+        "order_by_timestamp_desc",
+        "with_tags_as_category",
+    }
+    if key in bool_keys:
+        return (isinstance(value, bool), {key: value} if isinstance(value, bool) else {})
+
+    int_keys = {"filter_level", "filter_repeats_above", "filter_repeats_below"}
+    if key in int_keys:
+        int_value = validate_int_option(value, None)
+        return (int_value is not None, {key: int_value} if int_value is not None else {})
+
+    string_options = {
+        "filter_priority": "--filter-priority",
+        "filter_date_from": "--filter-date-from",
+        "filter_date_until": "--filter-date-until",
+    }
+    if key in string_options:
+        str_value = validate_str_option(string_options[key], value)
+        return (str_value is not None, {key: str_value} if str_value is not None else {})
+
+    list_options = {
+        "filter_properties": "--filter-property",
+        "filter_tags": "--filter-tag",
+        "filter_headings": "--filter-heading",
+        "filter_bodies": "--filter-body",
+    }
+    if key in list_options:
+        list_value = validate_list_option(list_options[key], value)
+        return (list_value is not None, {key: list_value} if list_value is not None else {})
+
+    return (True, {})
+
+
+def _parse_shared_special_entry(key: str, value: object) -> tuple[bool, dict[str, object]]:
+    """Parse one special shared top-level config entry."""
+    if key == "todo_states":
+        todo_states = validate_str_option("--todo-states", value)
+        return (
+            todo_states is not None,
+            {key: _parse_state_list(todo_states)} if todo_states is not None else {},
+        )
+    if key == "done_states":
+        done_states = validate_str_option("--done-states", value)
+        return (
+            done_states is not None,
+            {key: _parse_state_list(done_states)} if done_states is not None else {},
+        )
+    if key == "mapping":
+        return _parse_mapping_or_inline_entry(value)
+    if key == "exclude":
+        return _parse_exclude_or_inline_entry(value)
+    return (True, {})
+
+
+def _parse_mapping_or_inline_entry(value: object) -> tuple[bool, dict[str, object]]:
+    """Parse one shared mapping entry from file or inline form."""
+    if isinstance(value, str) and value.strip():
+        return (True, {"mapping": value})
+    if is_string_dict(value):
+        return (True, {"mapping_inline": value})
+    return (False, {})
+
+
+def _parse_exclude_or_inline_entry(value: object) -> tuple[bool, dict[str, object]]:
+    """Parse one shared exclude entry from file or inline form."""
+    if isinstance(value, str) and value.strip():
+        return (True, {"exclude": value})
+    if is_string_list(value):
+        return (True, {"exclude_inline": list(value)})
+    return (False, {})
+
+
+def parse_board_section(value: object) -> BoardConfig | None:
     """Parse board section from top-level config value."""
     if not isinstance(value, dict):
         return None
 
-    allowed_board_keys = {"views"}
+    allowed_board_keys = {"views", "view", "days", "max_results", "offset", "width"}
     if any(key not in allowed_board_keys for key in value):
         return None
-    if "views" not in value:
+
+    views: dict[str, BoardViewConfig] = {}
+    if "views" in value:
+        parsed_views = parse_board_views(value.get("views"))
+        if parsed_views is None:
+            return None
+        views = parsed_views
+
+    valid_view, view_name = _parse_optional_string_field(value, "view", "--view")
+    valid_days, days = _parse_optional_int_field(value, "days", 1)
+    valid_max_results, max_results = _parse_optional_int_field(value, "max_results", None)
+    valid_offset, offset = _parse_optional_int_field(value, "offset", 0)
+    valid_width, width = _parse_optional_int_field(value, "width", 50)
+    if not all((valid_view, valid_days, valid_max_results, valid_offset, valid_width)):
         return None
 
-    return parse_board_views(value.get("views"))
+    return BoardConfig(
+        views=views,
+        view=view_name,
+        days=days,
+        max_results=max_results,
+        offset=offset,
+        width=width,
+    )
 
 
 def parse_board_views(value: object) -> dict[str, BoardViewConfig] | None:
@@ -988,18 +859,73 @@ def parse_board_column(value: object) -> BoardColumnConfig | None:
     )
 
 
-def parse_agenda_section(value: object) -> dict[str, AgendaViewConfig] | None:
+def parse_agenda_section(value: object) -> AgendaConfig | None:
     """Parse agenda section from top-level config value."""
     if not isinstance(value, dict):
         return None
 
-    allowed_agenda_keys = {"views"}
+    allowed_agenda_keys = {
+        "views",
+        "date",
+        "days",
+        "no_completed",
+        "no_overdue",
+        "no_upcoming",
+        "future_repeats",
+        "view",
+        "max_results",
+        "offset",
+        "width",
+    }
     if any(key not in allowed_agenda_keys for key in value):
         return None
-    if "views" not in value:
+
+    views: dict[str, AgendaViewConfig] = {}
+    if "views" in value:
+        parsed_views = parse_agenda_views(value.get("views"))
+        if parsed_views is None:
+            return None
+        views = parsed_views
+
+    valid_date, date = _parse_optional_string_field(value, "date", "--date")
+    valid_days, days = _parse_optional_int_field(value, "days", 1)
+    valid_view, view_name = _parse_optional_string_field(value, "view", "--view")
+    valid_max_results, max_results = _parse_optional_int_field(value, "max_results", None)
+    valid_offset, offset = _parse_optional_int_field(value, "offset", 0)
+    valid_width, width = _parse_optional_int_field(value, "width", 50)
+    valid_no_completed, no_completed = _parse_optional_bool_field(value, "no_completed")
+    valid_no_overdue, no_overdue = _parse_optional_bool_field(value, "no_overdue")
+    valid_no_upcoming, no_upcoming = _parse_optional_bool_field(value, "no_upcoming")
+    valid_future_repeats, future_repeats = _parse_optional_bool_field(value, "future_repeats")
+    if not all(
+        (
+            valid_date,
+            valid_days,
+            valid_view,
+            valid_max_results,
+            valid_offset,
+            valid_width,
+            valid_no_completed,
+            valid_no_overdue,
+            valid_no_upcoming,
+            valid_future_repeats,
+        ),
+    ):
         return None
 
-    return parse_agenda_views(value.get("views"))
+    return AgendaConfig(
+        views=views,
+        date=date,
+        days=days,
+        no_completed=no_completed,
+        no_overdue=no_overdue,
+        no_upcoming=no_upcoming,
+        future_repeats=future_repeats,
+        view=view_name,
+        max_results=max_results,
+        offset=offset,
+        width=width,
+    )
 
 
 def parse_agenda_views(value: object) -> dict[str, AgendaViewConfig] | None:
@@ -1142,125 +1068,6 @@ def parse_capture_template(value: object) -> dict[str, str] | None:
     return parsed
 
 
-def build_config_defaults(
-    config: dict[str, object],
-) -> tuple[dict[str, object], dict[str, object], dict[str, list[str]]] | None:
-    """Validate config values and build defaults.
-
-    Args:
-        config: Raw config dict
-
-    Returns:
-        Tuple of (defaults, append_defaults) or None if malformed
-    """
-    defaults: dict[str, object] = {}
-    stats_defaults: dict[str, object] = {}
-    append_defaults: dict[str, list[str]] = {}
-    valid = True
-
-    color_defaults, color_valid = parse_color_defaults(config)
-    if not color_valid:
-        return None
-    defaults.update(color_defaults)
-
-    stats_int_options: dict[str, tuple[str, int | None]] = {
-        "--limit": ("max_results", None),
-        "--max-tags": ("max_tags", 0),
-        "--max-relations": ("max_relations", 0),
-        "--min-group-size": ("min_group_size", 0),
-        "--max-groups": ("max_groups", 0),
-    }
-
-    global_int_options: dict[str, tuple[str, int | None]] = {
-        "--days": ("days", 1),
-        "--filter-level": ("filter_level", None),
-        "--filter-repeats-above": ("filter_repeats_above", None),
-        "--filter-repeats-below": ("filter_repeats_below", None),
-        "--offset": ("offset", 0),
-        "--width": ("width", 50),
-    }
-
-    stats_bool_options: dict[str, tuple[str, bool | None]] = {
-        "--with-tags-as-category": ("with_tags_as_category", None),
-    }
-
-    global_bool_options: dict[str, tuple[str, bool | None]] = {
-        "--details": ("details", None),
-        "--filter-completed": ("filter_completed", None),
-        "--filter-not-completed": ("filter_not_completed", None),
-        "--no-completed": ("no_completed", None),
-        "--no-overdue": ("no_overdue", None),
-        "--no-upcoming": ("no_upcoming", None),
-        "--future-repeats": ("future_repeats", True),
-        "--no-future-repeats": ("future_repeats", False),
-        "--order-by-file-order": ("order_by_file_order", None),
-        "--order-by-file-order-reversed": ("order_by_file_order_reversed", None),
-        "--order-by-level": ("order_by_level", None),
-        "--order-by-priority": ("order_by_priority", None),
-        "--order-by-timestamp-asc": ("order_by_timestamp_asc", None),
-        "--order-by-timestamp-desc": ("order_by_timestamp_desc", None),
-        "--verbose": ("verbose", None),
-    }
-
-    stats_str_options: dict[str, str] = {"--use": "use"}
-
-    global_str_options: dict[str, str] = {
-        "--date": "date",
-        "--todo-states": "todo_states",
-        "--done-states": "done_states",
-        "--filter-date-from": "filter_date_from",
-        "--filter-date-until": "filter_date_until",
-        "--filter-priority": "filter_priority",
-        "--out": "out",
-        "--out-theme": "out_theme",
-        "--pandoc-args": "pandoc_args",
-        "--config": "config",
-        "--view": "view",
-    }
-
-    global_list_options: dict[str, str] = {
-        "--filter-property": "filter_properties",
-        "--filter-tag": "filter_tags",
-        "--filter-heading": "filter_headings",
-        "--filter-body": "filter_bodies",
-    }
-
-    global_options = ConfigOptions(
-        int_options=global_int_options,
-        bool_options=global_bool_options,
-        str_options=global_str_options,
-        list_options=global_list_options,
-    )
-
-    stats_options = ConfigOptions(
-        int_options=stats_int_options,
-        bool_options=stats_bool_options,
-        str_options=stats_str_options,
-        list_options={"--group": "groups", "--tag": "tags"},
-    )
-
-    context = ConfigContext(
-        defaults=defaults,
-        stats_defaults=stats_defaults,
-        append_defaults=append_defaults,
-        global_options=global_options,
-        stats_options=stats_options,
-    )
-
-    for key, value in config.items():
-        if key in ("--color", "--no-color"):
-            continue
-
-        if not apply_config_entry(key, value, context):
-            valid = False
-            break
-
-    if not valid:
-        return None
-
-    return (defaults, stats_defaults, append_defaults)
-
-
 def build_default_app_config(config_path: str = ".org-cli.yaml") -> AppConfig:
     """Build application config populated with code defaults."""
     return AppConfig(
@@ -1269,6 +1076,10 @@ def build_default_app_config(config_path: str = ".org-cli.yaml") -> AppConfig:
         verbose=False,
         todo_states=["TODO"],
         done_states=["DONE"],
+        exclude=None,
+        exclude_inline=None,
+        mapping=None,
+        mapping_inline=None,
         filter_priority=None,
         filter_level=None,
         filter_repeats_above=None,
@@ -1297,6 +1108,243 @@ def build_default_app_config(config_path: str = ".org-cli.yaml") -> AppConfig:
         agenda=AgendaConfig(views={}),
         board=BoardConfig(views={}),
     )
+
+
+def parse_shared_config(raw_config: dict[str, object]) -> dict[str, object] | None:
+    """Parse shared top-level config values into AppConfig field values."""
+    parsed: dict[str, object] = {}
+
+    for key, value in raw_config.items():
+        valid, parsed_value = _parse_shared_simple_entry(key, value)
+        if not valid:
+            return None
+        if parsed_value:
+            parsed.update(parsed_value)
+            continue
+
+        valid, parsed_value = _parse_shared_special_entry(key, value)
+        if not valid:
+            return None
+        parsed.update(parsed_value)
+
+    return parsed
+
+
+def parse_stats_section(value: object) -> StatsConfig | None:
+    """Parse stats section from top-level config value."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_keys = {
+        "max_results",
+        "max_tags",
+        "max_relations",
+        "min_group_size",
+        "max_groups",
+        "use",
+        "tags",
+        "groups",
+    }
+    if any(key not in allowed_keys for key in value):
+        return None
+
+    config = StatsConfig()
+    for key, min_value in {
+        "max_results": None,
+        "max_tags": 0,
+        "max_relations": 0,
+        "min_group_size": 0,
+        "max_groups": 0,
+    }.items():
+        valid, int_value = _parse_optional_int_field(value, key, min_value)
+        if not valid:
+            return None
+        setattr(config, key, int_value)
+
+    valid_use, use_value = _parse_optional_string_field(value, "use", "--use")
+    valid_tags, tags = _parse_optional_string_list_field(value, "tags")
+    valid_groups, groups = _parse_optional_string_list_field(value, "groups")
+    if not all((valid_use, valid_tags, valid_groups)):
+        return None
+    config.use = use_value
+    config.tags = tags
+    config.groups = groups
+
+    return config
+
+
+def parse_tasks_section(value: object) -> TasksConfig | None:
+    """Parse tasks section from top-level config value."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_keys = {"max_results", "details", "out", "out_theme", "pandoc_args"}
+    if any(key not in allowed_keys for key in value):
+        return None
+
+    config = TasksConfig()
+    valid_max_results, max_results = _parse_optional_int_field(value, "max_results", None)
+    valid_details, details = _parse_optional_bool_field(value, "details")
+    valid_out, out = _parse_optional_string_field(value, "out", "--out")
+    if not all((valid_max_results, valid_details, valid_out)):
+        return None
+    if "out_theme" in value and not isinstance(value["out_theme"], str):
+        return None
+    if (
+        "pandoc_args" in value
+        and value["pandoc_args"] is not None
+        and not isinstance(value["pandoc_args"], str)
+    ):
+        return None
+    config.max_results = max_results
+    config.details = details
+    config.out = out
+    config.out_theme = cast("str | None", value.get("out_theme"))
+    config.pandoc_args = cast("str | None", value.get("pandoc_args"))
+
+    return config
+
+
+def _validate_top_level_config_keys(config: dict[str, object]) -> None:
+    """Validate allowed top-level config keys."""
+    allowed_keys = {
+        "color_flag",
+        "verbose",
+        "todo_states",
+        "done_states",
+        "exclude",
+        "mapping",
+        "filter_priority",
+        "filter_level",
+        "filter_repeats_above",
+        "filter_repeats_below",
+        "filter_date_from",
+        "filter_date_until",
+        "filter_properties",
+        "filter_tags",
+        "filter_headings",
+        "filter_bodies",
+        "filter_completed",
+        "filter_not_completed",
+        "order_by_file_order",
+        "order_by_file_order_reversed",
+        "order_by_priority",
+        "order_by_level",
+        "order_by_timestamp_asc",
+        "order_by_timestamp_desc",
+        "with_tags_as_category",
+        "filter",
+        "order-by",
+        "with",
+        "capture",
+        "board",
+        "agenda",
+        "stats",
+        "tasks",
+    }
+    if any(key not in allowed_keys for key in config):
+        raise typer.BadParameter("Malformed config")
+
+
+def _parse_structured_sections(
+    config: dict[str, object],
+) -> tuple[
+    dict[str, object],
+    dict[str, dict[str, str]],
+    BoardConfig,
+    AgendaConfig,
+    StatsConfig,
+    TasksConfig,
+]:
+    """Parse structured top-level config sections into typed objects."""
+    shared_config = parse_shared_config(config)
+    if shared_config is None:
+        raise typer.BadParameter("Malformed config")
+
+    capture_templates = parse_capture_templates_section(config.get("capture", {}))
+    if capture_templates is None:
+        raise typer.BadParameter("Malformed config")
+
+    board_config = _parse_optional_config_section(
+        config,
+        "board",
+        parse_board_section,
+        BoardConfig(views={}),
+    )
+    agenda_config = _parse_optional_config_section(
+        config,
+        "agenda",
+        parse_agenda_section,
+        AgendaConfig(views={}),
+    )
+    stats_config = _parse_optional_config_section(
+        config,
+        "stats",
+        parse_stats_section,
+        StatsConfig(),
+    )
+    tasks_config = _parse_optional_config_section(
+        config,
+        "tasks",
+        parse_tasks_section,
+        TasksConfig(),
+    )
+
+    return (
+        shared_config,
+        capture_templates,
+        board_config,
+        agenda_config,
+        stats_config,
+        tasks_config,
+    )
+
+
+def _parse_optional_config_section(
+    config: dict[str, object],
+    key: str,
+    parser: Callable[[object], T | None],
+    default: T,
+) -> T:
+    """Parse one optional config section, returning default when absent."""
+    if key not in config:
+        return default
+    parsed = parser(config[key])
+    if parsed is None:
+        raise typer.BadParameter("Malformed config")
+    return parsed
+
+
+def _build_loaded_app_config(config: dict[str, object], config_path: Path) -> AppConfig:
+    """Build AppConfig from one validated raw config object."""
+    _validate_top_level_config_keys(config)
+
+    named_query_sections = _parse_named_query_sections(config)
+    if named_query_sections is None:
+        raise typer.BadParameter("Malformed config")
+    filter_section, order_by_section, with_section = named_query_sections
+    (
+        shared_config,
+        capture_templates,
+        board_config,
+        agenda_config,
+        stats_config,
+        tasks_config,
+    ) = _parse_structured_sections(config)
+
+    app_config = build_default_app_config(str(config_path))
+    for key, shared_value in shared_config.items():
+        setattr(app_config, key, shared_value)
+
+    app_config.filters = _named_query_list(filter_section)
+    app_config.orderings = _named_query_list(order_by_section)
+    app_config.mutators = _named_query_list(with_section)
+    app_config.stats = stats_config
+    app_config.tasks = tasks_config
+    app_config.capture = CaptureConfig(templates=capture_templates)
+    app_config.board = board_config
+    app_config.agenda = agenda_config
+    return app_config
 
 
 def _parse_state_list(value: str) -> list[str]:
@@ -1421,60 +1469,7 @@ def load_cli_config(argv: list[str]) -> AppConfig:
     if load_error:
         raise typer.BadParameter("Malformed config")
 
-    config_sections = parse_config_sections(config)
-    if config_sections is None:
-        raise typer.BadParameter("Malformed config")
-
-    (
-        defaults_config,
-        custom_filters,
-        custom_order_by,
-        custom_with,
-        capture_templates,
-        board_views,
-        agenda_views,
-    ) = config_sections
-
-    config_defaults = build_config_defaults(defaults_config)
-    if config_defaults is None:
-        raise typer.BadParameter("Malformed config")
-
-    defaults, stats_defaults, append_defaults = config_defaults
-    app_config = build_default_app_config(str(config_path))
-    for dest, value in {**defaults, **stats_defaults}.items():
-        if dest not in COMMAND_OPTION_NAMES and dest not in {"mapping_inline", "exclude_inline"}:
-            continue
-        _apply_default_dest(app_config, dest, value)
-
-    for dest, values in append_defaults.items():
-        _apply_list_dest(app_config, dest, values)
-
-    app_config.filters = _named_query_list(custom_filters)
-    app_config.orderings = _named_query_list(custom_order_by)
-    app_config.mutators = _named_query_list(custom_with)
-    app_config.capture = CaptureConfig(templates=capture_templates)
-    app_config.board = BoardConfig(
-        views=board_views,
-        view=app_config.board.view,
-        days=app_config.board.days,
-        max_results=app_config.board.max_results,
-        offset=app_config.board.offset,
-        width=app_config.board.width,
-    )
-    app_config.agenda = AgendaConfig(
-        views=agenda_views,
-        date=app_config.agenda.date,
-        days=app_config.agenda.days,
-        no_completed=app_config.agenda.no_completed,
-        no_overdue=app_config.agenda.no_overdue,
-        no_upcoming=app_config.agenda.no_upcoming,
-        future_repeats=app_config.agenda.future_repeats,
-        view=app_config.agenda.view,
-        max_results=app_config.agenda.max_results,
-        offset=app_config.agenda.offset,
-        width=app_config.agenda.width,
-    )
-    return app_config
+    return _build_loaded_app_config(config, config_path)
 
 
 def require_app_config(ctx: object) -> AppConfig:
@@ -1484,83 +1479,3 @@ def require_app_config(ctx: object) -> AppConfig:
     if not isinstance(app_config, AppConfig):
         raise typer.BadParameter("Application config is not available")
     return app_config
-
-
-def _option_aliases(dest: str) -> set[str]:
-    """Return CLI option aliases that map to one destination."""
-    option_name = DEST_TO_OPTION_NAME.get(dest)
-    if option_name is None:
-        return set()
-    return set(option_name.split("/"))
-
-
-def cli_option_was_provided(argv: list[str], dest: str) -> bool:
-    """Return whether one CLI destination was explicitly provided by the user."""
-    option_aliases = _option_aliases(dest)
-    for token in argv:
-        option = token.split("=", 1)[0]
-        if option in option_aliases:
-            return True
-    return False
-
-
-def command_config_values(config: AppConfig) -> dict[str, object]:
-    """Flatten AppConfig into command argument destination values."""
-    values: dict[str, object] = {
-        "color_flag": config.color_flag,
-        "todo_states": ",".join(config.todo_states),
-        "done_states": ",".join(config.done_states),
-        "filter_priority": config.filter_priority,
-        "filter_level": config.filter_level,
-        "filter_repeats_above": config.filter_repeats_above,
-        "filter_repeats_below": config.filter_repeats_below,
-        "filter_date_from": config.filter_date_from,
-        "filter_date_until": config.filter_date_until,
-        "filter_properties": config.filter_properties,
-        "filter_tags": config.filter_tags,
-        "filter_headings": config.filter_headings,
-        "filter_bodies": config.filter_bodies,
-        "filter_completed": config.filter_completed,
-        "filter_not_completed": config.filter_not_completed,
-        "order_by_file_order": config.order_by_file_order,
-        "order_by_file_order_reversed": config.order_by_file_order_reversed,
-        "order_by_priority": config.order_by_priority,
-        "order_by_level": config.order_by_level,
-        "order_by_timestamp_asc": config.order_by_timestamp_asc,
-        "order_by_timestamp_desc": config.order_by_timestamp_desc,
-        "with_tags_as_category": config.with_tags_as_category,
-        "exclude": config.stats.exclude,
-        "exclude_inline": config.stats.exclude_inline,
-        "mapping": config.stats.mapping,
-        "mapping_inline": config.stats.mapping_inline,
-        "max_results": config.tasks.max_results,
-        "max_tags": config.stats.max_tags,
-        "max_relations": config.stats.max_relations,
-        "min_group_size": config.stats.min_group_size,
-        "max_groups": config.stats.max_groups,
-        "use": config.stats.use,
-        "tags": config.stats.tags,
-        "groups": config.stats.groups,
-        "details": config.tasks.details,
-        "out": config.tasks.out,
-        "out_theme": config.tasks.out_theme,
-        "pandoc_args": config.tasks.pandoc_args,
-        "date": config.agenda.date,
-        "days": config.agenda.days,
-        "no_completed": config.agenda.no_completed,
-        "no_overdue": config.agenda.no_overdue,
-        "no_upcoming": config.agenda.no_upcoming,
-        "future_repeats": config.agenda.future_repeats,
-        "view": config.board.view if config.board.view is not None else config.agenda.view,
-        "offset": config.board.offset if config.board.offset is not None else config.agenda.offset,
-        "width": config.board.width if config.board.width is not None else config.agenda.width,
-    }
-    return {key: value for key, value in values.items() if value is not None}
-
-
-def apply_config_defaults(args: object, config: AppConfig, argv: list[str]) -> None:
-    """Apply config values to command args only when CLI did not override them."""
-    for dest, value in command_config_values(config).items():
-        if not hasattr(args, dest) or cli_option_was_provided(argv, dest):
-            continue
-        setattr(args, dest, value)

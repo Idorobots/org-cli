@@ -36,10 +36,10 @@ def build_app(config: org.config.app.AppConfig) -> typer.Typer:
             return
         org.logging.configure_logging(config.verbose if verbose is None else verbose)
 
-    agenda.register(app)
-    board_command.register(app)
-    stats.register(app)
-    tasks_command.register(app)
+    agenda.register(app, config)
+    board_command.register(app, config)
+    stats.register(app, config)
+    tasks_command.register(app, config)
     return app
 
 

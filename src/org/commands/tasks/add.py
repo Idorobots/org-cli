@@ -311,8 +311,9 @@ def _attach_heading(document: Document, parent_heading: Heading | None, heading:
     parent_heading.children.append(heading)
 
 
-def run_tasks_add(args: AddArgs) -> None:
+def run_tasks_add(args: AddArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks add command."""
+    del config
     _validate_heading_option_exclusivity(args)
     read_from_stdin = _should_read_task_from_stdin(args)
 
@@ -334,8 +335,9 @@ def run_tasks_add(args: AddArgs) -> None:
     save_document(document)
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, config: org.config.app.AppConfig) -> None:
     """Register the tasks add command."""
+    del config
 
     @app.command("add")
     def tasks_add(  # noqa: PLR0913
@@ -458,6 +460,8 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Create a new task heading and append it to a selected org document."""
+        app_config = org.config.app.require_app_config(ctx)
+        argv = sys.argv[1:]
         args = AddArgs(
             files=files,
             config=config,
@@ -479,8 +483,7 @@ def register(app: typer.Typer) -> None:
             parent=parent,
             file=file,
         )
-        app_config = org.config.app.require_app_config(ctx)
-        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
-        org.logging.log_applied_config_defaults(app_config, args, "tasks add")
+        del argv
+        org.logging.log_command_config(app_config, "tasks add")
         org.logging.log_command_arguments(args, "tasks add")
-        run_tasks_add(args)
+        run_tasks_add(args, app_config)
