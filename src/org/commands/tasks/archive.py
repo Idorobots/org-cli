@@ -6,7 +6,6 @@ import logging
 import sys
 from dataclasses import dataclass
 
-import click
 import typer
 from org_parser.document import Document, Heading
 
@@ -89,7 +88,8 @@ def register(app: typer.Typer) -> None:
     """Register the tasks archive command."""
 
     @app.command("archive")
-    def tasks_archive(
+    def tasks_archive(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -128,7 +128,7 @@ def register(app: typer.Typer) -> None:
             query_id=query_id,
             query=query,
         )
-        app_config = org.config.app.require_app_config(click.get_current_context())
+        app_config = org.config.app.require_app_config(ctx)
         org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
         org.logging.log_applied_config_defaults(app_config, args, "tasks archive")
         org.logging.log_command_arguments(args, "tasks archive")

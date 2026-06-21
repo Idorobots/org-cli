@@ -28,10 +28,7 @@ def stats_callback(
     ),
 ) -> None:
     """Global stats CLI options."""
-    app_config = ctx.find_root().obj
-    if not isinstance(app_config, org.config.app.AppConfig):
-        org.logging.configure_logging(False if verbose is None else verbose)
-        return
+    app_config = org.config.app.require_app_config(ctx)
     if verbose is None and not app_config.verbose:
         return
     org.logging.configure_logging(app_config.verbose if verbose is None else verbose)

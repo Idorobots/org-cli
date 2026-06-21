@@ -8254,9 +8254,12 @@ In file src/org/config/app.py around line 84, near the ~COMMAND_OPTION_NAMES = {
 #+end_example
 
 Remove all of this global state, don't leave any compatibility state for tests. Refactor tests not to need that.
-**** TODO src/org/commands/agenda/views.py
+**** DONE src/org/commands/agenda/views.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 18:14]
 :END:
 
 In file src/org/commands/agenda/views.py around line 85, near the ~def _compile_view_section_specs(view: org.config.app.AgendaViewConfig) -> list[A~
@@ -8267,9 +8270,12 @@ In file src/org/commands/agenda/views.py around line 85, near the ~def _compile_
 #+end_example
 
 Config should be threded along all the functions that require it. Don't extract the global context everywhere. The only place that should extract the config is the main command function only, the rest should pass the config along.
-**** TODO src/org/commands/stats/command.py
+**** DONE src/org/commands/stats/command.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 18:14]
 :END:
 
 In file src/org/commands/stats/command.py around line 41, near the ~def stats_callback(~
@@ -8280,9 +8286,12 @@ In file src/org/commands/stats/command.py around line 41, near the ~def stats_ca
 #+end_example
 
 This should use the helper for extracting config found in =org.config.app=.
-**** TODO src/org/commands/tasks/archive.py
+**** DONE src/org/commands/tasks/archive.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 18:14]
 :END:
 
 In file src/org/commands/tasks/archive.py around line 141, near the ~def register(app: typer.Typer) -> None:~
@@ -8307,22 +8316,6 @@ In file src/org/commands/tasks/capture/command.py around line 77, near the ~def 
 #+end_example
 
 It makes more sense to pass =AppConfig= here instead of just the templates. All command execution functions should receive command-specific arguments and the =AppConfig= object.
-**** TODO src/org/commands/tasks/common.py
-:PROPERTIES:
-:context: 
-:END:
-
-In file src/org/commands/tasks/common.py around line 222, near the ~def capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:~
-
-#+begin_example
--def configured_capture_template_names() -> list[str]:
-+def configured_capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:
-     """Return stable capture template names from loaded config."""
--    return capture_template_names(org.config.app.CONFIG_CAPTURE_TEMPLATES)
-
-#+end_example
-
-This function no longer makes sense. Use =capture_template_names()= instead in all callsites. Remove this function entirely.
 **** TODO src/org/config/app.py
 :PROPERTIES:
 :context: 
@@ -8383,19 +8376,24 @@ In file src/org/commands/agenda/command.py around line 403, near the ~def regist
 #+end_example
 
 Sounds like this should be a local function, as each command will have a distinct way of populating the defaults. Refactor so that each command has a custom way to apply defaults on top of config passed to the command.
-**** TODO src/org/commands/tasks/capture/command.py
+**** TODO src/org/config/app.py
 :PROPERTIES:
 :context: 
 :END:
 
-In file src/org/commands/tasks/capture/command.py around line 145, near the ~def register(app: typer.Typer) -> None:~
+In file src/org/config/app.py around line 1494, near the ~def load_cli_config(argv: list[str]) -> AppConfig:~
 
 #+begin_example
-+        _ = org.config.app.current_app_config()
++def require_app_config(ctx: object) -> AppConfig:
++    """Return AppConfig stored in the current root context."""
++    root_context = cast("ContextWithRoot", ctx).find_root()
++    app_config = root_context.obj
++    if not isinstance(app_config, AppConfig):
++        raise typer.BadParameter("Application config is not available")
 
 #+end_example
 
-This makes no sense.
+The argument should be a =typer.Context=, please clean that up.
 **** TODO src/org/config/app.py
 :PROPERTIES:
 :context: 
@@ -8494,24 +8492,6 @@ Looks like there's a lot of unnecessary copying here. Please refactor to just po
 :context: 
 :END:
 
-In file src/org/config/app.py around line 1494, near the ~def load_cli_config(argv: list[str]) -> AppConfig:~
-
-#+begin_example
-+def require_app_config(ctx: object) -> AppConfig:
-+    """Return AppConfig stored in the current root context."""
-+    root_context = cast("ContextWithRoot", ctx).find_root()
-+    app_config = root_context.obj
-+    if not isinstance(app_config, AppConfig):
-+        raise typer.BadParameter("Application config is not available")
-
-#+end_example
-
-The argument should be a =typer.Context=, please clean that up.
-**** TODO src/org/config/app.py
-:PROPERTIES:
-:context: 
-:END:
-
 In file src/org/config/app.py around line 1627, near the ~def load_cli_config(argv: list[str]) -> AppConfig:~
 
 #+begin_example
@@ -8569,6 +8549,35 @@ In file src/org/config/app.py around line 1627, near the ~def load_cli_config(ar
 #+end_example
 
 This looks like it's redundant.
+**** TODO src/org/commands/tasks/common.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/tasks/common.py around line 222, near the ~def capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:~
+
+#+begin_example
+-def configured_capture_template_names() -> list[str]:
++def configured_capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:
+     """Return stable capture template names from loaded config."""
+-    return capture_template_names(org.config.app.CONFIG_CAPTURE_TEMPLATES)
+
+#+end_example
+
+This function no longer makes sense. Use =capture_template_names()= instead in all callsites. Remove this function entirely.
+**** TODO src/org/commands/tasks/capture/command.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/tasks/capture/command.py around line 145, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        _ = org.config.app.current_app_config()
+
+#+end_example
+
+This makes no sense.
 **** TODO tests/cli_common/test_filter_construction.py
 :PROPERTIES:
 :context: 

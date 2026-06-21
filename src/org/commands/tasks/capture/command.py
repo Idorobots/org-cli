@@ -95,7 +95,8 @@ def register(app: typer.Typer) -> None:
             _CAPTURE_HELP_ENTRIES,
         ),
     )
-    def capture(
+    def capture(  # noqa: PLR0913
+        ctx: typer.Context,
         template_name: str | None = typer.Argument(
             None,
             metavar="TEMPLATE_NAME",
@@ -127,7 +128,7 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Create a task from a configured capture template."""
-        app_config = org.config.app.require_app_config(click.get_current_context())
+        app_config = org.config.app.require_app_config(ctx)
         args = TasksCaptureArgs(
             template_name=template_name,
             config=config,
