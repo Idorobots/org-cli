@@ -14,7 +14,7 @@ from org.commands.tasks import remove as tasks_remove
 
 def _run_tasks_remove(args: tasks_remove.RemoveArgs) -> None:
     """Run tasks remove with a default app config for direct tests."""
-    tasks_remove.run_tasks_remove(args, org.config.app.build_default_app_config())
+    tasks_remove.run_tasks_remove(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 if TYPE_CHECKING:

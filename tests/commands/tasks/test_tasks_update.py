@@ -15,7 +15,7 @@ from org.commands.tasks import update as tasks_update
 
 def _run_tasks_update(args: tasks_update.UpdateArgs) -> None:
     """Run tasks update with a default app config for direct tests."""
-    tasks_update.run_tasks_update(args, org.config.app.build_default_app_config())
+    tasks_update.run_tasks_update(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 if TYPE_CHECKING:

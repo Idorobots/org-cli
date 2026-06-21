@@ -16,7 +16,7 @@ from org.logic import edit as editor_command
 
 def _run_tasks_edit(args: tasks_edit.EditArgs) -> None:
     """Run tasks edit with a default app config for direct tests."""
-    tasks_edit.run_tasks_edit(args, org.config.app.build_default_app_config())
+    tasks_edit.run_tasks_edit(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 if TYPE_CHECKING:

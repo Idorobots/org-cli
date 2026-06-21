@@ -16,7 +16,7 @@ from org import cli
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
-app = cli.build_app(org.config.app.build_default_app_config())
+app = cli.build_app(org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 class _CliResult(Protocol):

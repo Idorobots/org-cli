@@ -8526,9 +8526,12 @@ In file src/org/config/app.py around line 1494, near the ~def load_cli_config(ar
 #+end_example
 
 The argument should be a =typer.Context=, please clean that up.
-**** TODO src/org/config/app.py
+**** DONE src/org/config/app.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 00:48]
 :END:
 
 In file src/org/config/app.py around line 1299, near the ~def build_config_defaults(~
@@ -8573,9 +8576,12 @@ In file src/org/config/app.py around line 1299, near the ~def build_config_defau
 #+end_example
 
 It would be nice if these defaults could be in the class definitions themselves. This would then just return an =AppConfig(config_path = config_path)=.
-**** TODO src/org/config/app.py
+**** DONE src/org/config/app.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 00:38]
 :END:
 
 In file src/org/config/app.py around line 1477, near the ~def load_cli_config(argv: list[str]) -> AppConfig:~
@@ -8619,9 +8625,12 @@ In file src/org/config/app.py around line 1477, near the ~def load_cli_config(ar
 #+end_example
 
 Looks like there's a lot of unnecessary copying here. Please refactor to just populate the values that need to be changed.
-**** TODO src/org/config/app.py
+**** DONE src/org/config/app.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 00:38]
 :END:
 
 In file src/org/config/app.py around line 1627, near the ~def load_cli_config(argv: list[str]) -> AppConfig:~
@@ -8783,6 +8792,20 @@ In file src/org/commands/tasks/find.py around line 287, near the ~def register(a
 
 Don't do this. Import the function directly.
 
+**** TODO tests/cli/test_cli_runner.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file tests/cli/test_cli_runner.py around line 25, near the ~if TYPE_CHECKING:~
+
+#+begin_example
+-app = cli.build_app(org.config.app.build_default_app_config())
++app = cli.build_app(org.config.app.AppConfig(config_path=".org-cli.yaml"))
+
+#+end_example
+
+Tests should not rely on the repo config.
 *** TODO Streamline query execution
 The commands use a common ETL pipeline where they load some data from files, apply filters/ordering/mutators and lastly present the results in some way. Sometimes the documents are then saved.
 It would be nice to make query execution as streamlined as possible, ideally, =org.logic.query= would expose a function =run_query= that takes a list of documents, a list of query stages to run and the context for the query to run in, and compiles and executes the query and returns the result.

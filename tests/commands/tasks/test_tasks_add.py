@@ -16,7 +16,7 @@ from org.commands.tasks import add as tasks_add
 
 def _run_tasks_add(args: tasks_add.AddArgs) -> None:
     """Run tasks add with a default app config for direct tests."""
-    tasks_add.run_tasks_add(args, org.config.app.build_default_app_config())
+    tasks_add.run_tasks_add(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 if TYPE_CHECKING:

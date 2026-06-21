@@ -33,7 +33,7 @@ def test_cli_main_invokes_typer_command(monkeypatch: pytest.MonkeyPatch) -> None
     def fake_get_command(_app: object) -> DummyCommand:
         return DummyCommand()
 
-    loaded_config = org.config.app.build_default_app_config()
+    loaded_config = org.config.app.AppConfig(config_path=".org-cli.yaml")
     loaded_config.stats.max_results = 3
 
     monkeypatch.setattr(
@@ -53,7 +53,7 @@ def test_cli_main_invokes_typer_command(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_build_app_callback_stores_loaded_config() -> None:
     """The root callback should place the loaded AppConfig in ctx.obj."""
-    config = org.config.app.build_default_app_config()
+    config = org.config.app.AppConfig(config_path=".org-cli.yaml")
     app = cli.build_app(config)
     assert app.registered_callback is not None
     callback = app.registered_callback.callback

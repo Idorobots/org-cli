@@ -599,7 +599,7 @@ def test_log_command_config_logs_all_config_values(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Config logging should include values loaded for a command."""
-    config = org.config.app.build_default_app_config()
+    config = org.config.app.AppConfig(config_path=".org-cli.yaml")
     config.stats.max_results = 10
     config.filter_tags = ["work"]
     config.mapping_inline = {"foo": "bar"}

@@ -21,7 +21,7 @@ def _app_config_with_templates(
     templates: dict[str, dict[str, str]],
 ) -> org.config.app.AppConfig:
     """Build app config with capture templates for command-entrypoint tests."""
-    config = org.config.app.build_default_app_config()
+    config = org.config.app.AppConfig(config_path=".org-cli.yaml")
     config.capture.templates = templates
     return config
 

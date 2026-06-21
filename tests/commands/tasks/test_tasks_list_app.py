@@ -29,7 +29,7 @@ def _make_session_data(nodes: list[Heading]) -> tasks_list._TasksListSessionData
 
 
 def _default_config() -> org.config.app.AppConfig:
-    return org.config.app.build_default_app_config()
+    return org.config.app.AppConfig(config_path=".org-cli.yaml")
 
 
 def test_tasks_list_app_navigation_and_help_forwarding() -> None:

@@ -43,7 +43,7 @@ def _app_config(
     agenda_views: dict[str, org.config.app.AgendaViewConfig] | None = None,
 ) -> org.config.app.AppConfig:
     """Build app config for agenda tests with optional configured views."""
-    config = org.config.app.build_default_app_config()
+    config = org.config.app.AppConfig(config_path=".org-cli.yaml")
     if agenda_views is not None:
         config.agenda.views = agenda_views
     return config
@@ -740,7 +740,7 @@ def test_run_agenda_no_results_prints_message(
     args = _make_args([fixture_path], filter_tags=["nomatch$"])
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--filter-tag", "nomatch$"])
-    agenda_command.run_agenda(args, org.config.app.build_default_app_config())
+    agenda_command.run_agenda(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     output = capsys.readouterr().out
 
     assert output.strip() == "No results"
@@ -753,7 +753,7 @@ def test_run_agenda_rejects_negative_offset(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--offset", "-1"])
     with pytest.raises(typer.BadParameter, match="--offset must be non-negative"):
-        agenda_command.run_agenda(args, org.config.app.build_default_app_config())
+        agenda_command.run_agenda(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 def test_run_agenda_rejects_negative_limit(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -763,7 +763,7 @@ def test_run_agenda_rejects_negative_limit(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--limit", "-1"])
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        agenda_command.run_agenda(args, org.config.app.build_default_app_config())
+        agenda_command.run_agenda(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 def test_run_agenda_rejects_days_below_one(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -773,7 +773,7 @@ def test_run_agenda_rejects_days_below_one(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--days", "0"])
     with pytest.raises(typer.BadParameter, match="--days must be at least 1"):
-        agenda_command.run_agenda(args, org.config.app.build_default_app_config())
+        agenda_command.run_agenda(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 def test_run_agenda_invalid_date_raises_bad_parameter(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -783,7 +783,7 @@ def test_run_agenda_invalid_date_raises_bad_parameter(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025/01/15"])
     with pytest.raises(typer.BadParameter, match="--date must be in one of these formats"):
-        agenda_command.run_agenda(args, org.config.app.build_default_app_config())
+        agenda_command.run_agenda(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 def test_parse_clock_duration_accepts_multiple_formats() -> None:

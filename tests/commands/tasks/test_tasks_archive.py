@@ -16,7 +16,7 @@ from org.commands.tasks import archive as tasks_archive
 
 def _run_tasks_archive(args: tasks_archive.ArchiveArgs) -> None:
     """Run tasks archive with a default app config for direct tests."""
-    tasks_archive.run_tasks_archive(args, org.config.app.build_default_app_config())
+    tasks_archive.run_tasks_archive(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 if TYPE_CHECKING:

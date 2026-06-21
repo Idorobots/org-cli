@@ -21,7 +21,7 @@ FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
 
 def _app_config() -> org.config.app.AppConfig:
     """Build default app config for direct command tests."""
-    return org.config.app.build_default_app_config()
+    return org.config.app.AppConfig(config_path=".org-cli.yaml")
 
 
 def make_stats_all_args(files: list[str], **overrides: object) -> stats_all_command.StatsAllArgs:

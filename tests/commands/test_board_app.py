@@ -38,7 +38,7 @@ def _make_session(
 ) -> actions.BoardSession:
     app_config = cast(
         "org.config.app.AppConfig",
-        overrides.pop("app_config", org.config.app.build_default_app_config()),
+        overrides.pop("app_config", org.config.app.AppConfig(config_path=".org-cli.yaml")),
     )
     resolved_columns = cast("list[actions.BoardColumn] | None", overrides.pop("columns", None))
     resolved_all_columns = cast(
@@ -194,7 +194,7 @@ def test_board_app_capture_prompt_submits_and_reloads(monkeypatch: pytest.Monkey
         nodes = node_from_org("* TODO Existing\n")
         captured_node = node_from_org("* TODO Captured\n")[0]
         reloaded: dict[str, object] = {}
-        config = org.config.app.build_default_app_config()
+        config = org.config.app.AppConfig(config_path=".org-cli.yaml")
         config.capture.templates = {"quick": {"file": "tasks.org", "content": "* TODO Captured"}}
         monkeypatch.setattr(
             actions,
@@ -293,6 +293,6 @@ def test_run_board_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     monkeypatch.setattr("org.commands.board.command.run_board_app", _fake_run)
 
-    board_command.run_board(args, org.config.app.build_default_app_config())
+    board_command.run_board(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
     assert called["value"] is True

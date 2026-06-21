@@ -38,7 +38,7 @@ def _make_app(
     *,
     color_enabled: bool = False,
 ) -> AgendaApp:
-    config = org.config.app.build_default_app_config()
+    config = org.config.app.AppConfig(config_path=".org-cli.yaml")
     view = _fallback_agenda_view()
     view_ctx = AgendaViewContext(section_specs=_compile_view_section_specs(view), name=view.name)
     render = ui.RenderContext(
@@ -319,6 +319,6 @@ def test_run_agenda_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     monkeypatch.setattr("org.commands.agenda.command.run_agenda_app", _fake_run)
 
-    agenda_command.run_agenda(args, org.config.app.build_default_app_config())
+    agenda_command.run_agenda(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
     assert called["value"] is True

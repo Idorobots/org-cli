@@ -9,7 +9,7 @@ import pytest
 import typer
 
 import org.logging
-from org.config.app import AppConfig, NamedQueryConfig, build_default_app_config
+from org.config.app import AppConfig, NamedQueryConfig
 
 
 def _build_query_text(
@@ -24,7 +24,7 @@ def _build_query_text(
     from org.query.runner import build_query_text_from_stages
 
     stages = build_pipeline_stages(
-        build_default_app_config() if config is None else config,
+        AppConfig(config_path=".org-cli.yaml") if config is None else config,
         args,
         argv,
         include_ordering,
@@ -44,7 +44,7 @@ def _build_query(
     from org.query.runner import build_query_from_stages
 
     stages = build_pipeline_stages(
-        build_default_app_config() if config is None else config,
+        AppConfig(config_path=".org-cli.yaml") if config is None else config,
         args,
         argv,
         include_ordering,
@@ -58,7 +58,7 @@ def _build_config(
     custom_order_by: dict[str, str] | None = None,
     custom_with: dict[str, str] | None = None,
 ) -> AppConfig:
-    config = build_default_app_config()
+    config = AppConfig(config_path=".org-cli.yaml")
     config.filters = [
         NamedQueryConfig(name=name, query=query) for name, query in (custom_filters or {}).items()
     ]
@@ -396,7 +396,7 @@ def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixtu
     org.logging.logger.setLevel(logging.INFO)
     org.logging.logger.propagate = True
     with caplog.at_level(logging.INFO, logger="org"):
-        load_and_process_data(args, build_default_app_config())
+        load_and_process_data(args, AppConfig(config_path=".org-cli.yaml"))
 
     assert "Query context:" in caplog.text
     assert "'todo_states': ['TODO']" in caplog.text

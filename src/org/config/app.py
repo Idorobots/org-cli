@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, TypedDict, TypeGuard, TypeVar, cast
@@ -322,14 +322,14 @@ class TasksConfig:
 class CaptureConfig:
     """Structured configuration for capture templates."""
 
-    templates: dict[str, dict[str, str]]
+    templates: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass
 class AgendaConfig:
     """Structured configuration for agenda command settings."""
 
-    views: dict[str, AgendaViewConfig]
+    views: dict[str, AgendaViewConfig] = field(default_factory=dict)
     date: str | None = None
     days: int | None = None
     no_completed: bool | None = None
@@ -346,7 +346,7 @@ class AgendaConfig:
 class BoardConfig:
     """Structured configuration for board command settings."""
 
-    views: dict[str, BoardViewConfig]
+    views: dict[str, BoardViewConfig] = field(default_factory=dict)
     view: str | None = None
     days: int | None = None
     max_results: int | None = None
@@ -359,41 +359,41 @@ class AppConfig:
     """Structured application configuration passed through ctx.obj."""
 
     config_path: str
-    color_flag: bool | None
-    verbose: bool
-    todo_states: list[str]
-    done_states: list[str]
-    exclude: str | None
-    exclude_inline: list[str] | None
-    mapping: str | None
-    mapping_inline: dict[str, str] | None
-    filter_priority: str | None
-    filter_level: int | None
-    filter_repeats_above: int | None
-    filter_repeats_below: int | None
-    filter_date_from: str | None
-    filter_date_until: str | None
-    filter_properties: list[str] | None
-    filter_tags: list[str] | None
-    filter_headings: list[str] | None
-    filter_bodies: list[str] | None
-    filter_completed: bool
-    filter_not_completed: bool
-    order_by_file_order: bool
-    order_by_file_order_reversed: bool
-    order_by_priority: bool
-    order_by_level: bool
-    order_by_timestamp_asc: bool
-    order_by_timestamp_desc: bool
-    with_tags_as_category: bool
-    filters: list[NamedQueryConfig]
-    orderings: list[NamedQueryConfig]
-    mutators: list[NamedQueryConfig]
-    stats: StatsConfig
-    tasks: TasksConfig
-    capture: CaptureConfig
-    agenda: AgendaConfig
-    board: BoardConfig
+    color_flag: bool | None = None
+    verbose: bool = False
+    todo_states: list[str] = field(default_factory=lambda: ["TODO"])
+    done_states: list[str] = field(default_factory=lambda: ["DONE"])
+    exclude: str | None = None
+    exclude_inline: list[str] | None = None
+    mapping: str | None = None
+    mapping_inline: dict[str, str] | None = None
+    filter_priority: str | None = None
+    filter_level: int | None = None
+    filter_repeats_above: int | None = None
+    filter_repeats_below: int | None = None
+    filter_date_from: str | None = None
+    filter_date_until: str | None = None
+    filter_properties: list[str] | None = None
+    filter_tags: list[str] | None = None
+    filter_headings: list[str] | None = None
+    filter_bodies: list[str] | None = None
+    filter_completed: bool = False
+    filter_not_completed: bool = False
+    order_by_file_order: bool = False
+    order_by_file_order_reversed: bool = False
+    order_by_priority: bool = False
+    order_by_level: bool = False
+    order_by_timestamp_asc: bool = False
+    order_by_timestamp_desc: bool = False
+    with_tags_as_category: bool = False
+    filters: list[NamedQueryConfig] = field(default_factory=list)
+    orderings: list[NamedQueryConfig] = field(default_factory=list)
+    mutators: list[NamedQueryConfig] = field(default_factory=list)
+    stats: StatsConfig = field(default_factory=StatsConfig)
+    tasks: TasksConfig = field(default_factory=TasksConfig)
+    capture: CaptureConfig = field(default_factory=CaptureConfig)
+    agenda: AgendaConfig = field(default_factory=AgendaConfig)
+    board: BoardConfig = field(default_factory=BoardConfig)
 
     def custom_filter_map(self) -> dict[str, str]:
         """Return configured custom filters keyed by name."""
@@ -1068,48 +1068,6 @@ def parse_capture_template(value: object) -> dict[str, str] | None:
     return parsed
 
 
-def build_default_app_config(config_path: str = ".org-cli.yaml") -> AppConfig:
-    """Build application config populated with code defaults."""
-    return AppConfig(
-        config_path=config_path,
-        color_flag=None,
-        verbose=False,
-        todo_states=["TODO"],
-        done_states=["DONE"],
-        exclude=None,
-        exclude_inline=None,
-        mapping=None,
-        mapping_inline=None,
-        filter_priority=None,
-        filter_level=None,
-        filter_repeats_above=None,
-        filter_repeats_below=None,
-        filter_date_from=None,
-        filter_date_until=None,
-        filter_properties=None,
-        filter_tags=None,
-        filter_headings=None,
-        filter_bodies=None,
-        filter_completed=False,
-        filter_not_completed=False,
-        order_by_file_order=False,
-        order_by_file_order_reversed=False,
-        order_by_priority=False,
-        order_by_level=False,
-        order_by_timestamp_asc=False,
-        order_by_timestamp_desc=False,
-        with_tags_as_category=False,
-        filters=[],
-        orderings=[],
-        mutators=[],
-        stats=StatsConfig(),
-        tasks=TasksConfig(),
-        capture=CaptureConfig(templates={}),
-        agenda=AgendaConfig(views={}),
-        board=BoardConfig(views={}),
-    )
-
-
 def parse_shared_config(raw_config: dict[str, object]) -> dict[str, object] | None:
     """Parse shared top-level config values into AppConfig field values."""
     parsed: dict[str, object] = {}
@@ -1269,13 +1227,13 @@ def _parse_structured_sections(
         config,
         "board",
         parse_board_section,
-        BoardConfig(views={}),
+        BoardConfig(),
     )
     agenda_config = _parse_optional_config_section(
         config,
         "agenda",
         parse_agenda_section,
-        AgendaConfig(views={}),
+        AgendaConfig(),
     )
     stats_config = _parse_optional_config_section(
         config,
@@ -1332,7 +1290,7 @@ def _build_loaded_app_config(config: dict[str, object], config_path: Path) -> Ap
         tasks_config,
     ) = _parse_structured_sections(config)
 
-    app_config = build_default_app_config(str(config_path))
+    app_config = AppConfig(config_path=str(config_path))
     for key, shared_value in shared_config.items():
         setattr(app_config, key, shared_value)
 
@@ -1350,96 +1308,6 @@ def _build_loaded_app_config(config: dict[str, object], config_path: Path) -> Ap
 def _parse_state_list(value: str) -> list[str]:
     """Parse comma-separated TODO/DONE state list from validated config string."""
     return [part.strip() for part in value.split(",") if part.strip()]
-
-
-def _apply_attr(target: object, dest: str, value: object, allowed: set[str]) -> bool:
-    """Apply one value to a matching attribute name on a target object."""
-    if dest not in allowed:
-        return False
-    setattr(target, dest, value)
-    return True
-
-
-def _apply_default_dest(config: AppConfig, dest: str, value: object) -> None:
-    """Apply one validated config destination value onto AppConfig."""
-    top_level_attrs = {
-        "color_flag",
-        "verbose",
-        "filter_priority",
-        "filter_level",
-        "filter_repeats_above",
-        "filter_repeats_below",
-        "filter_date_from",
-        "filter_date_until",
-        "filter_completed",
-        "filter_not_completed",
-        "order_by_file_order",
-        "order_by_file_order_reversed",
-        "order_by_priority",
-        "order_by_level",
-        "order_by_timestamp_asc",
-        "order_by_timestamp_desc",
-        "with_tags_as_category",
-    }
-    agenda_attrs = {"date", "no_completed", "no_overdue", "no_upcoming", "future_repeats"}
-    stats_attrs = {
-        "mapping",
-        "exclude",
-        "mapping_inline",
-        "exclude_inline",
-        "max_tags",
-        "max_relations",
-        "min_group_size",
-        "max_groups",
-        "use",
-    }
-    tasks_attrs = {"details", "out", "out_theme", "pandoc_args"}
-
-    if dest == "todo_states":
-        config.todo_states = _parse_state_list(cast("str", value))
-    elif dest == "done_states":
-        config.done_states = _parse_state_list(cast("str", value))
-    elif (
-        _apply_attr(config, dest, value, top_level_attrs)
-        or _apply_attr(config.agenda, dest, value, agenda_attrs)
-        or _apply_attr(config.stats, dest, value, stats_attrs)
-        or _apply_attr(config.tasks, dest, value, tasks_attrs)
-    ):
-        pass
-    elif dest == "days":
-        config.agenda.days = cast("int", value)
-        config.board.days = cast("int", value)
-    elif dest == "offset":
-        config.agenda.offset = cast("int", value)
-        config.board.offset = cast("int", value)
-    elif dest == "width":
-        config.agenda.width = cast("int", value)
-        config.board.width = cast("int", value)
-    elif dest == "view":
-        config.agenda.view = cast("str", value)
-        config.board.view = cast("str", value)
-    elif dest == "max_results":
-        limit = cast("int", value)
-        config.stats.max_results = limit
-        config.tasks.max_results = limit
-        config.agenda.max_results = limit
-        config.board.max_results = limit
-
-
-def _apply_list_dest(config: AppConfig, dest: str, value: list[str]) -> None:
-    """Apply one validated config list destination onto AppConfig."""
-    if dest == "filter_properties":
-        config.filter_properties = value
-    elif dest == "filter_tags":
-        config.filter_tags = value
-    elif dest == "filter_headings":
-        config.filter_headings = value
-    elif dest == "filter_bodies":
-        config.filter_bodies = value
-    elif dest == "tags":
-        config.stats.tags = value
-    elif dest == "groups":
-        config.stats.groups = value
 
 
 def _named_query_list(items: dict[str, str]) -> list[NamedQueryConfig]:

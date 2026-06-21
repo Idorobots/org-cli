@@ -102,7 +102,7 @@ def _make_session(
 ) -> actions.TasksListSession:
     return actions.create_tasks_list_session(
         make_list_args([]),
-        org.config.app.build_default_app_config(),
+        org.config.app.AppConfig(config_path=".org-cli.yaml"),
         _make_session_data(nodes, color_enabled=color_enabled),
     )
 
@@ -116,7 +116,7 @@ def test_run_tasks_list_no_results(
     args = make_list_args([fixture_path], filter_tags=["nomatch$"])
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--filter-tag", "nomatch$"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     assert captured.strip() == "No results"
@@ -131,7 +131,7 @@ def test_run_tasks_list_details_output(
     args = make_list_args([fixture_path], details=True, max_results=1, width=200)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--details", "--width", "200"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     assert fixture_path in captured
@@ -147,7 +147,7 @@ def test_run_tasks_list_short_output(
     args = make_list_args([fixture_path], max_results=2)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     lines = [line for line in captured.splitlines() if line.strip()]
@@ -167,7 +167,7 @@ def test_run_tasks_list_offset_applied(
     args = make_list_args([fixture_path], max_results=1, offset=1)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--offset", "1"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     lines = [line for line in captured.splitlines() if line.strip()]
@@ -185,7 +185,7 @@ def test_run_tasks_list_short_output_aligns_tags_to_width(
     args = make_list_args([fixture_path], max_results=1, width=60)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--width", "60"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     lines = [line for line in captured.splitlines() if line.strip()]
@@ -203,7 +203,7 @@ def test_run_tasks_list_short_output_truncates_filename_and_heading_for_tags(
     args = make_list_args([fixture_path], max_results=1, width=50)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--width", "50"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     lines = [line for line in captured.splitlines() if line.strip()]
@@ -223,7 +223,7 @@ def test_run_tasks_list_offset_no_results(
     args = make_list_args([fixture_path], max_results=10, offset=10)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--offset", "10"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     assert captured.strip() == "No results"
@@ -235,7 +235,7 @@ def test_run_tasks_list_negative_max_results_raises_bad_parameter() -> None:
     args = make_list_args([fixture_path], max_results=-1)
 
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+        tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 def test_run_tasks_list_markdown_converts_nodes_to_single_document(
@@ -255,7 +255,7 @@ def test_run_tasks_list_markdown_converts_nodes_to_single_document(
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "markdown"])
     monkeypatch.setattr("org.commands.tasks.list.command._org_to_pandoc_format", _fake_pandoc)
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     assert captured.strip() == "converted markdown"
@@ -282,7 +282,7 @@ def test_run_tasks_list_accepts_arbitrary_pandoc_output_format(
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "gfm"])
     monkeypatch.setattr("org.commands.tasks.list.command._org_to_pandoc_format", _fake_pandoc)
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     assert captured.strip() == "converted gfm"
@@ -310,7 +310,7 @@ def test_run_tasks_list_markdown_pandoc_error_is_usage_error(
     )
 
     with pytest.raises(click.UsageError, match="pandoc missing"):
-        tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+        tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 def test_run_tasks_list_pandoc_empty_results_prints_no_results(
@@ -330,7 +330,7 @@ def test_run_tasks_list_pandoc_empty_results_prints_no_results(
     )
     monkeypatch.setattr("org.commands.tasks.list.command._org_to_pandoc_format", _should_not_call)
 
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     assert captured.strip() == "No results"
@@ -345,7 +345,7 @@ def test_run_tasks_list_json_emits_array_for_multiple_nodes(
     args = make_list_args([fixture_path], out=OutputFormat.JSON, max_results=2)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "json"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     parsed = json.loads(captured)
@@ -364,7 +364,7 @@ def test_run_tasks_list_json_emits_single_value_for_single_node(
     args = make_list_args([fixture_path], out=OutputFormat.JSON, max_results=1)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "json", "-n", "1"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     parsed = json.loads(captured)
@@ -385,7 +385,7 @@ def test_run_tasks_list_json_no_results_emits_empty_array(
         "argv",
         ["org", "tasks", "list", "--out", "json", "--filter-tag", "nomatch$"],
     )
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     parsed = json.loads(captured)
@@ -401,7 +401,7 @@ def test_run_tasks_list_json_max_results_zero_emits_empty_array(
     args = make_list_args([fixture_path], out=OutputFormat.JSON, max_results=0)
 
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "json", "-n", "0"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     parsed = json.loads(captured)
@@ -414,7 +414,7 @@ def test_run_tasks_list_invalid_pandoc_args_is_usage_error() -> None:
     args = make_list_args([fixture_path], out="gfm", pandoc_args='"')
 
     with pytest.raises(click.UsageError, match="No closing quotation"):
-        tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+        tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 def test_run_tasks_list_defaults_limit_to_all_results_with_paging(
@@ -445,7 +445,7 @@ def test_run_tasks_list_defaults_limit_to_all_results_with_paging(
 
     args = make_list_args([fixture_path], max_results=None)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
     lines = [line for line in buffer.getvalue().splitlines() if line.strip()]
     assert len(lines) == 10
@@ -464,7 +464,7 @@ def test_run_tasks_list_unicode_heading_aligns_tags_to_visual_width(
 
     args = make_list_args([fixture_path], max_results=1, width=60)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--width", "60"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     lines = [line for line in captured.splitlines() if line.strip()]
@@ -487,7 +487,7 @@ def test_run_tasks_list_details_wraps_long_lines_to_console_width(
 
     args = make_list_args([fixture_path], details=True, width=60, max_results=1)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--details", "--width", "60"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
     captured = capsys.readouterr().out
 
     lines = [line for line in captured.splitlines() if line]
@@ -528,7 +528,7 @@ def test_run_tasks_list_uses_pager_for_org_output_when_overflowing(
 
     args = make_list_args([fixture_path], max_results=12)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--limit", "12"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
     assert pager_called["value"]
 
@@ -566,7 +566,7 @@ def test_run_tasks_list_skips_pager_when_limit_below_console_height(
 
     args = make_list_args([fixture_path], max_results=3)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--limit", "3"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
     assert not pager_called["value"]
 
@@ -604,7 +604,7 @@ def test_run_tasks_list_does_not_use_pager_for_json_output_when_overflowing(
 
     args = make_list_args([fixture_path], max_results=12, out=OutputFormat.JSON)
     monkeypatch.setattr(sys, "argv", ["org", "tasks", "list", "--out", "json", "--limit", "12"])
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
     assert not pager_called["value"]
 
@@ -639,7 +639,7 @@ def test_run_tasks_list_uses_interactive_mode_when_tty_and_not_blocked(
         lambda *_args, **_kwargs: pytest.fail("static mode should not be used"),
     )
 
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
     assert called["interactive"]
 
@@ -650,7 +650,7 @@ def test_run_tasks_list_requires_tty_without_explicit_static_mode() -> None:
     args = make_list_args([fixture_path], noninteractive=False)
 
     with pytest.raises(click.UsageError, match="requires a TTY unless --details or --out"):
-        tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+        tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 def test_run_tasks_list_details_switch_blocks_interactive_mode(
@@ -683,7 +683,7 @@ def test_run_tasks_list_details_switch_blocks_interactive_mode(
     )
     monkeypatch.setattr(tasks_list, "_run_tasks_list_static", _fake_static)
 
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
     assert called["static"]
 
@@ -718,7 +718,7 @@ def test_run_tasks_list_out_switch_blocks_interactive_mode(
     )
     monkeypatch.setattr(tasks_list, "_run_tasks_list_static", _fake_static)
 
-    tasks_list.run_tasks_list(args, org.config.app.build_default_app_config())
+    tasks_list.run_tasks_list(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
     assert called["static"]
 

@@ -55,7 +55,7 @@ def _app_config(
     board_views: dict[str, org.config.app.BoardViewConfig] | None = None,
 ) -> org.config.app.AppConfig:
     """Build app config for board tests with optional configured views."""
-    config = org.config.app.build_default_app_config()
+    config = org.config.app.AppConfig(config_path=".org-cli.yaml")
     if board_views is not None:
         config.board.views = board_views
     return config

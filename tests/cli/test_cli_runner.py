@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
-app = cli.build_app(org.config.app.build_default_app_config())
+app = cli.build_app(org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 def _build_app(
@@ -28,7 +28,7 @@ def _build_app(
     custom_filters: dict[str, str] | None = None,
     capture_templates: dict[str, dict[str, str]] | None = None,
 ) -> typer.Typer:
-    config = org.config.app.build_default_app_config()
+    config = org.config.app.AppConfig(config_path=".org-cli.yaml")
     config.filters = [
         NamedQueryConfig(name=name, query=query) for name, query in (custom_filters or {}).items()
     ]
