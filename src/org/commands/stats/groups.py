@@ -135,7 +135,7 @@ def format_group_list(
     return lines_to_text(apply_indent(lines, indent))
 
 
-def run_stats_groups(args: GroupsArgs) -> None:
+def run_stats_groups(args: GroupsArgs, config: org.config.app.AppConfig) -> None:
     """Run the stats groups command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
@@ -145,7 +145,7 @@ def run_stats_groups(args: GroupsArgs) -> None:
     with processing_status(console, color_enabled):
         mapping = org.config.app.resolve_mapping(args)
         exclude_set = org.config.app.resolve_exclude_set(args)
-        nodes, _, _ = load_and_process_data(args)
+        nodes, _, _ = load_and_process_data(args, config)
 
         if not nodes:
             output = None
@@ -204,6 +204,7 @@ def register(app: typer.Typer) -> None:
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
     )
     def stats_groups(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -396,7 +397,8 @@ def register(app: typer.Typer) -> None:
             min_group_size=0,
             max_groups=0,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "stats groups")
+        app_config = org.config.app.require_app_config(ctx)
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "stats groups")
         org.logging.log_command_arguments(args, "stats groups")
-        run_stats_groups(args)
+        run_stats_groups(args, app_config)

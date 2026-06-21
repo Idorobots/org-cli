@@ -12,12 +12,14 @@ from org_parser.text import RichText
 from org_parser.time import Clock, Timestamp
 from typer.testing import CliRunner
 
-from org.cli import app
+import org.config.app
+from org import cli
 from org.commands.tasks.query import TasksQueryArgs, _is_org_object, run_tasks_query
 from org.pipeline.format import OutputFormat, OutputFormatError
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
+app = cli.build_app(org.config.app.build_default_app_config())
 
 
 def _make_args(files: list[str], query: str, **overrides: object) -> TasksQueryArgs:

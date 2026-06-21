@@ -34,6 +34,33 @@ if TYPE_CHECKING:
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 
 
+def _board_views_configured() -> dict[str, org.config.app.BoardViewConfig]:
+    """Build a reusable configured board view set for tests."""
+    return {
+        "kanban": org.config.app.BoardViewConfig(
+            name="kanban",
+            columns=[
+                org.config.app.BoardColumnConfig(name="Backlog", filter=".todo == null"),
+                org.config.app.BoardColumnConfig(
+                    name="Working",
+                    filter=".todo != null and not(.is_completed)",
+                ),
+            ],
+        ),
+    }
+
+
+def _app_config(
+    *,
+    board_views: dict[str, org.config.app.BoardViewConfig] | None = None,
+) -> org.config.app.AppConfig:
+    """Build app config for board tests with optional configured views."""
+    config = org.config.app.build_default_app_config()
+    if board_views is not None:
+        config.board.views = board_views
+    return config
+
+
 def make_board_args(files: list[str], **overrides: object) -> board_command.BoardArgs:
     """Build BoardArgs with defaults and overrides."""
     args = board_command.BoardArgs(
@@ -96,6 +123,10 @@ def _make_session(
     nodes: list[Heading],
     **overrides: object,
 ) -> actions.BoardSession:
+    app_config = cast(
+        "org.config.app.AppConfig",
+        overrides.pop("app_config", _app_config()),
+    )
     resolved_columns = cast(
         "list[actions.BoardColumn] | None",
         overrides.pop("columns", None),
@@ -109,6 +140,7 @@ def _make_session(
         nodes=nodes,
         todo_states=["TODO"],
         done_states=["DONE"],
+        app_config=app_config,
         columns=_default_columns(nodes) if resolved_columns is None else resolved_columns,
         color_enabled=False,
         selected_column_index=0,
@@ -135,6 +167,14 @@ def _pin_board_now(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _render_board_output(args: board_command.BoardArgs) -> str:
     """Render board output through shared UI helpers for rendering tests."""
+    return _render_board_output_with_config(args, _app_config())
+
+
+def _render_board_output_with_config(
+    args: board_command.BoardArgs,
+    config: org.config.app.AppConfig,
+) -> str:
+    """Render board output through shared UI helpers for rendering tests."""
     color_enabled = setup_output(args)
     args.max_results = board_command._resolve_tasks_limit(args.max_results)
     console_output = StringIO()
@@ -146,6 +186,7 @@ def _render_board_output(args: board_command.BoardArgs) -> str:
     )
     nodes, discovered_todo_states, discovered_done_states = load_and_process_data(
         args,
+        config,
     )
     nodes = actions.filter_recent_completed_nodes(nodes, args.days)
     todo_states, done_states = actions.resolved_states(
@@ -155,7 +196,10 @@ def _render_board_output(args: board_command.BoardArgs) -> str:
     )
     if not nodes:
         return "No results\n"
-    columns = actions.build_selector_board_columns(nodes, actions.resolve_column_specs(args))
+    columns = actions.build_selector_board_columns(
+        nodes,
+        actions.resolve_column_specs(args, config.board.views),
+    )
     ui.render_static_board(
         console,
         columns,
@@ -297,7 +341,7 @@ def test_build_selector_board_columns_preserves_processed_order() -> None:
         "* TODO [#C] Low\n* TODO Middle\n* TODO [#A] High\n* TODO [#B] Medium\n",
     )
 
-    specs = actions.resolve_column_specs(make_board_args([]))
+    specs = actions.resolve_column_specs(make_board_args([]), {})
     columns = actions.build_selector_board_columns(nodes, specs)
 
     todo_column = next(column for column in columns if column.title == "TODO")
@@ -521,7 +565,7 @@ def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
         nodes=original_nodes,
         columns=actions.build_selector_board_columns(
             original_nodes,
-            actions.resolve_column_specs(args),
+            actions.resolve_column_specs(args, {}),
         ),
         color_enabled=False,
         selected_column_index=1,
@@ -539,7 +583,7 @@ def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
     monkeypatch.setattr(
         actions,
         "load_and_process_data",
-        lambda _args: (reloaded_nodes, ["TODO"], ["DONE"]),
+        lambda _args, _config: (reloaded_nodes, ["TODO"], ["DONE"]),
     )
 
     actions.reload_session(session, preserve_identity)
@@ -699,7 +743,7 @@ def test_run_board_rejects_width_below_80(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "79"])
     with pytest.raises(typer.BadParameter, match="--width must be at least 80"):
-        board_command.run_board(args)
+        board_command.run_board(args, _app_config())
 
 
 def test_run_board_limit_applies_before_grouping(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -735,7 +779,7 @@ def test_run_board_negative_max_results_raises_bad_parameter(
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--limit", "-1"])
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        board_command.run_board(args)
+        board_command.run_board(args, _app_config())
 
 
 def test_run_board_negative_offset_raises_bad_parameter(
@@ -747,7 +791,7 @@ def test_run_board_negative_offset_raises_bad_parameter(
 
     monkeypatch.setattr(sys, "argv", ["org", "board", "--offset", "-1"])
     with pytest.raises(typer.BadParameter, match="--offset must be non-negative"):
-        board_command.run_board(args)
+        board_command.run_board(args, _app_config())
 
 
 def test_run_board_uses_pager_when_render_exceeds_console_height(
@@ -778,9 +822,11 @@ def test_run_board_uses_pager_when_render_exceeds_console_height(
     monkeypatch.setattr(console, "pager", _fake_pager)
 
     args = make_board_args([fixture_path], max_results=None)
+    config = _app_config()
     args.max_results = board_command._resolve_tasks_limit(args.max_results)
     nodes, discovered_todo_states, discovered_done_states = load_and_process_data(
         args,
+        config,
     )
     nodes = actions.filter_recent_completed_nodes(nodes, args.days)
     todo_states, done_states = actions.resolved_states(
@@ -788,7 +834,7 @@ def test_run_board_uses_pager_when_render_exceeds_console_height(
         discovered_todo_states,
         discovered_done_states,
     )
-    columns = actions.build_selector_board_columns(nodes, actions.resolve_column_specs(args))
+    columns = actions.build_selector_board_columns(nodes, actions.resolve_column_specs(args, {}))
     ui.render_static_board(
         console,
         columns,
@@ -813,23 +859,20 @@ def test_run_board_selector_uses_full_nodes_from_multiple_files(
         second_handle.write("* TODO Second file task\n")
 
     args = make_board_args([first_path, second_path], view="kanban", width=160)
-    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
-    org.config.app.CONFIG_BOARD_VIEWS.clear()
-    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
-        name="kanban",
-        columns=[
-            org.config.app.BoardColumnConfig(name="TODO", filter='str(.todo) == "TODO"'),
-        ],
+    config = _app_config(
+        board_views={
+            "kanban": org.config.app.BoardViewConfig(
+                name="kanban",
+                columns=[
+                    org.config.app.BoardColumnConfig(name="TODO", filter='str(.todo) == "TODO"'),
+                ],
+            ),
+        },
     )
-
-    try:
-        monkeypatch.setattr(sys, "argv", ["org", "board", "--view", "kanban", "--width", "160"])
-        output = _render_board_output(args)
-        assert "First file task" in output
-        assert "Second file task" in output
-    finally:
-        org.config.app.CONFIG_BOARD_VIEWS.clear()
-        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--view", "kanban", "--width", "160"])
+    output = _render_board_output_with_config(args, config)
+    assert "First file task" in output
+    assert "Second file task" in output
 
 
 def test_run_board_coalesce_completed_true_shows_completed_column(
@@ -944,55 +987,31 @@ def test_run_board_uses_configured_view_columns(monkeypatch: pytest.MonkeyPatch)
     """Requested configured view should render configured columns."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args([fixture_path], view="kanban", width=150)
-    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
-    org.config.app.CONFIG_BOARD_VIEWS.clear()
-    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
-        name="kanban",
-        columns=[
-            org.config.app.BoardColumnConfig(
-                name="Backlog",
-                filter=".todo == null",
-            ),
-            org.config.app.BoardColumnConfig(
-                name="Working",
-                filter=".todo != null and not(.is_completed)",
-            ),
-        ],
-    )
-
-    try:
-        monkeypatch.setattr(sys, "argv", ["org", "board", "--view", "kanban", "--width", "150"])
-        output = _render_board_output(args)
-        assert "Backlog" in output
-        assert "Working" in output
-    finally:
-        org.config.app.CONFIG_BOARD_VIEWS.clear()
-        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
+    config = _app_config(board_views=_board_views_configured())
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--view", "kanban", "--width", "150"])
+    output = _render_board_output_with_config(args, config)
+    assert "Backlog" in output
+    assert "Working" in output
 
 
 def test_run_board_missing_requested_view_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """Missing requested view should return explicit BadParameter."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="missing")
-    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
-    org.config.app.CONFIG_BOARD_VIEWS.clear()
-    org.config.app.CONFIG_BOARD_VIEWS["other"] = org.config.app.BoardViewConfig(
-        name="other",
-        columns=[
-            org.config.app.BoardColumnConfig(
-                name="TODO",
-                filter='.todo == "TODO"',
+    config = _app_config(
+        board_views={
+            "other": org.config.app.BoardViewConfig(
+                name="other",
+                columns=[
+                    org.config.app.BoardColumnConfig(name="TODO", filter='.todo == "TODO"'),
+                ],
             ),
-        ],
+        },
     )
-    try:
-        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
-        with pytest.raises(typer.BadParameter, match="Requested board view not found"):
-            board_command.run_board(args)
-    finally:
-        org.config.app.CONFIG_BOARD_VIEWS.clear()
-        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    with pytest.raises(typer.BadParameter, match="Requested board view not found"):
+        board_command.run_board(args, config)
 
 
 def test_run_board_requested_view_without_configured_views_raises(
@@ -1001,46 +1020,23 @@ def test_run_board_requested_view_without_configured_views_raises(
     """Explicit --view should fail when no configured views exist."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="kanban")
-    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
-    org.config.app.CONFIG_BOARD_VIEWS.clear()
-    try:
-        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
-        with pytest.raises(typer.BadParameter, match="no board views are configured"):
-            board_command.run_board(args)
-    finally:
-        org.config.app.CONFIG_BOARD_VIEWS.clear()
-        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    with pytest.raises(typer.BadParameter, match="no board views are configured"):
+        board_command.run_board(args, _app_config(board_views={}))
 
 
 def test_run_board_uses_default_view_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """Config-defaulted view value should drive board view resolution."""
     fixture_path = os.path.join(FIXTURES_DIR, "custom_states.org")
     args = make_board_args([fixture_path], view=None, width=150)
-    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
-    org.config.app.CONFIG_BOARD_VIEWS.clear()
-    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
-        name="kanban",
-        columns=[
-            org.config.app.BoardColumnConfig(name="Backlog", filter=".todo == null"),
-            org.config.app.BoardColumnConfig(
-                name="Working",
-                filter=".todo != null and not(.is_completed)",
-            ),
-        ],
-    )
-
-    try:
-        # Simulate Typer default_map applying defaults: --view=kanban
-        args.view = "kanban"
-        specs = actions.resolve_column_specs(args)
-        assert [spec.name for spec in specs] == ["Backlog", "Working"]
-        monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "150"])
-        output = _render_board_output(args)
-        assert "Backlog" in output
-    finally:
-        org.config.app.CONFIG_BOARD_VIEWS.clear()
-        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
+    config = _app_config(board_views=_board_views_configured())
+    args.view = "kanban"
+    specs = actions.resolve_column_specs(args, config.board.views)
+    assert [spec.name for spec in specs] == ["Backlog", "Working"]
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--width", "150"])
+    output = _render_board_output_with_config(args, config)
+    assert "Backlog" in output
 
 
 def test_run_board_invalid_filter_or_order_by_parse_error_has_context(
@@ -1049,22 +1045,20 @@ def test_run_board_invalid_filter_or_order_by_parse_error_has_context(
     """Filter/order-by parse failures should include view and column context."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="kanban")
-    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
-    org.config.app.CONFIG_BOARD_VIEWS.clear()
-    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
-        name="kanban",
-        columns=[
-            org.config.app.BoardColumnConfig(name="Broken", filter=".todo =="),
-        ],
+    config = _app_config(
+        board_views={
+            "kanban": org.config.app.BoardViewConfig(
+                name="kanban",
+                columns=[
+                    org.config.app.BoardColumnConfig(name="Broken", filter=".todo =="),
+                ],
+            ),
+        },
     )
-    try:
-        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
-        with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
-            board_command.run_board(args)
-    finally:
-        org.config.app.CONFIG_BOARD_VIEWS.clear()
-        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
+        board_command.run_board(args, config)
 
 
 def test_run_board_invalid_filter_or_order_by_runtime_error_has_context(
@@ -1073,30 +1067,28 @@ def test_run_board_invalid_filter_or_order_by_runtime_error_has_context(
     """Filter/order-by runtime failures should include view and column context."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="kanban")
-    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
-    org.config.app.CONFIG_BOARD_VIEWS.clear()
-    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
-        name="kanban",
-        columns=[
-            org.config.app.BoardColumnConfig(
-                name="Broken",
-                filter="unknown_fn(.todo)",
+    config = _app_config(
+        board_views={
+            "kanban": org.config.app.BoardViewConfig(
+                name="kanban",
+                columns=[
+                    org.config.app.BoardColumnConfig(
+                        name="Broken",
+                        filter="unknown_fn(.todo)",
+                    ),
+                ],
             ),
-        ],
+        },
     )
     monkeypatch.setattr(
         board_command,
         "load_and_process_data",
-        lambda _args: ([node_from_org("* TODO Task\n")[0]], ["TODO"], ["DONE"]),
+        lambda _args, _config: ([node_from_org("* TODO Task\n")[0]], ["TODO"], ["DONE"]),
     )
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
-    try:
-        with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
-            board_command.run_board(args)
-    finally:
-        org.config.app.CONFIG_BOARD_VIEWS.clear()
-        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
+    with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
+        board_command.run_board(args, config)
 
 
 def test_run_board_invalid_order_by_parse_error_has_context(
@@ -1105,29 +1097,27 @@ def test_run_board_invalid_order_by_parse_error_has_context(
     """Invalid order-by parse should include view and column context."""
     fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
     args = make_board_args([fixture_path], view="kanban")
-    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
-    org.config.app.CONFIG_BOARD_VIEWS.clear()
-    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
-        name="kanban",
-        columns=[
-            org.config.app.BoardColumnConfig(
-                name="Broken",
-                filter='.todo == "TODO"',
-                order_by=".priority ==",
+    config = _app_config(
+        board_views={
+            "kanban": org.config.app.BoardViewConfig(
+                name="kanban",
+                columns=[
+                    org.config.app.BoardColumnConfig(
+                        name="Broken",
+                        filter='.todo == "TODO"',
+                        order_by=".priority ==",
+                    ),
+                ],
             ),
-        ],
+        },
     )
-    try:
-        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
-        with pytest.raises(
-            typer.BadParameter,
-            match=r"Invalid board filter/order-by \(view=kanban, column=Broken\)",
-        ):
-            board_command.run_board(args)
-    finally:
-        org.config.app.CONFIG_BOARD_VIEWS.clear()
-        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    with pytest.raises(
+        typer.BadParameter,
+        match=r"Invalid board filter/order-by \(view=kanban, column=Broken\)",
+    ):
+        board_command.run_board(args, config)
 
 
 def test_apply_state_move_reload_reassigns_task_across_selector_columns(
@@ -1136,22 +1126,25 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
     """State changes should reload and move task to new selector column."""
     args = make_board_args([], view="kanban", days=100000)
     source_node = node_from_org("#+TODO: TODO | DONE\n* TODO Task\n")[0]
-    original_views = dict(org.config.app.CONFIG_BOARD_VIEWS)
-    org.config.app.CONFIG_BOARD_VIEWS.clear()
-    org.config.app.CONFIG_BOARD_VIEWS["kanban"] = org.config.app.BoardViewConfig(
-        name="kanban",
-        columns=[
-            org.config.app.BoardColumnConfig(name="TODO", filter='.todo == "TODO"'),
-            org.config.app.BoardColumnConfig(name="DONE", filter='.todo == "DONE"'),
-        ],
+    config = _app_config(
+        board_views={
+            "kanban": org.config.app.BoardViewConfig(
+                name="kanban",
+                columns=[
+                    org.config.app.BoardColumnConfig(name="TODO", filter='.todo == "TODO"'),
+                    org.config.app.BoardColumnConfig(name="DONE", filter='.todo == "DONE"'),
+                ],
+            ),
+        },
     )
 
     session = _make_session(
         args=args,
         nodes=[source_node],
+        app_config=config,
         columns=actions.build_selector_board_columns(
             [source_node],
-            actions.resolve_column_specs(args),
+            actions.resolve_column_specs(args, config.board.views),
         ),
         color_enabled=False,
         selected_column_index=0,
@@ -1167,6 +1160,7 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
 
     def _load_after_change(
         _args: board_command.BoardArgs,
+        _config: org.config.app.AppConfig,
     ) -> tuple[list[Heading], list[str], list[str]]:
         if source_node.todo == "DONE":
             return (
@@ -1181,16 +1175,12 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
     monkeypatch.setattr(actions, "_save_document_changes", _capture_save)
     monkeypatch.setattr(actions, "load_and_process_data", _load_after_change)
 
-    try:
-        actions.apply_state_move(session, direction=1)
-        assert saved_documents == [source_node.document]
-        assert session.selected_column_index == 1
-        selected = actions.selected_node(session)
-        assert selected is not None
-        assert selected.todo == "DONE"
-    finally:
-        org.config.app.CONFIG_BOARD_VIEWS.clear()
-        org.config.app.CONFIG_BOARD_VIEWS.update(original_views)
+    actions.apply_state_move(session, direction=1)
+    assert saved_documents == [source_node.document]
+    assert session.selected_column_index == 1
+    selected = actions.selected_node(session)
+    assert selected is not None
+    assert selected.todo == "DONE"
 
 
 def test_build_task_panel_renders_rich_title_content() -> None:

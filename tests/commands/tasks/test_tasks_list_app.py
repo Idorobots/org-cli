@@ -28,12 +28,16 @@ def _make_session_data(nodes: list[Heading]) -> tasks_list._TasksListSessionData
     )
 
 
+def _default_config() -> org.config.app.AppConfig:
+    return org.config.app.build_default_app_config()
+
+
 def test_tasks_list_app_navigation_and_help_forwarding() -> None:
     """Tasks list app should support navigation and help key forwarding."""
 
     async def _run() -> None:
         nodes = node_from_org("* TODO A\n* TODO B\n")
-        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+        app = TasksListApp(make_list_args([]), _default_config(), _make_session_data(nodes))
 
         async with app.run_test() as pilot:
             await pilot.press("down")
@@ -69,7 +73,7 @@ def test_tasks_list_app_search_prompt_filters_results_live() -> None:
 
     async def _run() -> None:
         nodes = node_from_org("* TODO Alpha\nBody\n* TODO Beta\nOther\n")
-        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+        app = TasksListApp(make_list_args([]), _default_config(), _make_session_data(nodes))
 
         async with app.run_test() as pilot:
             app.action_prompt_search()
@@ -97,7 +101,7 @@ def test_tasks_list_app_help_prompt_and_separator_widgets() -> None:
 
     async def _run() -> None:
         nodes = node_from_org("* TODO Alpha\n")
-        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+        app = TasksListApp(make_list_args([]), _default_config(), _make_session_data(nodes))
 
         async with app.run_test() as pilot:
             assert app.screen.query_one("#tasks-footer-rule", Static) is not None
@@ -118,7 +122,7 @@ def test_tasks_list_app_escape_cancels_prompt_without_exiting() -> None:
 
     async def _run() -> None:
         nodes = node_from_org("* TODO Alpha\n* TODO Beta\n")
-        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+        app = TasksListApp(make_list_args([]), _default_config(), _make_session_data(nodes))
 
         async with app.run_test() as pilot:
             app.action_prompt_search()
@@ -140,9 +144,10 @@ def test_tasks_list_app_capture_selection_uses_keyboard(monkeypatch: pytest.Monk
 
     async def _run() -> None:
         nodes = node_from_org("* TODO Alpha\n")
-        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+        config = _default_config()
+        config.capture.templates = {"quick": {}, "later": {}}
+        app = TasksListApp(make_list_args([]), config, _make_session_data(nodes))
         called: list[str] = []
-        monkeypatch.setattr(org.config.app, "CONFIG_CAPTURE_TEMPLATES", {"quick": {}, "later": {}})
         monkeypatch.setattr(
             "org.commands.tasks.list.actions.apply_capture_task",
             lambda _session, template_name: called.append(template_name),
@@ -168,7 +173,7 @@ def test_tasks_list_app_state_selection_uses_keyboard() -> None:
 
     async def _run() -> None:
         nodes = node_from_org("* TODO Alpha\n")
-        app = TasksListApp(make_list_args([]), _make_session_data(nodes))
+        app = TasksListApp(make_list_args([]), _default_config(), _make_session_data(nodes))
 
         async with app.run_test() as pilot:
             app.action_prompt_state()
@@ -193,16 +198,19 @@ def test_run_tasks_list_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPa
 
     def _fake_run(
         args: tasks_list.ListArgs,
+        config: org.config.app.AppConfig,
         session_data: tasks_list._TasksListSessionData,
     ) -> None:
         called["value"] = True
         assert args.files == []
+        assert isinstance(config, org.config.app.AppConfig)
         assert session_data.nodes == nodes
 
     monkeypatch.setattr("org.commands.tasks.list.command.run_tasks_list_app", _fake_run)
 
     tasks_list._run_tasks_list_interactive(
         make_list_args([]),
+        _default_config(),
         data,
     )
 

@@ -19,6 +19,7 @@ stats_app = typer.Typer(
 
 @stats_app.callback()
 def stats_callback(
+    ctx: typer.Context,
     verbose: bool | None = typer.Option(
         None,
         "--verbose",
@@ -27,9 +28,13 @@ def stats_callback(
     ),
 ) -> None:
     """Global stats CLI options."""
-    if verbose is None and not org.config.app.DEFAULT_VERBOSE["value"]:
+    app_config = ctx.find_root().obj
+    if not isinstance(app_config, org.config.app.AppConfig):
+        org.logging.configure_logging(False if verbose is None else verbose)
         return
-    org.logging.configure_logging(org.config.app.resolve_verbose(verbose))
+    if verbose is None and not app_config.verbose:
+        return
+    org.logging.configure_logging(app_config.verbose if verbose is None else verbose)
 
 
 def register(app: typer.Typer) -> None:

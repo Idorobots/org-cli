@@ -30,6 +30,8 @@ from org.query.runner import (
 if TYPE_CHECKING:
     from org_parser.document import Document
 
+    from org.config.app import AppConfig
+
 
 logger = logging.getLogger("org")
 
@@ -186,12 +188,15 @@ def load_root_data(args: RootDataLoadArgs) -> tuple[list[Document], list[str], l
     return _resolve_and_load_roots(args)
 
 
-def load_and_process_data(args: DataLoadArgs) -> tuple[list[Heading], list[str], list[str]]:
+def load_and_process_data(
+    args: DataLoadArgs,
+    config: AppConfig,
+) -> tuple[list[Heading], list[str], list[str]]:
     """Load nodes, preprocess, and apply query-based filters/ordering."""
     include_ordering = hasattr(args, "order_by_level")
-    validate_custom_switches(sys.argv, include_ordering)
+    validate_custom_switches(config, sys.argv, include_ordering)
 
-    normalized_files = normalize_cli_files_for_custom_switches(args.files)
+    normalized_files = normalize_cli_files_for_custom_switches(config, args.files)
     args.files = normalized_files
 
     todo_states, done_states = validate_global_arguments(args)
@@ -205,7 +210,7 @@ def load_and_process_data(args: DataLoadArgs) -> tuple[list[Heading], list[str],
     include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
     try:
         query = build_query_from_stages(
-            build_pipeline_stages(args, sys.argv, include_ordering),
+            build_pipeline_stages(config, args, sys.argv, include_ordering),
             include_slice,
         )
     except QueryParseError as exc:

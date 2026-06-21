@@ -468,6 +468,7 @@ def register(app: typer.Typer) -> None:
 
     @app.command("update")
     def tasks_update(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -686,7 +687,8 @@ def register(app: typer.Typer) -> None:
             yes=yes,
             color_flag=color_flag,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks update")
+        app_config = org.config.app.require_app_config(ctx)
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "tasks update")
         org.logging.log_command_arguments(args, "tasks update")
         run_tasks_update(args)

@@ -6,6 +6,7 @@ import logging
 import sys
 from dataclasses import dataclass
 
+import click
 import typer
 from org_parser.document import Document, Heading
 
@@ -127,7 +128,8 @@ def register(app: typer.Typer) -> None:
             query_id=query_id,
             query=query,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks archive")
+        app_config = org.config.app.require_app_config(click.get_current_context())
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "tasks archive")
         org.logging.log_command_arguments(args, "tasks archive")
         run_tasks_archive(args)

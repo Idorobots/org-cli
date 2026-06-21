@@ -64,19 +64,7 @@ COMMAND_OPTION_NAMES = {
 }
 
 
-CONFIG_APPEND_DEFAULTS: dict[str, list[str]] = {}
-CONFIG_INLINE_DEFAULTS: dict[str, object] = {}
-CONFIG_DEFAULTS: dict[str, object] = {}
-CONFIG_CUSTOM_FILTERS: dict[str, str] = {}
-CONFIG_CUSTOM_ORDER_BY: dict[str, str] = {}
-CONFIG_CUSTOM_WITH: dict[str, str] = {}
-CONFIG_CAPTURE_TEMPLATES: dict[str, dict[str, str]] = {}
-CONFIG_BOARD_VIEWS: dict[str, BoardViewConfig] = {}
-CONFIG_AGENDA_VIEWS: dict[str, AgendaViewConfig] = {}
-
 MAP: dict[str, str] = {}
-
-DEFAULT_VERBOSE: dict[str, bool] = {"value": False}
 
 TAGS: set[str] = set()
 
@@ -221,7 +209,7 @@ def normalize_exclude_values(values: list[str]) -> set[str]:
 def resolve_verbose(verbose: bool | None) -> bool:
     """Resolve effective verbose setting from CLI flag and config defaults."""
     if verbose is None:
-        return DEFAULT_VERBOSE["value"]
+        return False
     return verbose
 
 
@@ -326,21 +314,6 @@ class ConfigContext:
     stats_options: ConfigOptions
 
 
-@dataclass
-class LoadedCliConfig:
-    """Fully parsed CLI config payload."""
-
-    defaults: dict[str, object]
-    append_defaults: dict[str, list[str]]
-    inline_defaults: dict[str, object]
-    custom_filters: dict[str, str]
-    custom_order_by: dict[str, str]
-    custom_with: dict[str, str]
-    capture_templates: dict[str, dict[str, str]]
-    board_views: dict[str, BoardViewConfig]
-    agenda_views: dict[str, AgendaViewConfig]
-
-
 @dataclass(frozen=True)
 class BoardColumnConfig:
     """One configured board column."""
@@ -377,6 +350,149 @@ class AgendaViewConfig:
     sections: list[AgendaSectionConfig]
 
 
+@dataclass(frozen=True)
+class NamedQueryConfig:
+    """One named custom query snippet."""
+
+    name: str
+    query: str
+
+
+@dataclass
+class StatsConfig:
+    """Structured configuration for stats-related defaults and resources."""
+
+    exclude: str | None = None
+    exclude_inline: list[str] | None = None
+    mapping: str | None = None
+    mapping_inline: dict[str, str] | None = None
+    max_results: int | None = None
+    max_tags: int | None = None
+    max_relations: int | None = None
+    min_group_size: int | None = None
+    max_groups: int | None = None
+    use: str | None = None
+    tags: list[str] | None = None
+    groups: list[str] | None = None
+
+
+@dataclass
+class TasksConfig:
+    """Structured configuration for task-listing defaults."""
+
+    max_results: int | None = None
+    details: bool | None = None
+    out: str | None = None
+    out_theme: str | None = None
+    pandoc_args: str | None = None
+
+
+@dataclass
+class CaptureConfig:
+    """Structured configuration for capture templates."""
+
+    templates: dict[str, dict[str, str]]
+
+
+@dataclass
+class AgendaConfig:
+    """Structured configuration for agenda command settings."""
+
+    views: dict[str, AgendaViewConfig]
+    date: str | None = None
+    days: int | None = None
+    no_completed: bool | None = None
+    no_overdue: bool | None = None
+    no_upcoming: bool | None = None
+    future_repeats: bool | None = None
+    view: str | None = None
+    max_results: int | None = None
+    offset: int | None = None
+    width: int | None = None
+
+
+@dataclass
+class BoardConfig:
+    """Structured configuration for board command settings."""
+
+    views: dict[str, BoardViewConfig]
+    view: str | None = None
+    days: int | None = None
+    max_results: int | None = None
+    offset: int | None = None
+    width: int | None = None
+
+
+@dataclass
+class AppConfig:
+    """Structured application configuration passed through ctx.obj."""
+
+    config_path: str
+    color_flag: bool | None
+    verbose: bool
+    todo_states: list[str]
+    done_states: list[str]
+    filter_priority: str | None
+    filter_level: int | None
+    filter_repeats_above: int | None
+    filter_repeats_below: int | None
+    filter_date_from: str | None
+    filter_date_until: str | None
+    filter_properties: list[str] | None
+    filter_tags: list[str] | None
+    filter_headings: list[str] | None
+    filter_bodies: list[str] | None
+    filter_completed: bool
+    filter_not_completed: bool
+    order_by_file_order: bool
+    order_by_file_order_reversed: bool
+    order_by_priority: bool
+    order_by_level: bool
+    order_by_timestamp_asc: bool
+    order_by_timestamp_desc: bool
+    with_tags_as_category: bool
+    filters: list[NamedQueryConfig]
+    orderings: list[NamedQueryConfig]
+    mutators: list[NamedQueryConfig]
+    stats: StatsConfig
+    tasks: TasksConfig
+    capture: CaptureConfig
+    agenda: AgendaConfig
+    board: BoardConfig
+
+    def custom_filter_map(self) -> dict[str, str]:
+        """Return configured custom filters keyed by name."""
+        return {item.name: item.query for item in self.filters}
+
+    def custom_order_by_map(self) -> dict[str, str]:
+        """Return configured custom orderings keyed by name."""
+        return {item.name: item.query for item in self.orderings}
+
+    def custom_with_map(self) -> dict[str, str]:
+        """Return configured custom mutators keyed by name."""
+        return {item.name: item.query for item in self.mutators}
+
+    @property
+    def defaults(self) -> dict[str, object]:
+        """Compatibility accessor for flattened default values."""
+        return command_config_values(self)
+
+    @property
+    def capture_templates(self) -> dict[str, dict[str, str]]:
+        """Compatibility accessor for capture templates."""
+        return self.capture.templates
+
+    @property
+    def board_views(self) -> dict[str, BoardViewConfig]:
+        """Compatibility accessor for board views."""
+        return self.board.views
+
+    @property
+    def agenda_views(self) -> dict[str, AgendaViewConfig]:
+        """Compatibility accessor for agenda views."""
+        return self.agenda.views
+
+
 class StatsDefaultMap(TypedDict):
     """Default map values for stats subcommands."""
 
@@ -407,6 +523,20 @@ class ConfigDefaultsTarget(Protocol):
 
     mapping_inline: dict[str, str] | None
     exclude_inline: list[str] | None
+
+
+class RootContext(Protocol):
+    """Protocol for Click/Typer contexts with root-object access."""
+
+    obj: object
+
+
+class ContextWithRoot(Protocol):
+    """Protocol for Click/Typer contexts exposing find_root()."""
+
+    def find_root(self) -> RootContext:
+        """Return the root Click/Typer context."""
+        ...
 
 
 def load_config(filepath: str) -> tuple[dict[str, object], bool]:
@@ -1131,6 +1261,144 @@ def build_config_defaults(
     return (defaults, stats_defaults, append_defaults)
 
 
+def build_default_app_config(config_path: str = ".org-cli.yaml") -> AppConfig:
+    """Build application config populated with code defaults."""
+    return AppConfig(
+        config_path=config_path,
+        color_flag=None,
+        verbose=False,
+        todo_states=["TODO"],
+        done_states=["DONE"],
+        filter_priority=None,
+        filter_level=None,
+        filter_repeats_above=None,
+        filter_repeats_below=None,
+        filter_date_from=None,
+        filter_date_until=None,
+        filter_properties=None,
+        filter_tags=None,
+        filter_headings=None,
+        filter_bodies=None,
+        filter_completed=False,
+        filter_not_completed=False,
+        order_by_file_order=False,
+        order_by_file_order_reversed=False,
+        order_by_priority=False,
+        order_by_level=False,
+        order_by_timestamp_asc=False,
+        order_by_timestamp_desc=False,
+        with_tags_as_category=False,
+        filters=[],
+        orderings=[],
+        mutators=[],
+        stats=StatsConfig(),
+        tasks=TasksConfig(),
+        capture=CaptureConfig(templates={}),
+        agenda=AgendaConfig(views={}),
+        board=BoardConfig(views={}),
+    )
+
+
+def _parse_state_list(value: str) -> list[str]:
+    """Parse comma-separated TODO/DONE state list from validated config string."""
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _apply_attr(target: object, dest: str, value: object, allowed: set[str]) -> bool:
+    """Apply one value to a matching attribute name on a target object."""
+    if dest not in allowed:
+        return False
+    setattr(target, dest, value)
+    return True
+
+
+def _apply_default_dest(config: AppConfig, dest: str, value: object) -> None:
+    """Apply one validated config destination value onto AppConfig."""
+    top_level_attrs = {
+        "color_flag",
+        "verbose",
+        "filter_priority",
+        "filter_level",
+        "filter_repeats_above",
+        "filter_repeats_below",
+        "filter_date_from",
+        "filter_date_until",
+        "filter_completed",
+        "filter_not_completed",
+        "order_by_file_order",
+        "order_by_file_order_reversed",
+        "order_by_priority",
+        "order_by_level",
+        "order_by_timestamp_asc",
+        "order_by_timestamp_desc",
+        "with_tags_as_category",
+    }
+    agenda_attrs = {"date", "no_completed", "no_overdue", "no_upcoming", "future_repeats"}
+    stats_attrs = {
+        "mapping",
+        "exclude",
+        "mapping_inline",
+        "exclude_inline",
+        "max_tags",
+        "max_relations",
+        "min_group_size",
+        "max_groups",
+        "use",
+    }
+    tasks_attrs = {"details", "out", "out_theme", "pandoc_args"}
+
+    if dest == "todo_states":
+        config.todo_states = _parse_state_list(cast("str", value))
+    elif dest == "done_states":
+        config.done_states = _parse_state_list(cast("str", value))
+    elif (
+        _apply_attr(config, dest, value, top_level_attrs)
+        or _apply_attr(config.agenda, dest, value, agenda_attrs)
+        or _apply_attr(config.stats, dest, value, stats_attrs)
+        or _apply_attr(config.tasks, dest, value, tasks_attrs)
+    ):
+        pass
+    elif dest == "days":
+        config.agenda.days = cast("int", value)
+        config.board.days = cast("int", value)
+    elif dest == "offset":
+        config.agenda.offset = cast("int", value)
+        config.board.offset = cast("int", value)
+    elif dest == "width":
+        config.agenda.width = cast("int", value)
+        config.board.width = cast("int", value)
+    elif dest == "view":
+        config.agenda.view = cast("str", value)
+        config.board.view = cast("str", value)
+    elif dest == "max_results":
+        limit = cast("int", value)
+        config.stats.max_results = limit
+        config.tasks.max_results = limit
+        config.agenda.max_results = limit
+        config.board.max_results = limit
+
+
+def _apply_list_dest(config: AppConfig, dest: str, value: list[str]) -> None:
+    """Apply one validated config list destination onto AppConfig."""
+    if dest == "filter_properties":
+        config.filter_properties = value
+    elif dest == "filter_tags":
+        config.filter_tags = value
+    elif dest == "filter_headings":
+        config.filter_headings = value
+    elif dest == "filter_bodies":
+        config.filter_bodies = value
+    elif dest == "tags":
+        config.stats.tags = value
+    elif dest == "groups":
+        config.stats.groups = value
+
+
+def _named_query_list(items: dict[str, str]) -> list[NamedQueryConfig]:
+    """Build stable named query config list from a mapping."""
+    return [NamedQueryConfig(name=name, query=query) for name, query in items.items()]
+
+
 def parse_config_argument(argv: list[str]) -> str:
     """Parse only the --config argument from argv."""
     default = ".org-cli.yaml"
@@ -1142,7 +1410,7 @@ def parse_config_argument(argv: list[str]) -> str:
     return default
 
 
-def load_cli_config(argv: list[str]) -> LoadedCliConfig:
+def load_cli_config(argv: list[str]) -> AppConfig:
     """Load config defaults from the configured file path."""
     config_name = parse_config_argument(argv)
     config_path = Path(config_name)
@@ -1172,100 +1440,127 @@ def load_cli_config(argv: list[str]) -> LoadedCliConfig:
         raise typer.BadParameter("Malformed config")
 
     defaults, stats_defaults, append_defaults = config_defaults
-
-    inline_defaults: dict[str, object] = {}
-    for key in ("mapping_inline", "exclude_inline"):
-        if key in defaults:
-            inline_defaults[key] = defaults[key]
-
-    combined_defaults = {**defaults, **stats_defaults}
-    filtered_defaults = {
-        key: value for key, value in combined_defaults.items() if key in COMMAND_OPTION_NAMES
-    }
-
-    return LoadedCliConfig(
-        defaults=filtered_defaults,
-        append_defaults=append_defaults,
-        inline_defaults=inline_defaults,
-        custom_filters=custom_filters,
-        custom_order_by=custom_order_by,
-        custom_with=custom_with,
-        capture_templates=capture_templates,
-        board_views=board_views,
-        agenda_views=agenda_views,
-    )
-
-
-def build_default_map(defaults: dict[str, object]) -> CliDefaultMap:
-    """Build Click default_map for Typer commands."""
-    all_defaults = {key: value for key, value in defaults.items() if key not in {"tags", "groups"}}
-
-    task_command_disallowed = {
-        "max_tags",
-        "max_relations",
-        "max_groups",
-        "min_group_size",
-        "use",
-        "tags",
-        "groups",
-    }
-    stats_tasks_defaults = {
-        key: value for key, value in defaults.items() if key not in task_command_disallowed
-    }
-    tasks_list_defaults = {
-        key: value for key, value in defaults.items() if key not in task_command_disallowed
-    }
-    tasks_query_defaults = {
-        key: value for key, value in defaults.items() if key not in task_command_disallowed
-    }
-    board_disallowed = task_command_disallowed.union(
-        {"details", "out", "out_theme", "pandoc_args"},
-    )
-    board_defaults = {key: value for key, value in defaults.items() if key not in board_disallowed}
-    agenda_disallowed = task_command_disallowed.union(
-        {"details", "out", "out_theme", "pandoc_args"},
-    )
-    agenda_defaults = {
-        key: value for key, value in defaults.items() if key not in agenda_disallowed
-    }
-    tags_defaults = {
-        key: value
-        for key, value in defaults.items()
-        if key not in {"max_tags", "max_groups", "min_group_size", "groups"}
-    }
-
-    groups_defaults = {
-        key: value
-        for key, value in defaults.items()
-        if key not in {"max_tags", "max_groups", "min_group_size", "tags"}
-    }
-
-    return {
-        "stats": {
-            "all": all_defaults,
-            "summary": stats_tasks_defaults,
-            "tags": tags_defaults,
-            "groups": groups_defaults,
-        },
-        "tasks": {"list": tasks_list_defaults, "query": tasks_query_defaults},
-        "board": board_defaults,
-        "agenda": agenda_defaults,
-    }
-
-
-def apply_config_defaults(args: object) -> None:
-    """Apply config-provided defaults for append and inline values."""
-    for dest, values in CONFIG_APPEND_DEFAULTS.items():
-        if not hasattr(args, dest):
+    app_config = build_default_app_config(str(config_path))
+    for dest, value in {**defaults, **stats_defaults}.items():
+        if dest not in COMMAND_OPTION_NAMES and dest not in {"mapping_inline", "exclude_inline"}:
             continue
-        if getattr(args, dest, None) is None:
-            setattr(args, dest, values)
+        _apply_default_dest(app_config, dest, value)
 
-    mapping_inline = cast("dict[str, str] | None", CONFIG_INLINE_DEFAULTS.get("mapping_inline"))
-    exclude_inline = cast("list[str] | None", CONFIG_INLINE_DEFAULTS.get("exclude_inline"))
-    if hasattr(args, "mapping_inline"):
-        target = cast("ConfigDefaultsTarget", args)
-        target.mapping_inline = mapping_inline if mapping_inline is not None else None
-    if hasattr(args, "exclude_inline"):
-        target = cast("ConfigDefaultsTarget", args)
-        target.exclude_inline = exclude_inline if exclude_inline is not None else None
+    for dest, values in append_defaults.items():
+        _apply_list_dest(app_config, dest, values)
+
+    app_config.filters = _named_query_list(custom_filters)
+    app_config.orderings = _named_query_list(custom_order_by)
+    app_config.mutators = _named_query_list(custom_with)
+    app_config.capture = CaptureConfig(templates=capture_templates)
+    app_config.board = BoardConfig(
+        views=board_views,
+        view=app_config.board.view,
+        days=app_config.board.days,
+        max_results=app_config.board.max_results,
+        offset=app_config.board.offset,
+        width=app_config.board.width,
+    )
+    app_config.agenda = AgendaConfig(
+        views=agenda_views,
+        date=app_config.agenda.date,
+        days=app_config.agenda.days,
+        no_completed=app_config.agenda.no_completed,
+        no_overdue=app_config.agenda.no_overdue,
+        no_upcoming=app_config.agenda.no_upcoming,
+        future_repeats=app_config.agenda.future_repeats,
+        view=app_config.agenda.view,
+        max_results=app_config.agenda.max_results,
+        offset=app_config.agenda.offset,
+        width=app_config.agenda.width,
+    )
+    return app_config
+
+
+def require_app_config(ctx: object) -> AppConfig:
+    """Return AppConfig stored in the current root context."""
+    root_context = cast("ContextWithRoot", ctx).find_root()
+    app_config = root_context.obj
+    if not isinstance(app_config, AppConfig):
+        raise typer.BadParameter("Application config is not available")
+    return app_config
+
+
+def _option_aliases(dest: str) -> set[str]:
+    """Return CLI option aliases that map to one destination."""
+    option_name = DEST_TO_OPTION_NAME.get(dest)
+    if option_name is None:
+        return set()
+    return set(option_name.split("/"))
+
+
+def cli_option_was_provided(argv: list[str], dest: str) -> bool:
+    """Return whether one CLI destination was explicitly provided by the user."""
+    option_aliases = _option_aliases(dest)
+    for token in argv:
+        option = token.split("=", 1)[0]
+        if option in option_aliases:
+            return True
+    return False
+
+
+def command_config_values(config: AppConfig) -> dict[str, object]:
+    """Flatten AppConfig into command argument destination values."""
+    values: dict[str, object] = {
+        "color_flag": config.color_flag,
+        "todo_states": ",".join(config.todo_states),
+        "done_states": ",".join(config.done_states),
+        "filter_priority": config.filter_priority,
+        "filter_level": config.filter_level,
+        "filter_repeats_above": config.filter_repeats_above,
+        "filter_repeats_below": config.filter_repeats_below,
+        "filter_date_from": config.filter_date_from,
+        "filter_date_until": config.filter_date_until,
+        "filter_properties": config.filter_properties,
+        "filter_tags": config.filter_tags,
+        "filter_headings": config.filter_headings,
+        "filter_bodies": config.filter_bodies,
+        "filter_completed": config.filter_completed,
+        "filter_not_completed": config.filter_not_completed,
+        "order_by_file_order": config.order_by_file_order,
+        "order_by_file_order_reversed": config.order_by_file_order_reversed,
+        "order_by_priority": config.order_by_priority,
+        "order_by_level": config.order_by_level,
+        "order_by_timestamp_asc": config.order_by_timestamp_asc,
+        "order_by_timestamp_desc": config.order_by_timestamp_desc,
+        "with_tags_as_category": config.with_tags_as_category,
+        "exclude": config.stats.exclude,
+        "exclude_inline": config.stats.exclude_inline,
+        "mapping": config.stats.mapping,
+        "mapping_inline": config.stats.mapping_inline,
+        "max_results": config.tasks.max_results,
+        "max_tags": config.stats.max_tags,
+        "max_relations": config.stats.max_relations,
+        "min_group_size": config.stats.min_group_size,
+        "max_groups": config.stats.max_groups,
+        "use": config.stats.use,
+        "tags": config.stats.tags,
+        "groups": config.stats.groups,
+        "details": config.tasks.details,
+        "out": config.tasks.out,
+        "out_theme": config.tasks.out_theme,
+        "pandoc_args": config.tasks.pandoc_args,
+        "date": config.agenda.date,
+        "days": config.agenda.days,
+        "no_completed": config.agenda.no_completed,
+        "no_overdue": config.agenda.no_overdue,
+        "no_upcoming": config.agenda.no_upcoming,
+        "future_repeats": config.agenda.future_repeats,
+        "view": config.board.view if config.board.view is not None else config.agenda.view,
+        "offset": config.board.offset if config.board.offset is not None else config.agenda.offset,
+        "width": config.board.width if config.board.width is not None else config.agenda.width,
+    }
+    return {key: value for key, value in values.items() if value is not None}
+
+
+def apply_config_defaults(args: object, config: AppConfig, argv: list[str]) -> None:
+    """Apply config values to command args only when CLI did not override them."""
+    for dest, value in command_config_values(config).items():
+        if not hasattr(args, dest) or cli_option_was_provided(argv, dest):
+            continue
+        setattr(args, dest, value)

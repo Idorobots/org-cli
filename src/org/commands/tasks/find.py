@@ -172,6 +172,7 @@ def register(app: typer.Typer) -> None:
 
     @app.command("find")
     def find_command(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -300,7 +301,8 @@ def register(app: typer.Typer) -> None:
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks find")
+        app_config = org.config.app.require_app_config(ctx)
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "tasks find")
         org.logging.log_command_arguments(args, "tasks find")
         run_tasks_find(args)

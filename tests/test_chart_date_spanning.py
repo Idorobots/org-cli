@@ -10,11 +10,13 @@ from typing import Protocol
 import pytest
 from typer.testing import CliRunner
 
-from org.cli import app
+import org.config.app
+from org import cli
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+app = cli.build_app(org.config.app.build_default_app_config())
 
 
 class _CliResult(Protocol):

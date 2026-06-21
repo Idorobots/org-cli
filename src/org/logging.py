@@ -49,17 +49,18 @@ def _redact_inline_config_value(option_name: str, value: object) -> object:
     return value
 
 
-def log_applied_config_defaults(_args: object, _argv: list[str], command_name: str) -> None:
-    """Log config defaults loaded from config file."""
+def log_applied_config_defaults(
+    config: org.config.app.AppConfig,
+    _args: object,
+    command_name: str,
+) -> None:
+    """Log effective config values available to one command."""
     if not logger.isEnabledFor(logging.INFO):
         return
 
     entries: list[str] = []
 
-    for dest, default_value in sorted(
-        org.config.app.CONFIG_DEFAULTS.items(),
-        key=lambda item: item[0],
-    ):
+    for dest, default_value in sorted(org.config.app.command_config_values(config).items()):
         option_name = org.config.app.DEST_TO_OPTION_NAME.get(dest)
         if option_name is None:
             continue
@@ -70,31 +71,8 @@ def log_applied_config_defaults(_args: object, _argv: list[str], command_name: s
             ),
         )
 
-    for dest, values in sorted(
-        org.config.app.CONFIG_APPEND_DEFAULTS.items(),
-        key=lambda item: item[0],
-    ):
-        option_name = org.config.app.DEST_TO_OPTION_NAME.get(dest)
-        if option_name is None:
-            continue
-        entries.append(
-            _format_default_log_entry(
-                option_name,
-                _redact_inline_config_value(option_name, values),
-            ),
-        )
-
-    for dest, option_name in (
-        ("mapping_inline", "--mapping"),
-        ("exclude_inline", "--exclude"),
-    ):
-        inline_value = org.config.app.CONFIG_INLINE_DEFAULTS.get(dest)
-        if inline_value is None:
-            continue
-        entries.append(_format_default_log_entry(option_name, "<Value ellided...>"))
-
     if entries:
-        logger.info("Config defaults applied (%s): %s", command_name, ", ".join(entries))
+        logger.info("Effective config (%s): %s", command_name, ", ".join(entries))
 
 
 def log_command_arguments(args: object, command_name: str) -> None:

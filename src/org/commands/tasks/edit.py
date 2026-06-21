@@ -6,6 +6,7 @@ import logging
 import sys
 from dataclasses import dataclass
 
+import click
 import typer
 
 import org.config.app
@@ -102,7 +103,8 @@ def register(app: typer.Typer) -> None:
             query_id=query_id,
             query=query,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks edit")
+        app_config = org.config.app.require_app_config(click.get_current_context())
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "tasks edit")
         org.logging.log_command_arguments(args, "tasks edit")
         run_tasks_edit(args)

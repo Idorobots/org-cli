@@ -71,12 +71,12 @@ def _resolve_tasks_limit(max_results: int | None) -> int:
     return max_results
 
 
-def _validate_board_args(args: BoardArgs) -> None:
+def _validate_board_args(args: BoardArgs, config: org.config.app.AppConfig) -> None:
     """Validate board arguments and configured view selection."""
-    actions.resolve_column_specs(args)
+    actions.resolve_column_specs(args, config.board.views)
 
 
-def run_board(args: BoardArgs) -> None:
+def run_board(args: BoardArgs, config: org.config.app.AppConfig) -> None:
     """Run the board command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
@@ -89,10 +89,10 @@ def run_board(args: BoardArgs) -> None:
     if args.days < 0:
         raise typer.BadParameter("--days must be non-negative")
     args.max_results = _resolve_tasks_limit(args.max_results)
-    _validate_board_args(args)
+    _validate_board_args(args, config)
 
     with processing_status(console, color_enabled):
-        nodes, discovered_todo_states, discovered_done_states = load_and_process_data(args)
+        nodes, discovered_todo_states, discovered_done_states = load_and_process_data(args, config)
         nodes = actions.filter_recent_completed_nodes(nodes, args.days)
         todo_states, done_states = actions.resolved_states(
             args,
@@ -107,7 +107,7 @@ def run_board(args: BoardArgs) -> None:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         raise click.UsageError("org board requires a TTY")
 
-    run_board_app(args, nodes, todo_states, done_states, color_enabled)
+    run_board_app(args, config, nodes, (todo_states, done_states), color_enabled)
 
 
 def register(app: typer.Typer) -> None:
@@ -122,6 +122,7 @@ def register(app: typer.Typer) -> None:
         ),
     )
     def board(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -347,7 +348,8 @@ def register(app: typer.Typer) -> None:
             order_by_timestamp_desc=order_by_timestamp_desc,
             with_tags_as_category=with_tags_as_category,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "board")
+        app_config = org.config.app.require_app_config(ctx)
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "board")
         org.logging.log_command_arguments(args, "board")
-        run_board(args)
+        run_board(args, app_config)

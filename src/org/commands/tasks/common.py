@@ -13,7 +13,6 @@ from org_parser.document import Heading
 from org_parser.text import CompletionCounter
 from org_parser.time import Timestamp
 
-import org.config.app
 from org.query.runner import compile_query_or_raise, execute_query_or_raise
 
 
@@ -216,9 +215,9 @@ def capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:
     return sorted(templates)
 
 
-def configured_capture_template_names() -> list[str]:
+def configured_capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:
     """Return stable capture template names from loaded config."""
-    return capture_template_names(org.config.app.CONFIG_CAPTURE_TEMPLATES)
+    return capture_template_names(templates)
 
 
 def parse_clock_duration(value: str) -> timedelta:

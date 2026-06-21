@@ -219,12 +219,10 @@ def test_load_cli_config_reads_defaults(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.chdir(config_path.parent)
     loaded = org.config.app.load_cli_config(["org"])
 
-    assert loaded.defaults["max_results"] == 7
-    assert loaded.append_defaults == {}
-    assert loaded.inline_defaults == {}
-    assert loaded.custom_filters == {"custom-filter": ".[]"}
-    assert loaded.custom_order_by == {"custom-order": "."}
-    assert loaded.custom_with == {"custom-with": "."}
+    assert loaded.stats.max_results == 7
+    assert loaded.custom_filter_map() == {"custom-filter": ".[]"}
+    assert loaded.custom_order_by_map() == {"custom-order": "."}
+    assert loaded.custom_with_map() == {"custom-with": "."}
     assert loaded.capture_templates == {}
     assert loaded.board_views == {}
 
@@ -240,10 +238,10 @@ def test_load_cli_config_sections_are_optional(
     monkeypatch.chdir(config_path.parent)
     loaded = org.config.app.load_cli_config(["org"])
 
-    assert loaded.defaults["max_results"] == 7
-    assert loaded.custom_filters == {}
-    assert loaded.custom_order_by == {}
-    assert loaded.custom_with == {}
+    assert loaded.stats.max_results == 7
+    assert loaded.custom_filter_map() == {}
+    assert loaded.custom_order_by_map() == {}
+    assert loaded.custom_with_map() == {}
     assert loaded.capture_templates == {}
     assert loaded.board_views == {}
 
@@ -712,192 +710,52 @@ def test_apply_mapping_and_exclude_config() -> None:
     assert defaults["exclude_inline"] == ["alpha", "beta"]
 
 
-def test_build_default_map_strips_command_specific_values() -> None:
-    """build_default_map should drop irrelevant defaults per command."""
-    defaults = {
-        "max_results": 10,
-        "max_tags": 5,
-        "max_relations": 2,
-        "max_groups": 1,
-        "min_group_size": 2,
-        "use": "tags",
-        "tags": ["one"],
-        "groups": ["a,b"],
-    }
-
-    default_map = org.config.app.build_default_map(defaults)
-
-    summary_defaults = default_map["stats"]["all"]
-    assert "tags" not in summary_defaults
-    assert "groups" not in summary_defaults
-
-    summary_defaults = default_map["stats"]["summary"]
-    assert "max_tags" not in summary_defaults
-    assert "max_relations" not in summary_defaults
-    assert "tags" not in summary_defaults
-    assert "groups" not in summary_defaults
-
-    tags_defaults = default_map["stats"]["tags"]
-    assert "max_tags" not in tags_defaults
-    assert "max_groups" not in tags_defaults
-    assert "min_group_size" not in tags_defaults
-    assert "groups" not in tags_defaults
-
-    groups_defaults = default_map["stats"]["groups"]
-    assert "max_tags" not in groups_defaults
-    assert "tags" not in groups_defaults
-
-
-def test_build_default_map_keeps_ordering_boolean_defaults() -> None:
-    """Tasks list and board ordering defaults should remain boolean flags."""
-    default_map = org.config.app.build_default_map(
-        {
-            "order_by_level": True,
-            "order_by_timestamp_desc": False,
-        },
-    )
-
-    tasks_list_defaults = default_map["tasks"]["list"]
-    assert tasks_list_defaults["order_by_level"] is True
-    assert tasks_list_defaults["order_by_timestamp_desc"] is False
-
-    board_defaults = default_map["board"]
-    assert board_defaults["order_by_level"] is True
-    assert board_defaults["order_by_timestamp_desc"] is False
-
-    tasks_query_defaults = default_map["tasks"]["query"]
-    assert tasks_query_defaults["order_by_level"] is True
-    assert tasks_query_defaults["order_by_timestamp_desc"] is False
-
-
-def test_build_default_map_strips_board_unsupported_defaults() -> None:
-    """Board default map should omit list-only output options."""
-    default_map = org.config.app.build_default_map(
-        {
-            "details": True,
-            "max_results": 5,
-            "offset": 2,
-            "out": "json",
-            "out_theme": "vim",
-            "pandoc_args": "--wrap=none",
-            "order_by_level": True,
-        },
-    )
-
-    board_defaults = default_map["board"]
-    assert "details" not in board_defaults
-    assert board_defaults["max_results"] == 5
-    assert board_defaults["offset"] == 2
-    assert "out" not in board_defaults
-    assert "out_theme" not in board_defaults
-    assert "pandoc_args" not in board_defaults
-    assert board_defaults["order_by_level"] is True
-
-
-def test_build_default_map_includes_agenda_defaults() -> None:
-    """Agenda default map should include agenda-specific and shared task options."""
-    default_map = org.config.app.build_default_map(
-        {
-            "date": "2025-01-15",
-            "days": 3,
-            "no_completed": True,
-            "no_overdue": True,
-            "no_upcoming": True,
-            "future_repeats": False,
-            "max_results": 5,
-            "offset": 2,
-            "order_by_level": True,
-            "out": "json",
-            "details": True,
-            "max_tags": 5,
-        },
-    )
-
-    agenda_defaults = default_map["agenda"]
-    assert agenda_defaults["date"] == "2025-01-15"
-    assert agenda_defaults["days"] == 3
-    assert agenda_defaults["no_completed"] is True
-    assert agenda_defaults["no_overdue"] is True
-    assert agenda_defaults["no_upcoming"] is True
-    assert agenda_defaults["future_repeats"] is False
-    assert agenda_defaults["max_results"] == 5
-    assert agenda_defaults["offset"] == 2
-    assert agenda_defaults["order_by_level"] is True
-    assert "out" not in agenda_defaults
-    assert "details" not in agenda_defaults
-    assert "max_tags" not in agenda_defaults
-
-
 def test_apply_config_defaults_applies_inline_and_append_defaults() -> None:
     """apply_config_defaults should fill append and inline values."""
-    original_append = dict(org.config.app.CONFIG_APPEND_DEFAULTS)
-    original_inline = dict(org.config.app.CONFIG_INLINE_DEFAULTS)
-    try:
-        org.config.app.CONFIG_APPEND_DEFAULTS.clear()
-        org.config.app.CONFIG_INLINE_DEFAULTS.clear()
+    config = org.config.app.build_default_app_config()
+    config.filter_tags = ["alpha"]
+    config.stats.mapping_inline = {"foo": "bar"}
 
-        org.config.app.CONFIG_APPEND_DEFAULTS["filter_tags"] = ["alpha"]
-        org.config.app.CONFIG_INLINE_DEFAULTS["mapping_inline"] = {"foo": "bar"}
+    args = SimpleNamespace(filter_tags=None, mapping_inline=None, exclude_inline=None)
+    org.config.app.apply_config_defaults(args, config, [])
 
-        args = SimpleNamespace(filter_tags=None, mapping_inline=None, exclude_inline=None)
-        org.config.app.apply_config_defaults(args)
-
-        assert args.filter_tags == ["alpha"]
-        assert args.mapping_inline == {"foo": "bar"}
-        assert args.exclude_inline is None
-    finally:
-        org.config.app.CONFIG_APPEND_DEFAULTS.clear()
-        org.config.app.CONFIG_APPEND_DEFAULTS.update(original_append)
-        org.config.app.CONFIG_INLINE_DEFAULTS.clear()
-        org.config.app.CONFIG_INLINE_DEFAULTS.update(original_inline)
+    assert args.filter_tags == ["alpha"]
+    assert args.mapping_inline == {"foo": "bar"}
+    assert args.exclude_inline is None
 
 
 def test_log_applied_config_defaults_logs_all_config_values(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Default logging should include all values loaded from config."""
-    original_defaults = dict(org.config.app.CONFIG_DEFAULTS)
-    original_append = dict(org.config.app.CONFIG_APPEND_DEFAULTS)
-    original_inline = dict(org.config.app.CONFIG_INLINE_DEFAULTS)
-    try:
-        org.config.app.CONFIG_DEFAULTS.clear()
-        org.config.app.CONFIG_APPEND_DEFAULTS.clear()
-        org.config.app.CONFIG_INLINE_DEFAULTS.clear()
+    config = org.config.app.build_default_app_config()
+    config.tasks.max_results = 10
+    config.filter_tags = ["work"]
+    config.stats.mapping_inline = {"foo": "bar"}
 
-        org.config.app.CONFIG_DEFAULTS.update({"max_results": 10})
-        org.config.app.CONFIG_APPEND_DEFAULTS.update({"filter_tags": ["work"]})
-        org.config.app.CONFIG_INLINE_DEFAULTS.update({"mapping_inline": {"foo": "bar"}})
+    args = SimpleNamespace(
+        max_results=10,
+        filter_tags=["work"],
+        mapping_inline={"foo": "bar"},
+    )
 
-        args = SimpleNamespace(
-            max_results=10,
-            filter_tags=["work"],
-            mapping_inline={"foo": "bar"},
-        )
+    org.logging.logger.setLevel(logging.INFO)
+    org.logging.logger.propagate = True
+    with caplog.at_level(logging.INFO, logger="org"):
+        org.logging.log_applied_config_defaults(config, args, "stats all")
 
-        with caplog.at_level(logging.INFO, logger="org"):
-            org.logging.log_applied_config_defaults(
-                args,
-                ["stats", "all", "--limit", "20"],
-                "stats all",
-            )
-
-        assert "Config defaults applied (stats all):" in caplog.text
-        assert "--limit=10" in caplog.text
-        assert "--filter-tag=['work']" in caplog.text
-        assert "--mapping='<Value ellided...>'" in caplog.text
-    finally:
-        org.config.app.CONFIG_DEFAULTS.clear()
-        org.config.app.CONFIG_DEFAULTS.update(original_defaults)
-        org.config.app.CONFIG_APPEND_DEFAULTS.clear()
-        org.config.app.CONFIG_APPEND_DEFAULTS.update(original_append)
-        org.config.app.CONFIG_INLINE_DEFAULTS.clear()
-        org.config.app.CONFIG_INLINE_DEFAULTS.update(original_inline)
+    assert "Effective config (stats all):" in caplog.text
+    assert "--limit=10" in caplog.text
+    assert "--filter-tag=['work']" in caplog.text
+    assert "--mapping='<Value ellided...>'" in caplog.text
 
 
 def test_log_command_arguments_logs_all_values(caplog: pytest.LogCaptureFixture) -> None:
     """Command argument logging should include all final argument values."""
     args = SimpleNamespace(max_results=10, filter_tags=["work"])
 
+    org.logging.logger.setLevel(logging.INFO)
+    org.logging.logger.propagate = True
     with caplog.at_level(logging.INFO, logger="org"):
         org.logging.log_command_arguments(args, "stats all")
 

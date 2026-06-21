@@ -339,6 +339,7 @@ def register(app: typer.Typer) -> None:
 
     @app.command("add")
     def tasks_add(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -478,7 +479,8 @@ def register(app: typer.Typer) -> None:
             parent=parent,
             file=file,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks add")
+        app_config = org.config.app.require_app_config(ctx)
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "tasks add")
         org.logging.log_command_arguments(args, "tasks add")
         run_tasks_add(args)

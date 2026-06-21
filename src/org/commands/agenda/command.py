@@ -79,7 +79,7 @@ def _validate_agenda_args(args: AgendaArgs) -> None:
     ui.resolve_agenda_start_date(args.date)
 
 
-def run_agenda(args: AgendaArgs) -> None:
+def run_agenda(args: AgendaArgs, config: org.config.app.AppConfig) -> None:
     """Run the agenda command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
@@ -94,10 +94,10 @@ def run_agenda(args: AgendaArgs) -> None:
     args.max_results = _resolve_tasks_limit(args.max_results)
     _validate_agenda_args(args)
 
-    view_ctx = resolve_view_context(args)
+    view_ctx = resolve_view_context(args, config.agenda.views)
 
     with processing_status(console, color_enabled):
-        nodes, todo_states, done_states = load_and_process_data(args)
+        nodes, todo_states, done_states = load_and_process_data(args, config)
 
     if not nodes:
         console.print("No results", markup=False)
@@ -108,6 +108,7 @@ def run_agenda(args: AgendaArgs) -> None:
 
     run_agenda_app(
         args,
+        config,
         nodes,
         ui.RenderContext(
             color_enabled=color_enabled,
@@ -130,6 +131,7 @@ def register(app: typer.Typer) -> None:
         ),
     )
     def agenda(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -387,7 +389,8 @@ def register(app: typer.Typer) -> None:
             future_repeats=future_repeats,
             view=view,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "agenda")
+        app_config = org.config.app.require_app_config(ctx)
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "agenda")
         org.logging.log_command_arguments(args, "agenda")
-        run_agenda(args)
+        run_agenda(args, app_config)

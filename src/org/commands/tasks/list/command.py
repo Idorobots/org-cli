@@ -347,6 +347,7 @@ def _run_tasks_list_static(
 
 def _run_tasks_list_interactive(
     args: ListArgs,
+    config: org.config.app.AppConfig,
     data: _TasksListSessionData,
 ) -> None:
     """Run interactive tasks-list UI session via Textual."""
@@ -354,7 +355,7 @@ def _run_tasks_list_interactive(
         console = build_console(data.color_enabled, args.width)
         console.print("No results", markup=False)
         return
-    run_tasks_list_app(args, data)
+    run_tasks_list_app(args, config, data)
 
 
 def _is_interactive_tty() -> bool:
@@ -362,7 +363,7 @@ def _is_interactive_tty() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
-def run_tasks_list(args: ListArgs) -> None:
+def run_tasks_list(args: ListArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks list command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
@@ -373,7 +374,7 @@ def run_tasks_list(args: ListArgs) -> None:
     args.max_results = _resolve_tasks_limit(args.max_results, console.height)
 
     with processing_status(console, color_enabled):
-        nodes, todo_states, done_states = load_and_process_data(args)
+        nodes, todo_states, done_states = load_and_process_data(args, config)
     session_data = _TasksListSessionData(
         nodes=nodes,
         todo_states=todo_states,
@@ -390,7 +391,7 @@ def run_tasks_list(args: ListArgs) -> None:
             "org tasks list requires a TTY unless --details or --out is provided",
         )
 
-    _run_tasks_list_interactive(args, session_data)
+    _run_tasks_list_interactive(args, config, session_data)
 
 
 def register(app: typer.Typer) -> None:
@@ -405,6 +406,7 @@ def register(app: typer.Typer) -> None:
         ),
     )
     def tasks_list(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -643,8 +645,9 @@ def register(app: typer.Typer) -> None:
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        org.config.app.apply_config_defaults(args)
+        app_config = org.config.app.require_app_config(ctx)
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
         args.noninteractive = details_switch_present or out_switch_present
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks list")
+        org.logging.log_applied_config_defaults(app_config, args, "tasks list")
         org.logging.log_command_arguments(args, "tasks list")
-        run_tasks_list(args)
+        run_tasks_list(args, app_config)

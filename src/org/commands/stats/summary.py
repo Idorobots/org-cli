@@ -218,13 +218,13 @@ def format_tasks_summary(
     return lines_to_text(apply_indent(lines, indent))
 
 
-def run_stats_summary(args: SummaryArgs) -> None:
+def run_stats_summary(args: SummaryArgs, config: org.config.app.AppConfig) -> None:
     """Run the stats summary command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
     _validate_summary_arguments(args)
     with processing_status(console, color_enabled):
-        nodes, todo_states, done_states = load_and_process_data(args)
+        nodes, todo_states, done_states = load_and_process_data(args, config)
 
         if not nodes:
             output = None
@@ -279,6 +279,7 @@ def register(app: typer.Typer) -> None:
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
     )
     def stats_summary(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -447,7 +448,8 @@ def register(app: typer.Typer) -> None:
             max_results=max_results,
             with_tags_as_category=with_tags_as_category,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "stats summary")
+        app_config = org.config.app.require_app_config(ctx)
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "stats summary")
         org.logging.log_command_arguments(args, "stats summary")
-        run_stats_summary(args)
+        run_stats_summary(args, app_config)

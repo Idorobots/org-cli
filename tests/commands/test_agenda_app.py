@@ -38,6 +38,7 @@ def _make_app(
     *,
     color_enabled: bool = False,
 ) -> AgendaApp:
+    config = org.config.app.build_default_app_config()
     view = _fallback_agenda_view()
     view_ctx = AgendaViewContext(section_specs=_compile_view_section_specs(view), name=view.name)
     render = ui.RenderContext(
@@ -45,7 +46,7 @@ def _make_app(
         done_states=["DONE"],
         todo_states=["TODO"],
     )
-    return AgendaApp(actions.create_agenda_session(args, nodes, render, view_ctx))
+    return AgendaApp(actions.create_agenda_session(args, config, nodes, render, view_ctx))
 
 
 def _body_lines(app: AgendaApp) -> list[str]:
@@ -178,13 +179,8 @@ def test_agenda_app_capture_from_timed_row_schedules_task(
         fixture_path = os.path.join(FIXTURES_DIR, "agenda_sample.org")
         args = _make_args([fixture_path], date="2025-01-15")
         captured_node = next(iter(org_parser.loads("* TODO Captured\n")))
-        monkeypatch.setattr(
-            org.config.app,
-            "CONFIG_CAPTURE_TEMPLATES",
-            {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
-        )
 
-        def _fake_capture(_args: object) -> capture_command.TasksCaptureResult:
+        def _fake_capture(_args: object, _templates: object) -> capture_command.TasksCaptureResult:
             return capture_command.TasksCaptureResult(
                 template_name="quick",
                 heading=captured_node,
@@ -196,6 +192,9 @@ def test_agenda_app_capture_from_timed_row_schedules_task(
         monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
 
         app = _make_app(args, list(org_parser.load(fixture_path)))
+        app.session.app_config.capture.templates = {
+            "quick": {"file": "tasks.org", "content": "* TODO Captured"},
+        }
         monkeypatch.setattr(actions, "refresh_session", lambda _session, _identity: None)
         app.session.selected_row_index = next(
             index
@@ -305,6 +304,7 @@ def test_run_agenda_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch)
 
     def _fake_run(
         passed_args: agenda_command.AgendaArgs,
+        _config: org.config.app.AppConfig,
         nodes: list[Heading],
         render: ui.RenderContext,
         view_ctx: AgendaViewContext,
@@ -319,6 +319,6 @@ def test_run_agenda_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     monkeypatch.setattr("org.commands.agenda.command.run_agenda_app", _fake_run)
 
-    agenda_command.run_agenda(args)
+    agenda_command.run_agenda(args, org.config.app.build_default_app_config())
 
     assert called["value"] is True

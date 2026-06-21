@@ -270,6 +270,7 @@ def register(app: typer.Typer) -> None:
 
     @app.command("query")
     def query_command(  # noqa: PLR0913
+        ctx: typer.Context,
         query: str = typer.Argument(..., metavar="QUERY", help="jq-style query expression"),
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
@@ -367,7 +368,8 @@ def register(app: typer.Typer) -> None:
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks query")
+        app_config = org.config.app.require_app_config(ctx)
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "tasks query")
         org.logging.log_command_arguments(args, "tasks query")
         run_tasks_query(args)

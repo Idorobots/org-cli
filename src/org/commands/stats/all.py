@@ -520,7 +520,7 @@ def _format_groups_body(
     return lines_to_text(lines)
 
 
-def run_stats(args: StatsAllArgs) -> None:
+def run_stats(args: StatsAllArgs, config: org.config.app.AppConfig) -> None:
     """Run the stats command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
@@ -531,7 +531,7 @@ def run_stats(args: StatsAllArgs) -> None:
     with processing_status(console, color_enabled):
         mapping = org.config.app.resolve_mapping(args)
         exclude_set = org.config.app.resolve_exclude_set(args)
-        nodes, todo_states, done_states = load_and_process_data(args)
+        nodes, todo_states, done_states = load_and_process_data(args, config)
         if nodes:
             result = analyze(nodes, mapping, args.use, args.max_relations)
             date_from, date_until = resolve_date_filters(args)
@@ -563,6 +563,7 @@ def register(app: typer.Typer) -> None:
 
     @app.command("all", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
     def stats_all(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -766,7 +767,8 @@ def register(app: typer.Typer) -> None:
             min_group_size=min_group_size,
             max_groups=max_groups,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "stats all")
+        app_config = org.config.app.require_app_config(ctx)
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "stats all")
         org.logging.log_command_arguments(args, "stats all")
-        run_stats(args)
+        run_stats(args, app_config)

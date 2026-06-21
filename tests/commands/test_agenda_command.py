@@ -38,6 +38,17 @@ if TYPE_CHECKING:
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 
 
+def _app_config(
+    *,
+    agenda_views: dict[str, org.config.app.AgendaViewConfig] | None = None,
+) -> org.config.app.AppConfig:
+    """Build app config for agenda tests with optional configured views."""
+    config = org.config.app.build_default_app_config()
+    if agenda_views is not None:
+        config.agenda.views = agenda_views
+    return config
+
+
 def _make_args(files: list[str], **overrides: object) -> agenda_command.AgendaArgs:
     args = agenda_command.AgendaArgs(
         files=files,
@@ -112,7 +123,13 @@ def _make_session(
         done_states=["DONE"] if done_states is None else done_states,
         todo_states=["TODO"] if todo_states is None else todo_states,
     )
-    return actions.create_agenda_session(args, nodes, render, view_ctx)
+    return actions.create_agenda_session(
+        args,
+        _app_config(),
+        nodes,
+        render,
+        view_ctx,
+    )
 
 
 def _pin_agenda_now(monkeypatch: pytest.MonkeyPatch) -> datetime:
@@ -126,6 +143,14 @@ def _pin_agenda_now(monkeypatch: pytest.MonkeyPatch) -> datetime:
 
 def _render_agenda_output(args: agenda_command.AgendaArgs) -> str:
     """Render agenda output through shared UI helpers for rendering tests."""
+    return _render_agenda_output_with_config(args, _app_config())
+
+
+def _render_agenda_output_with_config(
+    args: agenda_command.AgendaArgs,
+    config: org.config.app.AppConfig,
+) -> str:
+    """Render agenda output through shared UI helpers for rendering tests."""
     color_enabled = setup_output(args)
     args.max_results = agenda_command._resolve_tasks_limit(args.max_results)
     ui.resolve_agenda_start_date(args.date)
@@ -137,7 +162,7 @@ def _render_agenda_output(args: agenda_command.AgendaArgs) -> str:
         no_color=not color_enabled,
         force_terminal=color_enabled,
     )
-    nodes, todo_states, done_states = load_and_process_data(args)
+    nodes, todo_states, done_states = load_and_process_data(args, config)
     ui.render_agenda(
         console,
         ui.AgendaRenderInput(
@@ -150,7 +175,7 @@ def _render_agenda_output(args: agenda_command.AgendaArgs) -> str:
                 todo_states=todo_states,
             ),
         ),
-        resolve_view_context(args),
+        resolve_view_context(args, config.agenda.views),
     )
     return console_output.getvalue()
 
@@ -486,18 +511,21 @@ def test_run_agenda_plain_view_rows_show_relative_day_labels(
             "DEADLINE: <2025-01-18 Sat>\n",
         )
 
-    org.config.app.CONFIG_AGENDA_VIEWS.clear()
-    org.config.app.CONFIG_AGENDA_VIEWS["plain"] = org.config.app.AgendaViewConfig(
-        name="plain",
-        sections=[
-            org.config.app.AgendaSectionConfig(
-                name="Planning",
-                filter=".scheduled != null or .deadline != null",
-                order_by=None,
-                style="white",
-                timeline=False,
+    config = _app_config(
+        agenda_views={
+            "plain": org.config.app.AgendaViewConfig(
+                name="plain",
+                sections=[
+                    org.config.app.AgendaSectionConfig(
+                        name="Planning",
+                        filter=".scheduled != null or .deadline != null",
+                        order_by=None,
+                        style="white",
+                        timeline=False,
+                    ),
+                ],
             ),
-        ],
+        },
     )
     args = _make_args([fixture_path], date="2025-01-15", view="plain")
 
@@ -506,7 +534,7 @@ def test_run_agenda_plain_view_rows_show_relative_day_labels(
         "argv",
         ["org", "agenda", "--date", "2025-01-15", "--view", "plain", fixture_path],
     )
-    output = _render_agenda_output(args)
+    output = _render_agenda_output_with_config(args, config)
 
     assert "2 days ago" in output
     assert "today" in output
@@ -566,18 +594,21 @@ def test_run_agenda_timeline_view_appends_selected_untimed_tasks(
             "SCHEDULED: <2025-01-15 Wed>\n",
         )
 
-    org.config.app.CONFIG_AGENDA_VIEWS.clear()
-    org.config.app.CONFIG_AGENDA_VIEWS["timeline"] = org.config.app.AgendaViewConfig(
-        name="timeline",
-        sections=[
-            org.config.app.AgendaSectionConfig(
-                name="Agenda",
-                filter=".scheduled != null",
-                order_by=None,
-                style="white",
-                timeline=True,
+    config = _app_config(
+        agenda_views={
+            "timeline": org.config.app.AgendaViewConfig(
+                name="timeline",
+                sections=[
+                    org.config.app.AgendaSectionConfig(
+                        name="Agenda",
+                        filter=".scheduled != null",
+                        order_by=None,
+                        style="white",
+                        timeline=True,
+                    ),
+                ],
             ),
-        ],
+        },
     )
     args = _make_args([fixture_path], date="2025-01-15", view="timeline")
 
@@ -586,7 +617,7 @@ def test_run_agenda_timeline_view_appends_selected_untimed_tasks(
         "argv",
         ["org", "agenda", "--date", "2025-01-15", "--view", "timeline", fixture_path],
     )
-    output = _render_agenda_output(args)
+    output = _render_agenda_output_with_config(args, config)
 
     assert "09:30" in output
     assert "Timed task" in output
@@ -709,7 +740,7 @@ def test_run_agenda_no_results_prints_message(
     args = _make_args([fixture_path], filter_tags=["nomatch$"])
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--filter-tag", "nomatch$"])
-    agenda_command.run_agenda(args)
+    agenda_command.run_agenda(args, org.config.app.build_default_app_config())
     output = capsys.readouterr().out
 
     assert output.strip() == "No results"
@@ -722,7 +753,7 @@ def test_run_agenda_rejects_negative_offset(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--offset", "-1"])
     with pytest.raises(typer.BadParameter, match="--offset must be non-negative"):
-        agenda_command.run_agenda(args)
+        agenda_command.run_agenda(args, org.config.app.build_default_app_config())
 
 
 def test_run_agenda_rejects_negative_limit(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -732,7 +763,7 @@ def test_run_agenda_rejects_negative_limit(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--limit", "-1"])
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        agenda_command.run_agenda(args)
+        agenda_command.run_agenda(args, org.config.app.build_default_app_config())
 
 
 def test_run_agenda_rejects_days_below_one(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -742,7 +773,7 @@ def test_run_agenda_rejects_days_below_one(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--days", "0"])
     with pytest.raises(typer.BadParameter, match="--days must be at least 1"):
-        agenda_command.run_agenda(args)
+        agenda_command.run_agenda(args, org.config.app.build_default_app_config())
 
 
 def test_run_agenda_invalid_date_raises_bad_parameter(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -752,7 +783,7 @@ def test_run_agenda_invalid_date_raises_bad_parameter(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(sys, "argv", ["org", "agenda", "--date", "2025/01/15"])
     with pytest.raises(typer.BadParameter, match="--date must be in one of these formats"):
-        agenda_command.run_agenda(args)
+        agenda_command.run_agenda(args, org.config.app.build_default_app_config())
 
 
 def test_parse_clock_duration_accepts_multiple_formats() -> None:

@@ -8,6 +8,9 @@ import click
 import pytest
 import typer
 
+import org.logging
+from org.config.app import AppConfig, NamedQueryConfig, build_default_app_config
+
 
 def _build_query_text(
     args: FilterArgsStub,
@@ -15,11 +18,17 @@ def _build_query_text(
     *,
     include_ordering: bool,
     include_slice: bool,
+    config: AppConfig | None = None,
 ) -> str:
     from org.config.cli import build_pipeline_stages
     from org.query.runner import build_query_text_from_stages
 
-    stages = build_pipeline_stages(args, argv, include_ordering)
+    stages = build_pipeline_stages(
+        build_default_app_config() if config is None else config,
+        args,
+        argv,
+        include_ordering,
+    )
     return build_query_text_from_stages(stages, include_slice)
 
 
@@ -29,12 +38,37 @@ def _build_query(
     *,
     include_ordering: bool,
     include_slice: bool,
+    config: AppConfig | None = None,
 ) -> object:
     from org.config.cli import build_pipeline_stages
     from org.query.runner import build_query_from_stages
 
-    stages = build_pipeline_stages(args, argv, include_ordering)
+    stages = build_pipeline_stages(
+        build_default_app_config() if config is None else config,
+        args,
+        argv,
+        include_ordering,
+    )
     return build_query_from_stages(stages, include_slice)
+
+
+def _build_config(
+    *,
+    custom_filters: dict[str, str] | None = None,
+    custom_order_by: dict[str, str] | None = None,
+    custom_with: dict[str, str] | None = None,
+) -> AppConfig:
+    config = build_default_app_config()
+    config.filters = [
+        NamedQueryConfig(name=name, query=query) for name, query in (custom_filters or {}).items()
+    ]
+    config.orderings = [
+        NamedQueryConfig(name=name, query=query) for name, query in (custom_order_by or {}).items()
+    ]
+    config.mutators = [
+        NamedQueryConfig(name=name, query=query) for name, query in (custom_with or {}).items()
+    ]
+    return config
 
 
 @dataclass
@@ -200,28 +234,22 @@ def test_build_query_logs_query_before_compile(caplog: pytest.LogCaptureFixture)
     args = make_args(filter_tags=["simple"])
     argv = ["org", "stats", "all", "--filter-tag", "simple", "file.org"]
 
+    org.logging.logger.setLevel(logging.INFO)
+    org.logging.logger.propagate = True
     with caplog.at_level(logging.INFO, logger="org"):
         _build_query(args, argv, include_ordering=False, include_slice=False)
 
     assert 'Query: [ .[] | select(.tags[] matches "simple") ]' in caplog.text
 
 
-def test_build_query_text_with_custom_filter_and_optional_arg(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_build_query_text_with_custom_filter_and_optional_arg() -> None:
     """Custom filter switches should bind $arg and support omitted values."""
-    import org.config.app
-
-    monkeypatch.setattr(
-        org.config.app,
-        "CONFIG_CUSTOM_FILTERS",
-        {
+    config = _build_config(
+        custom_filters={
             "todo-state": "select(.todo == $arg)",
             "has-todo": "select(.todo != null)",
         },
     )
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_ORDER_BY", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {})
 
     args = make_args(files=["file.org"])
     argv = [
@@ -234,7 +262,13 @@ def test_build_query_text_with_custom_filter_and_optional_arg(
         "file.org",
     ]
 
-    query = _build_query_text(args, argv, include_ordering=False, include_slice=False)
+    query = _build_query_text(
+        args,
+        argv,
+        include_ordering=False,
+        include_slice=False,
+        config=config,
+    )
 
     assert query == (
         "[ .[] | let 3 as $arg in (select(.todo == $arg))"
@@ -242,16 +276,9 @@ def test_build_query_text_with_custom_filter_and_optional_arg(
     )
 
 
-def test_collect_custom_context_vars_returns_empty_for_custom_args(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_collect_custom_context_vars_returns_empty_for_custom_args() -> None:
     """Custom arguments are embedded in query text and not added to context vars."""
-    import org.config.app
     from org.config.cli import collect_custom_context_vars
-
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_FILTERS", {"value": "select(.v == $arg)"})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_ORDER_BY", {"weight": "sort_by(.priority)"})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {"mark": '. + {"x": $arg}'})
 
     args = make_args(files=["file.org"])
     argv = [
@@ -278,11 +305,11 @@ def test_collect_custom_context_vars_returns_empty_for_custom_args(
 
 def test_build_query_text_custom_with_before_filters(monkeypatch: pytest.MonkeyPatch) -> None:
     """Custom enrichment stages should be applied before filters."""
-    import org.config.app
-
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_FILTERS", {"tagged": "select(.tag != null)"})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_ORDER_BY", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {"mark": '. + {"x": $arg}'})
+    del monkeypatch
+    config = _build_config(
+        custom_filters={"tagged": "select(.tag != null)"},
+        custom_with={"mark": '. + {"x": $arg}'},
+    )
 
     args = make_args(filter_completed=True, files=["file.org"])
     argv = [
@@ -296,7 +323,13 @@ def test_build_query_text_custom_with_before_filters(monkeypatch: pytest.MonkeyP
         "file.org",
     ]
 
-    query = _build_query_text(args, argv, include_ordering=False, include_slice=False)
+    query = _build_query_text(
+        args,
+        argv,
+        include_ordering=False,
+        include_slice=False,
+        config=config,
+    )
 
     assert query.startswith('[ .[] | let "one" as $arg in (. + {"x": $arg}) | ')
     assert "| let null as $arg in (select(.tag != null)) |" in query
@@ -306,11 +339,8 @@ def test_build_query_text_with_builtin_and_custom_with_stages_follow_argv_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Built-in and custom with stages should preserve CLI order."""
-    import org.config.app
-
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_FILTERS", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_ORDER_BY", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {"mark": '. + {"x": $arg}'})
+    del monkeypatch
+    config = _build_config(custom_with={"mark": '. + {"x": $arg}'})
 
     args = make_args(with_tags_as_category=True, files=["file.org"])
     argv = [
@@ -323,7 +353,13 @@ def test_build_query_text_with_builtin_and_custom_with_stages_follow_argv_order(
         "file.org",
     ]
 
-    query = _build_query_text(args, argv, include_ordering=False, include_slice=False)
+    query = _build_query_text(
+        args,
+        argv,
+        include_ordering=False,
+        include_slice=False,
+        config=config,
+    )
 
     assert query == (
         '[ .[] | let "one" as $arg in (. + {"x": $arg}) '
@@ -333,16 +369,19 @@ def test_build_query_text_with_builtin_and_custom_with_stages_follow_argv_order(
 
 def test_build_query_text_custom_ordering_for_stats(monkeypatch: pytest.MonkeyPatch) -> None:
     """Custom order-by switches should work even when built-in ordering is disabled."""
-    import org.config.app
-
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_FILTERS", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_ORDER_BY", {"weight": "sort_by(.priority)"})
+    del monkeypatch
+    config = _build_config(custom_order_by={"weight": "sort_by(.priority)"})
 
     args = make_args(files=["file.org"])
     argv = ["org", "stats", "all", "--order-by-weight", "file.org"]
 
-    query = _build_query_text(args, argv, include_ordering=False, include_slice=False)
+    query = _build_query_text(
+        args,
+        argv,
+        include_ordering=False,
+        include_slice=False,
+        config=config,
+    )
 
     assert query == "[ .[] | let null as $arg in (sort_by(.priority)) ]"
 
@@ -354,8 +393,10 @@ def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixtu
     fixture_path = str((Path(__file__).resolve().parents[1] / "fixtures" / "simple.org").resolve())
     args = make_args(files=[fixture_path], offset=0, max_results=1)
 
+    org.logging.logger.setLevel(logging.INFO)
+    org.logging.logger.propagate = True
     with caplog.at_level(logging.INFO, logger="org"):
-        load_and_process_data(args)
+        load_and_process_data(args, build_default_app_config())
 
     assert "Query context:" in caplog.text
     assert "'todo_states': ['TODO']" in caplog.text
@@ -365,11 +406,8 @@ def test_build_query_text_preserves_mixed_ordering_cli_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Built-in and custom ordering switches should follow CLI specification order."""
-    import org.config.app
-
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_FILTERS", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_ORDER_BY", {"weight": "sort_by(.priority)"})
+    del monkeypatch
+    config = _build_config(custom_order_by={"weight": "sort_by(.priority)"})
 
     args = make_args(order_by_timestamp_desc=True, files=["file.org"])
     argv = [
@@ -381,7 +419,7 @@ def test_build_query_text_preserves_mixed_ordering_cli_order(
         "file.org",
     ]
 
-    query = _build_query_text(args, argv, include_ordering=True, include_slice=False)
+    query = _build_query_text(args, argv, include_ordering=True, include_slice=False, config=config)
 
     assert query == (
         "[ .[] | let null as $arg in (sort_by(.priority))"
@@ -391,11 +429,7 @@ def test_build_query_text_preserves_mixed_ordering_cli_order(
 
 def test_build_query_text_rejects_unknown_custom_switch(monkeypatch: pytest.MonkeyPatch) -> None:
     """Unknown prefixed custom switches should fail validation."""
-    import org.config.app
-
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_FILTERS", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_ORDER_BY", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {})
+    del monkeypatch
 
     args = make_args(files=["file.org"])
     argv = ["org", "tasks", "list", "--filter-unknown", "file.org"]
@@ -408,15 +442,8 @@ def test_build_query_text_custom_filter_requires_exactly_one_argument(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Custom filters using $arg should require exactly one argument."""
-    import org.config.app
-
-    monkeypatch.setattr(
-        org.config.app,
-        "CONFIG_CUSTOM_FILTERS",
-        {"level-above": "select(.level > $arg)"},
-    )
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_ORDER_BY", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {})
+    del monkeypatch
+    config = _build_config(custom_filters={"level-above": "select(.level > $arg)"})
 
     args = make_args(files=["file.org"])
     argv = ["org", "tasks", "list", "--filter-level-above"]
@@ -425,57 +452,49 @@ def test_build_query_text_custom_filter_requires_exactly_one_argument(
         typer.BadParameter,
         match="--filter-level-above requires exactly one argument",
     ):
-        _build_query_text(args, argv, include_ordering=False, include_slice=False)
+        _build_query_text(args, argv, include_ordering=False, include_slice=False, config=config)
 
 
 def test_build_query_text_custom_order_by_requires_exactly_one_argument(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Custom order-by switches using $arg should require exactly one argument."""
-    import org.config.app
-
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_FILTERS", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_ORDER_BY", {"weight": "sort_by($arg)"})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {})
+    del monkeypatch
+    config = _build_config(custom_order_by={"weight": "sort_by($arg)"})
 
     args = make_args(files=["file.org"])
     argv = ["org", "tasks", "list", "--order-by-weight"]
 
     with pytest.raises(typer.BadParameter, match="--order-by-weight requires exactly one argument"):
-        _build_query_text(args, argv, include_ordering=True, include_slice=False)
+        _build_query_text(args, argv, include_ordering=True, include_slice=False, config=config)
 
 
 def test_build_query_text_custom_with_requires_exactly_one_argument(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Custom enrichment switches using $arg should require exactly one argument."""
-    import org.config.app
-
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_FILTERS", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_ORDER_BY", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {"mark": '. + {"x": $arg}'})
+    del monkeypatch
+    config = _build_config(custom_with={"mark": '. + {"x": $arg}'})
 
     args = make_args(files=["file.org"])
     argv = ["org", "tasks", "list", "--with-mark"]
 
     with pytest.raises(typer.BadParameter, match="--with-mark requires exactly one argument"):
-        _build_query_text(args, argv, include_ordering=False, include_slice=False)
+        _build_query_text(args, argv, include_ordering=False, include_slice=False, config=config)
 
 
 def test_normalize_cli_files_consumes_required_custom_path_like_argument(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Required custom arguments should consume path-like values."""
-    import org.config.app
     from org.config.cli import normalize_cli_files_for_custom_switches
 
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_FILTERS", {"value": "select(.todo == $arg)"})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_ORDER_BY", {})
-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {})
+    del monkeypatch
+    config = _build_config(custom_filters={"value": "select(.todo == $arg)"})
 
     files = ["--filter-value", "README.md", "file.org"]
 
-    result = normalize_cli_files_for_custom_switches(files)
+    result = normalize_cli_files_for_custom_switches(config, files)
 
     assert result == ["file.org"]
 

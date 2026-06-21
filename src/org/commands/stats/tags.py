@@ -158,7 +158,7 @@ def _resolve_tag_values(args: TagsArgs, mapping: dict[str, str]) -> list[str] | 
     return tag_values
 
 
-def run_stats_tags(args: TagsArgs) -> None:
+def run_stats_tags(args: TagsArgs, config: org.config.app.AppConfig) -> None:
     """Run the stats tags command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
@@ -168,7 +168,7 @@ def run_stats_tags(args: TagsArgs) -> None:
     with processing_status(console, color_enabled):
         mapping = org.config.app.resolve_mapping(args)
         exclude_set = org.config.app.resolve_exclude_set(args)
-        nodes, _, _ = load_and_process_data(args)
+        nodes, _, _ = load_and_process_data(args, config)
 
         if not nodes:
             output = None
@@ -214,6 +214,7 @@ def register(app: typer.Typer) -> None:
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
     )
     def stats_tags(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -406,7 +407,8 @@ def register(app: typer.Typer) -> None:
             min_group_size=2,
             max_groups=0,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "stats tags")
+        app_config = org.config.app.require_app_config(ctx)
+        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+        org.logging.log_applied_config_defaults(app_config, args, "stats tags")
         org.logging.log_command_arguments(args, "stats tags")
-        run_stats_tags(args)
+        run_stats_tags(args, app_config)
