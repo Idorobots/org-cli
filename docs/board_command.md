@@ -106,7 +106,7 @@ View selection behavior:
 
 - If `--view` is set, that configured view must exist.
 - If `--view` is set but no board views are configured, the command fails with an explicit error.
-- If `--view` is omitted, config defaults may provide `defaults: --view: <name>`.
+- If `--view` is omitted, `board.view` in config may select the default configured view.
 - If neither explicit nor default view is set, fallback columns are used.
 
 Filter errors:

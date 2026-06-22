@@ -17,10 +17,14 @@ The default config file is `.org-cli.yaml` in the current working directory.
 
 Top-level sections:
 
-- `defaults` - default values for built-in CLI options (for example `--filter-priority`, `--order-by-priority`, `--buckets`)
+- shared top-level option defaults such as `todo_states`, `done_states`, `mapping`, `exclude`, filters, ordering flags, and color behavior
 - `filter` - custom `--filter-<name>` query snippets
 - `order-by` - custom `--order-by-<name>` query snippets
 - `with` - custom `--with-<name>` query snippets
+- `tasks` - task-command defaults and capture templates
+- `stats` - stats subcommand defaults
+- `agenda` - agenda defaults and named views
+- `board` - board defaults and named views
 
 ## Development Setup
 Several helpful Poetry tasks are defined in `pyproject.toml`  that automate running mundane tasks. These tasks should be used whenever possible instead of running individual commands.

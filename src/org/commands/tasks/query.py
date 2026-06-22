@@ -313,7 +313,7 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             help="Force colored output",
         ),
         width: int | None = typer.Option(
-            None,
+            app_config.tasks.query.width,
             "--width",
             metavar="N",
             min=50,
@@ -329,7 +329,7 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             help="Maximum number of results to display",
         ),
         offset: int = typer.Option(
-            0,
+            0 if app_config.tasks.query.offset is None else app_config.tasks.query.offset,
             "--offset",
             metavar="N",
             help="Number of results to skip before displaying",

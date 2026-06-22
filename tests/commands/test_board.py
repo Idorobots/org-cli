@@ -794,6 +794,16 @@ def test_run_board_negative_offset_raises_bad_parameter(
         board_command.run_board(args, _app_config())
 
 
+def test_run_board_zero_days_raises_bad_parameter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Board should reject zero-day completed task windows."""
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    args = make_board_args([fixture_path], days=0)
+
+    monkeypatch.setattr(sys, "argv", ["org", "board", "--days", "0"])
+    with pytest.raises(typer.BadParameter, match="--days must be at least 1"):
+        board_command.run_board(args, _app_config())
+
+
 def test_run_board_uses_pager_when_render_exceeds_console_height(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: os.PathLike[str],

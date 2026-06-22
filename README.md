@@ -18,13 +18,14 @@ This installs the `org` command.
 
 Top-level config sections:
 
-- `defaults` for built-in option defaults
+- shared top-level option defaults such as `todo_states`, `done_states`, `mapping`, `exclude`, filters, ordering flags, and color behavior
 - `filter` for custom `--filter-<name>` query snippets
 - `order-by` for custom `--order-by-<name>` query snippets
 - `with` for custom `--with-<name>` query snippets
-- `capture` for named task capture templates
+- `tasks` for task-command defaults and named capture templates
+- `stats` for stats subcommand defaults
 - `agenda` for named agenda views
-- `board` for named board views
+- `board` for board defaults and named board views
 
 See [docs/index.md](docs/index.md) for the full config layout.
 

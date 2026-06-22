@@ -361,6 +361,8 @@ class TasksQueryConfig:
     """Structured configuration for tasks query defaults."""
 
     max_results: int | None = None
+    offset: int | None = None
+    width: int | None = None
     out: str | None = None
     out_theme: str | None = None
     pandoc_args: str | None = None
@@ -1326,13 +1328,15 @@ def parse_tasks_query_section(value: object) -> TasksQueryConfig | None:
     if not isinstance(value, dict):
         return None
 
-    allowed_keys = {"max_results", "out", "out_theme", "pandoc_args"}
+    allowed_keys = {"max_results", "offset", "width", "out", "out_theme", "pandoc_args"}
     if any(key not in allowed_keys for key in value):
         return None
 
     valid_max_results, max_results = _parse_optional_int_field(value, "max_results", None)
+    valid_offset, offset = _parse_optional_int_field(value, "offset", 0)
+    valid_width, width = _parse_optional_int_field(value, "width", 50)
     valid_out, out = _parse_optional_string_field(value, "out", "--out")
-    if not all((valid_max_results, valid_out)):
+    if not all((valid_max_results, valid_offset, valid_width, valid_out)):
         return None
     try:
         out_theme = _parse_out_theme(value, "out_theme")
@@ -1342,6 +1346,8 @@ def parse_tasks_query_section(value: object) -> TasksQueryConfig | None:
 
     return TasksQueryConfig(
         max_results=max_results,
+        offset=offset,
+        width=width,
         out=out,
         out_theme=out_theme,
         pandoc_args=pandoc_args,

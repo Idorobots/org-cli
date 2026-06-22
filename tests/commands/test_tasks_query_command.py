@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import TYPE_CHECKING
 
 import click
 import pytest
@@ -16,6 +17,10 @@ import org.config.app
 from org import cli
 from org.commands.tasks.query import TasksQueryArgs, _is_org_object, run_tasks_query
 from org.pipeline.format import OutputFormat, OutputFormatError
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
@@ -217,6 +222,34 @@ def test_run_query_negative_max_results_raises_bad_parameter() -> None:
 
     with pytest.raises(click.BadParameter, match="--limit must be non-negative"):
         _run_tasks_query(args)
+
+
+def test_tasks_query_command_uses_query_config_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """CLI should pass tasks.query config defaults into command arguments."""
+    config = org.config.app.AppConfig(config_path=str(tmp_path / ".org-cli.yaml"))
+    config.tasks.query.offset = 2
+    config.tasks.query.width = 65
+    configured_app = cli.build_app(config)
+    runner = CliRunner()
+    fixture_path = os.path.join(FIXTURES_DIR, "multiple_tags.org")
+    captured: dict[str, object] = {}
+
+    def _fake_run_tasks_query(
+        args: TasksQueryArgs,
+        _config: org.config.app.AppConfig,
+    ) -> None:
+        captured["offset"] = args.offset
+        captured["width"] = args.width
+
+    monkeypatch.setattr("org.commands.tasks.query.run_tasks_query", _fake_run_tasks_query)
+
+    result = runner.invoke(configured_app, ["tasks", "query", ".[]", fixture_path])
+
+    assert result.exit_code == 0
+    assert captured == {"offset": 2, "width": 65}
 
 
 def test_query_runtime_error_is_reported_as_usage_error() -> None:

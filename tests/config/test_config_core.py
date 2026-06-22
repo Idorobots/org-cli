@@ -63,6 +63,9 @@ def test_load_cli_config_parses_shared_and_section_values(
             "    use: heading\n"
             "    max_tags: 3\n"
             "tasks:\n"
+            "  query:\n"
+            "    offset: 2\n"
+            "    width: 72\n"
             "  list:\n"
             '    pandoc_args: "--wrap=none"\n'
             "  find:\n"
@@ -80,6 +83,8 @@ def test_load_cli_config_parses_shared_and_section_values(
     assert loaded.filter_tags == ["work"]
     assert loaded.stats.all.max_tags == 3
     assert loaded.stats.all.use == "heading"
+    assert loaded.tasks.query.offset == 2
+    assert loaded.tasks.query.width == 72
     assert loaded.tasks.list.pandoc_args == "--wrap=none"
     assert loaded.tasks.find.include_context == 2
     assert loaded.board.view == "kanban"

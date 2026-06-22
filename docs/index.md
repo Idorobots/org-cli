@@ -98,6 +98,8 @@ For exhaustive per-command config examples, see each command page's `Configurati
 
 Most analysis commands accept many `--filter-*` switches. Ordering controls are available on `org tasks list` and `org board` via built-in `--order-by-*` switches.
 
+Config defaults use the current structured layout: shared options live at the top level, while command-specific defaults live under sections such as `tasks`, `stats`, `agenda`, and `board`.
+
 Built-in argument defaults:
 
 - Shared defaults: `--offset 0`, `--todo-states TODO`, `--done-states DONE`.

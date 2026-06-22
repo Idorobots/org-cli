@@ -32,6 +32,8 @@ All available options:
 tasks:
   query:
     max_results: 10
+    offset: 0
+    width: 80
     out: org
     out_theme: github-dark
     pandoc_args: "--wrap=none"

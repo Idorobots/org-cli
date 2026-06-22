@@ -86,8 +86,8 @@ def run_board(args: BoardArgs, config: org.config.app.AppConfig) -> None:
         raise typer.BadParameter("--offset must be non-negative")
     if args.max_results is not None and args.max_results < 0:
         raise typer.BadParameter("--limit must be non-negative")
-    if args.days < 0:
-        raise typer.BadParameter("--days must be non-negative")
+    if args.days < 1:
+        raise typer.BadParameter("--days must be at least 1")
     args.max_results = _resolve_tasks_limit(args.max_results)
     _validate_board_args(args, config)
 
@@ -274,6 +274,7 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             7 if app_config.board.days is None else app_config.board.days,
             "--days",
             metavar="N",
+            min=1,
             help="Show completed tasks modified in last N days",
         ),
         order_by_level: bool = typer.Option(
