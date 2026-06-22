@@ -59,8 +59,9 @@ def test_load_cli_config_parses_shared_and_section_values(
             "filter_tags:\n"
             "  - work\n"
             "stats:\n"
-            "  max_tags: 3\n"
-            "  use: heading\n"
+            "  all:\n"
+            "    use: heading\n"
+            "    max_tags: 3\n"
             "tasks:\n"
             "  list:\n"
             '    pandoc_args: "--wrap=none"\n'
@@ -77,8 +78,8 @@ def test_load_cli_config_parses_shared_and_section_values(
 
     assert loaded.color_flag is True
     assert loaded.filter_tags == ["work"]
-    assert loaded.stats.max_tags == 3
-    assert loaded.stats.use == "heading"
+    assert loaded.stats.all.max_tags == 3
+    assert loaded.stats.all.use == "heading"
     assert loaded.tasks.list.pandoc_args == "--wrap=none"
     assert loaded.tasks.find.include_context == 2
     assert loaded.board.view == "kanban"
@@ -114,7 +115,8 @@ def test_load_cli_config_reads_structured_config(
             "todo_states: TODO,WAITING\n"
             "mapping: examples/mapping_example.json\n"
             "stats:\n"
-            "  max_results: 7\n"
+            "  summary:\n"
+            "    max_results: 7\n"
             "filter:\n"
             "  custom-filter: .[]\n"
             "order-by:\n"
@@ -130,7 +132,7 @@ def test_load_cli_config_reads_structured_config(
 
     assert loaded.todo_states == ["TODO", "WAITING"]
     assert loaded.mapping == "examples/mapping_example.json"
-    assert loaded.stats.max_results == 7
+    assert loaded.stats.summary.max_results == 7
     assert loaded.custom_filter_map() == {"custom-filter": ".[]"}
     assert loaded.custom_order_by_map() == {"custom-order": "."}
     assert loaded.custom_with_map() == {"custom-with": "."}
@@ -144,12 +146,12 @@ def test_load_cli_config_sections_are_optional(
 ) -> None:
     """Only one structured command section should be enough for valid config."""
     config_path = tmp_path / ".org-cli.yaml"
-    config_path.write_text("stats:\n  max_results: 7\n", encoding="utf-8")
+    config_path.write_text("stats:\n  summary:\n    max_results: 7\n", encoding="utf-8")
 
     monkeypatch.chdir(config_path.parent)
     loaded = org.config.app.load_cli_config(["org"])
 
-    assert loaded.stats.max_results == 7
+    assert loaded.stats.summary.max_results == 7
     assert loaded.custom_filter_map() == {}
     assert loaded.custom_order_by_map() == {}
     assert loaded.custom_with_map() == {}
@@ -577,7 +579,23 @@ def test_load_cli_config_rejects_invalid_custom_section_values(
     """Custom sections must be object[string -> string]."""
     config_path = tmp_path / ".org-cli.yaml"
     config_path.write_text(
-        "stats:\n  max_results: 7\nfilter:\n  custom-filter: 1\n",
+        "stats:\n  summary:\n    max_results: 7\nfilter:\n  custom-filter: 1\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        org.config.app.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_flat_stats_section(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flat stats keys are no longer supported."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        "stats:\n  max_results: 7\n  max_tags: 3\n",
         encoding="utf-8",
     )
 
@@ -628,7 +646,7 @@ def test_log_command_config_logs_all_config_values(
 ) -> None:
     """Config logging should include values loaded for a command."""
     config = org.config.app.AppConfig(config_path=".org-cli.yaml")
-    config.stats.max_results = 10
+    config.stats.all.max_results = 10
     config.filter_tags = ["work"]
     config.mapping_inline = {"foo": "bar"}
 

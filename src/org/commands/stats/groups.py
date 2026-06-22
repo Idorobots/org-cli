@@ -333,20 +333,22 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             help="Override auto-derived console width (minimum: 50)",
         ),
         max_results: int | None = typer.Option(
-            10 if app_config.stats.max_results is None else app_config.stats.max_results,
+            10
+            if app_config.stats.groups.max_results is None
+            else app_config.stats.groups.max_results,
             "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
         ),
         use: str = typer.Option(
-            "tags" if app_config.stats.use is None else app_config.stats.use,
+            "tags" if app_config.stats.groups.use is None else app_config.stats.groups.use,
             "--use",
             metavar="CATEGORY",
             help="Category to display: tags, heading, or body",
         ),
         groups: list[str] | None = typer.Option(  # noqa: B008
-            app_config.stats.groups,
+            app_config.stats.groups.groups,
             "--group",
             metavar="TAGS",
             help="Comma-separated list of tags to group (can specify multiple)",
@@ -357,7 +359,9 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             help="Preprocess nodes to set category from first tag",
         ),
         max_relations: int = typer.Option(
-            5 if app_config.stats.max_relations is None else app_config.stats.max_relations,
+            5
+            if app_config.stats.groups.max_relations is None
+            else app_config.stats.groups.max_relations,
             "--max-relations",
             metavar="N",
             help="Maximum number of relations to consider per item (use 0 to omit sections)",

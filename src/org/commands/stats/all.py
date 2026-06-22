@@ -692,20 +692,20 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             help="Override auto-derived console width (minimum: 50)",
         ),
         max_results: int | None = typer.Option(
-            app_config.stats.max_results,
+            app_config.stats.all.max_results,
             "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
         ),
         max_tags: int = typer.Option(
-            5 if app_config.stats.max_tags is None else app_config.stats.max_tags,
+            5 if app_config.stats.all.max_tags is None else app_config.stats.all.max_tags,
             "--max-tags",
             metavar="N",
             help="Maximum number of tags to display in TAGS section (use 0 to omit section)",
         ),
         use: str = typer.Option(
-            "tags" if app_config.stats.use is None else app_config.stats.use,
+            "tags" if app_config.stats.all.use is None else app_config.stats.all.use,
             "--use",
             metavar="CATEGORY",
             help="Category to display: tags, heading, or body",
@@ -716,19 +716,21 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             help="Preprocess nodes to set category from first tag",
         ),
         max_relations: int = typer.Option(
-            5 if app_config.stats.max_relations is None else app_config.stats.max_relations,
+            5 if app_config.stats.all.max_relations is None else app_config.stats.all.max_relations,
             "--max-relations",
             metavar="N",
             help="Maximum number of relations to display per item (use 0 to omit sections)",
         ),
         min_group_size: int = typer.Option(
-            2 if app_config.stats.min_group_size is None else app_config.stats.min_group_size,
+            2
+            if app_config.stats.all.min_group_size is None
+            else app_config.stats.all.min_group_size,
             "--min-group-size",
             metavar="N",
             help="Minimum group size to display",
         ),
         max_groups: int = typer.Option(
-            5 if app_config.stats.max_groups is None else app_config.stats.max_groups,
+            5 if app_config.stats.all.max_groups is None else app_config.stats.all.max_groups,
             "--max-groups",
             metavar="N",
             help="Maximum number of tag groups to display (use 0 to omit section)",

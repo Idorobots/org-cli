@@ -39,7 +39,7 @@ def test_cli_main_invokes_typer_command(monkeypatch: pytest.MonkeyPatch) -> None
         return DummyCommand()
 
     loaded_config = org.config.app.AppConfig(config_path=EMPTY_CONFIG_PATH)
-    loaded_config.stats.max_results = 3
+    loaded_config.stats.all.max_results = 3
 
     monkeypatch.setattr(
         org.config.app,

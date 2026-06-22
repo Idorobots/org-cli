@@ -408,7 +408,9 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             help="Override auto-derived console width (minimum: 50)",
         ),
         max_results: int | None = typer.Option(
-            10 if app_config.stats.max_results is None else app_config.stats.max_results,
+            10
+            if app_config.stats.summary.max_results is None
+            else app_config.stats.summary.max_results,
             "--limit",
             "-n",
             metavar="N",

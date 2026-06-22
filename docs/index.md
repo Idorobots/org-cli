@@ -35,7 +35,7 @@ Config uses shared top-level keys plus structured command sections:
 - `order-by`: custom `--order-by-<name>` query snippets.
 - `with`: custom `--with-<name>` query snippets.
 - `tasks`: tasks subcommand defaults such as `tasks.capture.templates`, `tasks.list`, `tasks.query`, and `tasks.find`.
-- `stats`: stats defaults such as `max_results`, `max_tags`, `max_relations`, `min_group_size`, `max_groups`, `use`, `tags`, `groups`.
+- `stats`: stats subcommand defaults such as `stats.all`, `stats.summary`, `stats.tags`, and `stats.groups`.
 - `agenda`: agenda defaults and named views under `agenda.views`.
 - `board`: board defaults and named views under `board.views`.
 
@@ -52,7 +52,27 @@ mapping: examples/mapping_example.json
 exclude: examples/exclude_example.txt
 filter_priority: A
 stats:
-  max_results: 10
+  all:
+    max_results: 10
+    max_relations: 5
+    use: tags
+    max_tags: 5
+    min_group_size: 2
+    max_groups: 5
+  summary:
+    max_results: 10
+  tags:
+    max_results: 10
+    max_relations: 5
+    use: tags
+    tags:
+      - Work
+  groups:
+    max_results: 10
+    max_relations: 5
+    use: tags
+    groups:
+      - Debugging,Erlang
 tasks:
   capture:
     templates:

@@ -290,21 +290,52 @@ class NamedQueryConfig:
 
 
 @dataclass
-class StatsConfig:
-    """Structured configuration for stats-related defaults and resources."""
+class StatsAllConfig:
+    """Structured configuration for stats all defaults."""
 
-    exclude: str | None = None
-    exclude_inline: list[str] | None = None
-    mapping: str | None = None
-    mapping_inline: dict[str, str] | None = None
     max_results: int | None = None
     max_tags: int | None = None
     max_relations: int | None = None
     min_group_size: int | None = None
     max_groups: int | None = None
     use: str | None = None
+
+
+@dataclass
+class StatsSummaryConfig:
+    """Structured configuration for stats summary defaults."""
+
+    max_results: int | None = None
+
+
+@dataclass
+class StatsTagsConfig:
+    """Structured configuration for stats tags defaults."""
+
+    max_results: int | None = None
+    max_relations: int | None = None
+    use: str | None = None
     tags: list[str] | None = None
+
+
+@dataclass
+class StatsGroupsConfig:
+    """Structured configuration for stats groups defaults."""
+
+    max_results: int | None = None
+    max_relations: int | None = None
+    use: str | None = None
     groups: list[str] | None = None
+
+
+@dataclass
+class StatsConfig:
+    """Structured configuration for stats subcommand defaults."""
+
+    all: StatsAllConfig = field(default_factory=StatsAllConfig)
+    summary: StatsSummaryConfig = field(default_factory=StatsSummaryConfig)
+    tags: StatsTagsConfig = field(default_factory=StatsTagsConfig)
+    groups: StatsGroupsConfig = field(default_factory=StatsGroupsConfig)
 
 
 @dataclass
@@ -1071,6 +1102,48 @@ def parse_stats_section(value: object) -> StatsConfig | None:
     if not isinstance(value, dict):
         return None
 
+    allowed_keys = {"all", "summary", "tags", "groups"}
+    if any(key not in allowed_keys for key in value):
+        return None
+
+    all_config = _parse_optional_config_section(
+        value,
+        "all",
+        parse_stats_all_section,
+        StatsAllConfig(),
+    )
+    summary_config = _parse_optional_config_section(
+        value,
+        "summary",
+        parse_stats_summary_section,
+        StatsSummaryConfig(),
+    )
+    tags_config = _parse_optional_config_section(
+        value,
+        "tags",
+        parse_stats_tags_section,
+        StatsTagsConfig(),
+    )
+    groups_config = _parse_optional_config_section(
+        value,
+        "groups",
+        parse_stats_groups_section,
+        StatsGroupsConfig(),
+    )
+
+    return StatsConfig(
+        all=all_config,
+        summary=summary_config,
+        tags=tags_config,
+        groups=groups_config,
+    )
+
+
+def parse_stats_all_section(value: object) -> StatsAllConfig | None:
+    """Parse stats.all section from config value."""
+    if not isinstance(value, dict):
+        return None
+
     allowed_keys = {
         "max_results",
         "max_tags",
@@ -1078,13 +1151,15 @@ def parse_stats_section(value: object) -> StatsConfig | None:
         "min_group_size",
         "max_groups",
         "use",
-        "tags",
-        "groups",
     }
     if any(key not in allowed_keys for key in value):
         return None
 
-    config = StatsConfig()
+    max_results: int | None = None
+    max_tags: int | None = None
+    max_relations: int | None = None
+    min_group_size: int | None = None
+    max_groups: int | None = None
     for key, min_value in {
         "max_results": None,
         "max_tags": 0,
@@ -1095,18 +1170,108 @@ def parse_stats_section(value: object) -> StatsConfig | None:
         valid, int_value = _parse_optional_int_field(value, key, min_value)
         if not valid:
             return None
-        setattr(config, key, int_value)
+        if key == "max_results":
+            max_results = int_value
+        elif key == "max_tags":
+            max_tags = int_value
+        elif key == "max_relations":
+            max_relations = int_value
+        elif key == "min_group_size":
+            min_group_size = int_value
+        else:
+            max_groups = int_value
+
+    valid_use, use_value = _parse_optional_string_field(value, "use", "--use")
+    if not valid_use:
+        return None
+
+    return StatsAllConfig(
+        max_results=max_results,
+        max_tags=max_tags,
+        max_relations=max_relations,
+        min_group_size=min_group_size,
+        max_groups=max_groups,
+        use=use_value,
+    )
+
+
+def parse_stats_summary_section(value: object) -> StatsSummaryConfig | None:
+    """Parse stats.summary section from config value."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_keys = {"max_results"}
+    if any(key not in allowed_keys for key in value):
+        return None
+
+    valid_max_results, max_results = _parse_optional_int_field(value, "max_results", None)
+    if not valid_max_results:
+        return None
+    return StatsSummaryConfig(max_results=max_results)
+
+
+def parse_stats_tags_section(value: object) -> StatsTagsConfig | None:
+    """Parse stats.tags section from config value."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_keys = {"max_results", "max_relations", "use", "tags"}
+    if any(key not in allowed_keys for key in value):
+        return None
+
+    max_results: int | None = None
+    max_relations: int | None = None
+    for key, min_value in {"max_results": None, "max_relations": 0}.items():
+        valid, int_value = _parse_optional_int_field(value, key, min_value)
+        if not valid:
+            return None
+        if key == "max_results":
+            max_results = int_value
+        else:
+            max_relations = int_value
 
     valid_use, use_value = _parse_optional_string_field(value, "use", "--use")
     valid_tags, tags = _parse_optional_string_list_field(value, "tags")
-    valid_groups, groups = _parse_optional_string_list_field(value, "groups")
-    if not all((valid_use, valid_tags, valid_groups)):
+    if not all((valid_use, valid_tags)):
         return None
-    config.use = use_value
-    config.tags = tags
-    config.groups = groups
+    return StatsTagsConfig(
+        max_results=max_results,
+        max_relations=max_relations,
+        use=use_value,
+        tags=tags,
+    )
 
-    return config
+
+def parse_stats_groups_section(value: object) -> StatsGroupsConfig | None:
+    """Parse stats.groups section from config value."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_keys = {"max_results", "max_relations", "use", "groups"}
+    if any(key not in allowed_keys for key in value):
+        return None
+
+    max_results: int | None = None
+    max_relations: int | None = None
+    for key, min_value in {"max_results": None, "max_relations": 0}.items():
+        valid, int_value = _parse_optional_int_field(value, key, min_value)
+        if not valid:
+            return None
+        if key == "max_results":
+            max_results = int_value
+        else:
+            max_relations = int_value
+
+    valid_use, use_value = _parse_optional_string_field(value, "use", "--use")
+    valid_groups, groups = _parse_optional_string_list_field(value, "groups")
+    if not all((valid_use, valid_groups)):
+        return None
+    return StatsGroupsConfig(
+        max_results=max_results,
+        max_relations=max_relations,
+        use=use_value,
+        groups=groups,
+    )
 
 
 def _parse_out_theme(section: dict[str, object], key: str) -> str | None:
