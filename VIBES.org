@@ -8501,16 +8501,12 @@ In file src/org/commands/tasks/update.py around line 660, near the ~def register
 
 It makes more sense to extract =sys.argv= in the implementation of =resolve_cli_value=. No reason to extract it here and pass it to the function.
 
-**** TODO Config section for tasks sub-commands
+**** DONE src/org/config/app.py
 :PROPERTIES:
-:capture_time: [2026-06-21 Sun 21:06]
 :context: 
 :END:
-
-Add a top-level config section for tasks commands, name it =tasks=. Move the current top-level =capture= config into =tasks.capture=. Define a new section for the =tasks.list= that will contain all of its configuration & defaults.
-**** TODO src/org/config/app.py
-:PROPERTIES:
-:context: 
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 10:44]
 :END:
 
 In file src/org/config/app.py around line 1494, near the ~def load_cli_config(argv: list[str]) -> AppConfig:~
@@ -8690,9 +8686,12 @@ In file src/org/config/app.py around line 1627, near the ~def load_cli_config(ar
 #+end_example
 
 This looks like it's redundant.
-**** TODO src/org/commands/tasks/common.py
+**** DONE src/org/commands/tasks/common.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:36]
 :END:
 
 In file src/org/commands/tasks/common.py around line 222, near the ~def capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:~
@@ -8706,9 +8705,12 @@ In file src/org/commands/tasks/common.py around line 222, near the ~def capture_
 #+end_example
 
 This function no longer makes sense. Use =capture_template_names()= instead in all callsites. Remove this function entirely.
-**** TODO src/org/commands/tasks/capture/command.py
+**** DONE src/org/commands/tasks/capture/command.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:36]
 :END:
 
 In file src/org/commands/tasks/capture/command.py around line 145, near the ~def register(app: typer.Typer) -> None:~
@@ -8719,9 +8721,12 @@ In file src/org/commands/tasks/capture/command.py around line 145, near the ~def
 #+end_example
 
 This makes no sense.
-**** TODO tests/cli_common/test_filter_construction.py
+**** DONE tests/cli_common/test_filter_construction.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:36]
 :END:
 
 In file tests/cli_common/test_filter_construction.py around line 436, near the ~def test_build_query_text_preserves_mixed_ordering_cli_order(~
@@ -8734,9 +8739,12 @@ In file tests/cli_common/test_filter_construction.py around line 436, near the ~
 
 Don't use =del=, remove the unused arguments altogether from all the test functions that do that.
 
-**** TODO tests/commands/tasks/test_tasks_list_app.py
+**** DONE tests/commands/tasks/test_tasks_list_app.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:36]
 :END:
 
 In file tests/commands/tasks/test_tasks_list_app.py around line 274, near the ~def test_run_tasks_list_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPa~
@@ -8748,9 +8756,12 @@ In file tests/commands/tasks/test_tasks_list_app.py around line 274, near the ~d
 #+end_example
 
 This makes no sense.
-**** TODO tests/commands/test_tasks_capture_command.py
+**** DONE tests/commands/test_tasks_capture_command.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:37]
 :END:
 
 In file tests/commands/test_tasks_capture_command.py around line 53, near the ~def _make_capture_args(~
@@ -8778,9 +8789,12 @@ In file tests/commands/test_tasks_capture_command.py around line 53, near the ~d
 
 Sounds like these two are no longer needed, clean this up.
 
-**** TODO src/org/commands/tasks/find.py
+**** DONE src/org/commands/tasks/find.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:37]
 :END:
 
 In file src/org/commands/tasks/find.py around line 287, near the ~def register(app: typer.Typer) -> None:~
@@ -8806,6 +8820,13 @@ In file tests/cli/test_cli_runner.py around line 25, near the ~if TYPE_CHECKING:
 #+end_example
 
 Tests should not rely on the repo config.
+**** TODO Config section for tasks sub-commands
+:PROPERTIES:
+:capture_time: [2026-06-21 Sun 21:06]
+:context: 
+:END:
+
+Add a top-level config section for tasks commands, name it =tasks=. Move the current top-level =capture= config into =tasks.capture=. Define a new section for the =tasks.list= that will contain all of its configuration & defaults.
 *** TODO Streamline query execution
 The commands use a common ETL pipeline where they load some data from files, apply filters/ordering/mutators and lastly present the results in some way. Sometimes the documents are then saved.
 It would be nice to make query execution as streamlined as possible, ideally, =org.logic.query= would expose a function =run_query= that takes a list of documents, a list of query stages to run and the context for the query to run in, and compiles and executes the query and returns the result.

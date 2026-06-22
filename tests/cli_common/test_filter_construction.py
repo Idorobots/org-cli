@@ -303,9 +303,8 @@ def test_collect_custom_context_vars_returns_empty_for_custom_args() -> None:
     assert context_vars == {}
 
 
-def test_build_query_text_custom_with_before_filters(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_query_text_custom_with_before_filters() -> None:
     """Custom enrichment stages should be applied before filters."""
-    del monkeypatch
     config = _build_config(
         custom_filters={"tagged": "select(.tag != null)"},
         custom_with={"mark": '. + {"x": $arg}'},
@@ -335,11 +334,8 @@ def test_build_query_text_custom_with_before_filters(monkeypatch: pytest.MonkeyP
     assert "| let null as $arg in (select(.tag != null)) |" in query
 
 
-def test_build_query_text_with_builtin_and_custom_with_stages_follow_argv_order(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_build_query_text_with_builtin_and_custom_with_stages_follow_argv_order() -> None:
     """Built-in and custom with stages should preserve CLI order."""
-    del monkeypatch
     config = _build_config(custom_with={"mark": '. + {"x": $arg}'})
 
     args = make_args(with_tags_as_category=True, files=["file.org"])
@@ -367,9 +363,8 @@ def test_build_query_text_with_builtin_and_custom_with_stages_follow_argv_order(
     )
 
 
-def test_build_query_text_custom_ordering_for_stats(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_query_text_custom_ordering_for_stats() -> None:
     """Custom order-by switches should work even when built-in ordering is disabled."""
-    del monkeypatch
     config = _build_config(custom_order_by={"weight": "sort_by(.priority)"})
 
     args = make_args(files=["file.org"])
@@ -402,11 +397,8 @@ def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixtu
     assert "'todo_states': ['TODO']" in caplog.text
 
 
-def test_build_query_text_preserves_mixed_ordering_cli_order(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_build_query_text_preserves_mixed_ordering_cli_order() -> None:
     """Built-in and custom ordering switches should follow CLI specification order."""
-    del monkeypatch
     config = _build_config(custom_order_by={"weight": "sort_by(.priority)"})
 
     args = make_args(order_by_timestamp_desc=True, files=["file.org"])
@@ -427,10 +419,8 @@ def test_build_query_text_preserves_mixed_ordering_cli_order(
     )
 
 
-def test_build_query_text_rejects_unknown_custom_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_query_text_rejects_unknown_custom_switch() -> None:
     """Unknown prefixed custom switches should fail validation."""
-    del monkeypatch
-
     args = make_args(files=["file.org"])
     argv = ["org", "tasks", "list", "--filter-unknown", "file.org"]
 
@@ -438,11 +428,8 @@ def test_build_query_text_rejects_unknown_custom_switch(monkeypatch: pytest.Monk
         _build_query_text(args, argv, include_ordering=False, include_slice=False)
 
 
-def test_build_query_text_custom_filter_requires_exactly_one_argument(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_build_query_text_custom_filter_requires_exactly_one_argument() -> None:
     """Custom filters using $arg should require exactly one argument."""
-    del monkeypatch
     config = _build_config(custom_filters={"level-above": "select(.level > $arg)"})
 
     args = make_args(files=["file.org"])
@@ -455,11 +442,8 @@ def test_build_query_text_custom_filter_requires_exactly_one_argument(
         _build_query_text(args, argv, include_ordering=False, include_slice=False, config=config)
 
 
-def test_build_query_text_custom_order_by_requires_exactly_one_argument(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_build_query_text_custom_order_by_requires_exactly_one_argument() -> None:
     """Custom order-by switches using $arg should require exactly one argument."""
-    del monkeypatch
     config = _build_config(custom_order_by={"weight": "sort_by($arg)"})
 
     args = make_args(files=["file.org"])
@@ -469,11 +453,8 @@ def test_build_query_text_custom_order_by_requires_exactly_one_argument(
         _build_query_text(args, argv, include_ordering=True, include_slice=False, config=config)
 
 
-def test_build_query_text_custom_with_requires_exactly_one_argument(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_build_query_text_custom_with_requires_exactly_one_argument() -> None:
     """Custom enrichment switches using $arg should require exactly one argument."""
-    del monkeypatch
     config = _build_config(custom_with={"mark": '. + {"x": $arg}'})
 
     args = make_args(files=["file.org"])
@@ -483,13 +464,10 @@ def test_build_query_text_custom_with_requires_exactly_one_argument(
         _build_query_text(args, argv, include_ordering=False, include_slice=False, config=config)
 
 
-def test_normalize_cli_files_consumes_required_custom_path_like_argument(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_normalize_cli_files_consumes_required_custom_path_like_argument() -> None:
     """Required custom arguments should consume path-like values."""
     from org.config.cli import normalize_cli_files_for_custom_switches
 
-    del monkeypatch
     config = _build_config(custom_filters={"value": "select(.todo == $arg)"})
 
     files = ["--filter-value", "README.md", "file.org"]

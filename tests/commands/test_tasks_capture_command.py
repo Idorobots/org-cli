@@ -43,16 +43,6 @@ def _make_capture_args(
     )
 
 
-def _set_capture_templates(templates: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-    """Return one template map for explicit test passing."""
-    return templates
-
-
-def _restore_capture_templates(_previous: dict[str, dict[str, str]]) -> None:
-    """No-op symmetry helper for explicit-template tests."""
-    return
-
-
 def test_run_capture_errors_when_no_templates_configured() -> None:
     """Capture should fail with a clear error when templates are missing."""
     with pytest.raises(typer.BadParameter, match="No capture templates configured"):
@@ -76,18 +66,13 @@ def test_capture_task_errors_when_template_omitted_in_noninteractive_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Non-interactive capture should require an explicit template name."""
-    previous = _set_capture_templates(
-        {"quick": {"file": "tasks.org", "content": "* TODO Static"}},
+    templates = {"quick": {"file": "tasks.org", "content": "* TODO Static"}}
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command._is_interactive_terminal",
+        lambda: False,
     )
-    try:
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command._is_interactive_terminal",
-            lambda: False,
-        )
-        with pytest.raises(typer.BadParameter, match="template name is required"):
-            capture.capture_task(_make_capture_args(template_name=None), previous)
-    finally:
-        _restore_capture_templates(previous)
+    with pytest.raises(typer.BadParameter, match="template name is required"):
+        capture.capture_task(_make_capture_args(template_name=None), templates)
 
 
 def test_capture_task_errors_when_placeholders_missing_in_noninteractive_mode(
@@ -97,21 +82,16 @@ def test_capture_task_errors_when_placeholders_missing_in_noninteractive_mode(
     """Non-interactive capture should fail on unresolved placeholders."""
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    previous = _set_capture_templates(
-        {"quick": {"file": str(target), "content": "* TODO {{title}} @{{owner}}"}},
+    templates = {"quick": {"file": str(target), "content": "* TODO {{title}} @{{owner}}"}}
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command._is_interactive_terminal",
+        lambda: False,
     )
-    try:
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command._is_interactive_terminal",
-            lambda: False,
-        )
-        with pytest.raises(
-            typer.BadParameter,
-            match="Missing placeholder values for: title, owner",
-        ):
-            capture.capture_task(_make_capture_args(template_name="quick"), previous)
-    finally:
-        _restore_capture_templates(previous)
+    with pytest.raises(
+        typer.BadParameter,
+        match="Missing placeholder values for: title, owner",
+    ):
+        capture.capture_task(_make_capture_args(template_name="quick"), templates)
 
 
 def test_capture_task_uses_interactive_template_selection_and_form(
@@ -121,29 +101,24 @@ def test_capture_task_uses_interactive_template_selection_and_form(
     """Interactive capture should use the selection app and form app helpers."""
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    previous = _set_capture_templates(
-        {
-            "alpha": {"file": str(target), "content": "* TODO Alpha"},
-            "beta": {"file": str(target), "content": "* TODO {{title}} @{{owner}}"},
-        },
+    templates = {
+        "alpha": {"file": str(target), "content": "* TODO Alpha"},
+        "beta": {"file": str(target), "content": "* TODO {{title}} @{{owner}}"},
+    }
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command._is_interactive_terminal",
+        lambda: True,
     )
-    try:
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command._is_interactive_terminal",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command.run_template_selection_app",
-            lambda _names: "beta",
-        )
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command.run_capture_form_app",
-            lambda plan: {**plan.values, "title": "Write docs", "owner": "Jane"},
-        )
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command.run_template_selection_app",
+        lambda _names: "beta",
+    )
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command.run_capture_form_app",
+        lambda plan: {**plan.values, "title": "Write docs", "owner": "Jane"},
+    )
 
-        result = capture.capture_task(_make_capture_args(template_name=None), previous)
-    finally:
-        _restore_capture_templates(previous)
+    result = capture.capture_task(_make_capture_args(template_name=None), templates)
 
     assert result.template_name == "beta"
     assert result.interactive_used is True
@@ -157,22 +132,17 @@ def test_capture_task_uses_form_app_for_unresolved_placeholders(
     """Interactive capture should use the form app when placeholders are unresolved."""
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    previous = _set_capture_templates(
-        {"quick": {"file": str(target), "content": "* TODO {{title}}"}},
+    templates = {"quick": {"file": str(target), "content": "* TODO {{title}}"}}
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command._is_interactive_terminal",
+        lambda: True,
     )
-    try:
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command._is_interactive_terminal",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command.run_capture_form_app",
-            lambda plan: {**plan.values, "title": "From form"},
-        )
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command.run_capture_form_app",
+        lambda plan: {**plan.values, "title": "From form"},
+    )
 
-        result = capture.capture_task(_make_capture_args(template_name="quick"), previous)
-    finally:
-        _restore_capture_templates(previous)
+    result = capture.capture_task(_make_capture_args(template_name="quick"), templates)
 
     assert result.interactive_used is True
     assert result.heading.title_text == "From form"
@@ -182,16 +152,11 @@ def test_capture_task_returns_created_heading_metadata_noninteractive(tmp_path: 
     """Non-interactive capture should return created heading metadata."""
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    previous = _set_capture_templates(
-        {"quick": {"file": str(target), "content": "* TODO {{title}}"}},
+    templates = {"quick": {"file": str(target), "content": "* TODO {{title}}"}}
+    result = capture.capture_task(
+        _make_capture_args(template_name="quick", set_values=["title=Write docs"]),
+        templates,
     )
-    try:
-        result = capture.capture_task(
-            _make_capture_args(template_name="quick", set_values=["title=Write docs"]),
-            previous,
-        )
-    finally:
-        _restore_capture_templates(previous)
 
     assert result.template_name == "quick"
     assert result.document.filename == str(target)
@@ -206,21 +171,16 @@ def test_run_tasks_capture_noninteractive_prints_created_task_id(
     """Non-interactive capture should print new task ID when available."""
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    previous = _set_capture_templates(
-        {
-            "quick": {
-                "file": str(target),
-                "content": "* TODO {{title}}\n:PROPERTIES:\n:ID: task-42\n:END:",
-            },
+    templates = {
+        "quick": {
+            "file": str(target),
+            "content": "* TODO {{title}}\n:PROPERTIES:\n:ID: task-42\n:END:",
         },
+    }
+    capture.run_tasks_capture(
+        _make_capture_args("quick", set_values=["title=From set"]),
+        _app_config_with_templates(templates),
     )
-    try:
-        capture.run_tasks_capture(
-            _make_capture_args("quick", set_values=["title=From set"]),
-            _app_config_with_templates(previous),
-        )
-    finally:
-        _restore_capture_templates(previous)
 
     assert capsys.readouterr().out.strip() == "task-42"
 
@@ -233,24 +193,19 @@ def test_run_tasks_capture_interactive_does_not_print_identifier(
     """Interactive capture should not print identifier output."""
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    previous = _set_capture_templates(
-        {"quick": {"file": str(target), "content": "* TODO {{title}}"}},
+    templates = {"quick": {"file": str(target), "content": "* TODO {{title}}"}}
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command._is_interactive_terminal",
+        lambda: True,
     )
-    try:
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command._is_interactive_terminal",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command.run_capture_form_app",
-            lambda plan: {**plan.values, "title": "Write docs"},
-        )
-        capture.run_tasks_capture(
-            _make_capture_args(template_name="quick"),
-            _app_config_with_templates(previous),
-        )
-    finally:
-        _restore_capture_templates(previous)
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command.run_capture_form_app",
+        lambda plan: {**plan.values, "title": "Write docs"},
+    )
+    capture.run_tasks_capture(
+        _make_capture_args(template_name="quick"),
+        _app_config_with_templates(templates),
+    )
 
     assert capsys.readouterr().out.strip() == ""
 
@@ -280,22 +235,17 @@ def test_prepare_capture_plan_uses_document_and_parent_placeholders(
         "* TODO Parent\n:PROPERTIES:\n:ID: parent-1\n:CATEGORY: Projects\n:END:\n",
         encoding="utf-8",
     )
-    previous = _set_capture_templates(
-        {
-            "child": {
-                "file": str(target),
-                "parent": '.id == "parent-1"',
-                "content": (
-                    "** TODO doc={{document_title}} cat={{document_category}} "
-                    "parent={{parent_title}} parent_id={{parent_id}}"
-                ),
-            },
+    templates = {
+        "child": {
+            "file": str(target),
+            "parent": '.id == "parent-1"',
+            "content": (
+                "** TODO doc={{document_title}} cat={{document_category}} "
+                "parent={{parent_title}} parent_id={{parent_id}}"
+            ),
         },
-    )
-    try:
-        plan = capture.prepare_capture_plan(_make_capture_args("child"), "child", previous)
-    finally:
-        _restore_capture_templates(previous)
+    }
+    plan = capture.prepare_capture_plan(_make_capture_args("child"), "child", templates)
 
     assert plan.values["document_title"] == "Project File"
     assert plan.values["document_category"] == "Work"
@@ -314,30 +264,25 @@ def test_run_capture_inserts_under_parent_query(
         "* TODO Project\n:PROPERTIES:\n:ID: project-1\n:END:\n\n* TODO Other\n",
         encoding="utf-8",
     )
-    previous = _set_capture_templates(
-        {
-            "child": {
-                "file": str(target),
-                "content": "** TODO {{title}}",
-                "parent": '.id == "project-1"',
-            },
+    templates = {
+        "child": {
+            "file": str(target),
+            "content": "** TODO {{title}}",
+            "parent": '.id == "project-1"',
         },
+    }
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command._is_interactive_terminal",
+        lambda: True,
     )
-    try:
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command._is_interactive_terminal",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command.run_capture_form_app",
-            lambda plan: {**plan.values, "title": "Child task"},
-        )
-        capture.run_tasks_capture(
-            _make_capture_args(template_name="child"),
-            _app_config_with_templates(previous),
-        )
-    finally:
-        _restore_capture_templates(previous)
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command.run_capture_form_app",
+        lambda plan: {**plan.values, "title": "Child task"},
+    )
+    capture.run_tasks_capture(
+        _make_capture_args(template_name="child"),
+        _app_config_with_templates(templates),
+    )
 
     root = org_parser.loads(target.read_text(encoding="utf-8"))
     titles = [node.title_text.strip() for node in list(root)]
@@ -354,29 +299,24 @@ def test_run_capture_cli_file_override_takes_precedence(
     configured_target.write_text("* TODO Configured\n", encoding="utf-8")
     override_target.write_text("* TODO Override\n", encoding="utf-8")
 
-    previous = _set_capture_templates(
-        {
-            "quick": {
-                "file": str(configured_target),
-                "content": "* TODO {{title}}",
-            },
+    templates = {
+        "quick": {
+            "file": str(configured_target),
+            "content": "* TODO {{title}}",
         },
+    }
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command._is_interactive_terminal",
+        lambda: True,
     )
-    try:
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command._is_interactive_terminal",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            "org.commands.tasks.capture.command.run_capture_form_app",
-            lambda plan: {**plan.values, "title": "From override"},
-        )
-        capture.run_tasks_capture(
-            _make_capture_args("quick", file=str(override_target)),
-            _app_config_with_templates(previous),
-        )
-    finally:
-        _restore_capture_templates(previous)
+    monkeypatch.setattr(
+        "org.commands.tasks.capture.command.run_capture_form_app",
+        lambda plan: {**plan.values, "title": "From override"},
+    )
+    capture.run_tasks_capture(
+        _make_capture_args("quick", file=str(override_target)),
+        _app_config_with_templates(templates),
+    )
 
     assert "From override" not in configured_target.read_text(encoding="utf-8")
     assert "From override" in override_target.read_text(encoding="utf-8")
@@ -386,43 +326,33 @@ def test_run_capture_set_values_reject_invalid_format(tmp_path: Path) -> None:
     """Capture should reject --set entries that are not KEY=VALUE."""
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    previous = _set_capture_templates(
-        {
-            "quick": {
-                "file": str(target),
-                "content": "* TODO {{title}}",
-            },
+    templates = {
+        "quick": {
+            "file": str(target),
+            "content": "* TODO {{title}}",
         },
-    )
-    try:
-        with pytest.raises(typer.BadParameter, match="--set must be KEY=VALUE"):
-            capture.run_tasks_capture(
-                _make_capture_args("quick", set_values=["title"]),
-                _app_config_with_templates(previous),
-            )
-    finally:
-        _restore_capture_templates(previous)
+    }
+    with pytest.raises(typer.BadParameter, match="--set must be KEY=VALUE"):
+        capture.run_tasks_capture(
+            _make_capture_args("quick", set_values=["title"]),
+            _app_config_with_templates(templates),
+        )
 
 
 def test_run_capture_static_placeholders_use_org_timestamp_format(tmp_path: Path) -> None:
     """Capture should render {{today}} and {{now}} as Org-mode timestamps."""
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    previous = _set_capture_templates(
-        {
-            "quick": {
-                "file": str(target),
-                "content": "* TODO today={{today}} now={{now}}",
-            },
+    templates = {
+        "quick": {
+            "file": str(target),
+            "content": "* TODO today={{today}} now={{now}}",
         },
+    }
+    capture.run_tasks_capture(
+        _make_capture_args("quick"),
+        _app_config_with_templates(templates),
     )
-    try:
-        capture.run_tasks_capture(
-            _make_capture_args("quick"),
-            _app_config_with_templates(previous),
-        )
-    finally:
-        _restore_capture_templates(previous)
 
     updated = target.read_text(encoding="utf-8")
     assert re.search(r"today=<\d{4}-\d{2}-\d{2} (Mon|Tue|Wed|Thu|Fri|Sat|Sun)>", updated)
@@ -436,20 +366,15 @@ def test_run_capture_static_id_placeholder_uses_next_heading_number(tmp_path: Pa
     """Capture should render {{id}} as next heading count value."""
     target = tmp_path / "tasks.org"
     target.write_text("* TODO One\n* TODO Two\n", encoding="utf-8")
-    previous = _set_capture_templates(
-        {
-            "quick": {
-                "file": str(target),
-                "content": "* TODO Added\n:PROPERTIES:\n:ID: {{id}}\n:END:",
-            },
+    templates = {
+        "quick": {
+            "file": str(target),
+            "content": "* TODO Added\n:PROPERTIES:\n:ID: {{id}}\n:END:",
         },
+    }
+    capture.run_tasks_capture(
+        _make_capture_args("quick"),
+        _app_config_with_templates(templates),
     )
-    try:
-        capture.run_tasks_capture(
-            _make_capture_args("quick"),
-            _app_config_with_templates(previous),
-        )
-    finally:
-        _restore_capture_templates(previous)
 
     assert ":ID: 3" in target.read_text(encoding="utf-8")

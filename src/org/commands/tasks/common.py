@@ -215,11 +215,6 @@ def capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:
     return sorted(templates)
 
 
-def configured_capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:
-    """Return stable capture template names from loaded config."""
-    return capture_template_names(templates)
-
-
 def parse_clock_duration(value: str) -> timedelta:
     """Parse user-entered clock duration text."""
     normalized = value.strip().lower()

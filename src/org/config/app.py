@@ -455,20 +455,6 @@ class ConfigDefaultsTarget(Protocol):
     exclude_inline: list[str] | None
 
 
-class RootContext(Protocol):
-    """Protocol for Click/Typer contexts with root-object access."""
-
-    obj: object
-
-
-class ContextWithRoot(Protocol):
-    """Protocol for Click/Typer contexts exposing find_root()."""
-
-    def find_root(self) -> RootContext:
-        """Return the root Click/Typer context."""
-        ...
-
-
 def load_config(filepath: str) -> tuple[dict[str, object], bool]:
     """Load config from YAML file.
 
@@ -1340,10 +1326,9 @@ def load_cli_config(argv: list[str]) -> AppConfig:
     return _build_loaded_app_config(config, config_path)
 
 
-def require_app_config(ctx: object) -> AppConfig:
+def require_app_config(ctx: typer.Context) -> AppConfig:
     """Return AppConfig stored in the current root context."""
-    root_context = cast("ContextWithRoot", ctx).find_root()
-    app_config = root_context.obj
+    app_config = ctx.find_root().obj
     if not isinstance(app_config, AppConfig):
         raise typer.BadParameter("Application config is not available")
     return app_config

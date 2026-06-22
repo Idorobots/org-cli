@@ -198,12 +198,11 @@ def test_run_tasks_list_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPa
 
     def _fake_run(
         args: tasks_list.ListArgs,
-        config: org.config.app.AppConfig,
+        _config: org.config.app.AppConfig,
         session_data: tasks_list._TasksListSessionData,
     ) -> None:
         called["value"] = True
         assert args.files == []
-        assert isinstance(config, org.config.app.AppConfig)
         assert session_data.nodes == nodes
 
     monkeypatch.setattr("org.commands.tasks.list.command.run_tasks_list_app", _fake_run)
