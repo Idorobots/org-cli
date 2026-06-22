@@ -394,7 +394,7 @@ class AgendaApp(org.tui.app.CommandApp):
             self._refresh_view()
             return
 
-        template_names = sorted(self.session.app_config.capture.templates)
+        template_names = sorted(self.session.app_config.tasks.capture.templates)
 
         self._open_selection(
             "Capture template",

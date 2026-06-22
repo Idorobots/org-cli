@@ -19,12 +19,13 @@ from org.pipeline.format import OutputFormat, OutputFormatError
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
-app = cli.build_app(org.config.app.AppConfig(config_path=".org-cli.yaml"))
+EMPTY_CONFIG_PATH = os.path.join(FIXTURES_DIR, "empty-config.yaml")
+app = cli.build_app(org.config.app.AppConfig(config_path=EMPTY_CONFIG_PATH))
 
 
 def _run_tasks_query(args: TasksQueryArgs) -> None:
     """Run tasks query with a default app config for direct tests."""
-    run_tasks_query(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
+    run_tasks_query(args, org.config.app.AppConfig(config_path=EMPTY_CONFIG_PATH))
 
 
 def _make_args(files: list[str], query: str, **overrides: object) -> TasksQueryArgs:

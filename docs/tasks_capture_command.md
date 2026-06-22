@@ -21,7 +21,7 @@ When provided, CLI switch values take precedence over template config values.
 
 ## Configuration
 
-Capture templates live under `capture.templates` in `.org-cli.yaml`.
+Capture templates live under `tasks.capture.templates` in `.org-cli.yaml`.
 
 Template fields:
 
@@ -37,20 +37,21 @@ CLI `--parent` and template `parent` are intentionally different:
 Example:
 
 ```yaml
-capture:
-  templates:
-    quick:
-      file: tasks.org
-      content: "* TODO {{title}}"
-    project-task:
-      file: tasks.org
-      parent: '.id == "project-1"'
-      content: |
-        ** TODO {{title}}
-        :PROPERTIES:
-        :ID: {{uuid}}
-        :CREATED: {{now}}
-        :END:
+tasks:
+  capture:
+    templates:
+      quick:
+        file: tasks.org
+        content: "* TODO {{title}}"
+      project-task:
+        file: tasks.org
+        parent: '.id == "project-1"'
+        content: |
+          ** TODO {{title}}
+          :PROPERTIES:
+          :ID: {{uuid}}
+          :CREATED: {{now}}
+          :END:
 ```
 
 ## Placeholders

@@ -320,7 +320,9 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             help="Override auto-derived console width (minimum: 50)",
         ),
         max_results: int = typer.Option(
-            10 if app_config.tasks.max_results is None else app_config.tasks.max_results,
+            10
+            if app_config.tasks.query.max_results is None
+            else app_config.tasks.query.max_results,
             "--limit",
             "-n",
             metavar="N",
@@ -333,19 +335,19 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             help="Number of results to skip before displaying",
         ),
         out: str = typer.Option(
-            OutputFormat.ORG if app_config.tasks.out is None else app_config.tasks.out,
+            OutputFormat.ORG if app_config.tasks.query.out is None else app_config.tasks.query.out,
             "--out",
             help="Output format: org, json, or any pandoc writer format",
         ),
         out_theme: str = typer.Option(
             DEFAULT_OUTPUT_THEME
-            if app_config.tasks.out_theme is None
-            else app_config.tasks.out_theme,
+            if app_config.tasks.query.out_theme is None
+            else app_config.tasks.query.out_theme,
             "--out-theme",
             help="Syntax theme for highlighted output blocks",
         ),
         pandoc_args: str | None = typer.Option(
-            app_config.tasks.pandoc_args,
+            app_config.tasks.query.pandoc_args,
             "--pandoc-args",
             metavar="ARGS",
             help="Additional arguments forwarded to pandoc export",

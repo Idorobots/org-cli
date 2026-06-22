@@ -18,8 +18,9 @@ if TYPE_CHECKING:
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
+EMPTY_CONFIG_PATH = os.path.join(FIXTURES_DIR, "empty-config.yaml")
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
-app = cli.build_app(org.config.app.AppConfig(config_path=".org-cli.yaml"))
+app = cli.build_app(org.config.app.AppConfig(config_path=EMPTY_CONFIG_PATH))
 
 
 def _clean_output(text: str) -> str:

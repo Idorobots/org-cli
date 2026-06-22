@@ -19,8 +19,9 @@ if TYPE_CHECKING:
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
+EMPTY_CONFIG_PATH = str((FIXTURES_DIR / "empty-config.yaml").resolve())
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
-app = cli.build_app(org.config.app.AppConfig(config_path=".org-cli.yaml"))
+app = cli.build_app(org.config.app.AppConfig(config_path=EMPTY_CONFIG_PATH))
 
 
 def _build_app(
@@ -28,12 +29,12 @@ def _build_app(
     custom_filters: dict[str, str] | None = None,
     capture_templates: dict[str, dict[str, str]] | None = None,
 ) -> typer.Typer:
-    config = org.config.app.AppConfig(config_path=".org-cli.yaml")
+    config = org.config.app.AppConfig(config_path=EMPTY_CONFIG_PATH)
     config.filters = [
         NamedQueryConfig(name=name, query=query) for name, query in (custom_filters or {}).items()
     ]
     if capture_templates is not None:
-        config.capture.templates = capture_templates
+        config.tasks.capture.templates = capture_templates
     return cli.build_app(config)
 
 

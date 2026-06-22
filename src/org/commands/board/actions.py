@@ -588,7 +588,7 @@ def apply_capture_task(session: BoardSession, template_name: str) -> None:
         set_values=None,
     )
     try:
-        capture_result = capture_task(capture_args, session.app_config.capture.templates)
+        capture_result = capture_task(capture_args, session.app_config.tasks.capture.templates)
     except KeyboardInterrupt:
         session.status_message = "Capture cancelled"
         return
@@ -630,6 +630,6 @@ def apply_search_text(session: BoardSession, search_text: str) -> None:
 
 def can_activate_capture_prompt(session: BoardSession) -> str | None:
     """Return status text when the capture prompt cannot be opened."""
-    if not session.app_config.capture.templates:
+    if not session.app_config.tasks.capture.templates:
         return "No capture templates configured"
     return None

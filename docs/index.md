@@ -34,8 +34,7 @@ Config uses shared top-level keys plus structured command sections:
 - `filter`: custom `--filter-<name>` query snippets.
 - `order-by`: custom `--order-by-<name>` query snippets.
 - `with`: custom `--with-<name>` query snippets.
-- `capture`: named capture templates under `capture.templates`.
-- `tasks`: task output/list defaults such as `max_results`, `details`, `out`, `out_theme`, `pandoc_args`.
+- `tasks`: tasks subcommand defaults such as `tasks.capture.templates`, `tasks.list`, `tasks.query`, and `tasks.find`.
 - `stats`: stats defaults such as `max_results`, `max_tags`, `max_relations`, `min_group_size`, `max_groups`, `use`, `tags`, `groups`.
 - `agenda`: agenda defaults and named views under `agenda.views`.
 - `board`: board defaults and named views under `board.views`.
@@ -54,6 +53,15 @@ exclude: examples/exclude_example.txt
 filter_priority: A
 stats:
   max_results: 10
+tasks:
+  capture:
+    templates:
+      quick:
+        file: tasks.org
+        content: "* TODO {{title}}"
+  list:
+    max_results: 10
+    out_theme: github-dark
 filter:
   level-above: select(.level > $arg)
   has-todo: select(.todo != null)

@@ -145,7 +145,7 @@ def test_tasks_list_app_capture_selection_uses_keyboard(monkeypatch: pytest.Monk
     async def _run() -> None:
         nodes = node_from_org("* TODO Alpha\n")
         config = _default_config()
-        config.capture.templates = {"quick": {}, "later": {}}
+        config.tasks.capture.templates = {"quick": {}, "later": {}}
         app = TasksListApp(make_list_args([]), config, _make_session_data(nodes))
         called: list[str] = []
         monkeypatch.setattr(

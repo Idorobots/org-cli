@@ -62,7 +62,10 @@ def test_load_cli_config_parses_shared_and_section_values(
             "  max_tags: 3\n"
             "  use: heading\n"
             "tasks:\n"
-            '  pandoc_args: "--wrap=none"\n'
+            "  list:\n"
+            '    pandoc_args: "--wrap=none"\n'
+            "  find:\n"
+            "    include_context: 2\n"
             "board:\n"
             "  view: kanban\n"
         ),
@@ -76,7 +79,8 @@ def test_load_cli_config_parses_shared_and_section_values(
     assert loaded.filter_tags == ["work"]
     assert loaded.stats.max_tags == 3
     assert loaded.stats.use == "heading"
-    assert loaded.tasks.pandoc_args == "--wrap=none"
+    assert loaded.tasks.list.pandoc_args == "--wrap=none"
+    assert loaded.tasks.find.include_context == 2
     assert loaded.board.view == "kanban"
 
 
@@ -130,7 +134,7 @@ def test_load_cli_config_reads_structured_config(
     assert loaded.custom_filter_map() == {"custom-filter": ".[]"}
     assert loaded.custom_order_by_map() == {"custom-order": "."}
     assert loaded.custom_with_map() == {"custom-with": "."}
-    assert loaded.capture_templates == {}
+    assert loaded.tasks.capture.templates == {}
     assert loaded.board_views == {}
 
 
@@ -149,7 +153,7 @@ def test_load_cli_config_sections_are_optional(
     assert loaded.custom_filter_map() == {}
     assert loaded.custom_order_by_map() == {}
     assert loaded.custom_with_map() == {}
-    assert loaded.capture_templates == {}
+    assert loaded.tasks.capture.templates == {}
     assert loaded.board_views == {}
 
 
@@ -157,19 +161,20 @@ def test_load_cli_config_parses_capture_templates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Capture templates should load from capture.templates section."""
+    """Capture templates should load from tasks.capture.templates section."""
     config_path = tmp_path / ".org-cli.yaml"
     config_path.write_text(
         (
-            "capture:\n"
-            "  templates:\n"
-            "    quick:\n"
-            "      file: tasks.org\n"
-            '      content: "* TODO {{title}}"\n'
-            "    under-project:\n"
-            "      file: tasks.org\n"
-            '      content: "** TODO {{title}}"\n'
-            '      parent: ".id == \\"project-1\\""\n'
+            "tasks:\n"
+            "  capture:\n"
+            "    templates:\n"
+            "      quick:\n"
+            "        file: tasks.org\n"
+            '        content: "* TODO {{title}}"\n'
+            "      under-project:\n"
+            "        file: tasks.org\n"
+            '        content: "** TODO {{title}}"\n'
+            '        parent: ".id == \\"project-1\\""\n'
         ),
         encoding="utf-8",
     )
@@ -177,7 +182,7 @@ def test_load_cli_config_parses_capture_templates(
     monkeypatch.chdir(config_path.parent)
     loaded = org.config.app.load_cli_config(["org"])
 
-    assert loaded.capture_templates == {
+    assert loaded.tasks.capture.templates == {
         "quick": {"file": "tasks.org", "content": "* TODO {{title}}"},
         "under-project": {
             "file": "tasks.org",
@@ -507,10 +512,10 @@ def test_load_cli_config_rejects_malformed_capture_templates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Malformed capture.templates content should fail config loading."""
+    """Malformed tasks.capture.templates content should fail config loading."""
     config_path = tmp_path / ".org-cli.yaml"
     config_path.write_text(
-        ("capture:\n  templates:\n    broken:\n      file: tasks.org\n"),
+        ("tasks:\n  capture:\n    templates:\n      broken:\n        file: tasks.org\n"),
         encoding="utf-8",
     )
 
@@ -527,12 +532,35 @@ def test_load_cli_config_rejects_unknown_capture_template_fields(
     config_path = tmp_path / ".org-cli.yaml"
     config_path.write_text(
         (
+            "tasks:\n"
+            "  capture:\n"
+            "    templates:\n"
+            "      quick:\n"
+            "        file: tasks.org\n"
+            '        content: "* TODO {{title}}"\n'
+            "        target: root\n"
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(config_path.parent)
+    with pytest.raises(typer.BadParameter, match="Malformed config"):
+        org.config.app.load_cli_config(["org"])
+
+
+def test_load_cli_config_rejects_top_level_capture_section(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Top-level capture config is no longer supported."""
+    config_path = tmp_path / ".org-cli.yaml"
+    config_path.write_text(
+        (
             "capture:\n"
             "  templates:\n"
             "    quick:\n"
             "      file: tasks.org\n"
             '      content: "* TODO {{title}}"\n'
-            "      target: root\n"
         ),
         encoding="utf-8",
     )

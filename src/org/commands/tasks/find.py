@@ -245,7 +245,9 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             ),
         ),
         include_context: int = typer.Option(
-            0,
+            0
+            if app_config.tasks.find.include_context is None
+            else app_config.tasks.find.include_context,
             "--include-context",
             metavar="N",
             help="Include up to N parent levels for each matched task",
@@ -263,19 +265,19 @@ def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
             help="Override auto-derived console width (minimum: 50)",
         ),
         out: str = typer.Option(
-            OutputFormat.ORG if app_config.tasks.out is None else app_config.tasks.out,
+            OutputFormat.ORG if app_config.tasks.find.out is None else app_config.tasks.find.out,
             "--out",
             help="Output format: org, json, or any pandoc writer format",
         ),
         out_theme: str = typer.Option(
             DEFAULT_OUTPUT_THEME
-            if app_config.tasks.out_theme is None
-            else app_config.tasks.out_theme,
+            if app_config.tasks.find.out_theme is None
+            else app_config.tasks.find.out_theme,
             "--out-theme",
             help="Syntax theme for highlighted output blocks",
         ),
         pandoc_args: str | None = typer.Option(
-            app_config.tasks.pandoc_args,
+            app_config.tasks.find.pandoc_args,
             "--pandoc-args",
             metavar="ARGS",
             help="Additional arguments forwarded to pandoc export",

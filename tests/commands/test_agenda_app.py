@@ -192,7 +192,7 @@ def test_agenda_app_capture_from_timed_row_schedules_task(
         monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
 
         app = _make_app(args, list(org_parser.load(fixture_path)))
-        app.session.app_config.capture.templates = {
+        app.session.app_config.tasks.capture.templates = {
             "quick": {"file": "tasks.org", "content": "* TODO Captured"},
         }
         monkeypatch.setattr(actions, "refresh_session", lambda _session, _identity: None)

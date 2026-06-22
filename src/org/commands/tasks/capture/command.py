@@ -80,7 +80,7 @@ def run_tasks_capture(args: TasksCaptureArgs, config: org.config.app.AppConfig) 
             "org tasks capture requires a TTY unless TEMPLATE_NAME and all values are provided",
         )
 
-    result = capture_task(args, config.capture.templates)
+    result = capture_task(args, config.tasks.capture.templates)
     if not result.interactive_used:
         typer.echo(result.heading.id or result.heading.title_text)
 

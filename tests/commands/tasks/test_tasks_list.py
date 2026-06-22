@@ -851,7 +851,7 @@ def test_apply_capture_task_captures_task_and_reloads(
     session = _make_session(nodes)
     captured_node = node_from_org("* TODO Captured\n")[0]
     reload_args: dict[str, object] = {}
-    session.app_config.capture.templates = {
+    session.app_config.tasks.capture.templates = {
         "quick": {"file": "tasks.org", "content": "* TODO Captured"},
     }
 

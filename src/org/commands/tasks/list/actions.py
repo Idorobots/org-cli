@@ -235,7 +235,7 @@ def apply_capture_task(session: TasksListSession, template_name: str) -> None:
         set_values=None,
     )
     try:
-        capture_result = capture_task(capture_args, session.app_config.capture.templates)
+        capture_result = capture_task(capture_args, session.app_config.tasks.capture.templates)
     except KeyboardInterrupt:
         session.status_message = "Capture cancelled"
         return

@@ -8806,9 +8806,12 @@ In file src/org/commands/tasks/find.py around line 287, near the ~def register(a
 
 Don't do this. Import the function directly.
 
-**** TODO tests/cli/test_cli_runner.py
+**** DONE tests/cli/test_cli_runner.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 12:30]
 :END:
 
 In file tests/cli/test_cli_runner.py around line 25, near the ~if TYPE_CHECKING:~

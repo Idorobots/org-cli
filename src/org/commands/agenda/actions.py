@@ -530,7 +530,7 @@ def apply_capture_task(session: AgendaSession, template_name: str) -> None:
         set_values=None,
     )
     try:
-        capture_result = capture_task(capture_args, session.app_config.capture.templates)
+        capture_result = capture_task(capture_args, session.app_config.tasks.capture.templates)
     except KeyboardInterrupt:
         session.status_message = "Capture cancelled"
         return
@@ -574,7 +574,7 @@ def can_activate_agenda_capture_prompt(session: AgendaSession) -> str | None:
     """Return status text when the capture prompt cannot be opened."""
     if _timetable_schedule_for_selected_row(session) is None:
         return "Capture is available only on timetable time rows"
-    if not session.app_config.capture.templates:
+    if not session.app_config.tasks.capture.templates:
         return "No capture templates configured"
     return None
 

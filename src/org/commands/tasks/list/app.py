@@ -308,7 +308,7 @@ class TasksListApp(org.tui.app.CommandApp):
 
     def action_prompt_capture(self) -> None:
         """Prompt for a capture template and create a task."""
-        template_names = sorted(self.session.app_config.capture.templates)
+        template_names = sorted(self.session.app_config.tasks.capture.templates)
         if not template_names:
             self.session.status_message = "No capture templates configured"
             self._refresh_view()

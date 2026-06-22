@@ -195,7 +195,9 @@ def test_board_app_capture_prompt_submits_and_reloads(monkeypatch: pytest.Monkey
         captured_node = node_from_org("* TODO Captured\n")[0]
         reloaded: dict[str, object] = {}
         config = org.config.app.AppConfig(config_path=".org-cli.yaml")
-        config.capture.templates = {"quick": {"file": "tasks.org", "content": "* TODO Captured"}}
+        config.tasks.capture.templates = {
+            "quick": {"file": "tasks.org", "content": "* TODO Captured"},
+        }
         monkeypatch.setattr(
             actions,
             "capture_task",

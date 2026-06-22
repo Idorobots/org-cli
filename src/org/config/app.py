@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypedDict, TypeGuard, TypeVar, cast
+from typing import TYPE_CHECKING, TypeGuard, TypeVar, cast
 
 import typer
 import yaml
@@ -308,8 +308,15 @@ class StatsConfig:
 
 
 @dataclass
-class TasksConfig:
-    """Structured configuration for task-listing defaults."""
+class TasksCaptureConfig:
+    """Structured configuration for tasks capture templates."""
+
+    templates: dict[str, dict[str, str]] = field(default_factory=dict)
+
+
+@dataclass
+class TasksListConfig:
+    """Structured configuration for tasks list defaults."""
 
     max_results: int | None = None
     details: bool | None = None
@@ -319,10 +326,33 @@ class TasksConfig:
 
 
 @dataclass
-class CaptureConfig:
-    """Structured configuration for capture templates."""
+class TasksQueryConfig:
+    """Structured configuration for tasks query defaults."""
 
-    templates: dict[str, dict[str, str]] = field(default_factory=dict)
+    max_results: int | None = None
+    out: str | None = None
+    out_theme: str | None = None
+    pandoc_args: str | None = None
+
+
+@dataclass
+class TasksFindConfig:
+    """Structured configuration for tasks find defaults."""
+
+    include_context: int | None = None
+    out: str | None = None
+    out_theme: str | None = None
+    pandoc_args: str | None = None
+
+
+@dataclass
+class TasksConfig:
+    """Structured configuration for tasks subcommand defaults."""
+
+    capture: TasksCaptureConfig = field(default_factory=TasksCaptureConfig)
+    list: TasksListConfig = field(default_factory=TasksListConfig)
+    query: TasksQueryConfig = field(default_factory=TasksQueryConfig)
+    find: TasksFindConfig = field(default_factory=TasksFindConfig)
 
 
 @dataclass
@@ -391,7 +421,6 @@ class AppConfig:
     mutators: list[NamedQueryConfig] = field(default_factory=list)
     stats: StatsConfig = field(default_factory=StatsConfig)
     tasks: TasksConfig = field(default_factory=TasksConfig)
-    capture: CaptureConfig = field(default_factory=CaptureConfig)
     agenda: AgendaConfig = field(default_factory=AgendaConfig)
     board: BoardConfig = field(default_factory=BoardConfig)
 
@@ -408,11 +437,6 @@ class AppConfig:
         return {item.name: item.query for item in self.mutators}
 
     @property
-    def capture_templates(self) -> dict[str, dict[str, str]]:
-        """Compatibility accessor for capture templates."""
-        return self.capture.templates
-
-    @property
     def board_views(self) -> dict[str, BoardViewConfig]:
         """Compatibility accessor for board views."""
         return self.board.views
@@ -421,38 +445,6 @@ class AppConfig:
     def agenda_views(self) -> dict[str, AgendaViewConfig]:
         """Compatibility accessor for agenda views."""
         return self.agenda.views
-
-
-class StatsDefaultMap(TypedDict):
-    """Default map values for stats subcommands."""
-
-    all: dict[str, object]
-    summary: dict[str, object]
-    tags: dict[str, object]
-    groups: dict[str, object]
-
-
-class TasksDefaultMap(TypedDict):
-    """Default map values for tasks subcommands."""
-
-    list: dict[str, object]
-    query: dict[str, object]
-
-
-class CliDefaultMap(TypedDict):
-    """Top-level Typer Click default_map structure."""
-
-    stats: StatsDefaultMap
-    tasks: TasksDefaultMap
-    board: dict[str, object]
-    agenda: dict[str, object]
-
-
-class ConfigDefaultsTarget(Protocol):
-    """Protocol for args that accept inline defaults."""
-
-    mapping_inline: dict[str, str] | None
-    exclude_inline: list[str] | None
 
 
 def load_config(filepath: str) -> tuple[dict[str, object], bool]:
@@ -1117,8 +1109,26 @@ def parse_stats_section(value: object) -> StatsConfig | None:
     return config
 
 
-def parse_tasks_section(value: object) -> TasksConfig | None:
-    """Parse tasks section from top-level config value."""
+def _parse_out_theme(section: dict[str, object], key: str) -> str | None:
+    """Parse one optional out-theme or pandoc-args string field."""
+    if key not in section:
+        return None
+    raw = section[key]
+    if raw is not None and not isinstance(raw, str):
+        raise ValueError
+    return raw
+
+
+def parse_tasks_capture_section(value: object) -> TasksCaptureConfig | None:
+    """Parse tasks.capture section from config value."""
+    templates = parse_capture_templates_section(value)
+    if templates is None:
+        return None
+    return TasksCaptureConfig(templates=templates)
+
+
+def parse_tasks_list_section(value: object) -> TasksListConfig | None:
+    """Parse tasks.list section from config value."""
     if not isinstance(value, dict):
         return None
 
@@ -1126,27 +1136,120 @@ def parse_tasks_section(value: object) -> TasksConfig | None:
     if any(key not in allowed_keys for key in value):
         return None
 
-    config = TasksConfig()
     valid_max_results, max_results = _parse_optional_int_field(value, "max_results", None)
     valid_details, details = _parse_optional_bool_field(value, "details")
     valid_out, out = _parse_optional_string_field(value, "out", "--out")
     if not all((valid_max_results, valid_details, valid_out)):
         return None
-    if "out_theme" in value and not isinstance(value["out_theme"], str):
+    try:
+        out_theme = _parse_out_theme(value, "out_theme")
+        pandoc_args = _parse_out_theme(value, "pandoc_args")
+    except ValueError:
         return None
-    if (
-        "pandoc_args" in value
-        and value["pandoc_args"] is not None
-        and not isinstance(value["pandoc_args"], str)
-    ):
-        return None
-    config.max_results = max_results
-    config.details = details
-    config.out = out
-    config.out_theme = cast("str | None", value.get("out_theme"))
-    config.pandoc_args = cast("str | None", value.get("pandoc_args"))
 
-    return config
+    return TasksListConfig(
+        max_results=max_results,
+        details=details,
+        out=out,
+        out_theme=out_theme,
+        pandoc_args=pandoc_args,
+    )
+
+
+def parse_tasks_query_section(value: object) -> TasksQueryConfig | None:
+    """Parse tasks.query section from config value."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_keys = {"max_results", "out", "out_theme", "pandoc_args"}
+    if any(key not in allowed_keys for key in value):
+        return None
+
+    valid_max_results, max_results = _parse_optional_int_field(value, "max_results", None)
+    valid_out, out = _parse_optional_string_field(value, "out", "--out")
+    if not all((valid_max_results, valid_out)):
+        return None
+    try:
+        out_theme = _parse_out_theme(value, "out_theme")
+        pandoc_args = _parse_out_theme(value, "pandoc_args")
+    except ValueError:
+        return None
+
+    return TasksQueryConfig(
+        max_results=max_results,
+        out=out,
+        out_theme=out_theme,
+        pandoc_args=pandoc_args,
+    )
+
+
+def parse_tasks_find_section(value: object) -> TasksFindConfig | None:
+    """Parse tasks.find section from config value."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_keys = {"include_context", "out", "out_theme", "pandoc_args"}
+    if any(key not in allowed_keys for key in value):
+        return None
+
+    valid_include_context, include_context = _parse_optional_int_field(value, "include_context", 0)
+    valid_out, out = _parse_optional_string_field(value, "out", "--out")
+    if not all((valid_include_context, valid_out)):
+        return None
+    try:
+        out_theme = _parse_out_theme(value, "out_theme")
+        pandoc_args = _parse_out_theme(value, "pandoc_args")
+    except ValueError:
+        return None
+
+    return TasksFindConfig(
+        include_context=include_context,
+        out=out,
+        out_theme=out_theme,
+        pandoc_args=pandoc_args,
+    )
+
+
+def parse_tasks_section(value: object) -> TasksConfig | None:
+    """Parse tasks section from top-level config value."""
+    if not isinstance(value, dict):
+        return None
+
+    allowed_keys = {"capture", "list", "query", "find"}
+    if any(key not in allowed_keys for key in value):
+        return None
+
+    capture_config = _parse_optional_config_section(
+        value,
+        "capture",
+        parse_tasks_capture_section,
+        TasksCaptureConfig(),
+    )
+    list_config = _parse_optional_config_section(
+        value,
+        "list",
+        parse_tasks_list_section,
+        TasksListConfig(),
+    )
+    query_config = _parse_optional_config_section(
+        value,
+        "query",
+        parse_tasks_query_section,
+        TasksQueryConfig(),
+    )
+    find_config = _parse_optional_config_section(
+        value,
+        "find",
+        parse_tasks_find_section,
+        TasksFindConfig(),
+    )
+
+    return TasksConfig(
+        capture=capture_config,
+        list=list_config,
+        query=query_config,
+        find=find_config,
+    )
 
 
 def _validate_top_level_config_keys(config: dict[str, object]) -> None:
@@ -1180,7 +1283,6 @@ def _validate_top_level_config_keys(config: dict[str, object]) -> None:
         "filter",
         "order-by",
         "with",
-        "capture",
         "board",
         "agenda",
         "stats",
@@ -1194,7 +1296,6 @@ def _parse_structured_sections(
     config: dict[str, object],
 ) -> tuple[
     dict[str, object],
-    dict[str, dict[str, str]],
     BoardConfig,
     AgendaConfig,
     StatsConfig,
@@ -1203,10 +1304,6 @@ def _parse_structured_sections(
     """Parse structured top-level config sections into typed objects."""
     shared_config = parse_shared_config(config)
     if shared_config is None:
-        raise typer.BadParameter("Malformed config")
-
-    capture_templates = parse_capture_templates_section(config.get("capture", {}))
-    if capture_templates is None:
         raise typer.BadParameter("Malformed config")
 
     board_config = _parse_optional_config_section(
@@ -1236,7 +1333,6 @@ def _parse_structured_sections(
 
     return (
         shared_config,
-        capture_templates,
         board_config,
         agenda_config,
         stats_config,
@@ -1269,7 +1365,6 @@ def _build_loaded_app_config(config: dict[str, object], config_path: Path) -> Ap
     filter_section, order_by_section, with_section = named_query_sections
     (
         shared_config,
-        capture_templates,
         board_config,
         agenda_config,
         stats_config,
@@ -1285,7 +1380,6 @@ def _build_loaded_app_config(config: dict[str, object], config_path: Path) -> Ap
     app_config.mutators = _named_query_list(with_section)
     app_config.stats = stats_config
     app_config.tasks = tasks_config
-    app_config.capture = CaptureConfig(templates=capture_templates)
     app_config.board = board_config
     app_config.agenda = agenda_config
     return app_config
