@@ -82,6 +82,48 @@ Every interactive edit is saved immediately and logged through the standard `org
 - `--offset` - Skip first N processed tasks.
 - `--width` - Override console width (minimum: `50`).
 
+## Configuration
+
+Command-specific defaults live under `agenda` in `.org-cli.yaml`.
+
+All available options:
+
+```yaml
+agenda:
+  views:
+    - name: default
+      sections:
+        - name: Active work
+          filter: '.todo != null and not(.is_completed)'
+          order-by: '.scheduled or .deadline'
+          style: yellow
+          timeline: true
+        - name: Done today
+          filter: '.is_completed'
+          order-by: '.closed'
+  date: 2025-01-15
+  days: 1
+  no_completed: false
+  no_overdue: false
+  no_upcoming: false
+  future_repeats: false
+  view: default
+  max_results: 100
+  offset: 0
+  width: 100
+```
+
+`agenda.views` is optional. When present, each view can define named `sections` with:
+
+- `name` - Section heading text.
+- `filter` - Required query predicate used to select tasks for the section.
+- `order-by` - Optional sort expression applied within the section.
+- `style` - Optional Rich style string for the rendered section heading.
+- `timeline` - Optional boolean that enables timeline-style rendering for the section.
+
+Shared top-level config still applies for filters, ordering flags, `with_tags_as_category`,
+`mapping`, `exclude`, `todo_states`, `done_states`, and `color_flag`.
+
 ## Available filters
 
 - `--filter-priority P` - Keep only tasks with priority equal to `P`.

@@ -8154,7 +8154,11 @@ Introduce a new package =org.query= and move the query-execution-related helpers
 - Current =org.query_language= package should be renamed to =org.query.engine=
 - The query compiler (=org.query.engine.compiler=) and execution engine (=org.query.engine.interpreter=) should be separated, with all the operator/function definitions also separated to their own module =org.query.engine.defs=
 
-*** TODO Load configuration first and pass the object to the commands
+*** REWORKED Load configuration first and pasrs the object to the commands
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-06-22 Mon 19:26] \\
+  Needed a lot of massaging.
+:END:
 Do not use global state for configuration storage. The goal is for the commands to be stateless.
 
 The config processing flow should look like this:
@@ -8823,10 +8827,13 @@ In file tests/cli/test_cli_runner.py around line 25, near the ~if TYPE_CHECKING:
 #+end_example
 
 Tests should not rely on the repo config.
-**** TODO Config section for tasks sub-commands
+**** DONE Config section for tasks sub-commands
 :PROPERTIES:
 :capture_time: [2026-06-21 Sun 21:06]
 :context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 19:24]
 :END:
 
 Add a top-level config section for tasks commands, name it =tasks=. Move the current top-level =capture= config into =tasks.capture=. Define a new section for the =tasks.list= that will contain all of its configuration & defaults.
@@ -9416,6 +9423,10 @@ Split config handling to be per-command and have the config file reflect that.
 :END:
 
 After loading the config defaults, these should be populated in their respective config object sections.
+*** Revise and reorganize command switches
+- There are some CLI switches attached to all the commands that don't make any sense or them, such as: =exclude=, =mapping=, etc. These should be only available as switches & configuration for the commands that actually need them.
+- If any switches are shared by all the commands at some level, the config values should be moved up the documentation tree (i.e. =todo_states= in top-level).
+
 ** Dashboard command                                                                     :Dashboard:
 - Reads a dashboard config and shows a visualization on a server.
 - Tabbed views for the agenda, board, backlog and stats

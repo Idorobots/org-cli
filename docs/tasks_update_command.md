@@ -18,6 +18,20 @@ poetry run org tasks update [OPTIONS] [FILE ...]
 
 Provide exactly one selector: `--query-title`, `--query-id`, or `--query`.
 
+## Configuration
+
+`org tasks update` has no dedicated command-specific config section.
+
+It only uses shared top-level config such as:
+
+```yaml
+todo_states: TODO,WAITING
+done_states: DONE,CANCELLED
+mapping: examples/mapping_example.json
+exclude: examples/exclude_example.txt
+color_flag: true
+```
+
 ## Update switches
 
 - `--level N` - New heading level.

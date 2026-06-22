@@ -78,6 +78,30 @@ Every interactive edit is saved immediately and logged through the standard `org
 - `--days N` - Show completed tasks only when `.latest_timestamp` is within last `N` days (default: `7`).
 - `--width` - Override console width (minimum: `80`).
 
+## Configuration
+
+Command-specific defaults live under `board` in `.org-cli.yaml`.
+
+All available options:
+
+```yaml
+board:
+  views:
+    - name: kanban
+      columns:
+        - name: Backlog
+          filter: ".todo == null"
+          order-by: ".priority"
+  view: kanban
+  days: 7
+  max_results: 100
+  offset: 0
+  width: 120
+```
+
+Shared top-level config still applies for filters, ordering flags, `with_tags_as_category`,
+`mapping`, `exclude`, `todo_states`, `done_states`, and `color_flag`.
+
 View selection behavior:
 
 - If `--view` is set, that configured view must exist.

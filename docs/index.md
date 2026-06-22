@@ -11,8 +11,11 @@
 - `org stats tags` - Focused stats for selected/top tags. See [stats_tags_command.md](stats_tags_command.md).
 - `org stats groups` - Stats for explicit or discovered tag groups. See [stats_groups_command.md](stats_groups_command.md).
 - `org tasks list` - Short or detailed task listing with ordering. See [tasks_list_command.md](tasks_list_command.md).
+- `org tasks find` - Find tasks by selectors and full-text search. See [tasks_find_command.md](tasks_find_command.md).
 - `org board` - Interactive workflow board view of active tasks. See [board_command.md](board_command.md).
 - `org tasks add` - Create new task headings in Org files. See [tasks_add_command.md](tasks_add_command.md).
+- `org tasks archive` - Archive matched task subtrees. See [tasks_archive_command.md](tasks_archive_command.md).
+- `org tasks edit` - Edit one matched task subtree in an external editor. See [tasks_edit_command.md](tasks_edit_command.md).
 - `org tasks remove` - Delete one task heading and its subtree from Org files. See [tasks_remove_command.md](tasks_remove_command.md).
 - `org tasks update` - Update one matched task heading in Org files. See [tasks_update_command.md](tasks_update_command.md).
 - `org tasks capture` - Create tasks from named config templates. See [tasks_capture_command.md](tasks_capture_command.md).
@@ -90,6 +93,8 @@ order-by:
 with:
   priority-value: .properties.priority_value = .priority
 ```
+
+For exhaustive per-command config examples, see each command page's `Configuration` section.
 
 Most analysis commands accept many `--filter-*` switches. Ordering controls are available on `org tasks list` and `org board` via built-in `--order-by-*` switches.
 

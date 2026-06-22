@@ -28,6 +28,20 @@ poetry run org tasks add [OPTIONS] [FILE ...]
 - `--parent ID_OR_TITLE` - Insert as child of the matching heading.
 - `--file FILE` - Target file to update. Overrides default file resolution from `[FILE ...]`.
 
+## Configuration
+
+`org tasks add` has no dedicated command-specific config section.
+
+It only uses shared top-level config such as:
+
+```yaml
+todo_states: TODO,WAITING
+done_states: DONE,CANCELLED
+mapping: examples/mapping_example.json
+exclude: examples/exclude_example.txt
+color_flag: true
+```
+
 ## Parent matching
 
 - Parent lookup checks heading `ID` first, then heading title.
