@@ -8837,7 +8837,10 @@ Tests should not rely on the repo config.
 :END:
 
 Add a top-level config section for tasks commands, name it =tasks=. Move the current top-level =capture= config into =tasks.capture=. Define a new section for the =tasks.list= that will contain all of its configuration & defaults.
-*** TODO Streamline query execution
+*** REWORKED Streamline query execution
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-06-23 Tue 20:10]
+:END:
 The commands use a common ETL pipeline where they load some data from files, apply filters/ordering/mutators and lastly present the results in some way. Sometimes the documents are then saved.
 It would be nice to make query execution as streamlined as possible, ideally, =org.query.runner= would expose a function =run_query= that takes a list of documents, a list of query stages to run and the context for the query to run in, and compiles and executes the query and returns the result.
 That streamlined query execution should be used in all places that extract or transform the org document data - the data should be loaded, then processed with the =run_query= function and used as needed.
@@ -8928,7 +8931,10 @@ In file src/org/commands/tasks/remove.py around line 99, near the ~def _selected
 
 Sounds like this could be extracted to be a separate function that's used by the commands that need to handle the identity.
 
-**** TODO Cache query compilation results
+**** DONE Cache query compilation results
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-23 Tue 20:09]
+:END:
 It is often the case that the same queries are recompiled multiple times. We could improve performance by caching the query compilation results and checking if the query was already compiled.
 Add the query compilation cache.
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from functools import lru_cache
 from typing import TYPE_CHECKING, Literal, cast
 
 from parsy import ParseError, Parser, eof, forward_declaration, generate, regex, seq, string
@@ -649,6 +650,7 @@ def _chain_comma(term: Parser) -> Parser:
 QUERY_PARSER = _make_parser()
 
 
+@lru_cache(maxsize=256)
 def parse_query(query: str) -> Expr:
     """Parse query text into an AST expression."""
     try:
