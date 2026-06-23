@@ -8,6 +8,7 @@ import sys
 import pytest
 import typer
 
+import org.config.app
 from org.commands.stats import all as stats_all_command
 from org.commands.stats import groups as stats_groups
 from org.commands.stats import summary as stats_summary_command
@@ -16,6 +17,11 @@ from org.logic.stats import AnalysisResult, Distribution, Group, Tag, TimeRange
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
+
+
+def _app_config() -> org.config.app.AppConfig:
+    """Build default app config for direct command tests."""
+    return org.config.app.AppConfig(config_path=".org-cli.yaml")
 
 
 def make_stats_all_args(files: list[str], **overrides: object) -> stats_all_command.StatsAllArgs:
@@ -176,7 +182,7 @@ def test_run_stats_all_outputs_sections(
     args = make_stats_all_args([fixture_path])
 
     monkeypatch.setattr(sys, "argv", ["org", "stats", "all"])
-    stats_all_command.run_stats(args)
+    stats_all_command.run_stats(args, _app_config())
     captured = capsys.readouterr().out
 
     assert "Total tasks:" in captured
@@ -193,7 +199,7 @@ def test_run_stats_summary_excludes_tag_sections(
     args = make_summary_args([fixture_path])
 
     monkeypatch.setattr(sys, "argv", ["org", "stats", "summary"])
-    stats_summary_command.run_stats_summary(args)
+    stats_summary_command.run_stats_summary(args, _app_config())
     captured = capsys.readouterr().out
 
     assert "Task states:" in captured
@@ -210,7 +216,7 @@ def test_run_stats_summary_no_results(
     args = make_summary_args([fixture_path], filter_tags=["nomatch$"])
 
     monkeypatch.setattr(sys, "argv", ["org", "stats", "summary"])
-    stats_summary_command.run_stats_summary(args)
+    stats_summary_command.run_stats_summary(args, _app_config())
     captured = capsys.readouterr().out
 
     assert "No results" in captured
@@ -222,7 +228,7 @@ def test_run_stats_all_negative_max_results_raises_bad_parameter() -> None:
     args = make_stats_all_args([fixture_path], max_results=-1)
 
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        stats_all_command.run_stats(args)
+        stats_all_command.run_stats(args, _app_config())
 
 
 def test_run_stats_summary_negative_max_results_raises_bad_parameter() -> None:
@@ -231,7 +237,7 @@ def test_run_stats_summary_negative_max_results_raises_bad_parameter() -> None:
     args = make_summary_args([fixture_path], max_results=-1)
 
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        stats_summary_command.run_stats_summary(args)
+        stats_summary_command.run_stats_summary(args, _app_config())
 
 
 def test_run_stats_tags_negative_max_results_raises_bad_parameter() -> None:
@@ -240,7 +246,7 @@ def test_run_stats_tags_negative_max_results_raises_bad_parameter() -> None:
     args = make_tags_args([fixture_path], max_results=-1)
 
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        stats_tags.run_stats_tags(args)
+        stats_tags.run_stats_tags(args, _app_config())
 
 
 def test_run_stats_groups_negative_max_results_raises_bad_parameter() -> None:
@@ -249,7 +255,7 @@ def test_run_stats_groups_negative_max_results_raises_bad_parameter() -> None:
     args = make_groups_args([fixture_path], max_results=-1)
 
     with pytest.raises(typer.BadParameter, match="--limit must be non-negative"):
-        stats_groups.run_stats_groups(args)
+        stats_groups.run_stats_groups(args, _app_config())
 
 
 def test_run_stats_tags_respects_tag_filter(
@@ -261,7 +267,7 @@ def test_run_stats_tags_respects_tag_filter(
     args = make_tags_args([fixture_path], tags=["Test"])
 
     monkeypatch.setattr(sys, "argv", ["org", "stats", "tags", "--tag", "Test"])
-    stats_tags.run_stats_tags(args)
+    stats_tags.run_stats_tags(args, _app_config())
     captured = capsys.readouterr().out
 
     assert "Test" in captured
@@ -277,7 +283,7 @@ def test_run_stats_tags_tag_heading(
     args = make_tags_args([fixture_path], use="heading", tags=["Simple"])
 
     monkeypatch.setattr(sys, "argv", ["org", "stats", "tags", "--tag", "Simple"])
-    stats_tags.run_stats_tags(args)
+    stats_tags.run_stats_tags(args, _app_config())
     captured = capsys.readouterr().out
 
     assert "simple" in captured
@@ -292,7 +298,7 @@ def test_run_stats_groups_explicit_group(
     args = make_groups_args([fixture_path], groups=["python,programming"])
 
     monkeypatch.setattr(sys, "argv", ["org", "stats", "groups", "--group", "python,programming"])
-    stats_groups.run_stats_groups(args)
+    stats_groups.run_stats_groups(args, _app_config())
     captured = capsys.readouterr().out
 
     assert "python, programming" in captured
@@ -307,7 +313,7 @@ def test_run_stats_all_no_results(
     args = make_stats_all_args([fixture_path], filter_tags=["nomatch$"])
 
     monkeypatch.setattr(sys, "argv", ["org", "stats", "all"])
-    stats_all_command.run_stats(args)
+    stats_all_command.run_stats(args, _app_config())
     captured = capsys.readouterr().out
 
     assert "No results" in captured
@@ -325,7 +331,7 @@ def test_run_stats_all_category_preprocessor(
     )
 
     monkeypatch.setattr(sys, "argv", ["org", "stats", "all"])
-    stats_all_command.run_stats(args)
+    stats_all_command.run_stats(args, _app_config())
     captured = capsys.readouterr().out
 
     assert "Task categories:" in captured
@@ -340,7 +346,7 @@ def test_run_stats_all_omits_groups_when_disabled(
     args = make_stats_all_args([fixture_path], max_groups=0)
 
     monkeypatch.setattr(sys, "argv", ["org", "stats", "all"])
-    stats_all_command.run_stats(args)
+    stats_all_command.run_stats(args, _app_config())
     captured = capsys.readouterr().out
 
     assert "GROUPS" not in captured
@@ -362,7 +368,7 @@ def test_run_stats_all_tasks_panel_grows_with_task_list(
 
     args = make_stats_all_args([fixture_path], width=120, max_results=40, max_tags=0, max_groups=0)
     monkeypatch.setattr(sys, "argv", ["org", "stats", "all", "--width", "120", "--limit", "40"])
-    stats_all_command.run_stats(args)
+    stats_all_command.run_stats(args, _app_config())
     captured = capsys.readouterr().out
 
     assert captured.count("Task-") == 40
@@ -390,7 +396,7 @@ def test_run_stats_all_two_column_default_limit_uses_summary_size(
         max_groups=0,
     )
     monkeypatch.setattr(sys, "argv", ["org", "stats", "all", "--width", "120"])
-    stats_all_command.run_stats(args)
+    stats_all_command.run_stats(args, _app_config())
     captured = capsys.readouterr().out
 
     assert captured.count("Task-") > 10
@@ -419,7 +425,7 @@ def test_run_stats_all_single_column_default_limit_stays_ten(
         max_groups=0,
     )
     monkeypatch.setattr(sys, "argv", ["org", "stats", "all", "--width", "119"])
-    stats_all_command.run_stats(args)
+    stats_all_command.run_stats(args, _app_config())
     captured = capsys.readouterr().out
 
     assert captured.count("Task-") == 10
@@ -544,7 +550,7 @@ def test_run_stats_all_narrow_layout_orders_sections_vertically(
     args = make_stats_all_args([fixture_path], width=119, max_results=3, max_tags=3, max_groups=3)
 
     monkeypatch.setattr(sys, "argv", ["org", "stats", "all", "--width", "119"])
-    stats_all_command.run_stats(args)
+    stats_all_command.run_stats(args, _app_config())
     captured = capsys.readouterr().out
 
     summary_index = captured.find("SUMMARY")

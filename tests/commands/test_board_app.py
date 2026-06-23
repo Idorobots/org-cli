@@ -36,6 +36,10 @@ def _make_session(
     nodes: list[Heading],
     **overrides: object,
 ) -> actions.BoardSession:
+    app_config = cast(
+        "org.config.app.AppConfig",
+        overrides.pop("app_config", org.config.app.AppConfig(config_path=".org-cli.yaml")),
+    )
     resolved_columns = cast("list[actions.BoardColumn] | None", overrides.pop("columns", None))
     resolved_all_columns = cast(
         "list[actions.BoardColumn] | None",
@@ -46,6 +50,7 @@ def _make_session(
         nodes=nodes,
         todo_states=["TODO"],
         done_states=["DONE"],
+        app_config=app_config,
         columns=[_col("TODO", nodes)] if resolved_columns is None else resolved_columns,
         color_enabled=False,
         selected_column_index=0,
@@ -189,15 +194,14 @@ def test_board_app_capture_prompt_submits_and_reloads(monkeypatch: pytest.Monkey
         nodes = node_from_org("* TODO Existing\n")
         captured_node = node_from_org("* TODO Captured\n")[0]
         reloaded: dict[str, object] = {}
-        monkeypatch.setattr(
-            org.config.app,
-            "CONFIG_CAPTURE_TEMPLATES",
-            {"quick": {"file": "tasks.org", "content": "* TODO Captured"}},
-        )
+        config = org.config.app.AppConfig(config_path=".org-cli.yaml")
+        config.tasks.capture.templates = {
+            "quick": {"file": "tasks.org", "content": "* TODO Captured"},
+        }
         monkeypatch.setattr(
             actions,
             "capture_task",
-            lambda _args: capture_command.TasksCaptureResult(
+            lambda _args, _templates: capture_command.TasksCaptureResult(
                 template_name="quick",
                 heading=captured_node,
                 document=captured_node.document,
@@ -209,7 +213,7 @@ def test_board_app_capture_prompt_submits_and_reloads(monkeypatch: pytest.Monkey
             lambda _session, preserve_identity: reloaded.update(identity=preserve_identity),
         )
 
-        app = _make_app(_make_session(make_board_args([]), nodes))
+        app = _make_app(_make_session(make_board_args([]), nodes, app_config=config))
 
         async with app.run_test() as pilot:
             app.action_prompt_capture()
@@ -224,11 +228,10 @@ def test_board_app_capture_prompt_submits_and_reloads(monkeypatch: pytest.Monkey
     asyncio.run(_run())
 
 
-def test_board_app_capture_without_templates_sets_status(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_board_app_capture_without_templates_sets_status() -> None:
     """Capture should report a clear status when no templates are configured."""
 
     async def _run() -> None:
-        monkeypatch.setattr(org.config.app, "CONFIG_CAPTURE_TEMPLATES", {})
         app = _make_app(_make_session(make_board_args([]), node_from_org("* TODO Existing\n")))
 
         async with app.run_test():
@@ -292,6 +295,6 @@ def test_run_board_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     monkeypatch.setattr("org.commands.board.command.run_board_app", _fake_run)
 
-    board_command.run_board(args)
+    board_command.run_board(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
     assert called["value"] is True

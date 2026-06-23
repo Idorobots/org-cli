@@ -11,7 +11,7 @@ import typer
 
 import org.config.app
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
-from org.commands.tasks.common import configured_capture_template_names, save_document
+from org.commands.tasks.common import save_document
 from org.logic.archive import archive_heading_subtree_and_save
 from org.logic.edit import edit_heading_subtree_in_external_editor
 from org.logic.search import filter_nodes_by_search
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
     from org_parser.document import Document, Heading
 
+    from org.config.app import AppConfig, BoardViewConfig
     from org.query.engine.compiler import CompiledQuery
 
     from .command import BoardArgs
@@ -86,6 +87,7 @@ class BoardSession:
     selected_row_index: int
     scroll_offset: int
     status_message: str
+    app_config: AppConfig
     all_columns: Sequence[BoardColumn] = field(default_factory=list)
     search_text: str = ""
 
@@ -200,11 +202,12 @@ def _resolve_selected_view_name(args: BoardArgs) -> str | None:
     return selected_view
 
 
-def resolve_column_specs(args: BoardArgs) -> list[BoardColumnSpec]:
+def resolve_column_specs(
+    args: BoardArgs,
+    configured_views: dict[str, BoardViewConfig],
+) -> list[BoardColumnSpec]:
     """Resolve configured or fallback filter columns for board rendering."""
     selected_view = _resolve_selected_view_name(args)
-    configured_views = org.config.app.CONFIG_BOARD_VIEWS
-
     if selected_view is None:
         return compile_view_column_specs(_fallback_view_config())
 
@@ -319,7 +322,10 @@ def reload_session(
     preserve_identity: HeadingLocator | None,
 ) -> None:
     """Reload processed nodes and rebuild board columns."""
-    nodes, discovered_todo_states, discovered_done_states = load_and_process_data(session.args)
+    nodes, discovered_todo_states, discovered_done_states = load_and_process_data(
+        session.args,
+        session.app_config,
+    )
     todo_states, done_states = resolved_states(
         session.args,
         discovered_todo_states,
@@ -333,20 +339,21 @@ def reload_session(
     session.done_states = done_states
     session.all_columns = build_selector_board_columns(
         filtered_nodes,
-        resolve_column_specs(session.args),
+        resolve_column_specs(session.args, session.app_config.board.views),
     )
     refresh_visible_columns(session, preserve_identity)
 
 
 def create_board_session(
     args: BoardArgs,
+    config: AppConfig,
     nodes: list[Heading],
-    todo_states: list[str],
-    done_states: list[str],
+    state_lists: tuple[list[str], list[str]],
     color_enabled: bool,
 ) -> BoardSession:
     """Create interactive board session state."""
-    columns = build_selector_board_columns(nodes, resolve_column_specs(args))
+    todo_states, done_states = state_lists
+    columns = build_selector_board_columns(nodes, resolve_column_specs(args, config.board.views))
     selected_column_index = 0
     for index, column in enumerate(columns):
         if column.nodes:
@@ -358,6 +365,7 @@ def create_board_session(
         nodes=nodes,
         todo_states=todo_states,
         done_states=done_states,
+        app_config=config,
         all_columns=columns,
         columns=columns,
         color_enabled=color_enabled,
@@ -580,7 +588,7 @@ def apply_capture_task(session: BoardSession, template_name: str) -> None:
         set_values=None,
     )
     try:
-        capture_result = capture_task(capture_args)
+        capture_result = capture_task(capture_args, session.app_config.tasks.capture.templates)
     except KeyboardInterrupt:
         session.status_message = "Capture cancelled"
         return
@@ -622,7 +630,6 @@ def apply_search_text(session: BoardSession, search_text: str) -> None:
 
 def can_activate_capture_prompt(session: BoardSession) -> str | None:
     """Return status text when the capture prompt cannot be opened."""
-    del session
-    if not configured_capture_template_names():
+    if not session.app_config.tasks.capture.templates:
         return "No capture templates configured"
     return None

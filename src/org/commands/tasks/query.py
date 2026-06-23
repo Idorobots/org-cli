@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -220,8 +219,9 @@ class TasksQueryArgs:
     pandoc_args: str | None
 
 
-def run_tasks_query(args: TasksQueryArgs) -> None:
+def run_tasks_query(args: TasksQueryArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks query command."""
+    del config
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
     if args.offset < 0:
@@ -265,11 +265,12 @@ def run_tasks_query(args: TasksQueryArgs) -> None:
     print_prepared_output(console, prepared_output)
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
     """Register the tasks query command."""
 
     @app.command("query")
     def query_command(  # noqa: PLR0913
+        ctx: typer.Context,
         query: str = typer.Argument(..., metavar="QUERY", help="jq-style query expression"),
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
@@ -283,80 +284,85 @@ def register(app: typer.Typer) -> None:
             help="Config file name to load from current directory",
         ),
         exclude: str | None = typer.Option(
-            None,
+            app_config.exclude,
             "--exclude",
             metavar="FILE",
             help="File containing words to exclude (one per line)",
         ),
         mapping: str | None = typer.Option(
-            None,
+            app_config.mapping,
             "--mapping",
             metavar="FILE",
             help="JSON file containing tag mappings (dict[str, str])",
         ),
         todo_states: str = typer.Option(
-            "TODO",
+            ",".join(app_config.todo_states),
             "--todo-states",
             metavar="KEYS",
             help="Comma-separated list of incomplete task states",
         ),
         done_states: str = typer.Option(
-            "DONE",
+            ",".join(app_config.done_states),
             "--done-states",
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
         color_flag: bool | None = typer.Option(
-            None,
+            app_config.color_flag,
             "--color/--no-color",
             help="Force colored output",
         ),
         width: int | None = typer.Option(
-            None,
+            app_config.tasks.query.width,
             "--width",
             metavar="N",
             min=50,
             help="Override auto-derived console width (minimum: 50)",
         ),
         max_results: int = typer.Option(
-            10,
+            10
+            if app_config.tasks.query.max_results is None
+            else app_config.tasks.query.max_results,
             "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
         ),
         offset: int = typer.Option(
-            0,
+            0 if app_config.tasks.query.offset is None else app_config.tasks.query.offset,
             "--offset",
             metavar="N",
             help="Number of results to skip before displaying",
         ),
         out: str = typer.Option(
-            OutputFormat.ORG,
+            OutputFormat.ORG if app_config.tasks.query.out is None else app_config.tasks.query.out,
             "--out",
             help="Output format: org, json, or any pandoc writer format",
         ),
         out_theme: str = typer.Option(
-            DEFAULT_OUTPUT_THEME,
+            DEFAULT_OUTPUT_THEME
+            if app_config.tasks.query.out_theme is None
+            else app_config.tasks.query.out_theme,
             "--out-theme",
             help="Syntax theme for highlighted output blocks",
         ),
         pandoc_args: str | None = typer.Option(
-            None,
+            app_config.tasks.query.pandoc_args,
             "--pandoc-args",
             metavar="ARGS",
             help="Additional arguments forwarded to pandoc export",
         ),
     ) -> None:
         """Query tasks using jq-style expressions."""
+        app_config = org.config.app.require_app_config(ctx)
         args = TasksQueryArgs(
             query=query,
             files=files,
             config=config,
             exclude=exclude,
             mapping=mapping,
-            mapping_inline=None,
-            exclude_inline=None,
+            mapping_inline=app_config.mapping_inline,
+            exclude_inline=app_config.exclude_inline,
             todo_states=todo_states,
             done_states=done_states,
             color_flag=color_flag,
@@ -367,7 +373,6 @@ def register(app: typer.Typer) -> None:
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks query")
+        org.logging.log_command_config(app_config, "tasks query")
         org.logging.log_command_arguments(args, "tasks query")
-        run_tasks_query(args)
+        run_tasks_query(args, app_config)

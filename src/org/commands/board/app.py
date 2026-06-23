@@ -12,14 +12,12 @@ from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
+import org.config.app
 import org.tui.app
 import org.tui.footer
 import org.tui.help
 import org.tui.prompt
 import org.tui.selection
-from org.commands.tasks.common import (
-    configured_capture_template_names,
-)
 
 from . import actions, ui
 from .actions import BoardSession, create_board_session
@@ -398,7 +396,7 @@ class BoardApp(org.tui.app.CommandApp):
             self._refresh_view()
             return
 
-        template_names = configured_capture_template_names()
+        template_names = sorted(self.session.app_config.tasks.capture.templates)
 
         self._open_selection(
             "Capture template",
@@ -416,11 +414,11 @@ class BoardApp(org.tui.app.CommandApp):
 
 def run_board_app(
     args: BoardArgs,
+    config: org.config.app.AppConfig,
     nodes: list[Heading],
-    todo_states: list[str],
-    done_states: list[str],
+    state_lists: tuple[list[str], list[str]],
     color_enabled: bool,
 ) -> None:
     """Run the Textual-backed interactive board app."""
-    session = create_board_session(args, nodes, todo_states, done_states, color_enabled)
+    session = create_board_session(args, config, nodes, state_lists, color_enabled)
     BoardApp(session).run()

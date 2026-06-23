@@ -9,15 +9,33 @@ from typing import TYPE_CHECKING, Protocol
 from typer.testing import CliRunner
 
 import org.config.app
-from org.cli import app
+from org import cli
+from org.config.app import NamedQueryConfig
 
 
 if TYPE_CHECKING:
     import pytest
+    import typer
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
+EMPTY_CONFIG_PATH = str((FIXTURES_DIR / "empty-config.yaml").resolve())
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+app = cli.build_app(org.config.app.AppConfig(config_path=EMPTY_CONFIG_PATH))
+
+
+def _build_app(
+    *,
+    custom_filters: dict[str, str] | None = None,
+    capture_templates: dict[str, dict[str, str]] | None = None,
+) -> typer.Typer:
+    config = org.config.app.AppConfig(config_path=EMPTY_CONFIG_PATH)
+    config.filters = [
+        NamedQueryConfig(name=name, query=query) for name, query in (custom_filters or {}).items()
+    ]
+    if capture_templates is not None:
+        config.tasks.capture.templates = capture_templates
+    return cli.build_app(config)
 
 
 class _CliResult(Protocol):
@@ -200,86 +218,58 @@ def test_cli_runner_tasks_list_custom_filter_without_arg() -> None:
     """Custom filter switches should not be parsed as FILE arguments."""
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
-    original_filters = dict(org.config.app.CONFIG_CUSTOM_FILTERS)
+    result = runner.invoke(
+        _build_app(custom_filters={"has-todo": "select(.todo != null)"}),
+        [
+            "tasks",
+            "list",
+            "--no-color",
+            "--out",
+            "org",
+            "--filter-has-todo",
+            fixture_path,
+        ],
+    )
 
-    try:
-        org.config.app.CONFIG_CUSTOM_FILTERS.clear()
-        org.config.app.CONFIG_CUSTOM_FILTERS.update({"has-todo": "select(.todo != null)"})
-
-        result = runner.invoke(
-            app,
-            [
-                "tasks",
-                "list",
-                "--no-color",
-                "--out",
-                "org",
-                "--filter-has-todo",
-                fixture_path,
-            ],
-        )
-
-        assert result.exit_code == 0
-        assert "* TODO Refactor" in result.stdout
-        assert ":Maintenance:" in result.stdout
-    finally:
-        org.config.app.CONFIG_CUSTOM_FILTERS.clear()
-        org.config.app.CONFIG_CUSTOM_FILTERS.update(original_filters)
+    assert result.exit_code == 0
+    assert "* TODO Refactor" in result.stdout
+    assert ":Maintenance:" in result.stdout
 
 
 def test_cli_runner_tasks_list_custom_filter_with_arg() -> None:
     """Custom filter argument value should not be parsed as FILE argument."""
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
-    original_filters = dict(org.config.app.CONFIG_CUSTOM_FILTERS)
+    result = runner.invoke(
+        _build_app(custom_filters={"level-above": "select(.level > $arg)"}),
+        [
+            "tasks",
+            "list",
+            "--no-color",
+            "--out",
+            "org",
+            "--filter-level-above",
+            "0",
+            fixture_path,
+        ],
+    )
 
-    try:
-        org.config.app.CONFIG_CUSTOM_FILTERS.clear()
-        org.config.app.CONFIG_CUSTOM_FILTERS.update({"level-above": "select(.level > $arg)"})
-
-        result = runner.invoke(
-            app,
-            [
-                "tasks",
-                "list",
-                "--no-color",
-                "--out",
-                "org",
-                "--filter-level-above",
-                "0",
-                fixture_path,
-            ],
-        )
-
-        assert result.exit_code == 0
-        assert "* TODO Refactor" in result.stdout
-        assert ":Maintenance:" in result.stdout
-    finally:
-        org.config.app.CONFIG_CUSTOM_FILTERS.clear()
-        org.config.app.CONFIG_CUSTOM_FILTERS.update(original_filters)
+    assert result.exit_code == 0
+    assert "* TODO Refactor" in result.stdout
+    assert ":Maintenance:" in result.stdout
 
 
 def test_cli_runner_tasks_list_custom_filter_required_arg_error() -> None:
     """Custom filters with $arg should fail when the argument is missing."""
     runner = CliRunner()
-    original_filters = dict(org.config.app.CONFIG_CUSTOM_FILTERS)
+    result = runner.invoke(
+        _build_app(custom_filters={"level-above": "select(.level > $arg)"}),
+        ["tasks", "list", "--no-color", "--filter-level-above"],
+    )
 
-    try:
-        org.config.app.CONFIG_CUSTOM_FILTERS.clear()
-        org.config.app.CONFIG_CUSTOM_FILTERS.update({"level-above": "select(.level > $arg)"})
-
-        result = runner.invoke(
-            app,
-            ["tasks", "list", "--no-color", "--filter-level-above"],
-        )
-
-        assert result.exit_code != 0
-        # FIXME This is only required on CI for some reason.
-        combined_output = clean_combined_output(result)
-        assert "--filter-level-above requires exactly one argument" in combined_output
-    finally:
-        org.config.app.CONFIG_CUSTOM_FILTERS.clear()
-        org.config.app.CONFIG_CUSTOM_FILTERS.update(original_filters)
+    assert result.exit_code != 0
+    combined_output = clean_combined_output(result)
+    assert "--filter-level-above requires exactly one argument" in combined_output
 
 
 def test_cli_runner_board_requires_tty() -> None:
@@ -825,27 +815,21 @@ def test_cli_runner_capture_direct_template_path(tmp_path: Path) -> None:
     runner = CliRunner()
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    original_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
-
-    try:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(
-            {
+    result = runner.invoke(
+        _build_app(
+            capture_templates={
                 "quick": {
                     "file": str(target),
                     "content": "* TODO {{title}}",
                 },
             },
-        )
+        ),
+        ["tasks", "capture", "quick", "--set", "title=Write docs"],
+    )
 
-        result = runner.invoke(app, ["tasks", "capture", "quick", "--set", "title=Write docs"])
-
-        assert result.exit_code == 0
-        updated = target.read_text(encoding="utf-8")
-        assert "* TODO Write docs" in updated
-    finally:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+    assert result.exit_code == 0
+    updated = target.read_text(encoding="utf-8")
+    assert "* TODO Write docs" in updated
 
 
 def test_cli_runner_capture_uses_interactive_form_runner(
@@ -856,33 +840,29 @@ def test_cli_runner_capture_uses_interactive_form_runner(
     runner = CliRunner()
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    original_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
     support_path = "org.commands.tasks.capture.command._is_interactive_terminal"
     form_runner_path = "org.commands.tasks.capture.command.run_capture_form_app"
+    monkeypatch.setattr(support_path, lambda: True)
+    monkeypatch.setattr(
+        form_runner_path,
+        lambda plan: {**plan.values, "title": "Write docs", "owner": "Jane"},
+    )
 
-    try:
-        monkeypatch.setattr(support_path, lambda: True)
-        monkeypatch.setattr(
-            form_runner_path,
-            lambda plan: {**plan.values, "title": "Write docs", "owner": "Jane"},
-        )
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(
-            {
+    result = runner.invoke(
+        _build_app(
+            capture_templates={
                 "quick": {
                     "file": str(target),
                     "content": "* TODO {{title}} @{{owner}}",
                 },
             },
-        )
+        ),
+        ["tasks", "capture", "quick"],
+        color=True,
+    )
 
-        result = runner.invoke(app, ["tasks", "capture", "quick"], color=True)
-
-        assert result.exit_code == 0
-        assert "* TODO Write docs @Jane" in target.read_text(encoding="utf-8")
-    finally:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+    assert result.exit_code == 0
+    assert "* TODO Write docs @Jane" in target.read_text(encoding="utf-8")
 
 
 def test_cli_runner_capture_accepts_file_override(tmp_path: Path) -> None:
@@ -892,38 +872,29 @@ def test_cli_runner_capture_accepts_file_override(tmp_path: Path) -> None:
     override_target = tmp_path / "override.org"
     configured_target.write_text("* TODO Configured\n", encoding="utf-8")
     override_target.write_text("* TODO Override\n", encoding="utf-8")
-    original_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
-
-    try:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(
-            {
+    result = runner.invoke(
+        _build_app(
+            capture_templates={
                 "quick": {
                     "file": str(configured_target),
                     "content": "* TODO {{title}}",
                 },
             },
-        )
+        ),
+        [
+            "tasks",
+            "capture",
+            "quick",
+            "--file",
+            str(override_target),
+            "--set",
+            "title=Write docs",
+        ],
+    )
 
-        result = runner.invoke(
-            app,
-            [
-                "tasks",
-                "capture",
-                "quick",
-                "--file",
-                str(override_target),
-                "--set",
-                "title=Write docs",
-            ],
-        )
-
-        assert result.exit_code == 0
-        assert "Write docs" not in configured_target.read_text(encoding="utf-8")
-        assert "Write docs" in override_target.read_text(encoding="utf-8")
-    finally:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+    assert result.exit_code == 0
+    assert "Write docs" not in configured_target.read_text(encoding="utf-8")
+    assert "Write docs" in override_target.read_text(encoding="utf-8")
 
 
 def test_cli_runner_capture_accepts_parent_override(tmp_path: Path) -> None:
@@ -934,32 +905,23 @@ def test_cli_runner_capture_accepts_parent_override(tmp_path: Path) -> None:
         "* TODO One\n:PROPERTIES:\n:ID: one\n:END:\n\n* TODO Two\n:PROPERTIES:\n:ID: two\n:END:\n",
         encoding="utf-8",
     )
-    original_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
-
-    try:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(
-            {
+    result = runner.invoke(
+        _build_app(
+            capture_templates={
                 "child": {
                     "file": str(target),
                     "content": "** TODO {{title}}",
                     "parent": '.id == "one"',
                 },
             },
-        )
+        ),
+        ["tasks", "capture", "child", "--parent", "two", "--set", "title=From cli"],
+    )
 
-        result = runner.invoke(
-            app,
-            ["tasks", "capture", "child", "--parent", "two", "--set", "title=From cli"],
-        )
-
-        assert result.exit_code == 0
-        updated = target.read_text(encoding="utf-8")
-        assert "* TODO One\n:PROPERTIES:\n:ID: one\n:END:\n\n" in updated
-        assert "* TODO Two\n:PROPERTIES:\n:ID: two\n:END:\n** TODO From cli\n" in updated
-    finally:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+    assert result.exit_code == 0
+    updated = target.read_text(encoding="utf-8")
+    assert "* TODO One\n:PROPERTIES:\n:ID: one\n:END:\n\n" in updated
+    assert "* TODO Two\n:PROPERTIES:\n:ID: two\n:END:\n** TODO From cli\n" in updated
 
 
 def test_cli_runner_capture_parent_override_accepts_title(tmp_path: Path) -> None:
@@ -970,32 +932,23 @@ def test_cli_runner_capture_parent_override_accepts_title(tmp_path: Path) -> Non
         "* TODO One\n:PROPERTIES:\n:ID: one\n:END:\n\n* TODO Two\n:PROPERTIES:\n:ID: two\n:END:\n",
         encoding="utf-8",
     )
-    original_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
-
-    try:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(
-            {
+    result = runner.invoke(
+        _build_app(
+            capture_templates={
                 "child": {
                     "file": str(target),
                     "content": "** TODO {{title}}",
                     "parent": '.id == "one"',
                 },
             },
-        )
+        ),
+        ["tasks", "capture", "child", "--parent", "Two", "--set", "title=By title"],
+    )
 
-        result = runner.invoke(
-            app,
-            ["tasks", "capture", "child", "--parent", "Two", "--set", "title=By title"],
-        )
-
-        assert result.exit_code == 0
-        updated = target.read_text(encoding="utf-8")
-        assert "* TODO One\n:PROPERTIES:\n:ID: one\n:END:\n\n" in updated
-        assert "* TODO Two\n:PROPERTIES:\n:ID: two\n:END:\n** TODO By title\n" in updated
-    finally:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+    assert result.exit_code == 0
+    updated = target.read_text(encoding="utf-8")
+    assert "* TODO One\n:PROPERTIES:\n:ID: one\n:END:\n\n" in updated
+    assert "* TODO Two\n:PROPERTIES:\n:ID: two\n:END:\n** TODO By title\n" in updated
 
 
 def test_cli_runner_capture_set_values_bypass_prompt(tmp_path: Path) -> None:
@@ -1003,27 +956,21 @@ def test_cli_runner_capture_set_values_bypass_prompt(tmp_path: Path) -> None:
     runner = CliRunner()
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    original_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
-
-    try:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(
-            {
+    result = runner.invoke(
+        _build_app(
+            capture_templates={
                 "quick": {
                     "file": str(target),
                     "content": "* TODO {{title}} ({{title}})",
                 },
             },
-        )
+        ),
+        ["tasks", "capture", "quick", "--set", "title=From cli"],
+    )
 
-        result = runner.invoke(app, ["tasks", "capture", "quick", "--set", "title=From cli"])
-
-        assert result.exit_code == 0
-        assert result.stdout.strip() == "From cli (From cli)"
-        assert "* TODO From cli (From cli)" in target.read_text(encoding="utf-8")
-    finally:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "From cli (From cli)"
+    assert "* TODO From cli (From cli)" in target.read_text(encoding="utf-8")
 
 
 def test_cli_runner_capture_non_interactive_prefers_id_output(tmp_path: Path) -> None:
@@ -1031,27 +978,21 @@ def test_cli_runner_capture_non_interactive_prefers_id_output(tmp_path: Path) ->
     runner = CliRunner()
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    original_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
-
-    try:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(
-            {
+    result = runner.invoke(
+        _build_app(
+            capture_templates={
                 "quick": {
                     "file": str(target),
                     "content": "* TODO {{title}}\n:PROPERTIES:\n:ID: task-99\n:END:",
                 },
             },
-        )
+        ),
+        ["tasks", "capture", "quick", "--set", "title=From cli"],
+    )
 
-        result = runner.invoke(app, ["tasks", "capture", "quick", "--set", "title=From cli"])
-
-        assert result.exit_code == 0
-        assert result.stdout.strip() == "task-99"
-        assert "* TODO From cli" in target.read_text(encoding="utf-8")
-    finally:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "task-99"
+    assert "* TODO From cli" in target.read_text(encoding="utf-8")
 
 
 def test_cli_runner_capture_set_values_ignores_unknown_parameter(tmp_path: Path) -> None:
@@ -1059,26 +1000,20 @@ def test_cli_runner_capture_set_values_ignores_unknown_parameter(tmp_path: Path)
     runner = CliRunner()
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    original_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
-
-    try:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(
-            {
+    result = runner.invoke(
+        _build_app(
+            capture_templates={
                 "quick": {
                     "file": str(target),
                     "content": "* TODO Static",
                 },
             },
-        )
+        ),
+        ["tasks", "capture", "quick", "--set", "foo=bar"],
+    )
 
-        result = runner.invoke(app, ["tasks", "capture", "quick", "--set", "foo=bar"])
-
-        assert result.exit_code == 0
-        assert "* TODO Static" in target.read_text(encoding="utf-8")
-    finally:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+    assert result.exit_code == 0
+    assert "* TODO Static" in target.read_text(encoding="utf-8")
 
 
 def test_cli_runner_capture_accepts_empty_placeholder_value(
@@ -1089,32 +1024,27 @@ def test_cli_runner_capture_accepts_empty_placeholder_value(
     runner = CliRunner()
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    original_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
     support_path = "org.commands.tasks.capture.command._is_interactive_terminal"
     form_runner_path = "org.commands.tasks.capture.command.run_capture_form_app"
+    monkeypatch.setattr(support_path, lambda: True)
+    monkeypatch.setattr(form_runner_path, lambda plan: {**plan.values, "title": ""})
 
-    try:
-        monkeypatch.setattr(support_path, lambda: True)
-        monkeypatch.setattr(form_runner_path, lambda plan: {**plan.values, "title": ""})
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(
-            {
+    result = runner.invoke(
+        _build_app(
+            capture_templates={
                 "quick": {
                     "file": str(target),
                     "content": "* TODO {{title}}",
                 },
             },
-        )
+        ),
+        ["tasks", "capture", "quick"],
+    )
 
-        result = runner.invoke(app, ["tasks", "capture", "quick"])
-
-        assert result.exit_code == 0
-        updated = target.read_text(encoding="utf-8")
-        assert "* TODO Existing" in updated
-        assert updated.count("* TODO") == 2
-    finally:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+    assert result.exit_code == 0
+    updated = target.read_text(encoding="utf-8")
+    assert "* TODO Existing" in updated
+    assert updated.count("* TODO") == 2
 
 
 def test_cli_runner_capture_interactive_numeric_selection(
@@ -1125,34 +1055,29 @@ def test_cli_runner_capture_interactive_numeric_selection(
     runner = CliRunner()
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    original_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
     support_path = "org.commands.tasks.capture.command._is_interactive_terminal"
     selection_path = "org.commands.tasks.capture.command.run_template_selection_app"
     form_runner_path = "org.commands.tasks.capture.command.run_capture_form_app"
+    monkeypatch.setattr(support_path, lambda: True)
+    monkeypatch.setattr(selection_path, lambda _names: "beta")
+    monkeypatch.setattr(
+        form_runner_path,
+        lambda plan: {**plan.values, "title": "Captured task"},
+    )
 
-    try:
-        monkeypatch.setattr(support_path, lambda: True)
-        monkeypatch.setattr(selection_path, lambda _names: "beta")
-        monkeypatch.setattr(
-            form_runner_path,
-            lambda plan: {**plan.values, "title": "Captured task"},
-        )
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(
-            {
+    result = runner.invoke(
+        _build_app(
+            capture_templates={
                 "alpha": {"file": str(target), "content": "* TODO Alpha"},
                 "beta": {"file": str(target), "content": "* TODO {{title}}"},
             },
-        )
+        ),
+        ["tasks", "capture"],
+    )
 
-        result = runner.invoke(app, ["tasks", "capture"])
-
-        assert result.exit_code == 0
-        updated = target.read_text(encoding="utf-8")
-        assert "* TODO Captured task" in updated
-    finally:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+    assert result.exit_code == 0
+    updated = target.read_text(encoding="utf-8")
+    assert "* TODO Captured task" in updated
 
 
 def test_cli_runner_capture_unknown_template_lists_valid_names(tmp_path: Path) -> None:
@@ -1160,24 +1085,18 @@ def test_cli_runner_capture_unknown_template_lists_valid_names(tmp_path: Path) -
     runner = CliRunner()
     target = tmp_path / "tasks.org"
     target.write_text("* TODO Existing\n", encoding="utf-8")
-    original_templates = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
-
-    try:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(
-            {
+    result = runner.invoke(
+        _build_app(
+            capture_templates={
                 "alpha": {"file": str(target), "content": "* TODO Alpha"},
                 "beta": {"file": str(target), "content": "* TODO Beta"},
             },
-        )
+        ),
+        ["tasks", "capture", "missing"],
+    )
 
-        result = runner.invoke(app, ["tasks", "capture", "missing"])
-
-        assert result.exit_code != 0
-        combined_output = clean_combined_output(result)
-        assert "Unknown capture template 'missing'" in combined_output
-        assert "Valid templates: alpha," in combined_output
-        assert "beta" in combined_output
-    finally:
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
-        org.config.app.CONFIG_CAPTURE_TEMPLATES.update(original_templates)
+    assert result.exit_code != 0
+    combined_output = clean_combined_output(result)
+    assert "Unknown capture template 'missing'" in combined_output
+    assert "Valid templates: alpha," in combined_output
+    assert "beta" in combined_output

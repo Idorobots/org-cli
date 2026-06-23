@@ -1,5 +1,9 @@
 """Tasks command wiring."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import typer
 
 from org.commands.tasks import add as tasks_add
@@ -13,19 +17,23 @@ from org.commands.tasks import remove as tasks_remove
 from org.commands.tasks import update as tasks_update
 
 
-def register(app: typer.Typer) -> None:
+if TYPE_CHECKING:
+    import org.config.app
+
+
+def register(app: typer.Typer, config: org.config.app.AppConfig) -> None:
     """Register tasks commands on the root CLI app."""
     tasks_app = typer.Typer(
         help="Search and update tasks in Org-mode archives.",
         no_args_is_help=True,
     )
-    tasks_add.register(tasks_app)
-    tasks_archive.register(tasks_app)
-    tasks_capture.register(tasks_app)
-    tasks_edit.register(tasks_app)
-    tasks_find.register(tasks_app)
-    tasks_list.register(tasks_app)
-    tasks_query.register(tasks_app)
-    tasks_remove.register(tasks_app)
-    tasks_update.register(tasks_app)
+    tasks_add.register(tasks_app, config)
+    tasks_archive.register(tasks_app, config)
+    tasks_capture.register(tasks_app, config)
+    tasks_edit.register(tasks_app, config)
+    tasks_find.register(tasks_app, config)
+    tasks_list.register(tasks_app, config)
+    tasks_query.register(tasks_app, config)
+    tasks_remove.register(tasks_app, config)
+    tasks_update.register(tasks_app, config)
     app.add_typer(tasks_app, name="tasks")

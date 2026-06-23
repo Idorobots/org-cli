@@ -17,6 +17,20 @@ poetry run org tasks remove [OPTIONS] [FILE ...]
 - `--yes` - Automatically confirm deletion without prompting.
 - `--color/--no-color` - Force color behavior for interactive prompt.
 
+## Configuration
+
+`org tasks remove` has no dedicated command-specific config section.
+
+It only uses shared top-level config such as:
+
+```yaml
+todo_states: TODO,WAITING
+done_states: DONE,CANCELLED
+mapping: examples/mapping_example.json
+exclude: examples/exclude_example.txt
+color_flag: true
+```
+
 ## Selector rules
 
 - Provide exactly one selector: `--query-title`, `--query-id`, or `--query`.

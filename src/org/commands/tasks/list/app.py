@@ -11,6 +11,7 @@ from textual.binding import Binding, BindingType
 from textual.containers import Vertical
 from textual.widgets import Static
 
+import org.config.app
 import org.tui.app
 import org.tui.footer
 import org.tui.help
@@ -18,7 +19,6 @@ import org.tui.prompt
 import org.tui.selection
 from org.commands.tasks.common import (
     PlanningTimestampField,
-    configured_capture_template_names,
     planning_prompt_label,
     tags_prompt_label,
 )
@@ -70,10 +70,15 @@ class TasksListApp(org.tui.app.CommandApp):
         Binding("escape", "quit_app", show=False),
     ]
 
-    def __init__(self, args: ListArgs, data: _TasksListSessionData) -> None:
+    def __init__(
+        self,
+        args: ListArgs,
+        config: org.config.app.AppConfig,
+        data: _TasksListSessionData,
+    ) -> None:
         """Build one tasks list app from CLI args and loaded session data."""
         super().__init__()
-        self.session = create_tasks_list_session(args, data)
+        self.session = create_tasks_list_session(args, config, data)
 
     def compose(self) -> ComposeResult:
         """Build the main app layout."""
@@ -303,7 +308,7 @@ class TasksListApp(org.tui.app.CommandApp):
 
     def action_prompt_capture(self) -> None:
         """Prompt for a capture template and create a task."""
-        template_names = configured_capture_template_names()
+        template_names = sorted(self.session.app_config.tasks.capture.templates)
         if not template_names:
             self.session.status_message = "No capture templates configured"
             self._refresh_view()
@@ -372,6 +377,10 @@ class TasksListApp(org.tui.app.CommandApp):
         self._prompt_planning("closed")
 
 
-def run_tasks_list_app(args: ListArgs, data: _TasksListSessionData) -> None:
+def run_tasks_list_app(
+    args: ListArgs,
+    config: org.config.app.AppConfig,
+    data: _TasksListSessionData,
+) -> None:
     """Run the Textual-backed interactive tasks list app."""
-    TasksListApp(args, data).run()
+    TasksListApp(args, config, data).run()

@@ -8154,32 +8154,11 @@ Introduce a new package =org.query= and move the query-execution-related helpers
 - Current =org.query_language= package should be renamed to =org.query.engine=
 - The query compiler (=org.query.engine.compiler=) and execution engine (=org.query.engine.interpreter=) should be separated, with all the operator/function definitions also separated to their own module =org.query.engine.defs=
 
-*** Streamline query execution
-- One way to run a query used by all commands.
-- Error handling left to the caller
-- Runner accepts a list of files, context and a set of query stages that are all piped together, it performs query building, compilation and execution.
-
-*** TODO Streamline data processing.
-:PROPERTIES:
-:capture_time: [2026-06-12 Fri 23:54]
-:context: 
+*** REWORKED Load configuration first and pasrs the object to the commands
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-06-22 Mon 19:26] \\
+  Needed a lot of massaging.
 :END:
-
-The commands use a common ETL pipeline where they load some data from files, apply filters/ordering/mutators and lastly present the results in some way.
-It would be nice to make this as streamlined as possible, ideally, =org.logic.query= would expose a function =run_query= that takes a list of documents, a textlist of query stages to run and the environment for the query to run in, and compiles and executes the query and returns the result.
-That streamlined query execution should be used in all places that extract or transform the org document data - the data should be loaded, then processed with the =run_query= function and used as needed.
-*** TODO Org file repository abstraction
-:PROPERTIES:
-:capture_time: [2026-06-13 Sat 00:12]
-:context: 
-:END:
-
-Add a new package =org.db= that will store the org file repository abstraction.
-In that package, add a repository-pattern abstraction over one or more org files. The abstraction should automatically load all the files, maintain their modification state and automatically perform saving of the modified files whenever they change.
-The abstraction should also support querying the repository using the query language.
-
-All commands should be updated to instantiate this repository and use its querying capabilities for all of their querying needs.
-*** TODO Load configuration first and pass the object to the commands
 Do not use global state for configuration storage. The goal is for the commands to be stateless.
 
 The config processing flow should look like this:
@@ -8223,6 +8202,667 @@ config:
 
 Update the commands to use this new structured configuration object (prefer the command-specific sections for the value, not =config.defaults=).
 Update the tests not to rely on the global state.
+**** DONE src/org/cli.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 13:18]
+:END:
+
+In file src/org/cli.py around line 70, near the ~from org.commands import board as board_command~
+
+#+begin_example
++
++app = build_app()
+
+#+end_example
+
+Don't leave compatibility layers for tests. This should be removed and the tests that import =app= directly should be updated to build the app directly.
+**** DONE src/org/config/app.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 13:18]
+:END:
+
+In file src/org/config/app.py around line 1960, near the ~def load_cli_config(argv: list[str]) -> LoadedCliConfig:~
+
+#+begin_example
+ def build_default_map(defaults: dict[str, object]) -> CliDefaultMap:
+-    """Build Click default_map for Typer commands."""
++    """Compatibility helper for tests that still exercise default-map shaping."""
+
+#+end_example
+
+Don't define test compatibility layers, refactor the tests not to need that.
+
+**** DONE src/org/config/app.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 13:19]
+:END:
+
+In file src/org/config/app.py around line 84, near the ~COMMAND_OPTION_NAMES = {~
+
+#+begin_example
++MAP: dict[str, str] = {}
++
++# Transitional compatibility for tests and non-command helper calls.
+ CONFIG_CUSTOM_FILTERS: dict[str, str] = {}
+ CONFIG_CUSTOM_ORDER_BY: dict[str, str] = {}
+
+#+end_example
+
+Remove all of this global state, don't leave any compatibility state for tests. Refactor tests not to need that.
+**** DONE src/org/commands/agenda/views.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 18:14]
+:END:
+
+In file src/org/commands/agenda/views.py around line 85, near the ~def _compile_view_section_specs(view: org.config.app.AgendaViewConfig) -> list[A~
+
+#+begin_example
++    configured_views = org.config.app.current_app_config().agenda.views
+
+#+end_example
+
+Config should be threded along all the functions that require it. Don't extract the global context everywhere. The only place that should extract the config is the main command function only, the rest should pass the config along.
+**** DONE src/org/commands/stats/command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 18:14]
+:END:
+
+In file src/org/commands/stats/command.py around line 41, near the ~def stats_callback(~
+
+#+begin_example
++    app_config = ctx.find_root().obj
+
+#+end_example
+
+This should use the helper for extracting config found in =org.config.app=.
+**** DONE src/org/commands/tasks/archive.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 18:14]
+:END:
+
+In file src/org/commands/tasks/archive.py around line 141, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        app_config = org.config.app.require_app_config(click.get_current_context())
+
+#+end_example
+
+Context should be passed to this command exactly the same way as for all the other commands. Don't use =click= to extract the global context. This should apply to all the commands - use the same pattern - extract the config from the typer context in the main command function and pass the config along to command execution functions.
+
+**** DONE src/org/commands/tasks/capture/command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 20:56]
+:END:
+
+In file src/org/commands/tasks/capture/command.py around line 77, near the ~def capture_task(~
+
+#+begin_example
+-def run_tasks_capture(args: TasksCaptureArgs) -> None:
+
+#+end_example
+
+It makes more sense to pass =AppConfig= here instead of just the templates. All command execution functions should receive command-specific arguments and the =AppConfig= object.
+**** REWORKED src/org/config/app.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-06-21 Sun 20:56] \\
+  Needs rework.
+:END:
+
+In file src/org/config/app.py around line 1556, near the ~def build_config_defaults(~
+
+#+begin_example
++def _apply_default_dest(config: AppConfig, dest: str, value: object) -> None:
++    """Apply one validated config destination value onto AppConfig."""
++    top_level_attrs = {
++        "color_flag",
++        "verbose",
++        "filter_priority",
++        "filter_level",
++        "filter_repeats_above",
++        "filter_repeats_below",
++        "filter_date_from",
++        "filter_date_until",
++        "filter_completed",
++        "filter_not_completed",
++        "order_by_file_order",
++        "order_by_file_order_reversed",
++        "order_by_priority",
++        "order_by_level",
++        "order_by_timestamp_asc",
++        "order_by_timestamp_desc",
++        "with_tags_as_category",
++    }
++    agenda_attrs = {"date", "no_completed", "no_overdue", "no_upcoming", "future_repeats"}
++    stats_attrs = {
++        "mapping",
++        "exclude",
++        "mapping_inline",
++        "exclude_inline",
++        "max_tags",
++        "max_relations",
++        "min_group_size",
++        "max_groups",
++        "use",
++    }
+
+#+end_example
+
+This should be done in the respective command's implementation instead. There's no need to handle the config generically for all commands.
+Ideally, each command's config object (=AgendaConfig=, etc) should be used in the main command function to populate the defaults in command args object (=AgendaArgs=). The command should retrieve the config object passed to it, then apply config defaults, then apply CLI overrides and lastly thread those updated objects through all the command execution functions that require either.
+
+**** DONE src/org/commands/agenda/command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 20:56]
+:END:
+
+In file src/org/commands/agenda/command.py around line 403, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+
+#+end_example
+
+Sounds like this should be a local function, as each command will have a distinct way of populating the defaults. Refactor so that each command has a custom way to apply defaults on top of config passed to the command.
+**** DONE src/org/commandds/agenda/command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 22:20]
+:END:
+
+In file src/org/commands/agenda/command.py around line 392, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
+         app_config = org.config.app.require_app_config(ctx)
+-        org.config.app.apply_config_defaults(args, app_config, sys.argv[1:])
+-        org.logging.log_applied_config_defaults(app_config, args, "agenda")
++        argv = sys.argv[1:]
++        applied_defaults: dict[str, object] = {}
++        for dest, value in (
++            ("exclude", app_config.exclude),
++            ("exclude_inline", app_config.exclude_inline),
++            ("mapping", app_config.mapping),
++            ("mapping_inline", app_config.mapping_inline),
++            ("todo_states", ",".join(app_config.todo_states)),
++            ("done_states", ",".join(app_config.done_states)),
++            ("filter_priority", app_config.filter_priority),
++            ("filter_level", app_config.filter_level),
++            ("filter_repeats_above", app_config.filter_repeats_above),
++            ("filter_repeats_below", app_config.filter_repeats_below),
++            ("filter_date_from", app_config.filter_date_from),
++            ("filter_date_until", app_config.filter_date_until),
++            ("filter_properties", app_config.filter_properties),
++            ("filter_tags", app_config.filter_tags),
++            ("filter_headings", app_config.filter_headings),
++            ("filter_bodies", app_config.filter_bodies),
++            ("filter_completed", app_config.filter_completed),
++            ("filter_not_completed", app_config.filter_not_completed),
++            ("color_flag", app_config.color_flag),
++            ("order_by_file_order", app_config.order_by_file_order),
++            ("order_by_file_order_reversed", app_config.order_by_file_order_reversed),
++            ("order_by_priority", app_config.order_by_priority),
++            ("order_by_level", app_config.order_by_level),
++            ("order_by_timestamp_asc", app_config.order_by_timestamp_asc),
++            ("order_by_timestamp_desc", app_config.order_by_timestamp_desc),
++            ("with_tags_as_category", app_config.with_tags_as_category),
++            ("date", app_config.agenda.date),
++            ("days", app_config.agenda.days),
++            ("no_completed", app_config.agenda.no_completed),
++            ("no_overdue", app_config.agenda.no_overdue),
++            ("no_upcoming", app_config.agenda.no_upcoming),
++            ("future_repeats", app_config.agenda.future_repeats),
++            ("view", app_config.agenda.view),
++            ("max_results", app_config.agenda.max_results),
++            ("offset", app_config.agenda.offset),
++            ("width", app_config.agenda.width),
++        ):
++            org.config.app.apply_arg_default(args, argv, applied_defaults, dest, value)
++        org.logging.log_applied_config_defaults(applied_defaults, "agenda")
+
+#+end_example
+
+This is poor style. You already have =args= available along with all command arguments (=typer.Option= instances). You should extract the config from context first, then instantiate the options using defaults from the config object when provided.
+**** DONE src/org/commands/tasks/edit.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 22:23]
+:END:
+
+In file src/org/commands/tasks/edit.py around line 111, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        applied_defaults: dict[str, object] = {}
++        org.logging.log_applied_config_defaults(applied_defaults, "tasks edit")
+
+#+end_example
+
+This now makes no sense. Log the config object passed to the commands and their final args object.
+**** DONE src/org/config/app.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-21 Sun 22:23]
+:END:
+
+In file src/org/config/app.py around line 878, near the ~def parse_config_sections(~
+
+#+begin_example
++    """Legacy defaults-based config parsing is no longer supported."""
++    del raw_config
++    return None
+
+#+end_example
+
+... Then remove the function together with the associated tests.
+
+**** CANCELLED src/org/commands/tasks/update.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "CANCELLED"  from "TODO"       [2026-06-22 Mon 00:18] \\
+  No longer needed.
+:END:
+
+In file src/org/commands/tasks/update.py around line 660, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        app_config = org.config.app.require_app_config(ctx)
++        argv = sys.argv[1:]
+
+#+end_example
+
+It makes more sense to extract =sys.argv= in the implementation of =resolve_cli_value=. No reason to extract it here and pass it to the function.
+
+**** DONE src/org/config/app.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 10:44]
+:END:
+
+In file src/org/config/app.py around line 1494, near the ~def load_cli_config(argv: list[str]) -> AppConfig:~
+
+#+begin_example
++def require_app_config(ctx: object) -> AppConfig:
++    """Return AppConfig stored in the current root context."""
++    root_context = cast("ContextWithRoot", ctx).find_root()
++    app_config = root_context.obj
++    if not isinstance(app_config, AppConfig):
++        raise typer.BadParameter("Application config is not available")
+
+#+end_example
+
+The argument should be a =typer.Context=, please clean that up.
+**** DONE src/org/config/app.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 00:48]
+:END:
+
+In file src/org/config/app.py around line 1299, near the ~def build_config_defaults(~
+
+#+begin_example
++def build_default_app_config(config_path: str = ".org-cli.yaml") -> AppConfig:
++    """Build application config populated with code defaults."""
++    return AppConfig(
++        config_path=config_path,
++        color_flag=None,
++        verbose=False,
++        todo_states=["TODO"],
++        done_states=["DONE"],
++        filter_priority=None,
++        filter_level=None,
++        filter_repeats_above=None,
++        filter_repeats_below=None,
++        filter_date_from=None,
++        filter_date_until=None,
++        filter_properties=None,
++        filter_tags=None,
++        filter_headings=None,
++        filter_bodies=None,
++        filter_completed=False,
++        filter_not_completed=False,
++        order_by_file_order=False,
++        order_by_file_order_reversed=False,
++        order_by_priority=False,
++        order_by_level=False,
++        order_by_timestamp_asc=False,
++        order_by_timestamp_desc=False,
++        with_tags_as_category=False,
++        filters=[],
++        orderings=[],
++        mutators=[],
++        stats=StatsConfig(),
++        tasks=TasksConfig(),
++        capture=CaptureConfig(templates={}),
++        agenda=AgendaConfig(views={}),
++        board=BoardConfig(views={}),
+
+#+end_example
+
+It would be nice if these defaults could be in the class definitions themselves. This would then just return an =AppConfig(config_path = config_path)=.
+**** DONE src/org/config/app.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 00:38]
+:END:
+
+In file src/org/config/app.py around line 1477, near the ~def load_cli_config(argv: list[str]) -> AppConfig:~
+
+#+begin_example
++    app_config = build_default_app_config(str(config_path))
++    for dest, value in {**defaults, **stats_defaults}.items():
++        if dest not in COMMAND_OPTION_NAMES and dest not in {"mapping_inline", "exclude_inline"}:
++            continue
++        _apply_default_dest(app_config, dest, value)
++
++    for dest, values in append_defaults.items():
++        _apply_list_dest(app_config, dest, values)
++
++    app_config.filters = _named_query_list(custom_filters)
++    app_config.orderings = _named_query_list(custom_order_by)
++    app_config.mutators = _named_query_list(custom_with)
++    app_config.capture = CaptureConfig(templates=capture_templates)
++    app_config.board = BoardConfig(
++        views=board_views,
++        view=app_config.board.view,
++        days=app_config.board.days,
++        max_results=app_config.board.max_results,
++        offset=app_config.board.offset,
++        width=app_config.board.width,
++    )
++    app_config.agenda = AgendaConfig(
++        views=agenda_views,
++        date=app_config.agenda.date,
++        days=app_config.agenda.days,
++        no_completed=app_config.agenda.no_completed,
++        no_overdue=app_config.agenda.no_overdue,
++        no_upcoming=app_config.agenda.no_upcoming,
++        future_repeats=app_config.agenda.future_repeats,
++        view=app_config.agenda.view,
++        max_results=app_config.agenda.max_results,
++        offset=app_config.agenda.offset,
++        width=app_config.agenda.width,
++    )
+
+#+end_example
+
+Looks like there's a lot of unnecessary copying here. Please refactor to just populate the values that need to be changed.
+**** DONE src/org/config/app.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 00:38]
+:END:
+
+In file src/org/config/app.py around line 1627, near the ~def load_cli_config(argv: list[str]) -> AppConfig:~
+
+#+begin_example
++def command_config_values(config: AppConfig) -> dict[str, object]:
++    """Flatten AppConfig into command argument destination values."""
++    values: dict[str, object] = {
++        "color_flag": config.color_flag,
++        "todo_states": ",".join(config.todo_states),
++        "done_states": ",".join(config.done_states),
++        "filter_priority": config.filter_priority,
++        "filter_level": config.filter_level,
++        "filter_repeats_above": config.filter_repeats_above,
++        "filter_repeats_below": config.filter_repeats_below,
++        "filter_date_from": config.filter_date_from,
++        "filter_date_until": config.filter_date_until,
++        "filter_properties": config.filter_properties,
++        "filter_tags": config.filter_tags,
++        "filter_headings": config.filter_headings,
++        "filter_bodies": config.filter_bodies,
++        "filter_completed": config.filter_completed,
++        "filter_not_completed": config.filter_not_completed,
++        "order_by_file_order": config.order_by_file_order,
++        "order_by_file_order_reversed": config.order_by_file_order_reversed,
++        "order_by_priority": config.order_by_priority,
++        "order_by_level": config.order_by_level,
++        "order_by_timestamp_asc": config.order_by_timestamp_asc,
++        "order_by_timestamp_desc": config.order_by_timestamp_desc,
++        "with_tags_as_category": config.with_tags_as_category,
++        "exclude": config.stats.exclude,
++        "exclude_inline": config.stats.exclude_inline,
++        "mapping": config.stats.mapping,
++        "mapping_inline": config.stats.mapping_inline,
++        "max_results": config.tasks.max_results,
++        "max_tags": config.stats.max_tags,
++        "max_relations": config.stats.max_relations,
++        "min_group_size": config.stats.min_group_size,
++        "max_groups": config.stats.max_groups,
++        "use": config.stats.use,
++        "tags": config.stats.tags,
++        "groups": config.stats.groups,
++        "details": config.tasks.details,
++        "out": config.tasks.out,
++        "out_theme": config.tasks.out_theme,
++        "pandoc_args": config.tasks.pandoc_args,
++        "date": config.agenda.date,
++        "days": config.agenda.days,
++        "no_completed": config.agenda.no_completed,
++        "no_overdue": config.agenda.no_overdue,
++        "no_upcoming": config.agenda.no_upcoming,
++        "future_repeats": config.agenda.future_repeats,
++        "view": config.board.view if config.board.view is not None else config.agenda.view,
++        "offset": config.board.offset if config.board.offset is not None else config.agenda.offset,
++        "width": config.board.width if config.board.width is not None else config.agenda.width,
+
+#+end_example
+
+This looks like it's redundant.
+**** DONE src/org/commands/tasks/common.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:36]
+:END:
+
+In file src/org/commands/tasks/common.py around line 222, near the ~def capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:~
+
+#+begin_example
+-def configured_capture_template_names() -> list[str]:
++def configured_capture_template_names(templates: dict[str, dict[str, str]]) -> list[str]:
+     """Return stable capture template names from loaded config."""
+-    return capture_template_names(org.config.app.CONFIG_CAPTURE_TEMPLATES)
+
+#+end_example
+
+This function no longer makes sense. Use =capture_template_names()= instead in all callsites. Remove this function entirely.
+**** DONE src/org/commands/tasks/capture/command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:36]
+:END:
+
+In file src/org/commands/tasks/capture/command.py around line 145, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        _ = org.config.app.current_app_config()
+
+#+end_example
+
+This makes no sense.
+**** DONE tests/cli_common/test_filter_construction.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:36]
+:END:
+
+In file tests/cli_common/test_filter_construction.py around line 436, near the ~def test_build_query_text_preserves_mixed_ordering_cli_order(~
+
+#+begin_example
+-    monkeypatch.setattr(org.config.app, "CONFIG_CUSTOM_WITH", {})
++    del monkeypatch
+
+#+end_example
+
+Don't use =del=, remove the unused arguments altogether from all the test functions that do that.
+
+**** DONE tests/commands/tasks/test_tasks_list_app.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:36]
+:END:
+
+In file tests/commands/tasks/test_tasks_list_app.py around line 274, near the ~def test_run_tasks_list_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPa~
+
+#+begin_example
+         assert args.files == []
++        assert isinstance(config, org.config.app.AppConfig)
+
+#+end_example
+
+This makes no sense.
+**** DONE tests/commands/test_tasks_capture_command.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:37]
+:END:
+
+In file tests/commands/test_tasks_capture_command.py around line 53, near the ~def _make_capture_args(~
+
+#+begin_example
+ def _set_capture_templates(templates: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+-    """Replace global capture templates and return previous value."""
+-    previous = dict(org.config.app.CONFIG_CAPTURE_TEMPLATES)
+-    org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
+-    org.config.app.CONFIG_CAPTURE_TEMPLATES.update(templates)
+-    return previous
++    """Return one template map for explicit test passing."""
++    return templates
+ 
+ 
+-def _restore_capture_templates(previous: dict[str, dict[str, str]]) -> None:
+-    """Restore global capture templates from previous value."""
+-    org.config.app.CONFIG_CAPTURE_TEMPLATES.clear()
+-    org.config.app.CONFIG_CAPTURE_TEMPLATES.update(previous)
++def _restore_capture_templates(_previous: dict[str, dict[str, str]]) -> None:
++    """No-op symmetry helper for explicit-template tests."""
++    return
+
+#+end_example
+
+Sounds like these two are no longer needed, clean this up.
+
+**** DONE src/org/commands/tasks/find.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 08:37]
+:END:
+
+In file src/org/commands/tasks/find.py around line 287, near the ~def register(app: typer.Typer) -> None:~
+
+#+begin_example
++        resolve_cli_value = org.config.app.resolve_cli_value
+
+#+end_example
+
+Don't do this. Import the function directly.
+
+**** DONE tests/cli/test_cli_runner.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 12:30]
+:END:
+
+In file tests/cli/test_cli_runner.py around line 25, near the ~if TYPE_CHECKING:~
+
+#+begin_example
+-app = cli.build_app(org.config.app.build_default_app_config())
++app = cli.build_app(org.config.app.AppConfig(config_path=".org-cli.yaml"))
+
+#+end_example
+
+Tests should not rely on the repo config.
+**** DONE Config section for tasks sub-commands
+:PROPERTIES:
+:capture_time: [2026-06-21 Sun 21:06]
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-22 Mon 19:24]
+:END:
+
+Add a top-level config section for tasks commands, name it =tasks=. Move the current top-level =capture= config into =tasks.capture=. Define a new section for the =tasks.list= that will contain all of its configuration & defaults.
+*** TODO Streamline query execution
+The commands use a common ETL pipeline where they load some data from files, apply filters/ordering/mutators and lastly present the results in some way. Sometimes the documents are then saved.
+It would be nice to make query execution as streamlined as possible, ideally, =org.logic.query= would expose a function =run_query= that takes a list of documents, a list of query stages to run and the context for the query to run in, and compiles and executes the query and returns the result.
+That streamlined query execution should be used in all places that extract or transform the org document data - the data should be loaded, then processed with the =run_query= function and used as needed.
+Error handling should be left to the caller (=run_query= should not accept customizable error types/builders).
+
+*** TODO Org file repository abstraction
+:PROPERTIES:
+:capture_time: [2026-06-13 Sat 00:12]
+:context: 
+:END:
+
+Add a new package =org.db= that will store the org file repository abstraction.
+In that package, add a repository-pattern abstraction over one or more org files. The abstraction should:
+- automatically load all the documents from files maintaining their last modification time,
+- watch for external file changes and re-load a document as needed (file modification time more recent than currently stored one)
+- allow explicitly reloading a document from file,
+- allow saving the documents explicitly (dump file contents, reload and update the modification state),
+- allow overwriting potentially externally modified document contents without generating errors,
+- allow querying the repository using the query language: =repository.query(query_stages, context)=.
+- cache discovered todo and done states for other commands,
+
+The abstraction should handle file conflicts with explicit errors (attempting to save a file that was modified outside of the CLI, file no longer exists, etc). These errors will be then handled by the commands in various ways (interactive commands should display a prompt asking for confirmation about overwriting or reloading and reapplying an action; non-interactive commands should print the error to the output).
+
+All commands should be updated to instantiate this repository and use its querying capabilities for all of their querying needs.
+All commands should be updated to handle the file errors more or less gracefully.
 
 *** CANCELLED Use Textual header & footer widgets in the interactive commands
 :LOGBOOK:
@@ -8783,6 +9423,10 @@ Split config handling to be per-command and have the config file reflect that.
 :END:
 
 After loading the config defaults, these should be populated in their respective config object sections.
+*** Revise and reorganize command switches
+- There are some CLI switches attached to all the commands that don't make any sense or them, such as: =exclude=, =mapping=, etc. These should be only available as switches & configuration for the commands that actually need them.
+- If any switches are shared by all the commands at some level, the config values should be moved up the documentation tree (i.e. =todo_states= in top-level).
+
 ** Dashboard command                                                                     :Dashboard:
 - Reads a dashboard config and shows a visualization on a server.
 - Tabbed views for the agenda, board, backlog and stats

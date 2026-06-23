@@ -13,7 +13,6 @@ from org_parser.time import Clock, Timestamp
 
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import (
-    configured_capture_template_names,
     duration_to_org_text,
     iter_descendants,
     load_document,
@@ -52,6 +51,8 @@ if TYPE_CHECKING:
 
     from org_parser.document import Document, Heading
 
+    from org.config.app import AppConfig
+
     from .command import AgendaArgs
     from .views import AgendaViewContext
 
@@ -79,6 +80,7 @@ class AgendaSession:
     status_message: str
     search_text: str
     view_ctx: AgendaViewContext
+    app_config: AppConfig
     run_external: Callable[[Callable[[], None]], None] | None = None
 
 
@@ -200,7 +202,7 @@ def _save_document_changes(document: Document) -> None:
 
 def _reload_session_nodes(session: AgendaSession) -> None:
     """Reload nodes through standard processing pipeline after mutations."""
-    nodes, _, _ = load_and_process_data(session.args)
+    nodes, _, _ = load_and_process_data(session.args, session.app_config)
     session.all_nodes = nodes
     session.nodes = filter_nodes_by_search(nodes, session.search_text)
 
@@ -528,7 +530,7 @@ def apply_capture_task(session: AgendaSession, template_name: str) -> None:
         set_values=None,
     )
     try:
-        capture_result = capture_task(capture_args)
+        capture_result = capture_task(capture_args, session.app_config.tasks.capture.templates)
     except KeyboardInterrupt:
         session.status_message = "Capture cancelled"
         return
@@ -572,7 +574,7 @@ def can_activate_agenda_capture_prompt(session: AgendaSession) -> str | None:
     """Return status text when the capture prompt cannot be opened."""
     if _timetable_schedule_for_selected_row(session) is None:
         return "Capture is available only on timetable time rows"
-    if not configured_capture_template_names():
+    if not session.app_config.tasks.capture.templates:
         return "No capture templates configured"
     return None
 
@@ -592,6 +594,7 @@ def apply_search_text(session: AgendaSession, search_text: str) -> None:
 
 def create_agenda_session(
     args: AgendaArgs,
+    config: AppConfig,
     nodes: list[Heading],
     render: RenderContext,
     view_ctx: AgendaViewContext,
@@ -614,6 +617,7 @@ def create_agenda_session(
         status_message="",
         search_text="",
         view_ctx=view_ctx,
+        app_config=config,
     )
     refresh_session(session, None)
     return session

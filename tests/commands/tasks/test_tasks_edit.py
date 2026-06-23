@@ -9,8 +9,14 @@ import org_parser
 import pytest
 import typer
 
+import org.config.app
 from org.commands.tasks import edit as tasks_edit
 from org.logic import edit as editor_command
+
+
+def _run_tasks_edit(args: tasks_edit.EditArgs) -> None:
+    """Run tasks edit with a default app config for direct tests."""
+    tasks_edit.run_tasks_edit(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 if TYPE_CHECKING:
@@ -58,7 +64,7 @@ def test_run_tasks_edit_replaces_subtree_by_query_id(
         return editor_command.DocumentEditResult(changed=True)
 
     monkeypatch.setattr(tasks_edit, "edit_heading_subtree_in_external_editor", _fake_edit)
-    tasks_edit.run_tasks_edit(make_edit_args([str(source)]))
+    _run_tasks_edit(make_edit_args([str(source)]))
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     titles = [node.title_text.strip() for node in list(root)]
@@ -78,7 +84,7 @@ def test_run_tasks_edit_supports_query_title(
         return editor_command.DocumentEditResult(changed=True)
 
     monkeypatch.setattr(tasks_edit, "edit_heading_subtree_in_external_editor", _fake_edit)
-    tasks_edit.run_tasks_edit(make_edit_args([str(source)], query_id=None, query_title="Keep"))
+    _run_tasks_edit(make_edit_args([str(source)], query_id=None, query_title="Keep"))
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     assert next(iter(root)).title_text.strip() == "Updated"
@@ -97,7 +103,7 @@ def test_run_tasks_edit_supports_generic_query(
         return editor_command.DocumentEditResult(changed=True)
 
     monkeypatch.setattr(tasks_edit, "edit_heading_subtree_in_external_editor", _fake_edit)
-    tasks_edit.run_tasks_edit(
+    _run_tasks_edit(
         make_edit_args(
             [str(source)],
             query_id=None,
@@ -115,10 +121,10 @@ def test_run_tasks_edit_requires_exactly_one_selector(tmp_path: Path) -> None:
     source.write_text("* TODO Keep\n", encoding="utf-8")
 
     with pytest.raises(typer.BadParameter, match="exactly one task selector"):
-        tasks_edit.run_tasks_edit(make_edit_args([str(source)], query_id=None, query_title=None))
+        _run_tasks_edit(make_edit_args([str(source)], query_id=None, query_title=None))
 
     with pytest.raises(typer.BadParameter, match="exactly one task selector"):
-        tasks_edit.run_tasks_edit(
+        _run_tasks_edit(
             make_edit_args(
                 [str(source)],
                 query_title="Keep",
@@ -132,7 +138,7 @@ def test_run_tasks_edit_rejects_multiple_matches(tmp_path: Path) -> None:
     source.write_text("* TODO Same\n* TODO Same\n", encoding="utf-8")
 
     with pytest.raises(typer.BadParameter, match="matches exactly one task"):
-        tasks_edit.run_tasks_edit(make_edit_args([str(source)], query_id=None, query_title="Same"))
+        _run_tasks_edit(make_edit_args([str(source)], query_id=None, query_title="Same"))
 
 
 def test_run_tasks_edit_rejects_invalid_edited_content(
@@ -150,7 +156,7 @@ def test_run_tasks_edit_rejects_invalid_edited_content(
 
     monkeypatch.setattr(tasks_edit, "edit_heading_subtree_in_external_editor", _raise_invalid)
     with pytest.raises(typer.BadParameter, match="Edited document content is invalid"):
-        tasks_edit.run_tasks_edit(make_edit_args([str(source)]))
+        _run_tasks_edit(make_edit_args([str(source)]))
 
 
 def test_run_tasks_edit_requires_editor_environment_variable(
@@ -163,7 +169,7 @@ def test_run_tasks_edit_requires_editor_environment_variable(
 
     monkeypatch.delenv("EDITOR", raising=False)
     with pytest.raises(typer.BadParameter, match=r"\$EDITOR is not defined"):
-        tasks_edit.run_tasks_edit(make_edit_args([str(source)]))
+        _run_tasks_edit(make_edit_args([str(source)]))
 
 
 def test_run_tasks_edit_errors_on_non_zero_editor_exit(
@@ -177,7 +183,7 @@ def test_run_tasks_edit_errors_on_non_zero_editor_exit(
     monkeypatch.setenv("EDITOR", "sh -c 'exit 7'")
 
     with pytest.raises(typer.BadParameter, match="Editor failed to open"):
-        tasks_edit.run_tasks_edit(make_edit_args([str(source)]))
+        _run_tasks_edit(make_edit_args([str(source)]))
 
 
 def test_run_tasks_edit_skips_save_when_content_is_unchanged(
@@ -195,7 +201,7 @@ def test_run_tasks_edit_skips_save_when_content_is_unchanged(
 
     monkeypatch.setattr(tasks_edit, "edit_heading_subtree_in_external_editor", _fake_no_change)
 
-    tasks_edit.run_tasks_edit(make_edit_args([str(source)]))
+    _run_tasks_edit(make_edit_args([str(source)]))
 
     assert capsys.readouterr().out.strip() == "No changes."
     assert source.read_text(encoding="utf-8") == original_text

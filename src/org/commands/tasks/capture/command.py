@@ -32,9 +32,11 @@ def _is_interactive_terminal() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
-def capture_task(args: TasksCaptureArgs) -> TasksCaptureResult:
+def capture_task(
+    args: TasksCaptureArgs,
+    templates: dict[str, dict[str, str]],
+) -> TasksCaptureResult:
     """Capture one task from templates and return created heading metadata."""
-    templates = org.config.app.CONFIG_CAPTURE_TEMPLATES
     _require_templates(templates)
 
     interactive_used = False
@@ -59,7 +61,7 @@ def capture_task(args: TasksCaptureArgs) -> TasksCaptureResult:
             f"'{resolved_args.template_name}'. Valid templates: {valid_names}",
         )
 
-    plan = prepare_capture_plan(resolved_args, resolved_args.template_name)
+    plan = prepare_capture_plan(resolved_args, resolved_args.template_name, templates)
     if plan.unresolved_placeholders:
         if not interactive_terminal:
             raise _missing_placeholder_error(plan.unresolved_placeholders)
@@ -71,20 +73,21 @@ def capture_task(args: TasksCaptureArgs) -> TasksCaptureResult:
     return finalize_capture_plan(plan, plan.values, interactive_used=interactive_used)
 
 
-def run_tasks_capture(args: TasksCaptureArgs) -> None:
+def run_tasks_capture(args: TasksCaptureArgs, config: org.config.app.AppConfig) -> None:
     """Run tasks capture command using configured templates."""
     if args.template_name is None and not _is_interactive_terminal():
         raise click.UsageError(
             "org tasks capture requires a TTY unless TEMPLATE_NAME and all values are provided",
         )
 
-    result = capture_task(args)
+    result = capture_task(args, config.tasks.capture.templates)
     if not result.interactive_used:
         typer.echo(result.heading.id or result.heading.title_text)
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, config: org.config.app.AppConfig) -> None:
     """Register the tasks capture command."""
+    del config
 
     @app.command(
         "capture",
@@ -93,7 +96,8 @@ def register(app: typer.Typer) -> None:
             _CAPTURE_HELP_ENTRIES,
         ),
     )
-    def capture(
+    def capture(  # noqa: PLR0913
+        ctx: typer.Context,
         template_name: str | None = typer.Argument(
             None,
             metavar="TEMPLATE_NAME",
@@ -125,6 +129,7 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Create a task from a configured capture template."""
+        app_config = org.config.app.require_app_config(ctx)
         args = TasksCaptureArgs(
             template_name=template_name,
             config=config,
@@ -133,7 +138,7 @@ def register(app: typer.Typer) -> None:
             set_values=set_values,
         )
         org.logging.log_command_arguments(args, "tasks capture")
-        run_tasks_capture(args)
+        run_tasks_capture(args, app_config)
 
 
 __all__ = ["TasksCaptureArgs", "TasksCaptureResult", "register", "run_tasks_capture"]

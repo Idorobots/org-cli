@@ -77,10 +77,12 @@ def _compile_view_section_specs(view: org.config.app.AgendaViewConfig) -> list[A
     return section_specs
 
 
-def resolve_view_context(args: AgendaArgs) -> AgendaViewContext:
+def resolve_view_context(
+    args: AgendaArgs,
+    configured_views: dict[str, org.config.app.AgendaViewConfig],
+) -> AgendaViewContext:
     """Resolve configured or fallback view context for agenda rendering."""
     selected_view = args.view.strip() if args.view else None
-    configured_views = org.config.app.CONFIG_AGENDA_VIEWS
 
     if selected_view is None:
         view = _fallback_agenda_view()

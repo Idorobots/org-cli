@@ -22,6 +22,25 @@ poetry run org tasks query [OPTIONS] QUERY [FILE ...]
 
 When you use `--offset` or `--limit`, include `$offset` and `$limit` in the query expression.
 
+## Configuration
+
+Command-specific defaults live under `tasks.query` in `.org-cli.yaml`.
+
+All available options:
+
+```yaml
+tasks:
+  query:
+    max_results: 10
+    offset: 0
+    width: 80
+    out: org
+    out_theme: github-dark
+    pandoc_args: "--wrap=none"
+```
+
+Shared top-level config still applies for `mapping`, `exclude`, `todo_states`, `done_states`, and `color_flag`.
+
 ## Examples
 
 1) Fetch headings from all tasks

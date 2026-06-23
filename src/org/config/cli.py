@@ -5,14 +5,17 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import click
 
-import org.config.app
 from org.logic.time import parse_date_argument
 from org.logic.validation import parse_property_filter
 from org.query.runner import build_custom_stage
+
+
+if TYPE_CHECKING:
+    from org.config.app import AppConfig
 
 
 FILTER_OPTIONS_WITH_VALUE = {
@@ -112,23 +115,27 @@ def _query_uses_arg(query: str) -> bool:
     return bool(re.search(r"\$arg\b", query))
 
 
-def _resolve_custom_option(option: str) -> tuple[str, bool] | None:
+def _resolve_custom_option(config: AppConfig, option: str) -> tuple[str, bool] | None:
     """Resolve configured custom option to (query, requires_arg)."""
+    custom_filters = config.custom_filter_map()
+    custom_order_by = config.custom_order_by_map()
+    custom_with = config.custom_with_map()
+
     filter_name = _custom_option_name(option, "filter")
     if filter_name is not None:
-        query = org.config.app.CONFIG_CUSTOM_FILTERS.get(filter_name)
+        query = custom_filters.get(filter_name)
         if query is not None:
             return (query, _query_uses_arg(query))
 
     order_name = _custom_option_name(option, "order-by")
     if order_name is not None:
-        query = org.config.app.CONFIG_CUSTOM_ORDER_BY.get(order_name)
+        query = custom_order_by.get(order_name)
         if query is not None:
             return (query, _query_uses_arg(query))
 
     with_name = _custom_option_name(option, "with")
     if with_name is not None:
-        query = org.config.app.CONFIG_CUSTOM_WITH.get(with_name)
+        query = custom_with.get(with_name)
         if query is not None:
             return (query, _query_uses_arg(query))
 
@@ -140,7 +147,10 @@ def _required_custom_arg_error(option: str) -> click.BadParameter:
     return click.BadParameter(f"{option} requires exactly one argument")
 
 
-def normalize_cli_files_for_custom_switches(files: list[str] | None) -> list[str] | None:
+def normalize_cli_files_for_custom_switches(
+    config: AppConfig,
+    files: list[str] | None,
+) -> list[str] | None:
     """Remove configured custom switch tokens from FILE argument values."""
     if files is None:
         return None
@@ -150,7 +160,7 @@ def normalize_cli_files_for_custom_switches(files: list[str] | None) -> list[str
     while index < len(files):
         token = files[index]
         option = _extract_option_token(token)
-        custom_option = _resolve_custom_option(option)
+        custom_option = _resolve_custom_option(config, option)
         if custom_option is None:
             normalized.append(token)
             index += 1
@@ -234,17 +244,21 @@ def _build_custom_invocation(
     )
 
 
-def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) -> None:
+def validate_custom_switches(
+    config: AppConfig,
+    argv: list[str],
+    include_builtin_ordering: bool,
+) -> None:
     """Validate prefixed custom switches against configured/built-in options."""
     builtin_order_options = set(ORDER_BY_OPTION_TO_VALUE) if include_builtin_ordering else set()
     allowed_filter_options = FILTER_OPTIONS_WITH_VALUE.union(FILTER_OPTIONS_FLAGS).union(
-        {f"--filter-{name}" for name in org.config.app.CONFIG_CUSTOM_FILTERS},
+        {f"--filter-{name}" for name in config.custom_filter_map()},
     )
     allowed_order_options = builtin_order_options.union(
-        {f"--order-by-{name}" for name in org.config.app.CONFIG_CUSTOM_ORDER_BY},
+        {f"--order-by-{name}" for name in config.custom_order_by_map()},
     )
     allowed_with_options = WITH_OPTIONS_FLAGS.union(
-        {f"--with-{name}" for name in org.config.app.CONFIG_CUSTOM_WITH},
+        {f"--with-{name}" for name in config.custom_with_map()},
     )
 
     for index, token in enumerate(argv):
@@ -256,7 +270,7 @@ def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) ->
         if option.startswith("--with-") and option not in allowed_with_options:
             raise click.NoSuchOption(option)
 
-        custom_option = _resolve_custom_option(option)
+        custom_option = _resolve_custom_option(config, option)
         if custom_option is None:
             continue
 
@@ -273,8 +287,12 @@ def validate_custom_switches(argv: list[str], include_builtin_ordering: bool) ->
             raise _required_custom_arg_error(option)
 
 
-def parse_filter_entries_from_argv(argv: list[str]) -> list[str | CustomStageInvocation]:
+def parse_filter_entries_from_argv(
+    config: AppConfig,
+    argv: list[str],
+) -> list[str | CustomStageInvocation]:
     """Parse built-in and custom filter switch occurrences in argv order."""
+    custom_filters = config.custom_filter_map()
     entries: list[str | CustomStageInvocation] = []
     index = 0
     builtins = FILTER_OPTIONS_WITH_VALUE.union(FILTER_OPTIONS_FLAGS)
@@ -288,11 +306,11 @@ def parse_filter_entries_from_argv(argv: list[str]) -> list[str | CustomStageInv
             continue
 
         name = _custom_option_name(option, "filter")
-        if name is None or name not in org.config.app.CONFIG_CUSTOM_FILTERS or option in builtins:
+        if name is None or name not in custom_filters or option in builtins:
             index += 1
             continue
 
-        query = org.config.app.CONFIG_CUSTOM_FILTERS[name]
+        query = custom_filters[name]
         requires_arg = _query_uses_arg(query)
         if token.startswith(f"{option}="):
             entries.append(
@@ -314,10 +332,12 @@ def parse_filter_entries_from_argv(argv: list[str]) -> list[str | CustomStageInv
 
 
 def parse_order_entries_from_argv(
+    config: AppConfig,
     argv: list[str],
     include_builtin_ordering: bool,
 ) -> list[str | CustomStageInvocation]:
     """Parse built-in and custom ordering switch occurrences in argv order."""
+    custom_order_by = config.custom_order_by_map()
     entries: list[str | CustomStageInvocation] = []
     index = 0
     builtin_options = set(ORDER_BY_OPTION_TO_VALUE) if include_builtin_ordering else set()
@@ -332,15 +352,11 @@ def parse_order_entries_from_argv(
             continue
 
         name = _custom_option_name(option, "order-by")
-        if (
-            name is None
-            or name not in org.config.app.CONFIG_CUSTOM_ORDER_BY
-            or option in builtin_options
-        ):
+        if name is None or name not in custom_order_by or option in builtin_options:
             index += 1
             continue
 
-        query = org.config.app.CONFIG_CUSTOM_ORDER_BY[name]
+        query = custom_order_by[name]
         requires_arg = _query_uses_arg(query)
         if token.startswith(f"{option}="):
             entries.append(
@@ -361,8 +377,12 @@ def parse_order_entries_from_argv(
     return entries
 
 
-def parse_with_entries_from_argv(argv: list[str]) -> list[str | CustomStageInvocation]:
+def parse_with_entries_from_argv(
+    config: AppConfig,
+    argv: list[str],
+) -> list[str | CustomStageInvocation]:
     """Parse built-in and custom enrichment switch occurrences in argv order."""
+    custom_with = config.custom_with_map()
     entries: list[str | CustomStageInvocation] = []
     index = 0
     while index < len(argv):
@@ -374,11 +394,11 @@ def parse_with_entries_from_argv(argv: list[str]) -> list[str | CustomStageInvoc
             continue
 
         name = _custom_option_name(option, "with")
-        if name is None or name not in org.config.app.CONFIG_CUSTOM_WITH:
+        if name is None or name not in custom_with:
             index += 1
             continue
 
-        query = org.config.app.CONFIG_CUSTOM_WITH[name]
+        query = custom_with[name]
         requires_arg = _query_uses_arg(query)
         if token.startswith(f"{option}="):
             entries.append(
@@ -604,9 +624,14 @@ def _builtin_order_stages(value: str) -> list[str]:
     return order_stages.get(value, [])
 
 
-def build_order_stages(args: object, argv: list[str], include_builtin_ordering: bool) -> list[str]:
+def build_order_stages(
+    config: AppConfig,
+    args: object,
+    argv: list[str],
+    include_builtin_ordering: bool,
+) -> list[str]:
     """Build query stages for ordering pipeline."""
-    order_entries = parse_order_entries_from_argv(argv, include_builtin_ordering)
+    order_entries = parse_order_entries_from_argv(config, argv, include_builtin_ordering)
     order_values: list[str | CustomStageInvocation]
     if include_builtin_ordering:
         builtin_order_values = [entry for entry in order_entries if isinstance(entry, str)]
@@ -638,9 +663,9 @@ def build_order_stages(args: object, argv: list[str], include_builtin_ordering: 
     return order_stages
 
 
-def build_with_stages(args: WithArgs, argv: list[str]) -> list[str]:
+def build_with_stages(config: AppConfig, args: WithArgs, argv: list[str]) -> list[str]:
     """Build query stages for built-in and custom enrichment pipeline."""
-    entries = parse_with_entries_from_argv(argv)
+    entries = parse_with_entries_from_argv(config, argv)
     entries = extend_with_entries_with_defaults(entries, args)
     stages: list[str] = []
     for entry in entries:
@@ -663,15 +688,19 @@ def collect_custom_context_vars(
 
 
 def build_pipeline_stages(
+    config: AppConfig,
     args: QueryBuildArgs,
     argv: list[str],
     include_ordering: bool,
 ) -> list[str]:
     """Build the ordered query pipeline stages for CLI/config state."""
-    validate_custom_switches(argv, include_ordering)
-    filter_order = extend_filter_order_with_defaults(parse_filter_entries_from_argv(argv), args)
+    validate_custom_switches(config, argv, include_ordering)
+    filter_order = extend_filter_order_with_defaults(
+        parse_filter_entries_from_argv(config, argv),
+        args,
+    )
     filter_stages = build_filter_stages(args, filter_order)
-    with_stages = build_with_stages(args, argv)
+    with_stages = build_with_stages(config, args, argv)
     stages = [*with_stages, *filter_stages]
-    stages.extend(build_order_stages(args, argv, include_builtin_ordering=include_ordering))
+    stages.extend(build_order_stages(config, args, argv, include_builtin_ordering=include_ordering))
     return stages

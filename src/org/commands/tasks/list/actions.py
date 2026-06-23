@@ -35,6 +35,8 @@ from org.tui.help import InteractiveHelpEntry
 if TYPE_CHECKING:
     from org_parser.document import Document, Heading
 
+    from org.config.app import AppConfig
+
     from .command import ListArgs, _TasksListSessionData
 
 
@@ -55,6 +57,7 @@ class TasksListSession:
     scroll_offset: int
     status_message: str
     search_text: str
+    app_config: AppConfig
 
 
 TASKS_LIST_HELP_ENTRIES = [
@@ -144,7 +147,7 @@ def reload_session_nodes(
 ) -> bool:
     """Reload session nodes via standard processing pipeline."""
     try:
-        nodes, todo_states, done_states = load_and_process_data(session.args)
+        nodes, todo_states, done_states = load_and_process_data(session.args, session.app_config)
     except typer.BadParameter as err:
         session.status_message = str(err)
         return False
@@ -232,7 +235,7 @@ def apply_capture_task(session: TasksListSession, template_name: str) -> None:
         set_values=None,
     )
     try:
-        capture_result = capture_task(capture_args)
+        capture_result = capture_task(capture_args, session.app_config.tasks.capture.templates)
     except KeyboardInterrupt:
         session.status_message = "Capture cancelled"
         return
@@ -391,7 +394,11 @@ def move_selection(session: TasksListSession, step: int) -> None:
     session.selected_index = (session.selected_index + step) % len(session.visible_nodes)
 
 
-def create_tasks_list_session(args: ListArgs, data: _TasksListSessionData) -> TasksListSession:
+def create_tasks_list_session(
+    args: ListArgs,
+    config: AppConfig,
+    data: _TasksListSessionData,
+) -> TasksListSession:
     """Create interactive tasks list session state."""
     session = TasksListSession(
         args=args,
@@ -404,6 +411,7 @@ def create_tasks_list_session(args: ListArgs, data: _TasksListSessionData) -> Ta
         scroll_offset=0,
         status_message="",
         search_text="",
+        app_config=config,
     )
     ensure_selection_bounds(session)
     return session

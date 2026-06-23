@@ -17,6 +17,25 @@ poetry run org stats all [OPTIONS] [FILE ...]
 - `--max-relations` - Limit relation entries per item.
 - `--with-tags-as-category` - Derive category from first tag.
 
+## Configuration
+
+Command-specific defaults live under `stats.all` in `.org-cli.yaml`.
+
+All available options:
+
+```yaml
+stats:
+  all:
+    max_results: 10
+    max_tags: 5
+    max_relations: 5
+    min_group_size: 2
+    max_groups: 5
+    use: tags
+```
+
+Shared top-level config still applies for filters, `with_tags_as_category`, `mapping`, `exclude`, `todo_states`, `done_states`, and `color_flag`.
+
 ## Available filters
 
 - `--filter-priority P` - Keep only tasks with priority equal to `P`.

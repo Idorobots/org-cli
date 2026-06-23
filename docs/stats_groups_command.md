@@ -15,6 +15,25 @@ poetry run org stats groups [OPTIONS] [FILE ...]
 - `--max-relations` - Controls relation depth when auto-discovering groups.
 - `--use tags|heading|body` - Choose analysis source.
 
+## Configuration
+
+Command-specific defaults live under `stats.groups` in `.org-cli.yaml`.
+
+All available options:
+
+```yaml
+stats:
+  groups:
+    max_results: 10
+    max_relations: 5
+    use: tags
+    groups:
+      - Debugging,Erlang
+      - ProjectManagement,Jira
+```
+
+Shared top-level config still applies for filters, `with_tags_as_category`, `mapping`, `exclude`, `todo_states`, `done_states`, and `color_flag`.
+
 ## Available filters
 
 - `--filter-priority P` - Keep only tasks with priority equal to `P`.

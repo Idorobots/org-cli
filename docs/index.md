@@ -11,15 +11,18 @@
 - `org stats tags` - Focused stats for selected/top tags. See [stats_tags_command.md](stats_tags_command.md).
 - `org stats groups` - Stats for explicit or discovered tag groups. See [stats_groups_command.md](stats_groups_command.md).
 - `org tasks list` - Short or detailed task listing with ordering. See [tasks_list_command.md](tasks_list_command.md).
+- `org tasks find` - Find tasks by selectors and full-text search. See [tasks_find_command.md](tasks_find_command.md).
 - `org board` - Interactive workflow board view of active tasks. See [board_command.md](board_command.md).
 - `org tasks add` - Create new task headings in Org files. See [tasks_add_command.md](tasks_add_command.md).
+- `org tasks archive` - Archive matched task subtrees. See [tasks_archive_command.md](tasks_archive_command.md).
+- `org tasks edit` - Edit one matched task subtree in an external editor. See [tasks_edit_command.md](tasks_edit_command.md).
 - `org tasks remove` - Delete one task heading and its subtree from Org files. See [tasks_remove_command.md](tasks_remove_command.md).
 - `org tasks update` - Update one matched task heading in Org files. See [tasks_update_command.md](tasks_update_command.md).
 - `org tasks capture` - Create tasks from named config templates. See [tasks_capture_command.md](tasks_capture_command.md).
 
 For query syntax details, use [query_language.md](query_language.md).
 
-## Configuration and Defaults
+## Configuration
 
 - Default config file: `.org-cli.yaml` in the current directory.
 - Override config file: `--config FILE`.
@@ -28,15 +31,16 @@ For query syntax details, use [query_language.md](query_language.md).
 
 ### Config file layout
 
-Config uses seven top-level sections:
+Config uses shared top-level keys plus structured command sections:
 
-- `defaults`: built-in option defaults (for example `--done-states`, `--limit`, `--filter-priority`, `--order-by-priority`).
+- Shared top-level keys: `mapping`, `exclude`, `todo_states`, `done_states`, shared filters, shared ordering flags, `color_flag`, `verbose`, and `with_tags_as_category`.
 - `filter`: custom `--filter-<name>` query snippets.
 - `order-by`: custom `--order-by-<name>` query snippets.
 - `with`: custom `--with-<name>` query snippets.
-- `capture`: named capture templates under `capture.templates`.
-- `agenda`: named agenda views under `agenda.views` with filter-based sections.
-- `board`: named board views under `board.views` with filter-based columns.
+- `tasks`: tasks subcommand defaults such as `tasks.capture.templates`, `tasks.list`, `tasks.query`, and `tasks.find`.
+- `stats`: stats subcommand defaults such as `stats.all`, `stats.summary`, `stats.tags`, and `stats.groups`.
+- `agenda`: agenda defaults and named views under `agenda.views`.
+- `board`: board defaults and named views under `board.views`.
 
 Custom switch argument handling:
 
@@ -46,12 +50,41 @@ Custom switch argument handling:
 Example:
 
 ```yaml
-defaults:
-  --done-states: DONE,CANCELLED,DELEGATED
-  --limit: 10
-  --mapping: examples/mapping_example.json
-  --exclude: examples/exclude_example.txt
-  --filter-priority: A
+done_states: DONE,CANCELLED,DELEGATED
+mapping: examples/mapping_example.json
+exclude: examples/exclude_example.txt
+filter_priority: A
+stats:
+  all:
+    max_results: 10
+    max_relations: 5
+    use: tags
+    max_tags: 5
+    min_group_size: 2
+    max_groups: 5
+  summary:
+    max_results: 10
+  tags:
+    max_results: 10
+    max_relations: 5
+    use: tags
+    tags:
+      - Work
+  groups:
+    max_results: 10
+    max_relations: 5
+    use: tags
+    groups:
+      - Debugging,Erlang
+tasks:
+  capture:
+    templates:
+      quick:
+        file: tasks.org
+        content: "* TODO {{title}}"
+  list:
+    max_results: 10
+    out_theme: github-dark
 filter:
   level-above: select(.level > $arg)
   has-todo: select(.todo != null)
@@ -61,7 +94,11 @@ with:
   priority-value: .properties.priority_value = .priority
 ```
 
+For exhaustive per-command config examples, see each command page's `Configuration` section.
+
 Most analysis commands accept many `--filter-*` switches. Ordering controls are available on `org tasks list` and `org board` via built-in `--order-by-*` switches.
+
+Config defaults use the current structured layout: shared options live at the top level, while command-specific defaults live under sections such as `tasks`, `stats`, `agenda`, and `board`.
 
 Built-in argument defaults:
 
@@ -73,12 +110,13 @@ Built-in argument defaults:
 - Tasks list/board built-in ordering: `--order-by-priority`, `--order-by-level`, `--order-by-file-order`, `--order-by-file-order-reversed`, `--order-by-timestamp-asc`, `--order-by-timestamp-desc`.
 - Tasks list default ordering remains timestamp-desc (same as `--order-by-timestamp-desc`).
 
-Repository-local defaults may override built-ins. In this repository, `.org-cli.yaml` sets:
+Repository-local config may override built-ins. In this repository, `.org-cli.yaml` sets:
 
-- `--done-states DONE,CANCELLED,DELEGATED`
-- `--limit 10`
-- `--mapping examples/mapping_example.json`
-- `--exclude examples/exclude_example.txt`
+- `done_states: DONE,CANCELLED`
+- `todo_states: TODO,SUSPENDED`
+- `mapping: examples/mapping_example.json`
+- `exclude: examples/exclude_example.txt`
+- `board.view: default`
 
 Common date formats for date filters:
 

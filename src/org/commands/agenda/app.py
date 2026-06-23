@@ -10,15 +10,13 @@ from textual.binding import Binding, BindingType
 from textual.containers import Vertical
 from textual.widgets import Static
 
+import org.config.app
 import org.tui.app
 import org.tui.footer
 import org.tui.help
 import org.tui.prompt
 import org.tui.selection
-from org.commands.tasks.common import (
-    clock_duration_prompt_label,
-    configured_capture_template_names,
-)
+from org.commands.tasks.common import clock_duration_prompt_label
 from org.pipeline.load import resolve_input_paths
 
 from . import actions, ui
@@ -396,7 +394,7 @@ class AgendaApp(org.tui.app.CommandApp):
             self._refresh_view()
             return
 
-        template_names = configured_capture_template_names()
+        template_names = sorted(self.session.app_config.tasks.capture.templates)
 
         self._open_selection(
             "Capture template",
@@ -469,10 +467,11 @@ class AgendaApp(org.tui.app.CommandApp):
 
 def run_agenda_app(
     args: AgendaArgs,
+    config: org.config.app.AppConfig,
     nodes: list[Heading],
     render: ui.RenderContext,
     view_ctx: AgendaViewContext,
 ) -> None:
     """Run the Textual-backed interactive agenda app."""
-    session = create_agenda_session(args, nodes, render, view_ctx)
+    session = create_agenda_session(args, config, nodes, render, view_ctx)
     AgendaApp(session).run()

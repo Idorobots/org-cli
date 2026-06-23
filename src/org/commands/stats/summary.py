@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -218,13 +217,13 @@ def format_tasks_summary(
     return lines_to_text(apply_indent(lines, indent))
 
 
-def run_stats_summary(args: SummaryArgs) -> None:
+def run_stats_summary(args: SummaryArgs, config: org.config.app.AppConfig) -> None:
     """Run the stats summary command."""
     color_enabled = setup_output(args)
     console = build_console(color_enabled, args.width)
     _validate_summary_arguments(args)
     with processing_status(console, color_enabled):
-        nodes, todo_states, done_states = load_and_process_data(args)
+        nodes, todo_states, done_states = load_and_process_data(args, config)
 
         if not nodes:
             output = None
@@ -271,7 +270,7 @@ def run_stats_summary(args: SummaryArgs) -> None:
         print_output(console, output, color_enabled, end="")
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
     """Register the stats summary command."""
 
     @app.command(
@@ -279,6 +278,7 @@ def register(app: typer.Typer) -> None:
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
     )
     def stats_summary(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -291,55 +291,55 @@ def register(app: typer.Typer) -> None:
             help="Config file name to load from current directory",
         ),
         exclude: str | None = typer.Option(
-            None,
+            app_config.exclude,
             "--exclude",
             metavar="FILE",
             help="File containing words to exclude (one per line)",
         ),
         mapping: str | None = typer.Option(
-            None,
+            app_config.mapping,
             "--mapping",
             metavar="FILE",
             help="JSON file containing tag mappings (dict[str, str])",
         ),
         todo_states: str = typer.Option(
-            "TODO",
+            ",".join(app_config.todo_states),
             "--todo-states",
             metavar="KEYS",
             help="Comma-separated list of incomplete task states",
         ),
         done_states: str = typer.Option(
-            "DONE",
+            ",".join(app_config.done_states),
             "--done-states",
             metavar="KEYS",
             help="Comma-separated list of completed task states",
         ),
         filter_priority: str | None = typer.Option(
-            None,
+            app_config.filter_priority,
             "--filter-priority",
             metavar="P",
             help="Filter tasks where priority equals P",
         ),
         filter_level: int | None = typer.Option(
-            None,
+            app_config.filter_level,
             "--filter-level",
             metavar="N",
             help="Filter tasks where heading level equals N",
         ),
         filter_repeats_above: int | None = typer.Option(
-            None,
+            app_config.filter_repeats_above,
             "--filter-repeats-above",
             metavar="N",
             help="Filter tasks where repeat count > N (non-inclusive)",
         ),
         filter_repeats_below: int | None = typer.Option(
-            None,
+            app_config.filter_repeats_below,
             "--filter-repeats-below",
             metavar="N",
             help="Filter tasks where repeat count < N (non-inclusive)",
         ),
         filter_date_from: str | None = typer.Option(
-            None,
+            app_config.filter_date_from,
             "--filter-date-from",
             metavar="TIMESTAMP",
             help=(
@@ -349,7 +349,7 @@ def register(app: typer.Typer) -> None:
             ),
         ),
         filter_date_until: str | None = typer.Option(
-            None,
+            app_config.filter_date_until,
             "--filter-date-until",
             metavar="TIMESTAMP",
             help=(
@@ -359,25 +359,25 @@ def register(app: typer.Typer) -> None:
             ),
         ),
         filter_properties: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_properties,
             "--filter-property",
             metavar="KEY=VALUE",
             help="Filter tasks with exact property match (case-sensitive, can specify multiple)",
         ),
         filter_tags: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_tags,
             "--filter-tag",
             metavar="REGEX",
             help="Filter tasks where any tag matches regex (case-sensitive, can specify multiple)",
         ),
         filter_headings: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_headings,
             "--filter-heading",
             metavar="REGEX",
             help="Filter tasks where heading matches regex (case-sensitive, can specify multiple)",
         ),
         filter_bodies: list[str] | None = typer.Option(  # noqa: B008
-            None,
+            app_config.filter_bodies,
             "--filter-body",
             metavar="REGEX",
             help=(
@@ -386,17 +386,17 @@ def register(app: typer.Typer) -> None:
             ),
         ),
         filter_completed: bool = typer.Option(
-            False,
+            app_config.filter_completed,
             "--filter-completed",
             help="Filter tasks with todo state in done keys",
         ),
         filter_not_completed: bool = typer.Option(
-            False,
+            app_config.filter_not_completed,
             "--filter-not-completed",
             help="Filter tasks with todo state in todo keys or without a todo state",
         ),
         color_flag: bool | None = typer.Option(
-            None,
+            app_config.color_flag,
             "--color/--no-color",
             help="Force colored output",
         ),
@@ -408,26 +408,29 @@ def register(app: typer.Typer) -> None:
             help="Override auto-derived console width (minimum: 50)",
         ),
         max_results: int | None = typer.Option(
-            10,
+            10
+            if app_config.stats.summary.max_results is None
+            else app_config.stats.summary.max_results,
             "--limit",
             "-n",
             metavar="N",
             help="Maximum number of results to display",
         ),
         with_tags_as_category: bool = typer.Option(
-            False,
+            app_config.with_tags_as_category,
             "--with-tags-as-category",
             help="Preprocess nodes to set category from first tag",
         ),
     ) -> None:
         """Show overall task stats without tag sections."""
+        app_config = org.config.app.require_app_config(ctx)
         args = SummaryArgs(
             files=files,
             config=config,
             exclude=exclude,
             mapping=mapping,
-            mapping_inline=None,
-            exclude_inline=None,
+            mapping_inline=app_config.mapping_inline,
+            exclude_inline=app_config.exclude_inline,
             todo_states=todo_states,
             done_states=done_states,
             filter_priority=filter_priority,
@@ -447,7 +450,6 @@ def register(app: typer.Typer) -> None:
             max_results=max_results,
             with_tags_as_category=with_tags_as_category,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "stats summary")
+        org.logging.log_command_config(app_config, "stats summary")
         org.logging.log_command_arguments(args, "stats summary")
-        run_stats_summary(args)
+        run_stats_summary(args, app_config)

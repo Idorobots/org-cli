@@ -9,7 +9,13 @@ import pytest
 import typer
 from org_parser.document import Heading
 
+import org.config.app
 from org.commands.tasks import update as tasks_update
+
+
+def _run_tasks_update(args: tasks_update.UpdateArgs) -> None:
+    """Run tasks update with a default app config for direct tests."""
+    tasks_update.run_tasks_update(args, org.config.app.AppConfig(config_path=".org-cli.yaml"))
 
 
 if TYPE_CHECKING:
@@ -62,7 +68,7 @@ def test_run_tasks_update_updates_title_by_id(tmp_path: Path) -> None:
     source.write_text("* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n", encoding="utf-8")
     args = make_update_args([str(source)], title="Updated title")
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = next(iter(root))
@@ -81,7 +87,7 @@ def test_run_tasks_update_updates_todo_and_closed_by_title(tmp_path: Path) -> No
         closed="<2026-04-13>",
     )
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = next(iter(root))
@@ -101,7 +107,7 @@ def test_run_tasks_update_selects_query_title_with_escaped_characters(tmp_path: 
         title="Updated",
     )
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     titles = [node.title_text.strip() for node in list(root)]
@@ -114,12 +120,12 @@ def test_run_tasks_update_requires_exactly_one_identifier(tmp_path: Path) -> Non
     source.write_text("* TODO Keep\n", encoding="utf-8")
 
     with pytest.raises(typer.BadParameter, match="exactly one task selector"):
-        tasks_update.run_tasks_update(
+        _run_tasks_update(
             make_update_args([str(source)], query_id=None, query_title=None),
         )
 
     with pytest.raises(typer.BadParameter, match="exactly one task selector"):
-        tasks_update.run_tasks_update(
+        _run_tasks_update(
             make_update_args([str(source)], query_id="task-1", query_title="Keep"),
         )
 
@@ -135,7 +141,7 @@ def test_run_tasks_update_supports_generic_query_selector(tmp_path: Path) -> Non
         title="Updated",
     )
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = next(iter(root))
@@ -148,7 +154,7 @@ def test_run_tasks_update_rejects_query_with_other_selectors(tmp_path: Path) -> 
     source.write_text("* TODO Foo\n", encoding="utf-8")
 
     with pytest.raises(typer.BadParameter, match="exactly one task selector"):
-        tasks_update.run_tasks_update(
+        _run_tasks_update(
             make_update_args(
                 [str(source)],
                 query='str(.title_text) == "Foo"',
@@ -176,7 +182,7 @@ def test_run_tasks_update_cancels_when_confirmation_declined(
 
     monkeypatch.setattr("rich.prompt.Confirm.ask", _decline_confirmation)
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     updated = source.read_text(encoding="utf-8")
     assert "* TODO Foo" in updated
@@ -188,7 +194,7 @@ def test_run_tasks_update_applies_to_all_matching_tasks(tmp_path: Path) -> None:
     source.write_text("* TODO Same\n* TODO Same\n* TODO Tail\n", encoding="utf-8")
     args = make_update_args([str(source)], query_id=None, query_title="Same", title="Updated")
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     titles = [node.title_text.strip() for node in list(root)]
@@ -226,7 +232,7 @@ def test_run_tasks_update_clears_supported_fields_with_empty_string(tmp_path: Pa
         properties="",
     )
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = next(iter(root))
@@ -250,7 +256,7 @@ def test_run_tasks_update_rejects_invalid_comment_value(tmp_path: Path) -> None:
     args = make_update_args([str(source)], comment="yes")
 
     with pytest.raises(typer.BadParameter, match="--comment must be either"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_moves_to_parent_with_explicit_consistent_level(tmp_path: Path) -> None:
@@ -268,7 +274,7 @@ def test_run_tasks_update_moves_to_parent_with_explicit_consistent_level(tmp_pat
         level=3,
     )
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     nodes = list(root)
@@ -286,7 +292,7 @@ def test_run_tasks_update_moves_to_top_level_when_parent_is_empty_string(tmp_pat
     source.write_text("* TODO Parent\n** TODO Child\n", encoding="utf-8")
     args = make_update_args([str(source)], query_id=None, query_title="Child", parent="")
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     nodes = list(root)
@@ -301,7 +307,7 @@ def test_run_tasks_update_allows_explicit_top_level_level_above_one(tmp_path: Pa
     source.write_text("** TODO Task\n", encoding="utf-8")
     args = make_update_args([str(source)], query_id=None, query_title="Task", level=3)
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     task = next(iter(root))
@@ -316,7 +322,7 @@ def test_run_tasks_update_rejects_parent_descendant_loop(tmp_path: Path) -> None
     args = make_update_args([str(source)], query_id=None, query_title="A", parent="C")
 
     with pytest.raises(typer.BadParameter, match="descendant"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_moves_heading_to_another_file(tmp_path: Path) -> None:
@@ -330,7 +336,7 @@ def test_run_tasks_update_moves_heading_to_another_file(tmp_path: Path) -> None:
     destination.write_text("* TODO Existing\n", encoding="utf-8")
     args = make_update_args([str(source), str(destination)], file=str(destination))
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     source_root = org_parser.loads(source.read_text(encoding="utf-8"))
     destination_root = org_parser.loads(destination.read_text(encoding="utf-8"))
@@ -357,7 +363,7 @@ def test_run_tasks_update_moves_heading_to_destination_parent(tmp_path: Path) ->
         parent="parent-1",
     )
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     destination_root = org_parser.loads(destination.read_text(encoding="utf-8"))
     destination_nodes = list(destination_root)
@@ -377,7 +383,7 @@ def test_run_tasks_update_rejects_file_target_when_missing(tmp_path: Path) -> No
     args = make_update_args([str(source)], file=str(tmp_path / "missing.org"))
 
     with pytest.raises(typer.BadParameter, match="not found"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_rejects_file_target_when_not_file(tmp_path: Path) -> None:
@@ -390,7 +396,7 @@ def test_run_tasks_update_rejects_file_target_when_not_file(tmp_path: Path) -> N
     args = make_update_args([str(source)], file=str(tmp_path))
 
     with pytest.raises(typer.BadParameter, match="not a file"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_applies_json_properties_object(tmp_path: Path) -> None:
@@ -399,7 +405,7 @@ def test_run_tasks_update_applies_json_properties_object(tmp_path: Path) -> None
     source.write_text("* TODO Keep\n:PROPERTIES:\n:ID: task-1\n:END:\n", encoding="utf-8")
     args = make_update_args([str(source)], properties='{"A":"1","B":"two"}')
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = next(iter(root))
@@ -413,7 +419,7 @@ def test_run_tasks_update_rejects_non_object_properties_json(tmp_path: Path) -> 
     args = make_update_args([str(source)], properties='["x"]')
 
     with pytest.raises(typer.BadParameter, match="JSON object"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_applies_fine_grained_tag_updates(tmp_path: Path) -> None:
@@ -425,7 +431,7 @@ def test_run_tasks_update_applies_fine_grained_tag_updates(tmp_path: Path) -> No
     )
     args = make_update_args([str(source)], add_tag=["b"], remove_tag=["a"])
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = next(iter(root))
@@ -442,7 +448,7 @@ def test_run_tasks_update_rejects_remove_tag_when_target_missing(tmp_path: Path)
     args = make_update_args([str(source)], remove_tag=["missing"])
 
     with pytest.raises(typer.BadParameter, match="--remove-tag target"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_applies_fine_grained_property_updates(tmp_path: Path) -> None:
@@ -458,7 +464,7 @@ def test_run_tasks_update_applies_fine_grained_property_updates(tmp_path: Path) 
         remove_property=["OLD"],
     )
 
-    tasks_update.run_tasks_update(args)
+    _run_tasks_update(args)
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = next(iter(root))
@@ -475,7 +481,7 @@ def test_run_tasks_update_rejects_remove_property_when_target_missing(tmp_path: 
     args = make_update_args([str(source)], remove_property=["MISSING"])
 
     with pytest.raises(typer.BadParameter, match="--remove-property target"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_rejects_add_property_without_separator(tmp_path: Path) -> None:
@@ -488,7 +494,7 @@ def test_run_tasks_update_rejects_add_property_without_separator(tmp_path: Path)
     args = make_update_args([str(source)], add_property=["NOPE"])
 
     with pytest.raises(typer.BadParameter, match="--add-property must be in KEY=VALUE"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_applies_fine_grained_clock_entry_updates(tmp_path: Path) -> None:
@@ -500,13 +506,13 @@ def test_run_tasks_update_applies_fine_grained_clock_entry_updates(tmp_path: Pat
     )
     clock_entry = "CLOCK: [2026-04-14 Tue 09:00]--[2026-04-14 Tue 10:00] =>  1:00"
 
-    tasks_update.run_tasks_update(make_update_args([str(source)], add_clock_entry=[clock_entry]))
+    _run_tasks_update(make_update_args([str(source)], add_clock_entry=[clock_entry]))
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = next(iter(root))
     assert len(node.clock_entries) == 1
 
-    tasks_update.run_tasks_update(make_update_args([str(source)], remove_clock_entry=[clock_entry]))
+    _run_tasks_update(make_update_args([str(source)], remove_clock_entry=[clock_entry]))
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = next(iter(root))
@@ -524,7 +530,7 @@ def test_run_tasks_update_rejects_remove_clock_entry_when_target_missing(tmp_pat
     args = make_update_args([str(source)], remove_clock_entry=[clock_entry])
 
     with pytest.raises(typer.BadParameter, match="--remove-clock-entry target"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_rejects_invalid_clock_entry_string(tmp_path: Path) -> None:
@@ -537,7 +543,7 @@ def test_run_tasks_update_rejects_invalid_clock_entry_string(tmp_path: Path) -> 
     args = make_update_args([str(source)], add_clock_entry=["[2026-04-14 Tue 09:00]"])
 
     with pytest.raises(typer.BadParameter, match="valid Org clock entry"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_applies_fine_grained_repeat_updates(tmp_path: Path) -> None:
@@ -549,7 +555,7 @@ def test_run_tasks_update_applies_fine_grained_repeat_updates(tmp_path: Path) ->
     )
     repeat = '- State "DONE" from "TODO" [2026-04-14 Tue 09:00]'
 
-    tasks_update.run_tasks_update(make_update_args([str(source)], add_repeat=[repeat]))
+    _run_tasks_update(make_update_args([str(source)], add_repeat=[repeat]))
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = next(iter(root))
@@ -557,7 +563,7 @@ def test_run_tasks_update_applies_fine_grained_repeat_updates(tmp_path: Path) ->
     assert node.repeats[0].before == "TODO"
     assert node.repeats[0].after == "DONE"
 
-    tasks_update.run_tasks_update(make_update_args([str(source)], remove_repeat=[repeat]))
+    _run_tasks_update(make_update_args([str(source)], remove_repeat=[repeat]))
 
     root = org_parser.loads(source.read_text(encoding="utf-8"))
     node = next(iter(root))
@@ -575,7 +581,7 @@ def test_run_tasks_update_rejects_remove_repeat_when_target_missing(tmp_path: Pa
     args = make_update_args([str(source)], remove_repeat=[repeat])
 
     with pytest.raises(typer.BadParameter, match="--remove-repeat target"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_rejects_invalid_repeat_string(tmp_path: Path) -> None:
@@ -588,7 +594,7 @@ def test_run_tasks_update_rejects_invalid_repeat_string(tmp_path: Path) -> None:
     args = make_update_args([str(source)], add_repeat=["- [ ] not-a-repeat"])
 
     with pytest.raises(typer.BadParameter, match="valid Org repeat entry"):
-        tasks_update.run_tasks_update(args)
+        _run_tasks_update(args)
 
 
 def test_run_tasks_update_rejects_mixed_bulk_and_fine_grained_tag_updates(tmp_path: Path) -> None:
@@ -600,7 +606,7 @@ def test_run_tasks_update_rejects_mixed_bulk_and_fine_grained_tag_updates(tmp_pa
     )
 
     with pytest.raises(typer.BadParameter, match="--tags cannot be combined"):
-        tasks_update.run_tasks_update(make_update_args([str(source)], tags="a", add_tag=["b"]))
+        _run_tasks_update(make_update_args([str(source)], tags="a", add_tag=["b"]))
 
 
 def test_run_tasks_update_rejects_mixed_bulk_and_fine_grained_properties(tmp_path: Path) -> None:
@@ -612,6 +618,6 @@ def test_run_tasks_update_rejects_mixed_bulk_and_fine_grained_properties(tmp_pat
     )
 
     with pytest.raises(typer.BadParameter, match="--properties cannot be combined"):
-        tasks_update.run_tasks_update(
+        _run_tasks_update(
             make_update_args([str(source)], properties='{"A":"1"}', add_property=["B=2"]),
         )

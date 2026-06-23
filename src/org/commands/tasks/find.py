@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from dataclasses import dataclass
 from typing import cast
 
@@ -126,8 +125,9 @@ def _nodes_with_context(nodes: list[Heading], include_context: int) -> list[Head
     return ordered_nodes
 
 
-def run_tasks_find(args: TasksFindArgs) -> None:
+def run_tasks_find(args: TasksFindArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks find command."""
+    del config
     if args.include_context < 0:
         raise typer.BadParameter("--include-context must be non-negative")
 
@@ -167,11 +167,12 @@ def run_tasks_find(args: TasksFindArgs) -> None:
     print_prepared_output(console, prepared_output)
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:
     """Register the tasks find command."""
 
     @app.command("find")
     def find_command(  # noqa: PLR0913
+        ctx: typer.Context,
         files: list[str] | None = typer.Argument(  # noqa: B008
             None,
             metavar="FILE",
@@ -184,25 +185,25 @@ def register(app: typer.Typer) -> None:
             help="Config file name to load from current directory",
         ),
         exclude: str | None = typer.Option(
-            None,
+            app_config.exclude,
             "--exclude",
             metavar="FILE",
             help="File containing words to exclude (one per line)",
         ),
         mapping: str | None = typer.Option(
-            None,
+            app_config.mapping,
             "--mapping",
             metavar="FILE",
             help="JSON file containing tag mappings (dict[str, str])",
         ),
         todo_states: str = typer.Option(
-            "TODO",
+            ",".join(app_config.todo_states),
             "--todo-states",
             metavar="KEYS",
             help="Comma-separated list of incomplete task states",
         ),
         done_states: str = typer.Option(
-            "DONE",
+            ",".join(app_config.done_states),
             "--done-states",
             metavar="KEYS",
             help="Comma-separated list of completed task states",
@@ -244,13 +245,15 @@ def register(app: typer.Typer) -> None:
             ),
         ),
         include_context: int = typer.Option(
-            0,
+            0
+            if app_config.tasks.find.include_context is None
+            else app_config.tasks.find.include_context,
             "--include-context",
             metavar="N",
             help="Include up to N parent levels for each matched task",
         ),
         color_flag: bool | None = typer.Option(
-            None,
+            app_config.color_flag,
             "--color/--no-color",
             help="Force colored output",
         ),
@@ -262,30 +265,33 @@ def register(app: typer.Typer) -> None:
             help="Override auto-derived console width (minimum: 50)",
         ),
         out: str = typer.Option(
-            OutputFormat.ORG,
+            OutputFormat.ORG if app_config.tasks.find.out is None else app_config.tasks.find.out,
             "--out",
             help="Output format: org, json, or any pandoc writer format",
         ),
         out_theme: str = typer.Option(
-            DEFAULT_OUTPUT_THEME,
+            DEFAULT_OUTPUT_THEME
+            if app_config.tasks.find.out_theme is None
+            else app_config.tasks.find.out_theme,
             "--out-theme",
             help="Syntax theme for highlighted output blocks",
         ),
         pandoc_args: str | None = typer.Option(
-            None,
+            app_config.tasks.find.pandoc_args,
             "--pandoc-args",
             metavar="ARGS",
             help="Additional arguments forwarded to pandoc export",
         ),
     ) -> None:
         """Find tasks by selectors and full-text search."""
+        app_config = org.config.app.require_app_config(ctx)
         args = TasksFindArgs(
             files=files,
             config=config,
             exclude=exclude,
             mapping=mapping,
-            mapping_inline=None,
-            exclude_inline=None,
+            mapping_inline=app_config.mapping_inline,
+            exclude_inline=app_config.exclude_inline,
             todo_states=todo_states,
             done_states=done_states,
             query_title=query_title,
@@ -300,7 +306,6 @@ def register(app: typer.Typer) -> None:
             out_theme=out_theme,
             pandoc_args=pandoc_args,
         )
-        org.config.app.apply_config_defaults(args)
-        org.logging.log_applied_config_defaults(args, sys.argv[1:], "tasks find")
+        org.logging.log_command_config(app_config, "tasks find")
         org.logging.log_command_arguments(args, "tasks find")
-        run_tasks_find(args)
+        run_tasks_find(args, app_config)

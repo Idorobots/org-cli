@@ -46,6 +46,25 @@ Interactive keys:
 - `--out-theme` - Pygments syntax-highlighting theme for renderable output formats (default: `github-dark`).
 - `--pandoc-args` - Extra arguments forwarded to Pandoc during conversion.
 
+## Configuration
+
+Command-specific defaults live under `tasks.list` in `.org-cli.yaml`.
+
+All available options:
+
+```yaml
+tasks:
+  list:
+    max_results: 10
+    details: false
+    out: org
+    out_theme: github-dark
+    pandoc_args: "--wrap=none"
+```
+
+Shared top-level config still applies for filters, ordering flags, `with_tags_as_category`,
+`mapping`, `exclude`, `todo_states`, `done_states`, and `color_flag`.
+
 ## Available filters
 
 - `--filter-priority P` - Keep only tasks with priority equal to `P`.

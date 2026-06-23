@@ -12,6 +12,20 @@ poetry run org stats summary [OPTIONS] [FILE ...]
 
 - `--with-tags-as-category` - Derive category from first tag.
 
+## Configuration
+
+Command-specific defaults live under `stats.summary` in `.org-cli.yaml`.
+
+All available options:
+
+```yaml
+stats:
+  summary:
+    max_results: 10
+```
+
+Shared top-level config still applies for filters, `with_tags_as_category`, `mapping`, `exclude`, `todo_states`, `done_states`, and `color_flag`.
+
 ## Available filters
 
 - `--filter-priority P` - Keep only tasks with priority equal to `P`.
