@@ -13,7 +13,8 @@ from org_parser.document import Heading
 from org_parser.text import CompletionCounter
 from org_parser.time import Timestamp
 
-from org.query.runner import compile_query_or_raise, execute_query_or_raise
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.runner import run_query
 
 
 if TYPE_CHECKING:
@@ -356,22 +357,17 @@ def resolve_headings_by_query(
     selector_query: str,
 ) -> list[Heading]:
     """Resolve matching headings across files from selector query."""
-    compiled_query = compile_query_or_raise(
-        selector_query,
-        lambda message: typer.BadParameter(f"Invalid task selector query: {message}"),
-    )
-
     logger.info("Task selector query: %s", selector_query)
     matches_by_identity: dict[int, Heading] = {}
     for filename in filenames:
         document = load_document(filename)
         logger.info("Running task selector query against file: %s", filename)
-        results = execute_query_or_raise(
-            compiled_query,
-            [document],
-            {},
-            lambda message: typer.BadParameter(f"Task selector query failed: {message}"),
-        )
+        try:
+            results = run_query([document], [selector_query], {})
+        except QueryParseError as exc:
+            raise typer.BadParameter(f"Invalid task selector query: {exc}") from exc
+        except QueryRuntimeError as exc:
+            raise typer.BadParameter(f"Task selector query failed: {exc}") from exc
 
         for value in results:
             if not isinstance(value, Heading):

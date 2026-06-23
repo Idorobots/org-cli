@@ -19,12 +19,8 @@ from org.config.cli import (
     validate_custom_switches,
 )
 from org.logic.validation import validate_and_parse_keys, validate_global_arguments
-from org.query.engine.errors import QueryParseError
-from org.query.runner import (
-    build_query_from_stages,
-    execute_query_or_raise,
-    flatten_query_results,
-)
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.runner import run_query
 
 
 if TYPE_CHECKING:
@@ -205,16 +201,9 @@ def load_and_process_data(
         todo_states,
         done_states,
     )
-    nodes = [node for root in roots for node in list(root)]
 
     include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
-    try:
-        query = build_query_from_stages(
-            build_pipeline_stages(config, args, sys.argv, include_ordering),
-            include_slice,
-        )
-    except QueryParseError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+    stages = [".[]", *build_pipeline_stages(config, args, sys.argv, include_ordering)]
 
     context_vars: dict[str, object] = {
         "todo_states": todo_states,
@@ -228,7 +217,15 @@ def load_and_process_data(
 
     logger.info("Query context: %s", context_vars)
 
-    results = execute_query_or_raise(query, [nodes], context_vars, typer.BadParameter)
+    try:
+        results = run_query(roots, stages, context_vars)
+    except (QueryParseError, QueryRuntimeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
-    flattened = flatten_query_results(results)
-    return [value for value in flattened if isinstance(value, Heading)], todo_states, done_states
+    heading_results = [value for value in results if isinstance(value, Heading)]
+    if include_slice:
+        sliced_args = cast("SlicedDataLoadArgs", args)
+        heading_results = heading_results[
+            sliced_args.offset : sliced_args.offset + sliced_args.max_results
+        ]
+    return heading_results, todo_states, done_states

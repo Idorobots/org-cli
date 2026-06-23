@@ -10,7 +10,7 @@ A query evaluates over a **stream of values**. Each stage receives a stream and 
 - `.` is identity: it forwards the current stream item unchanged.
 - Many expressions can emit zero, one, or many output values per input value.
 
-At the CLI, the initial stream contains one value: the loaded roots collection.
+At the CLI, the initial stream contains the loaded Org documents.
 
 ```bash
 poetry run org tasks query '.[] | .children | length' examples/ARCHIVE_small
@@ -733,7 +733,7 @@ Notes:
 .[ $offset : $offset + $limit ]
 
 # find most recently modified tasks
-.[][] | sort_by(.repeats + .deadline + .closed + .scheduled | max) | .title_text
+.[] | sort_by(.repeats + .deadline + .closed + .scheduled | max) | .title_text
 
 # same time, two days from now
 now + days(2)

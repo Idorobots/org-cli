@@ -13,7 +13,8 @@ from rich.table import Table
 from rich.text import Text
 
 from org.logic.time import local_now, parse_date_argument, shift_datetimes_by_unit
-from org.query.runner import execute_query_or_raise
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.runner import run_query
 from org.tui.bits import (
     heading_title_to_text,
     task_priority_to_text,
@@ -787,15 +788,16 @@ def _apply_section_query(
     view_name: str,
 ) -> list[Heading]:
     """Apply section query against nodes with $date in context, returning matched nodes."""
-    results = execute_query_or_raise(
-        spec.query,
-        nodes,
-        {"date": day},
-        lambda message: typer.BadParameter(
-            "Agenda filter/order-by query failed "
-            f"(section={spec.name}, view={view_name}): {message}",
-        ),
-    )
+    try:
+        results = run_query(nodes, [spec.query_text], {"date": day})
+    except QueryParseError as exc:
+        raise typer.BadParameter(
+            f"Invalid agenda filter/order-by (view={view_name}, section={spec.name}): {exc}",
+        ) from exc
+    except QueryRuntimeError as exc:
+        raise typer.BadParameter(
+            f"Agenda filter/order-by query failed (section={spec.name}, view={view_name}): {exc}",
+        ) from exc
     return [cast("Heading", node) for node in results]
 
 

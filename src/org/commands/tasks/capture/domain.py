@@ -15,7 +15,8 @@ from rich.syntax import Syntax
 
 from org.commands.tasks.common import load_document, resolve_parent_heading, save_document
 from org.pipeline.format import DEFAULT_OUTPUT_THEME
-from org.query.runner import compile_query_or_raise, execute_query_or_raise
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.runner import run_query
 from org.tui.help import InteractiveHelpEntry
 
 
@@ -297,17 +298,12 @@ def _resolve_parent_from_selector(document: Document, parent_selector: str) -> H
         raise typer.BadParameter("Capture template parent selector cannot be empty")
 
     query_text = f".[] | select({normalized_selector})"
-
-    compiled_query = compile_query_or_raise(
-        query_text,
-        lambda message: typer.BadParameter(f"Invalid parent selector: {message}"),
-    )
-    results = execute_query_or_raise(
-        compiled_query,
-        [document],
-        {},
-        lambda message: typer.BadParameter(f"Parent selector failed: {message}"),
-    )
+    try:
+        results = run_query([document], [query_text], {})
+    except QueryParseError as exc:
+        raise typer.BadParameter(f"Invalid parent selector: {exc}") from exc
+    except QueryRuntimeError as exc:
+        raise typer.BadParameter(f"Parent selector failed: {exc}") from exc
 
     matches_by_identity: dict[int, Heading] = {}
     for result in results:

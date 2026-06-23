@@ -24,7 +24,8 @@ from org.logic.tasks import (
 )
 from org.logic.time import advance_timestamp_by_repeater, local_now
 from org.pipeline.load import load_and_process_data
-from org.query.runner import compile_filter_order_query, execute_query_or_raise
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.runner import build_filter_order_query_text, run_query
 
 
 if TYPE_CHECKING:
@@ -33,7 +34,6 @@ if TYPE_CHECKING:
     from org_parser.document import Document, Heading
 
     from org.config.app import AppConfig, BoardViewConfig
-    from org.query.engine.compiler import CompiledQuery
 
     from .command import BoardArgs
 
@@ -70,7 +70,7 @@ class BoardColumnSpec:
 
     name: str
     view_name: str
-    query: CompiledQuery
+    query_text: str
 
 
 @dataclass
@@ -148,14 +148,6 @@ def resolved_states(
     return todo_states, done_states
 
 
-def _compile_column_filter_query(
-    filter_query: str,
-    order_by: str | None,
-) -> CompiledQuery:
-    """Compile one board column filter/order query text."""
-    return compile_filter_order_query(filter_query, order_by)
-
-
 def _fallback_view_config() -> org.config.app.BoardViewConfig:
     """Return built-in fallback board filter view definition."""
     return org.config.app.BoardViewConfig(
@@ -176,8 +168,9 @@ def compile_view_column_specs(view: org.config.app.BoardViewConfig) -> list[Boar
     column_specs: list[BoardColumnSpec] = []
     for column in view.columns:
         try:
-            query = _compile_column_filter_query(column.filter, column.order_by)
-        except Exception as err:
+            query_text = build_filter_order_query_text(column.filter, column.order_by)
+            run_query([], [query_text], {})
+        except (QueryParseError, QueryRuntimeError) as err:
             raise typer.BadParameter(
                 f"Invalid board filter/order-by (view={view.name}, column={column.name}): {err}",
             ) from err
@@ -185,7 +178,7 @@ def compile_view_column_specs(view: org.config.app.BoardViewConfig) -> list[Boar
             BoardColumnSpec(
                 name=column.name,
                 view_name=view.name,
-                query=query,
+                query_text=query_text,
             ),
         )
     return column_specs
@@ -228,12 +221,14 @@ def build_selector_board_columns(
     """Evaluate filter specs against processed task stream."""
     columns: list[BoardColumn] = []
     for spec in column_specs:
-        results = execute_query_or_raise(
-            spec.query,
-            nodes,
-            {},
-            _board_query_error_builder(spec.view_name, spec.name),
-        )
+        try:
+            results = run_query(nodes, [spec.query_text], {})
+        except QueryParseError as exc:
+            raise typer.BadParameter(
+                f"Invalid board filter/order-by (view={spec.view_name}, column={spec.name}): {exc}",
+            ) from exc
+        except QueryRuntimeError as exc:
+            raise _board_query_error_builder(spec.view_name, spec.name)(str(exc)) from exc
 
         column_nodes = [cast("Heading", node) for node in results]
         columns.append(BoardColumn(title=spec.name, nodes=column_nodes))

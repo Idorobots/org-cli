@@ -32,7 +32,8 @@ from org.pipeline.format import (
     print_prepared_output,
 )
 from org.pipeline.load import load_root_data
-from org.query.runner import compile_query_or_raise, execute_query_or_raise
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.runner import run_query
 from org.tui.bits import build_console, processing_status, setup_output
 
 
@@ -234,8 +235,6 @@ def run_tasks_query(args: TasksQueryArgs, config: org.config.app.AppConfig) -> N
         raise click.UsageError(str(exc)) from exc
 
     with processing_status(console, color_enabled):
-        compiled_query = compile_query_or_raise(args.query, click.UsageError)
-
         roots, todo_states, done_states = load_root_data(args)
 
         context = {
@@ -244,7 +243,10 @@ def run_tasks_query(args: TasksQueryArgs, config: org.config.app.AppConfig) -> N
             "todo_states": todo_states,
             "done_states": done_states,
         }
-        results = execute_query_or_raise(compiled_query, [roots], context, click.UsageError)
+        try:
+            results = run_query(roots, [args.query], context)
+        except (QueryParseError, QueryRuntimeError) as exc:
+            raise click.UsageError(str(exc)) from exc
 
         first_result = results[0] if results else None
         if len(results) == 1 and isinstance(first_result, list | tuple | set):

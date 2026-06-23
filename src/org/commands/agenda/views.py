@@ -8,21 +8,20 @@ from typing import TYPE_CHECKING
 import typer
 
 import org.config.app
-from org.query.runner import compile_filter_order_query
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.runner import build_filter_order_query_text, run_query
 
 
 if TYPE_CHECKING:
-    from org.query.engine.compiler import CompiledQuery
-
     from .command import AgendaArgs
 
 
 @dataclass(frozen=True)
 class AgendaSectionSpec:
-    """Compiled agenda section specification."""
+    """Agenda section query specification."""
 
     name: str
-    query: CompiledQuery
+    query_text: str
     style: str
     timeline: bool
 
@@ -33,11 +32,6 @@ class AgendaViewContext:
 
     section_specs: list[AgendaSectionSpec]
     name: str
-
-
-def _compile_section_query(filter_query: str, order_by: str | None) -> CompiledQuery:
-    """Compile one agenda section filter/order query text."""
-    return compile_filter_order_query(filter_query, order_by)
 
 
 def _fallback_agenda_view() -> org.config.app.AgendaViewConfig:
@@ -61,15 +55,16 @@ def _compile_view_section_specs(view: org.config.app.AgendaViewConfig) -> list[A
     section_specs: list[AgendaSectionSpec] = []
     for section in view.sections:
         try:
-            query = _compile_section_query(section.filter, section.order_by)
-        except Exception as err:
+            query_text = build_filter_order_query_text(section.filter, section.order_by)
+            run_query([], [query_text], {})
+        except (QueryParseError, QueryRuntimeError) as err:
             raise typer.BadParameter(
                 f"Invalid agenda filter/order-by (view={view.name}, section={section.name}): {err}",
             ) from err
         section_specs.append(
             AgendaSectionSpec(
                 name=section.name,
-                query=query,
+                query_text=query_text,
                 style=section.style,
                 timeline=section.timeline,
             ),

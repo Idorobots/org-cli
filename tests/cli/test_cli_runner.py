@@ -779,7 +779,7 @@ def test_cli_runner_allows_missing_files_when_some_exist() -> None:
     runner = CliRunner()
     fixture_path = str((FIXTURES_DIR / "multiple_tags.org").resolve())
     missing_path = str((FIXTURES_DIR / "missing.org").resolve())
-    command_args = ["tasks", "query", ".[] | .children | length", missing_path, fixture_path]
+    command_args = ["tasks", "query", ".children | length", missing_path, fixture_path]
 
     result = runner.invoke(app, command_args)
 
