@@ -25,12 +25,14 @@ from org.commands.tasks.common import (
     parse_planning_timestamp,
     parse_properties_json,
     parse_tags_csv,
-    resolve_headings_by_query,
     resolve_parent_heading,
     resolve_task_selector_query,
     save_document,
+    selected_heading_results,
 )
-from org.pipeline.load import resolve_input_paths
+from org.pipeline.load import load_documents, resolve_input_paths, resolve_loaded_state_context
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.runner import run_query
 from org.tui.color import should_use_color
 
 
@@ -398,14 +400,43 @@ def _apply_field_updates(args: UpdateArgs, heading: Heading) -> None:
         heading.body = args.body
 
 
+def _select_headings_for_update(
+    filenames: list[str],
+    selector_query: str,
+    config: org.config.app.AppConfig,
+) -> list[Heading]:
+    """Load documents and resolve selected headings for update."""
+    documents = load_documents(filenames)
+    todo_states, done_states = resolve_loaded_state_context(
+        documents,
+        config.todo_states,
+        config.done_states,
+    )
+
+    logger.info("Task selector query: %s", selector_query)
+    try:
+        results = run_query(
+            documents,
+            [selector_query],
+            {"todo_states": todo_states, "done_states": done_states},
+        )
+    except QueryParseError as exc:
+        raise typer.BadParameter(f"Invalid task selector query: {exc}") from exc
+    except QueryRuntimeError as exc:
+        raise typer.BadParameter(f"Task selector query failed: {exc}") from exc
+
+    headings = selected_heading_results(results)
+    if not headings:
+        raise typer.BadParameter("No task matches the provided selector")
+    return headings
+
+
 def run_tasks_update(args: UpdateArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks update command."""
-    del config
     selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
     _validate_update_option_conflicts(args)
     filenames = resolve_input_paths(args.files)
-
-    headings = resolve_headings_by_query(filenames, selector_query)
+    headings = _select_headings_for_update(filenames, selector_query, config)
     selected_count = len(headings)
     logger.info("Selected %s tasks for update", selected_count)
 

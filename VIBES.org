@@ -8861,9 +8861,12 @@ In file src/org/commands/agenda/views.py around line 69, near the ~class AgendaV
 
 These wrappers aren't very useful, please clean this up in all the commands that now have these.
 
-**** TODO src/org/commands/tasks/common.py
+**** REWORKED src/org/commands/tasks/common.py
 :PROPERTIES:
 :context: 
+:END:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-06-23 Tue 19:48]
 :END:
 
 In file src/org/commands/tasks/common.py around line 385, near the ~def resolve_headings_by_query(~
@@ -8901,6 +8904,29 @@ In file src/org/commands/tasks/common.py around line 385, near the ~def resolve_
 #+end_example
 
 This whole function should use the usual ETL pipeline.
+Ideally, this function should be removed and the callers should use the usual ETL pipeline.
+**** DONE src/org/commands/tasks/remove.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-23 Tue 19:50]
+:END:
+
+In file src/org/commands/tasks/remove.py around line 99, near the ~def _selected_delete_roots(headings: list[Heading]) -> list[Heading]:~
+
+#+begin_example
++    matches_by_identity: dict[int, Heading] = {}
++    for value in results:
++        if not isinstance(value, Heading):
++            raise typer.BadParameter("Task selector query must return task headings")
++        matches_by_identity[id(value)] = value
++    selected_headings = list(matches_by_identity.values())
++    if not selected_headings:
+
+#+end_example
+
+Sounds like this could be extracted to be a separate function that's used by the commands that need to handle the identity.
 
 **** TODO Cache query compilation results
 It is often the case that the same queries are recompiled multiple times. We could improve performance by caching the query compilation results and checking if the query was already compiled.

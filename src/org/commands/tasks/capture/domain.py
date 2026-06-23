@@ -13,7 +13,12 @@ import typer
 from org_parser.document import Document, Heading
 from rich.syntax import Syntax
 
-from org.commands.tasks.common import load_document, resolve_parent_heading, save_document
+from org.commands.tasks.common import (
+    load_document,
+    resolve_parent_heading,
+    save_document,
+    selected_heading_results,
+)
 from org.pipeline.format import DEFAULT_OUTPUT_THEME
 from org.query.engine.errors import QueryParseError, QueryRuntimeError
 from org.query.runner import run_query
@@ -305,13 +310,10 @@ def _resolve_parent_from_selector(document: Document, parent_selector: str) -> H
     except QueryRuntimeError as exc:
         raise typer.BadParameter(f"Parent selector failed: {exc}") from exc
 
-    matches_by_identity: dict[int, Heading] = {}
-    for result in results:
-        if not isinstance(result, Heading):
-            raise typer.BadParameter("Parent selector must match task headings")
-        matches_by_identity[id(result)] = result
-
-    matches = list(matches_by_identity.values())
+    try:
+        matches = selected_heading_results(results)
+    except typer.BadParameter as exc:
+        raise typer.BadParameter("Parent selector must match task headings") from exc
     if not matches:
         raise typer.BadParameter("Parent selector did not match any heading")
     if len(matches) > 1:
