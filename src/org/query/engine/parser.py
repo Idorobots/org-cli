@@ -49,6 +49,7 @@ KNOWN_FUNCTIONS = {
     "datetime",
     "days",
     "float",
+    "fold",
     "hours",
     "int",
     "reverse",

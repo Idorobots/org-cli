@@ -69,6 +69,7 @@ from org.query.engine.parser import parse_query
         "str(.title_text)",
         'int("42")',
         'float("3.14")',
+        "fold",
         'bool("true")',
         'ts("<2026-03-01 Sun 10:00-12:00>")',
         "sha256",
@@ -162,6 +163,14 @@ def test_parse_fold_shape() -> None:
     """Parser should parse fold expressions."""
     expr = parse_query("[ .[] | .title_text ]")
     assert isinstance(expr, Fold)
+
+
+def test_parse_fold_function_shape() -> None:
+    """Parser should parse fold built-in as a no-arg function call."""
+    expr = parse_query("fold")
+    assert isinstance(expr, FunctionCall)
+    assert expr.name == "fold"
+    assert expr.argument is None
 
 
 def test_parse_dict_assignment_shape() -> None:

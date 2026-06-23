@@ -112,10 +112,19 @@ Some functions are no-arg and are written without parentheses:
 
 ```text
 reverse
+fold
 length
 sum
 any
 all
+```
+
+`fold` collects the current stream into one list value. This differs from bracket fold syntax,
+which runs a subquery per input item and collects each subquery result stream separately.
+
+```text
+[1, 2, 3][] | fold
+.[] | (.children[] | .title_text | fold) | length
 ```
 
 ### Tuple expression

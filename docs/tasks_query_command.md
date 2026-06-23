@@ -91,6 +91,15 @@ poetry run org tasks query '[ .[] | select(not(.todo in $done_states)) ][ $offse
   examples/ARCHIVE_small
 ```
 
+If you want to page across the whole current stream at that point, use `fold` first:
+
+```bash
+poetry run org tasks query '.[] | select(not(.todo in $done_states)) | fold | .[$offset:$offset + $limit]' \
+  --offset 0 \
+  --limit 5 \
+  examples/ARCHIVE_small
+```
+
 Example output (ellided):
 
 ```org
