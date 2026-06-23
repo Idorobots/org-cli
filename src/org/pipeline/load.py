@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
 import typer
+from org_parser import load as load_org_document
 from org_parser import loads
 from org_parser.document import Heading
 
@@ -19,12 +20,8 @@ from org.config.cli import (
     validate_custom_switches,
 )
 from org.logic.validation import validate_and_parse_keys, validate_global_arguments
-from org.query.engine.errors import QueryParseError
-from org.query.runner import (
-    build_query_from_stages,
-    execute_query_or_raise,
-    flatten_query_results,
-)
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.runner import run_query
 
 
 if TYPE_CHECKING:
@@ -97,6 +94,37 @@ def load_root_nodes(
         roots.append(root)
 
     return roots, all_todo_states, all_done_states
+
+
+def load_documents(
+    filenames: list[str],
+) -> list[Document]:
+    """Load org-mode files and return parsed documents."""
+    documents: list[Document] = []
+    for filename in filenames:
+        try:
+            documents.append(load_org_document(filename))
+        except FileNotFoundError as err:
+            raise typer.BadParameter(f"File '{filename}' not found") from err
+        except PermissionError as err:
+            raise typer.BadParameter(f"Permission denied for '{filename}'") from err
+        except ValueError as err:
+            raise typer.BadParameter(f"Unable to parse '{filename}': {err}") from err
+    return documents
+
+
+def resolve_loaded_state_context(
+    documents: list[Document],
+    todo_states: list[str],
+    done_states: list[str],
+) -> tuple[list[str], list[str]]:
+    """Merge discovered todo and done states from loaded documents."""
+    all_todo_states = list(todo_states)
+    all_done_states = list(done_states)
+    for document in documents:
+        all_todo_states = _merge_state_order(all_todo_states, list(document.todo_states))
+        all_done_states = _merge_state_order(all_done_states, list(document.done_states))
+    return all_todo_states, all_done_states
 
 
 def resolve_input_paths(inputs: list[str] | None) -> list[str]:  # noqa: C901
@@ -205,16 +233,9 @@ def load_and_process_data(
         todo_states,
         done_states,
     )
-    nodes = [node for root in roots for node in list(root)]
 
     include_slice = include_ordering and hasattr(args, "offset") and hasattr(args, "max_results")
-    try:
-        query = build_query_from_stages(
-            build_pipeline_stages(config, args, sys.argv, include_ordering),
-            include_slice,
-        )
-    except QueryParseError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+    stages = [".[]", *build_pipeline_stages(config, args, sys.argv, include_ordering)]
 
     context_vars: dict[str, object] = {
         "todo_states": todo_states,
@@ -228,7 +249,15 @@ def load_and_process_data(
 
     logger.info("Query context: %s", context_vars)
 
-    results = execute_query_or_raise(query, [nodes], context_vars, typer.BadParameter)
+    try:
+        results = run_query(roots, stages, context_vars)
+    except (QueryParseError, QueryRuntimeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
-    flattened = flatten_query_results(results)
-    return [value for value in flattened if isinstance(value, Heading)], todo_states, done_states
+    heading_results = [value for value in results if isinstance(value, Heading)]
+    if include_slice:
+        sliced_args = cast("SlicedDataLoadArgs", args)
+        heading_results = heading_results[
+            sliced_args.offset : sliced_args.offset + sliced_args.max_results
+        ]
+    return heading_results, todo_states, done_states

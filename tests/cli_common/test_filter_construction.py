@@ -17,7 +17,6 @@ def _build_query_text(
     argv: list[str],
     *,
     include_ordering: bool,
-    include_slice: bool,
     config: AppConfig | None = None,
 ) -> str:
     from org.config.cli import build_pipeline_stages
@@ -29,19 +28,18 @@ def _build_query_text(
         argv,
         include_ordering,
     )
-    return build_query_text_from_stages(stages, include_slice)
+    return build_query_text_from_stages(stages)
 
 
-def _build_query(
+def _run_query(
     args: FilterArgsStub,
     argv: list[str],
     *,
     include_ordering: bool,
-    include_slice: bool,
     config: AppConfig | None = None,
 ) -> object:
     from org.config.cli import build_pipeline_stages
-    from org.query.runner import build_query_from_stages
+    from org.query.runner import run_query
 
     stages = build_pipeline_stages(
         AppConfig(config_path=".org-cli.yaml") if config is None else config,
@@ -49,7 +47,7 @@ def _build_query(
         argv,
         include_ordering,
     )
-    return build_query_from_stages(stages, include_slice)
+    return run_query([], stages, {})
 
 
 def _build_config(
@@ -115,13 +113,13 @@ def test_build_query_text_filters_only() -> None:
     args = make_args(filter_tags=["simple"])
     argv = ["org", "stats", "all", "--filter-tag", "simple", "file.org"]
 
-    query = _build_query_text(args, argv, include_ordering=False, include_slice=False)
+    query = _build_query_text(args, argv, include_ordering=False)
 
-    assert query == '[ .[] | select(.tags[] matches "simple") ]'
+    assert query == 'select(.tags[] matches "simple")'
 
 
-def test_build_query_text_with_ordering_and_slice() -> None:
-    """Query text should append order stages then slice."""
+def test_build_query_text_with_ordering() -> None:
+    """Query text should append order stages."""
     args = make_args(filter_tags=["work"], order_by_timestamp_desc=True, offset=5, max_results=10)
     argv = [
         "org",
@@ -133,12 +131,11 @@ def test_build_query_text_with_ordering_and_slice() -> None:
         "file.org",
     ]
 
-    query = _build_query_text(args, argv, include_ordering=True, include_slice=True)
+    query = _build_query_text(args, argv, include_ordering=True)
 
     assert query == (
-        '[ .[] | select(.tags[] matches "work") '
-        "| sort_by(.repeats + .deadline + .closed + .scheduled | max) ]"
-        "[$offset:($offset + $limit)]"
+        'select(.tags[] matches "work") '
+        "| sort_by(.repeats + .deadline + .closed + .scheduled | max)"
     )
 
 
@@ -147,12 +144,12 @@ def test_build_query_text_with_timestamp_asc_keeps_none_last() -> None:
     args = make_args(order_by_timestamp_asc=True)
     argv = ["org", "tasks", "list", "--order-by-timestamp-asc", "file.org"]
 
-    query = _build_query_text(args, argv, include_ordering=True, include_slice=False)
+    query = _build_query_text(args, argv, include_ordering=True)
 
     assert query == (
-        "[ .[] | sort_by(.repeats + .deadline + .closed + .scheduled | max) "
+        "sort_by(.repeats + .deadline + .closed + .scheduled | max) "
         "| reverse "
-        "| sort_by((.repeats + .deadline + .closed + .scheduled | max) != null) ]"
+        "| sort_by((.repeats + .deadline + .closed + .scheduled | max) != null)"
     )
 
 
@@ -161,9 +158,9 @@ def test_build_query_text_with_priority_ordering() -> None:
     args = make_args(order_by_priority=True)
     argv = ["org", "tasks", "list", "--order-by-priority", "file.org"]
 
-    query = _build_query_text(args, argv, include_ordering=True, include_slice=False)
+    query = _build_query_text(args, argv, include_ordering=True)
 
-    assert query == "[ .[] | sort_by(.priority) ]"
+    assert query == "sort_by(.priority)"
 
 
 def test_build_query_text_with_property_filter() -> None:
@@ -171,9 +168,9 @@ def test_build_query_text_with_property_filter() -> None:
     args = make_args(filter_properties=["priority=A"])
     argv = ["org", "stats", "all", "--filter-property", "priority=A", "file.org"]
 
-    query = _build_query_text(args, argv, include_ordering=False, include_slice=False)
+    query = _build_query_text(args, argv, include_ordering=False)
 
-    assert query == '[ .[] | select(.properties["priority"] == "A") ]'
+    assert query == 'select(.properties["priority"] == "A")'
 
 
 def test_build_query_text_with_builtin_with_tags_as_category_stage() -> None:
@@ -181,11 +178,9 @@ def test_build_query_text_with_builtin_with_tags_as_category_stage() -> None:
     args = make_args(with_tags_as_category=True)
     argv = ["org", "stats", "summary", "--with-tags-as-category", "file.org"]
 
-    query = _build_query_text(args, argv, include_ordering=False, include_slice=False)
+    query = _build_query_text(args, argv, include_ordering=False)
 
-    assert query == (
-        "[ .[] | (if .tags | length > 0 then .heading_category = .tags[0] else null); . ]"
-    )
+    assert query == "(if .tags | length > 0 then .heading_category = .tags[0] else null); ."
 
 
 def test_build_query_text_with_tags_as_category_default_appended_when_missing_in_argv() -> None:
@@ -193,11 +188,11 @@ def test_build_query_text_with_tags_as_category_default_appended_when_missing_in
     args = make_args(with_tags_as_category=True, filter_tags=["work"])
     argv = ["org", "stats", "summary", "--filter-tag", "work", "file.org"]
 
-    query = _build_query_text(args, argv, include_ordering=False, include_slice=False)
+    query = _build_query_text(args, argv, include_ordering=False)
 
     assert query == (
-        "[ .[] | (if .tags | length > 0 then .heading_category = .tags[0] else null); . "
-        '| select(.tags[] matches "work") ]'
+        "(if .tags | length > 0 then .heading_category = .tags[0] else null); . "
+        '| select(.tags[] matches "work")'
     )
 
 
@@ -206,12 +201,12 @@ def test_build_query_text_with_filter_completed() -> None:
     args = make_args(filter_completed=True)
     argv = ["org", "tasks", "list", "--filter-completed", "file.org"]
 
-    query = _build_query_text(args, argv, include_ordering=False, include_slice=False)
+    query = _build_query_text(args, argv, include_ordering=False)
 
     assert query == (
-        "[ .[] | select(if .repeats | length > 0 then .repeats | map(.is_completed) + "
+        "select(if .repeats | length > 0 then .repeats | map(.is_completed) + "
         "[.is_completed] | any else .is_completed) "
-        "| .repeats = [.repeats[] | select(.is_completed)]; .  ]"
+        "| .repeats = [.repeats[] | select(.is_completed)]; . "
     )
 
 
@@ -220,26 +215,26 @@ def test_build_query_text_with_filter_not_completed() -> None:
     args = make_args(filter_not_completed=True)
     argv = ["org", "tasks", "list", "--filter-not-completed", "file.org"]
 
-    query = _build_query_text(args, argv, include_ordering=False, include_slice=False)
+    query = _build_query_text(args, argv, include_ordering=False)
 
     assert query == (
-        "[ .[] | select(if .repeats | length > 0 then not(.repeats | map(.is_completed) + "
+        "select(if .repeats | length > 0 then not(.repeats | map(.is_completed) + "
         "[.is_completed] | any) else not(.is_completed)) "
-        "| .repeats = [.repeats[] | select(not(.is_completed))]; .  ]"
+        "| .repeats = [.repeats[] | select(not(.is_completed))]; . "
     )
 
 
-def test_build_query_logs_query_before_compile(caplog: pytest.LogCaptureFixture) -> None:
-    """build_query should log the query text before compilation."""
+def test_run_query_logs_query_before_compile(caplog: pytest.LogCaptureFixture) -> None:
+    """run_query should log the query text before compilation."""
     args = make_args(filter_tags=["simple"])
     argv = ["org", "stats", "all", "--filter-tag", "simple", "file.org"]
 
     org.logging.logger.setLevel(logging.INFO)
     org.logging.logger.propagate = True
     with caplog.at_level(logging.INFO, logger="org"):
-        _build_query(args, argv, include_ordering=False, include_slice=False)
+        _run_query(args, argv, include_ordering=False)
 
-    assert 'Query: [ .[] | select(.tags[] matches "simple") ]' in caplog.text
+    assert 'Query: select(.tags[] matches "simple")' in caplog.text
 
 
 def test_build_query_text_with_custom_filter_and_optional_arg() -> None:
@@ -266,13 +261,11 @@ def test_build_query_text_with_custom_filter_and_optional_arg() -> None:
         args,
         argv,
         include_ordering=False,
-        include_slice=False,
         config=config,
     )
 
     assert query == (
-        "[ .[] | let 3 as $arg in (select(.todo == $arg))"
-        " | let null as $arg in (select(.todo != null)) ]"
+        "let 3 as $arg in (select(.todo == $arg)) | let null as $arg in (select(.todo != null))"
     )
 
 
@@ -326,11 +319,10 @@ def test_build_query_text_custom_with_before_filters() -> None:
         args,
         argv,
         include_ordering=False,
-        include_slice=False,
         config=config,
     )
 
-    assert query.startswith('[ .[] | let "one" as $arg in (. + {"x": $arg}) | ')
+    assert query.startswith('let "one" as $arg in (. + {"x": $arg}) | ')
     assert "| let null as $arg in (select(.tag != null)) |" in query
 
 
@@ -353,13 +345,12 @@ def test_build_query_text_with_builtin_and_custom_with_stages_follow_argv_order(
         args,
         argv,
         include_ordering=False,
-        include_slice=False,
         config=config,
     )
 
     assert query == (
-        '[ .[] | let "one" as $arg in (. + {"x": $arg}) '
-        "| (if .tags | length > 0 then .heading_category = .tags[0] else null); . ]"
+        'let "one" as $arg in (. + {"x": $arg}) '
+        "| (if .tags | length > 0 then .heading_category = .tags[0] else null); ."
     )
 
 
@@ -374,11 +365,10 @@ def test_build_query_text_custom_ordering_for_stats() -> None:
         args,
         argv,
         include_ordering=False,
-        include_slice=False,
         config=config,
     )
 
-    assert query == "[ .[] | let null as $arg in (sort_by(.priority)) ]"
+    assert query == "let null as $arg in (sort_by(.priority))"
 
 
 def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixture) -> None:
@@ -411,11 +401,11 @@ def test_build_query_text_preserves_mixed_ordering_cli_order() -> None:
         "file.org",
     ]
 
-    query = _build_query_text(args, argv, include_ordering=True, include_slice=False, config=config)
+    query = _build_query_text(args, argv, include_ordering=True, config=config)
 
     assert query == (
-        "[ .[] | let null as $arg in (sort_by(.priority))"
-        " | sort_by(.repeats + .deadline + .closed + .scheduled | max) ]"
+        "let null as $arg in (sort_by(.priority))"
+        " | sort_by(.repeats + .deadline + .closed + .scheduled | max)"
     )
 
 
@@ -425,7 +415,7 @@ def test_build_query_text_rejects_unknown_custom_switch() -> None:
     argv = ["org", "tasks", "list", "--filter-unknown", "file.org"]
 
     with pytest.raises(click.NoSuchOption, match="No such option"):
-        _build_query_text(args, argv, include_ordering=False, include_slice=False)
+        _build_query_text(args, argv, include_ordering=False)
 
 
 def test_build_query_text_custom_filter_requires_exactly_one_argument() -> None:
@@ -439,7 +429,7 @@ def test_build_query_text_custom_filter_requires_exactly_one_argument() -> None:
         typer.BadParameter,
         match="--filter-level-above requires exactly one argument",
     ):
-        _build_query_text(args, argv, include_ordering=False, include_slice=False, config=config)
+        _build_query_text(args, argv, include_ordering=False, config=config)
 
 
 def test_build_query_text_custom_order_by_requires_exactly_one_argument() -> None:
@@ -450,7 +440,7 @@ def test_build_query_text_custom_order_by_requires_exactly_one_argument() -> Non
     argv = ["org", "tasks", "list", "--order-by-weight"]
 
     with pytest.raises(typer.BadParameter, match="--order-by-weight requires exactly one argument"):
-        _build_query_text(args, argv, include_ordering=True, include_slice=False, config=config)
+        _build_query_text(args, argv, include_ordering=True, config=config)
 
 
 def test_build_query_text_custom_with_requires_exactly_one_argument() -> None:
@@ -461,7 +451,7 @@ def test_build_query_text_custom_with_requires_exactly_one_argument() -> None:
     argv = ["org", "tasks", "list", "--with-mark"]
 
     with pytest.raises(typer.BadParameter, match="--with-mark requires exactly one argument"):
-        _build_query_text(args, argv, include_ordering=False, include_slice=False, config=config)
+        _build_query_text(args, argv, include_ordering=False, config=config)
 
 
 def test_normalize_cli_files_consumes_required_custom_path_like_argument() -> None:

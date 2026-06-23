@@ -22,7 +22,8 @@ from org.pipeline.format import (
     print_prepared_output,
 )
 from org.pipeline.load import load_root_data
-from org.query.runner import compile_query_or_raise, execute_query_or_raise
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.runner import run_query
 from org.tui.bits import build_console, processing_status, setup_output
 
 
@@ -140,16 +141,16 @@ def run_tasks_find(args: TasksFindArgs, config: org.config.app.AppConfig) -> Non
 
     with processing_status(console, color_enabled):
         query_text = _build_find_query(args)
-        compiled_query = compile_query_or_raise(query_text, click.UsageError)
 
         roots, todo_states, done_states = load_root_data(args)
-        nodes = [node for root in roots for node in list(root)]
-        results = execute_query_or_raise(
-            compiled_query,
-            [nodes],
-            {"todo_states": todo_states, "done_states": done_states},
-            click.UsageError,
-        )
+        try:
+            results = run_query(
+                roots,
+                [query_text],
+                {"todo_states": todo_states, "done_states": done_states},
+            )
+        except (QueryParseError, QueryRuntimeError) as exc:
+            raise click.UsageError(str(exc)) from exc
 
         matched_nodes = [value for value in results if isinstance(value, Heading)]
         output_nodes = _nodes_with_context(matched_nodes, args.include_context)

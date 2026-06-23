@@ -8837,11 +8837,106 @@ Tests should not rely on the repo config.
 :END:
 
 Add a top-level config section for tasks commands, name it =tasks=. Move the current top-level =capture= config into =tasks.capture=. Define a new section for the =tasks.list= that will contain all of its configuration & defaults.
-*** TODO Streamline query execution
+*** REWORKED Streamline query execution
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-06-23 Tue 20:10]
+:END:
 The commands use a common ETL pipeline where they load some data from files, apply filters/ordering/mutators and lastly present the results in some way. Sometimes the documents are then saved.
-It would be nice to make query execution as streamlined as possible, ideally, =org.logic.query= would expose a function =run_query= that takes a list of documents, a list of query stages to run and the context for the query to run in, and compiles and executes the query and returns the result.
+It would be nice to make query execution as streamlined as possible, ideally, =org.query.runner= would expose a function =run_query= that takes a list of documents, a list of query stages to run and the context for the query to run in, and compiles and executes the query and returns the result.
 That streamlined query execution should be used in all places that extract or transform the org document data - the data should be loaded, then processed with the =run_query= function and used as needed.
 Error handling should be left to the caller (=run_query= should not accept customizable error types/builders).
+**** DONE src/org/commands/agenda/views.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-23 Tue 19:15]
+:END:
+
+In file src/org/commands/agenda/views.py around line 69, near the ~class AgendaViewContext:~
+
+#+begin_example
++def _build_section_query(filter_query: str, order_by: str | None) -> str:
++    """Build one agenda section filter/order query text."""
++    return build_filter_order_query_text(filter_query, order_by)
+
+#+end_example
+
+These wrappers aren't very useful, please clean this up in all the commands that now have these.
+
+**** REWORKED src/org/commands/tasks/common.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "REWORKED"   from "TODO"       [2026-06-23 Tue 19:48]
+:END:
+
+In file src/org/commands/tasks/common.py around line 385, near the ~def resolve_headings_by_query(~
+
+#+begin_example
+     selector_query: str,
+ ) -> list[Heading]:
+     """Resolve matching headings across files from selector query."""
+-    compiled_query = compile_query_or_raise(
+-        selector_query,
+-        lambda message: typer.BadParameter(f"Invalid task selector query: {message}"),
+-    )
+-
+     logger.info("Task selector query: %s", selector_query)
+     matches_by_identity: dict[int, Heading] = {}
+     for filename in filenames:
+         document = load_document(filename)
+         logger.info("Running task selector query against file: %s", filename)
+-        results = execute_query_or_raise(
+-            compiled_query,
+-            [document],
+-            {},
+-            lambda message: typer.BadParameter(f"Task selector query failed: {message}"),
+-        )
++        try:
++            results = run_query([document], [selector_query], {})
++        except QueryParseError as exc:
++            raise typer.BadParameter(f"Invalid task selector query: {exc}") from exc
++        except QueryRuntimeError as exc:
++            raise typer.BadParameter(f"Task selector query failed: {exc}") from exc
+ 
+         for value in results:
+             if not isinstance(value, Heading):
+
+#+end_example
+
+This whole function should use the usual ETL pipeline.
+Ideally, this function should be removed and the callers should use the usual ETL pipeline.
+**** DONE src/org/commands/tasks/remove.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-23 Tue 19:50]
+:END:
+
+In file src/org/commands/tasks/remove.py around line 99, near the ~def _selected_delete_roots(headings: list[Heading]) -> list[Heading]:~
+
+#+begin_example
++    matches_by_identity: dict[int, Heading] = {}
++    for value in results:
++        if not isinstance(value, Heading):
++            raise typer.BadParameter("Task selector query must return task headings")
++        matches_by_identity[id(value)] = value
++    selected_headings = list(matches_by_identity.values())
++    if not selected_headings:
+
+#+end_example
+
+Sounds like this could be extracted to be a separate function that's used by the commands that need to handle the identity.
+
+**** DONE Cache query compilation results
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-23 Tue 20:09]
+:END:
+It is often the case that the same queries are recompiled multiple times. We could improve performance by caching the query compilation results and checking if the query was already compiled.
+Add the query compilation cache.
 
 *** TODO Org file repository abstraction
 :PROPERTIES:
@@ -9343,6 +9438,9 @@ org tasks query all-todos
 - Show stats widgets when query return widget objects
 - Support mixed data (title string + histogram widget, etc)
 
+*** Limit & offset applied outside of the query
+- Define variables in context
+- Apply =results[offset:offset + limit]= outside of the query.
 ** Board command improvements                                                             :UX:Board:
 *** Board plan command
 Shows long term plan including completeness of tasks that have children and gannt-style chart for execution.

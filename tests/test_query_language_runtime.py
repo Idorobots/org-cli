@@ -669,6 +669,19 @@ def test_runtime_fold_operator() -> None:
     assert empty_fold == [[]]
 
 
+def test_runtime_fold_function_collects_current_stream() -> None:
+    """fold should collect the current stream into one list value."""
+    result = _execute("[1, 2, 3][] | fold", [None], None)
+    assert result == [[1, 2, 3]]
+
+
+def test_runtime_fold_function_collects_substream_before_later_stages() -> None:
+    """fold should collect the current intermediate stream before later stages consume it."""
+    nodes = _sample_nodes()
+    result = _execute(".[] | (.children[] | .title_text | fold) | length", nodes, None)
+    assert result == [2]
+
+
 def test_runtime_returns_stream_type() -> None:
     """Compiled queries should return Stream instances."""
     compiled = compile_query_text(".[] | .title_text")

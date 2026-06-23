@@ -13,8 +13,6 @@ from org_parser.document import Heading
 from org_parser.text import CompletionCounter
 from org_parser.time import Timestamp
 
-from org.query.runner import compile_query_or_raise, execute_query_or_raise
-
 
 if TYPE_CHECKING:
     from org_parser.document import Document
@@ -172,6 +170,16 @@ def resolve_parent_heading(document: Document, parent_value: str) -> Heading:
         return title_matches_list[0]
 
     raise typer.BadParameter(f"--parent '{selector}' was not found")
+
+
+def selected_heading_results(results: list[object]) -> list[Heading]:
+    """Validate query results as headings and deduplicate by object identity."""
+    matches_by_identity: dict[int, Heading] = {}
+    for value in results:
+        if not isinstance(value, Heading):
+            raise typer.BadParameter("Task selector query must return task headings")
+        matches_by_identity[id(value)] = value
+    return list(matches_by_identity.values())
 
 
 def parse_tags_csv(value: str) -> list[str]:
@@ -349,38 +357,3 @@ def parse_properties_json(value: str) -> dict[str, str]:
             raise typer.BadParameter("--properties values must be strings")
         parsed[key] = property_value
     return parsed
-
-
-def resolve_headings_by_query(
-    filenames: list[str],
-    selector_query: str,
-) -> list[Heading]:
-    """Resolve matching headings across files from selector query."""
-    compiled_query = compile_query_or_raise(
-        selector_query,
-        lambda message: typer.BadParameter(f"Invalid task selector query: {message}"),
-    )
-
-    logger.info("Task selector query: %s", selector_query)
-    matches_by_identity: dict[int, Heading] = {}
-    for filename in filenames:
-        document = load_document(filename)
-        logger.info("Running task selector query against file: %s", filename)
-        results = execute_query_or_raise(
-            compiled_query,
-            [document],
-            {},
-            lambda message: typer.BadParameter(f"Task selector query failed: {message}"),
-        )
-
-        for value in results:
-            if not isinstance(value, Heading):
-                raise typer.BadParameter(
-                    "Task selector query must return task headings",
-                )
-            matches_by_identity[id(value)] = value
-
-    matches = list(matches_by_identity.values())
-    if not matches:
-        raise typer.BadParameter("No task matches the provided selector")
-    return matches

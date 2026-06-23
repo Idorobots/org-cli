@@ -10,11 +10,13 @@ import typer
 import org.config.app
 import org.logging
 from org.commands.tasks.common import (
-    resolve_headings_by_query,
     resolve_task_selector_query,
+    selected_heading_results,
 )
 from org.logic.edit import edit_heading_subtree_in_external_editor
-from org.pipeline.load import resolve_input_paths
+from org.pipeline.load import load_documents, resolve_input_paths, resolve_loaded_state_context
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+from org.query.runner import run_query
 
 
 logger = logging.getLogger("org")
@@ -33,10 +35,30 @@ class EditArgs:
 
 def run_tasks_edit(args: EditArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks edit command."""
-    del config
     filenames = resolve_input_paths(args.files)
     selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
-    selected_headings = resolve_headings_by_query(filenames, selector_query)
+    documents = load_documents(filenames)
+    todo_states, done_states = resolve_loaded_state_context(
+        documents,
+        config.todo_states,
+        config.done_states,
+    )
+
+    logger.info("Task selector query: %s", selector_query)
+    try:
+        results = run_query(
+            documents,
+            [selector_query],
+            {"todo_states": todo_states, "done_states": done_states},
+        )
+    except QueryParseError as exc:
+        raise typer.BadParameter(f"Invalid task selector query: {exc}") from exc
+    except QueryRuntimeError as exc:
+        raise typer.BadParameter(f"Task selector query failed: {exc}") from exc
+
+    selected_headings = selected_heading_results(results)
+    if not selected_headings:
+        raise typer.BadParameter("No task matches the provided selector")
 
     if len(selected_headings) > 1:
         raise typer.BadParameter("tasks edit requires a selector that matches exactly one task")

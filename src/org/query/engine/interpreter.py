@@ -612,15 +612,19 @@ def _evaluate_fold(expr: Fold, stream: Stream, context: EvalContext) -> Stream:
 
     output = _stream()
     for item in stream:
-        folded_values = evaluate_expr(expr.expr, _stream([item]), context)
-        folded: list[object] = []
-        for value in folded_values:
-            if isinstance(value, tuple):
-                folded.extend(list(value))
-                continue
-            folded.append(value)
-        output.append(folded)
+        output.append(_fold_stream_values(evaluate_expr(expr.expr, _stream([item]), context)))
     return output
+
+
+def _fold_stream_values(values: Stream) -> list[object]:
+    """Collect one stream into a list value using fold semantics."""
+    folded: list[object] = []
+    for value in values:
+        if isinstance(value, tuple):
+            folded.extend(list(value))
+            continue
+        folded.append(value)
+    return folded
 
 
 def _resolve_field(value: object, field: str) -> object:
@@ -1119,6 +1123,7 @@ def _evaluate_function(expr: FunctionCall, stream: Stream, context: EvalContext)
         "analyze": _func_analyze,
         "all": _func_all,
         "any": _func_any,
+        "fold": _func_fold,
         "now": _func_now,
         "reverse": _func_reverse,
         "unique": _func_unique,
@@ -1376,6 +1381,11 @@ def _current_datetime() -> datetime:
 def _func_now(stream: Stream) -> Stream:
     """Return current datetime for each input item."""
     return _stream([_current_datetime() for _item in stream])
+
+
+def _func_fold(stream: Stream) -> Stream:
+    """Collect the current stream into one list value."""
+    return _stream([_fold_stream_values(stream)])
 
 
 def _func_type(stream: Stream) -> Stream:
