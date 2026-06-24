@@ -8944,20 +8944,32 @@ Add the query compilation cache.
 :context: 
 :END:
 
-Add a new package =org.db= that will store the org file repository abstraction.
-In that package, add a repository-pattern abstraction over one or more org files. The abstraction should:
-- automatically load all the documents from files maintaining their last modification time,
-- watch for external file changes and re-load a document as needed (file modification time more recent than currently stored one)
-- allow explicitly reloading a document from file,
-- allow saving the documents explicitly (dump file contents, reload and update the modification state),
-- allow overwriting potentially externally modified document contents without generating errors,
-- allow querying the repository using the query language: =repository.query(query_stages, context)=.
-- cache discovered todo and done states for other commands,
+1. Add a repository-pattern abstraction over one or more org files to the =org.db= package. The abstraction should:
+   - automatically load all the documents from files maintaining their last modification time,
+   - watch for external file changes and re-load a document as needed (file modification time more recent than currently stored one)
+   - allow explicitly reloading a document from file,
+   - allow saving the documents explicitly (dump file contents, reload and update the modification state),
+   - allow optionally overwriting potentially externally modified document contents without generating errors,
+   - cache discovered todo and done states for the commands,
+   - allow querying the repository using the query language: =repository.query(query_stages, context)=.
+   - provide the means to fetch headings by identity,
+   - provide the means to modify & save specific headings,
+   - provide the means to move headings between documents,
+   - provide the means to add & remove headings from a document.
 
-The abstraction should handle file conflicts with explicit errors (attempting to save a file that was modified outside of the CLI, file no longer exists, etc). These errors will be then handled by the commands in various ways (interactive commands should display a prompt asking for confirmation about overwriting or reloading and reapplying an action; non-interactive commands should print the error to the output).
+2. Most if not all functionality of the current =org.db.load= module should be moved to the repository implementation and made uniform.
 
-All commands should be updated to instantiate this repository and use its querying capabilities for all of their querying needs.
-All commands should be updated to handle the file errors more or less gracefully.
+3. The repository should:
+   - detect which documents have been modified by the commands (by way od the =document.dirty= flag) and which files have been modified outside of the CLI (stored & file modification times). This detection does not need to be done async, it's OK if the detection is carried out on all read & write operations.
+   - handle file conflicts with explicit errors (attempting to save a file that was modified outside of the CLI, file no longer exists, etc). These errors will then be handled by the commands in various ways (interactive commands should display a prompt asking for confirmation about overwriting or reloading and reapplying an action; non-interactive commands should print the error to the output).
+   - ideally, saving the files would be an explicit operation that automatically derives which documents to save (automatically detect which documents need saving and if their associated files were modified outside of the CLI). No implicit document saving should be performed by the respository, it should be an explicit operation that the commands run on the repository.
+   - ideally, when querying the repository data, outside-CLI modifications should be detected, and files that can be reloaded without conflicts (no in-app modifiations) should be automatically and implicitly reloaded.
+   - upon saving a modified document, reload the file contents of that document, so that the modification state is reset.
+
+4. All commands should be updated to instantiate this repository and use its querying capabilities for all of their querying needs. Ideally, the app would load the configuration file, pass it to the command, build the command arguments, create a repository based on the config and arguments, run the command logic using the config, arguments and the org repository, and finally use the repository to query for the data, modify it and save the files if needed. Interactive commands should maintain the repository in their state and rely on its saving & reloading features.
+
+5. All commands should be updated to handle the file errors more or less gracefully.
+
 
 *** CANCELLED Use Textual header & footer widgets in the interactive commands
 :LOGBOOK:

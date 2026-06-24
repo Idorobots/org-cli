@@ -9,6 +9,7 @@ import typer
 
 import org.config.app
 import org.logging
+from org.db.load import load_and_process_data
 from org.logic.stats import (
     AnalysisResult,
     Distribution,
@@ -22,7 +23,6 @@ from org.logic.stats import (
     compute_task_stats,
 )
 from org.logic.time import resolve_date_filters
-from org.pipeline.load import load_and_process_data
 from org.tui.bits import (
     apply_indent,
     build_console,

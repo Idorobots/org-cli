@@ -16,7 +16,7 @@ from typer.testing import CliRunner
 import org.config.app
 from org import cli
 from org.commands.tasks.query import TasksQueryArgs, _is_org_object, run_tasks_query
-from org.pipeline.format import OutputFormat, OutputFormatError
+from org.db.format import OutputFormat, OutputFormatError
 
 
 if TYPE_CHECKING:

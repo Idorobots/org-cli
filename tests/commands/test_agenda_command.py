@@ -25,9 +25,9 @@ from org.commands.agenda.views import (
     resolve_view_context,
 )
 from org.commands.tasks.common import duration_to_org_text, parse_clock_duration
+from org.db.load import load_and_process_data
 from org.logic.tasks import detail_org_block, heading_locator
 from org.logic.time import advance_timestamp_by_repeater, local_now
-from org.pipeline.load import load_and_process_data
 from org.tui.bits import setup_output
 
 

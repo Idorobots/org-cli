@@ -17,10 +17,10 @@ from rich.text import Text
 import org.config.app
 from org.commands.board import actions, ui
 from org.commands.board import command as board_command
+from org.db.load import load_and_process_data
 from org.logic.archive import ArchiveLocation, ArchiveMoveResult, ArchiveTarget
 from org.logic.edit import DocumentEditResult
 from org.logic.tasks import heading_locator
-from org.pipeline.load import load_and_process_data
 from org.tui.bits import setup_output
 from tests.conftest import node_from_org
 

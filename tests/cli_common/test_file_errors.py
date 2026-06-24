@@ -181,7 +181,7 @@ def test_load_mapping_mixed_non_string_types(tmp_path: Path) -> None:
 
 def test_load_root_nodes_valid() -> None:
     """Test loading valid org files as root nodes."""
-    from org.pipeline.load import load_root_nodes
+    from org.db.load import load_root_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "simple.org")
     roots, _, _ = load_root_nodes([fixture_path], ["TODO"], ["DONE"])
@@ -192,7 +192,7 @@ def test_load_root_nodes_valid() -> None:
 
 def test_load_root_nodes_todo_states() -> None:
     """Test loading todo keys from root nodes."""
-    from org.pipeline.load import load_root_nodes
+    from org.db.load import load_root_nodes
 
     fixture_path = os.path.join(FIXTURES_DIR, "todo_states.org")
     roots, todo_states, done_states = load_root_nodes([fixture_path], ["TODO"], ["DONE"])

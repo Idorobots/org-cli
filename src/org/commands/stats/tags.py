@@ -9,6 +9,7 @@ import typer
 
 import org.config.app
 import org.logging
+from org.db.load import load_and_process_data
 from org.logic.stats import (
     Tag,
     TimeRange,
@@ -22,7 +23,6 @@ from org.logic.stats import (
 )
 from org.logic.time import resolve_date_filters
 from org.logic.validation import validate_stats_arguments
-from org.pipeline.load import load_and_process_data
 from org.tui.bits import (
     TagBlockConfig,
     apply_indent,

@@ -373,7 +373,7 @@ def test_build_query_text_custom_ordering_for_stats() -> None:
 
 def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixture) -> None:
     """Data loading should log the query execution context."""
-    from org.pipeline.load import load_and_process_data
+    from org.db.load import load_and_process_data
 
     fixture_path = str((Path(__file__).resolve().parents[1] / "fixtures" / "simple.org").resolve())
     args = make_args(files=[fixture_path], offset=0, max_results=1)

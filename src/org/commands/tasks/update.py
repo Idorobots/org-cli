@@ -30,7 +30,7 @@ from org.commands.tasks.common import (
     save_document,
     selected_heading_results,
 )
-from org.pipeline.load import load_documents, resolve_input_paths, resolve_loaded_state_context
+from org.db.load import load_documents, resolve_input_paths, resolve_loaded_state_context
 from org.query.engine.errors import QueryParseError, QueryRuntimeError
 from org.query.runner import run_query
 from org.tui.color import should_use_color

@@ -24,7 +24,7 @@ from org.commands.tasks.common import (
     resolve_parent_heading,
     save_document,
 )
-from org.pipeline.load import resolve_input_paths
+from org.db.load import resolve_input_paths
 
 
 _TASK_TEMPLATE = "{heading}\n{planning}{properties}{body}"

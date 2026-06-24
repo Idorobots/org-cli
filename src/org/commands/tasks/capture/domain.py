@@ -19,7 +19,7 @@ from org.commands.tasks.common import (
     save_document,
     selected_heading_results,
 )
-from org.pipeline.format import DEFAULT_OUTPUT_THEME
+from org.db.format import DEFAULT_OUTPUT_THEME
 from org.query.engine.errors import QueryParseError, QueryRuntimeError
 from org.query.runner import run_query
 from org.tui.help import InteractiveHelpEntry

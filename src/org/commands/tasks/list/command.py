@@ -13,7 +13,7 @@ from rich.syntax import Syntax
 
 import org.config.app
 import org.logging
-from org.pipeline.format import (
+from org.db.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,
@@ -27,7 +27,7 @@ from org.pipeline.format import (
     _prepare_output,
     print_prepared_output,
 )
-from org.pipeline.load import load_and_process_data
+from org.db.load import load_and_process_data
 from org.tui.bits import (
     TaskLineConfig,
     build_console,

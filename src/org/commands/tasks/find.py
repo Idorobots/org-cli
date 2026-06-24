@@ -15,13 +15,13 @@ import org.config.app
 import org.logging
 from org.commands.tasks.common import normalize_selector
 from org.commands.tasks.query import get_query_formatter
-from org.pipeline.format import (
+from org.db.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,
     print_prepared_output,
 )
-from org.pipeline.load import load_root_data
+from org.db.load import load_root_data
 from org.query.engine.errors import QueryParseError, QueryRuntimeError
 from org.query.runner import run_query
 from org.tui.bits import build_console, processing_status, setup_output

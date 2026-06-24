@@ -13,8 +13,8 @@ from org.commands.tasks.common import (
     resolve_task_selector_query,
     selected_heading_results,
 )
+from org.db.load import load_documents, resolve_input_paths, resolve_loaded_state_context
 from org.logic.edit import edit_heading_subtree_in_external_editor
-from org.pipeline.load import load_documents, resolve_input_paths, resolve_loaded_state_context
 from org.query.engine.errors import QueryParseError, QueryRuntimeError
 from org.query.runner import run_query
 

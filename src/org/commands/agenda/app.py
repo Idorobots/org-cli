@@ -17,7 +17,7 @@ import org.tui.help
 import org.tui.prompt
 import org.tui.selection
 from org.commands.tasks.common import clock_duration_prompt_label
-from org.pipeline.load import resolve_input_paths
+from org.db.load import resolve_input_paths
 
 from . import actions, ui
 from .actions import AgendaSession, create_agenda_session

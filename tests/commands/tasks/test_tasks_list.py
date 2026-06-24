@@ -18,11 +18,11 @@ import org.config.app
 from org.commands.tasks import capture as capture_command
 from org.commands.tasks.list import actions
 from org.commands.tasks.list import command as tasks_list
+from org.db.format import OutputFormat, OutputFormatError
 from org.logic.archive import ArchiveLocation, ArchiveMoveResult, ArchiveTarget
 from org.logic.edit import DocumentEditResult
 from org.logic.search import filter_nodes_by_search
 from org.logic.tasks import heading_locator
-from org.pipeline.format import OutputFormat, OutputFormatError
 from org.tui.bits import visual_len
 from tests.conftest import node_from_org
 

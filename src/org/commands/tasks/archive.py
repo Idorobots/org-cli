@@ -15,8 +15,8 @@ from org.commands.tasks.common import (
     save_document,
     selected_heading_results,
 )
+from org.db.load import load_documents, resolve_input_paths, resolve_loaded_state_context
 from org.logic.archive import archive_heading_subtree, archive_result_documents_to_save
-from org.pipeline.load import load_documents, resolve_input_paths, resolve_loaded_state_context
 from org.query.engine.errors import QueryParseError, QueryRuntimeError
 from org.query.runner import run_query
 

@@ -288,7 +288,7 @@ def test_edit_heading_subtree_rejects_invalid_full_document_content(
 
     monkeypatch.setattr(editor_command, "_run_editor_at_line", _edit_file)
     monkeypatch.setattr(
-        "org.pipeline.load.loads",
+        "org.db.load.loads",
         lambda _text: (_ for _ in ()).throw(ValueError("boom")),
     )
 

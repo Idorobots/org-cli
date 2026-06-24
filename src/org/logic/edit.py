@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import click
 import typer
 
-from org.pipeline.load import load_document_from_text
+from org.db.load import load_document_from_text
 
 
 if TYPE_CHECKING:
