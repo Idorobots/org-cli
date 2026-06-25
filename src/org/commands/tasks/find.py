@@ -21,9 +21,7 @@ from org.db.format import (
     OutputFormatError,
     print_prepared_output,
 )
-from org.db.load import load_root_data
-from org.query.engine.errors import QueryParseError, QueryRuntimeError
-from org.query.runner import run_query
+from org.db.repository import OrgRepository, cli_error_from_repository_error
 from org.tui.bits import build_console, processing_status, setup_output
 
 
@@ -142,15 +140,14 @@ def run_tasks_find(args: TasksFindArgs, config: org.config.app.AppConfig) -> Non
     with processing_status(console, color_enabled):
         query_text = _build_find_query(args)
 
-        roots, todo_states, done_states = load_root_data(args)
         try:
-            results = run_query(
-                roots,
+            repository = OrgRepository.from_args(args)
+            results = repository.query(
                 [query_text],
-                {"todo_states": todo_states, "done_states": done_states},
+                {"todo_states": repository.todo_states, "done_states": repository.done_states},
             )
-        except (QueryParseError, QueryRuntimeError) as exc:
-            raise click.UsageError(str(exc)) from exc
+        except Exception as exc:
+            raise click.UsageError(str(cli_error_from_repository_error(exc))) from exc
 
         matched_nodes = [value for value in results if isinstance(value, Heading)]
         output_nodes = _nodes_with_context(matched_nodes, args.include_context)

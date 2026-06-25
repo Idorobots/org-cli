@@ -31,6 +31,7 @@ def _make_plan() -> capture.CapturePlan:
         placeholders=["title", "owner"],
         values={},
         unresolved_placeholders=["title", "owner"],
+        repository=cast("Any", object()),
     )
 
 

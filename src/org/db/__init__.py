@@ -1,1 +1,1 @@
-"""Data loading, query execution, and output pipeline modules."""
+"""Repository, query execution, and output pipeline modules."""

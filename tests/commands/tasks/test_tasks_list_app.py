@@ -25,6 +25,7 @@ def _make_session_data(nodes: list[Heading]) -> tasks_list._TasksListSessionData
         todo_states=["TODO"],
         done_states=["DONE"],
         color_enabled=False,
+        repository=cast("Any", object()),
     )
 
 

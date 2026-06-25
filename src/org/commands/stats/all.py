@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import typer
+from org_parser.document import Heading
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.text import Text
@@ -13,7 +14,11 @@ from rich.text import Text
 import org.config.app
 import org.logging
 from org.commands.stats.summary import SummaryDisplayConfig, format_tasks_summary
-from org.db.load import load_and_process_data
+from org.db.repository import (
+    OrgRepository,
+    build_repository_query_plan,
+    cli_error_from_repository_error,
+)
 from org.logic.stats import AnalysisResult, Tag, TimeRange, analyze, clean, get_top_tasks
 from org.logic.stats import Group as TagGroup
 from org.logic.time import resolve_date_filters
@@ -36,7 +41,6 @@ from org.tui.plot import TimelineFormatConfig
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from org_parser.document import Heading
     from rich.console import Console
 
 
@@ -530,7 +534,15 @@ def run_stats(args: StatsAllArgs, config: org.config.app.AppConfig) -> None:
     with processing_status(console, color_enabled):
         mapping = org.config.app.resolve_mapping(args)
         exclude_set = org.config.app.resolve_exclude_set(args)
-        nodes, todo_states, done_states = load_and_process_data(args, config)
+        try:
+            plan = build_repository_query_plan(args, config, include_ordering=False)
+            repository = OrgRepository(plan.files, plan.todo_states, plan.done_states)
+            results = repository.query(plan.stages, plan.context)
+        except Exception as err:
+            raise cli_error_from_repository_error(err) from err
+        nodes = [value for value in results if isinstance(value, Heading)]
+        todo_states = repository.todo_states
+        done_states = repository.done_states
         if nodes:
             result = analyze(nodes, mapping, args.use, args.max_relations)
             date_from, date_until = resolve_date_filters(args)

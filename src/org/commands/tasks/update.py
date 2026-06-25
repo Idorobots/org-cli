@@ -17,7 +17,6 @@ import org.config.app
 import org.logging
 from org.commands.tasks.common import (
     iter_descendants,
-    load_document,
     normalize_optional_value,
     normalize_selector,
     parse_comment_flag,
@@ -27,12 +26,9 @@ from org.commands.tasks.common import (
     parse_tags_csv,
     resolve_parent_heading,
     resolve_task_selector_query,
-    save_document,
-    selected_heading_results,
+    selected_heading_query_results,
 )
-from org.db.load import load_documents, resolve_input_paths, resolve_loaded_state_context
-from org.query.engine.errors import QueryParseError, QueryRuntimeError
-from org.query.runner import run_query
+from org.db.repository import OrgRepository, cli_error_from_repository_error, resolve_input_paths
 from org.tui.color import should_use_color
 
 
@@ -84,6 +80,7 @@ def _resolve_destination_document(
     file_value: str | None,
     source_document: Document,
     destination_cache: dict[str, Document],
+    repository: OrgRepository,
 ) -> Document:
     """Resolve destination document for --file or return source document."""
     if file_value is None:
@@ -106,7 +103,7 @@ def _resolve_destination_document(
     if cached is not None:
         return cached
 
-    loaded_document = load_document(str(path))
+    loaded_document = repository.get_document(str(path))
     destination_cache[cache_key] = loaded_document
     return loaded_document
 
@@ -400,32 +397,9 @@ def _apply_field_updates(args: UpdateArgs, heading: Heading) -> None:
         heading.body = args.body
 
 
-def _select_headings_for_update(
-    filenames: list[str],
-    selector_query: str,
-    config: org.config.app.AppConfig,
-) -> list[Heading]:
-    """Load documents and resolve selected headings for update."""
-    documents = load_documents(filenames)
-    todo_states, done_states = resolve_loaded_state_context(
-        documents,
-        config.todo_states,
-        config.done_states,
-    )
-
-    logger.info("Task selector query: %s", selector_query)
-    try:
-        results = run_query(
-            documents,
-            [selector_query],
-            {"todo_states": todo_states, "done_states": done_states},
-        )
-    except QueryParseError as exc:
-        raise typer.BadParameter(f"Invalid task selector query: {exc}") from exc
-    except QueryRuntimeError as exc:
-        raise typer.BadParameter(f"Task selector query failed: {exc}") from exc
-
-    headings = selected_heading_results(results)
+def _select_headings_for_update(repository: OrgRepository, selector_query: str) -> list[Heading]:
+    """Resolve selected headings for update."""
+    headings = selected_heading_query_results(repository, selector_query)
     if not headings:
         raise typer.BadParameter("No task matches the provided selector")
     return headings
@@ -435,8 +409,13 @@ def run_tasks_update(args: UpdateArgs, config: org.config.app.AppConfig) -> None
     """Run the tasks update command."""
     selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
     _validate_update_option_conflicts(args)
-    filenames = resolve_input_paths(args.files)
-    headings = _select_headings_for_update(filenames, selector_query, config)
+    try:
+        filenames = resolve_input_paths(args.files)
+        repository = OrgRepository(filenames, config.todo_states, config.done_states)
+        headings = _select_headings_for_update(repository, selector_query)
+    except Exception as err:
+        raise cli_error_from_repository_error(err) from err
+
     selected_count = len(headings)
     logger.info("Selected %s tasks for update", selected_count)
 
@@ -470,6 +449,7 @@ def run_tasks_update(args: UpdateArgs, config: org.config.app.AppConfig) -> None
             args.file,
             source_document,
             destination_cache,
+            repository,
         )
 
         if destination_document is not source_document:
@@ -487,9 +467,10 @@ def run_tasks_update(args: UpdateArgs, config: org.config.app.AppConfig) -> None
         if source_document is not destination_document:
             documents_to_save[id(source_document)] = source_document
 
-    for document in documents_to_save.values():
-        logger.info("Saving updated file: %s", document.filename)
-        save_document(document)
+    try:
+        repository.save_documents(list(documents_to_save.values()))
+    except Exception as err:
+        raise cli_error_from_repository_error(err) from err
 
     typer.echo(f"Updated {selected_count} tasks.")
 

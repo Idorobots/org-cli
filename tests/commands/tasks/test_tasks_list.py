@@ -7,7 +7,7 @@ import os
 import sys
 from contextlib import contextmanager
 from io import StringIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import click
 import pytest
@@ -92,6 +92,7 @@ def _make_session_data(
         todo_states=["TODO"],
         done_states=["DONE"],
         color_enabled=color_enabled,
+        repository=cast("Any", object()),
     )
 
 
@@ -810,10 +811,12 @@ def test_archive_selected_task_archives_selected_task(
     """Archiving should use the shared archive helper and refresh status."""
     nodes = node_from_org("* TODO A\n")
     session = _make_session(nodes)
+    session.repository = cast("Any", object())
 
     def _fake_archive(
         heading: Heading,
         _cache: dict[str, Document],
+        _repository: object,
     ) -> ArchiveMoveResult:
         location = ArchiveLocation(
             raw_spec="%s_archive::",
@@ -998,7 +1001,7 @@ def test_persist_and_reload_selected_reports_save_failures(
     nodes = node_from_org("* TODO A\n")
     session = _make_session(nodes)
 
-    def _raise_save(_document: object) -> None:
+    def _raise_save(_session: object, _document: object) -> None:
         raise typer.BadParameter("Permission denied for 'dummy.org'")
 
     monkeypatch.setattr(actions, "save_document_changes", _raise_save)

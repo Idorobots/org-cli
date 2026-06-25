@@ -6,10 +6,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import typer
+from org_parser.document import Heading
 
 import org.config.app
 import org.logging
-from org.db.load import load_and_process_data
+from org.db.repository import (
+    OrgRepository,
+    build_repository_query_plan,
+    cli_error_from_repository_error,
+)
 from org.logic.stats import (
     Tag,
     TimeRange,
@@ -167,7 +172,13 @@ def run_stats_tags(args: TagsArgs, config: org.config.app.AppConfig) -> None:
     with processing_status(console, color_enabled):
         mapping = org.config.app.resolve_mapping(args)
         exclude_set = org.config.app.resolve_exclude_set(args)
-        nodes, _, _ = load_and_process_data(args, config)
+        try:
+            plan = build_repository_query_plan(args, config, include_ordering=False)
+            repository = OrgRepository(plan.files, plan.todo_states, plan.done_states)
+            results = repository.query(plan.stages, plan.context)
+        except Exception as err:
+            raise cli_error_from_repository_error(err) from err
+        nodes = [value for value in results if isinstance(value, Heading)]
 
         if not nodes:
             output = None

@@ -9,18 +9,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
+from org_parser.document import Heading
 from org_parser.time import Clock, Timestamp
 
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import (
     duration_to_org_text,
     iter_descendants,
-    load_document,
     parse_clock_duration,
-    save_document,
     todo_states_for_heading,
 )
-from org.db.load import load_and_process_data
+from org.db.errors import RepositoryError
+from org.db.repository import (
+    OrgRepository,
+    build_repository_query_plan,
+    cli_error_from_repository_error,
+)
 from org.logic.archive import archive_heading_subtree_and_save
 from org.logic.edit import edit_heading_subtree_in_external_editor
 from org.logic.search import filter_nodes_by_search
@@ -31,6 +35,7 @@ from org.logic.tasks import (
     resolve_heading_locator,
 )
 from org.logic.time import advance_timestamp_by_repeater, local_now, set_timestamp_fields
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
 
 from .ui import (
     AgendaColumnWidths,
@@ -49,7 +54,7 @@ from .ui import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from org_parser.document import Document, Heading
+    from org_parser.document import Document
 
     from org.config.app import AppConfig
 
@@ -81,7 +86,18 @@ class AgendaSession:
     search_text: str
     view_ctx: AgendaViewContext
     app_config: AppConfig
+    repository: OrgRepository
     run_external: Callable[[Callable[[], None]], None] | None = None
+
+
+@dataclass(frozen=True)
+class AgendaSessionData:
+    """Prepared agenda session inputs shared with the app layer."""
+
+    nodes: list[Heading]
+    render: RenderContext
+    view_ctx: AgendaViewContext
+    repository: OrgRepository
 
 
 def refresh_session(
@@ -194,15 +210,21 @@ def _shift_timestamp_by_hours(timestamp: Timestamp, hour_delta: int) -> None:
     set_timestamp_fields(timestamp, shifted_start, shifted_end)
 
 
-def _save_document_changes(document: Document) -> None:
+def _save_document_changes(session: AgendaSession, document: Document) -> None:
     """Persist one mutated document to disk."""
     logger.info("Saving agenda edit file: %s", document.filename)
-    save_document(document)
+    session.repository.save_document(document.filename or "")
 
 
 def _reload_session_nodes(session: AgendaSession) -> None:
     """Reload nodes through standard processing pipeline after mutations."""
-    nodes, _, _ = load_and_process_data(session.args, session.app_config)
+    plan = build_repository_query_plan(session.args, session.app_config, include_ordering=True)
+    repository = session.repository
+    results = repository.query(plan.stages, plan.context)
+    nodes = [value for value in results if isinstance(value, Heading)]
+    limit = session.args.max_results
+    if limit is not None:
+        nodes = nodes[session.args.offset : session.args.offset + limit]
     session.all_nodes = nodes
     session.nodes = filter_nodes_by_search(nodes, session.search_text)
 
@@ -236,9 +258,13 @@ def archive_selected_task(session: AgendaSession) -> None:
         return
     session.status_message = ""
     try:
-        archive_result = archive_heading_subtree_and_save(row.node, {})
-    except typer.BadParameter as err:
-        session.status_message = str(err)
+        archive_result = archive_heading_subtree_and_save(
+            row.node,
+            {},
+            session.repository,
+        )
+    except (RepositoryError, typer.BadParameter) as err:
+        session.status_message = str(cli_error_from_repository_error(err))
         return
     preserve_identity = heading_locator(archive_result.heading)
     _reload_session_nodes(session)
@@ -348,7 +374,7 @@ def apply_state_change_with_value(session: AgendaSession, new_state: str) -> Non
             heading.id,
             heading.deadline,
         )
-    _save_document_changes(heading.document)
+    _save_document_changes(session, heading.document)
     preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
     refresh_session(session, preserve_identity)
@@ -366,7 +392,7 @@ def apply_shift_date(session: AgendaSession, *, day_delta: int) -> None:
         session.status_message = status
         return
     heading = row.node
-    _save_document_changes(heading.document)
+    _save_document_changes(session, heading.document)
     preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
     refresh_session(session, preserve_identity)
@@ -384,7 +410,7 @@ def apply_shift_time(session: AgendaSession, *, hour_delta: int) -> None:
         session.status_message = status
         return
     heading = row.node
-    _save_document_changes(heading.document)
+    _save_document_changes(session, heading.document)
     preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
     refresh_session(session, preserve_identity)
@@ -413,9 +439,9 @@ def apply_refile_with_value(session: AgendaSession, destination_input: str) -> N
         session.status_message = "Refile cancelled"
         return
     try:
-        destination_document = load_document(destination_path)
-    except typer.BadParameter as err:
-        session.status_message = str(err)
+        destination_document = session.repository.get_document(destination_path)
+    except (RepositoryError, typer.BadParameter) as err:
+        session.status_message = str(cli_error_from_repository_error(err))
         return
     heading = row.node
     source_document = heading.document
@@ -429,9 +455,9 @@ def apply_refile_with_value(session: AgendaSession, destination_input: str) -> N
         session.status_message = "Task already in destination file"
         return
     _move_heading_to_document(heading, destination_document)
-    _save_document_changes(destination_document)
+    _save_document_changes(session, destination_document)
     if source_document is not destination_document:
-        _save_document_changes(source_document)
+        _save_document_changes(session, source_document)
     preserve_identity = heading_locator(heading)
     _reload_session_nodes(session)
     refresh_session(session, preserve_identity)
@@ -461,7 +487,7 @@ def apply_clock_entry_with_value(session: AgendaSession, duration_input: str) ->
     )
     duration_text = duration_to_org_text(duration)
     row.node.clock_entries.append(Clock(timestamp=timestamp, duration=duration_text))
-    _save_document_changes(row.node.document)
+    _save_document_changes(session, row.node.document)
     preserve_identity = heading_locator(row.node)
     _reload_session_nodes(session)
     refresh_session(session, preserve_identity)
@@ -539,11 +565,11 @@ def apply_capture_task(session: AgendaSession, template_name: str) -> None:
         return
     capture_result.heading.scheduled = scheduled
     try:
-        _save_document_changes(capture_result.document)
+        _save_document_changes(session, capture_result.document)
         _reload_session_nodes(session)
         refresh_session(session, heading_locator(capture_result.heading))
-    except typer.BadParameter as err:
-        session.status_message = str(err)
+    except (RepositoryError, QueryParseError, QueryRuntimeError, typer.BadParameter) as err:
+        session.status_message = str(cli_error_from_repository_error(err))
         return
     session.status_message = f"Task captured and scheduled for {scheduled}"
 
@@ -595,16 +621,14 @@ def apply_search_text(session: AgendaSession, search_text: str) -> None:
 def create_agenda_session(
     args: AgendaArgs,
     config: AppConfig,
-    nodes: list[Heading],
-    render: RenderContext,
-    view_ctx: AgendaViewContext,
+    data: AgendaSessionData,
 ) -> AgendaSession:
     """Create interactive session state for agenda."""
     session = AgendaSession(
         args=args,
-        all_nodes=list(nodes),
-        nodes=nodes,
-        render=render,
+        all_nodes=list(data.nodes),
+        nodes=data.nodes,
+        render=data.render,
         start_date=resolve_agenda_start_date(args.date),
         days=args.days,
         now=local_now(),
@@ -616,8 +640,9 @@ def create_agenda_session(
         scroll_offset=0,
         status_message="",
         search_text="",
-        view_ctx=view_ctx,
+        view_ctx=data.view_ctx,
         app_config=config,
+        repository=data.repository,
     )
     refresh_session(session, None)
     return session

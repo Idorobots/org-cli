@@ -13,7 +13,6 @@ from org_parser.document import Document, Heading
 import org.config.app
 import org.logging
 from org.commands.tasks.common import (
-    load_document,
     normalize_optional_value,
     normalize_selector,
     parse_comment_flag,
@@ -22,9 +21,8 @@ from org.commands.tasks.common import (
     parse_tags_csv,
     parse_timestamp,
     resolve_parent_heading,
-    save_document,
 )
-from org.db.load import resolve_input_paths
+from org.db.repository import OrgRepository, cli_error_from_repository_error, resolve_input_paths
 
 
 _TASK_TEMPLATE = "{heading}\n{planning}{properties}{body}"
@@ -313,12 +311,16 @@ def _attach_heading(document: Document, parent_heading: Heading | None, heading:
 
 def run_tasks_add(args: AddArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks add command."""
-    del config
     _validate_heading_option_exclusivity(args)
     read_from_stdin = _should_read_task_from_stdin(args)
 
-    filename = _resolve_target_file(args.file, args.files)
-    document = load_document(filename)
+    try:
+        filename = _resolve_target_file(args.file, args.files)
+        repository = OrgRepository([filename], config.todo_states, config.done_states)
+        document = repository.get_document(filename)
+    except Exception as err:
+        raise cli_error_from_repository_error(err) from err
+
     parent_heading: Heading | None = None
     if args.parent is not None:
         parent_heading = resolve_parent_heading(document, args.parent)
@@ -332,7 +334,10 @@ def run_tasks_add(args: AddArgs, config: org.config.app.AppConfig) -> None:
     _attach_heading(document, parent_heading, heading)
     if args.level is not None:
         heading.level = args.level
-    save_document(document)
+    try:
+        repository.save_document(document.filename or filename)
+    except Exception as err:
+        raise cli_error_from_repository_error(err) from err
 
 
 def register(app: typer.Typer, config: org.config.app.AppConfig) -> None:

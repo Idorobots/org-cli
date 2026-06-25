@@ -7,17 +7,19 @@ import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from io import StringIO
-from typing import TYPE_CHECKING, cast
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 import typer
+from org_parser.document import Heading
 from rich.console import Console
 from rich.text import Text
 
 import org.config.app
 from org.commands.board import actions, ui
 from org.commands.board import command as board_command
-from org.db.load import load_and_process_data
+from org.db.repository import OrgRepository, RepositoryQueryPlan, build_repository_query_plan
 from org.logic.archive import ArchiveLocation, ArchiveMoveResult, ArchiveTarget
 from org.logic.edit import DocumentEditResult
 from org.logic.tasks import heading_locator
@@ -28,10 +30,23 @@ from tests.conftest import node_from_org
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from org_parser.document import Document, Heading
+    from org_parser.document import Document
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
+
+
+def _load_processed_nodes(
+    args: board_command.BoardArgs,
+    config: org.config.app.AppConfig,
+) -> tuple[list[Heading], list[str], list[str]]:
+    plan = build_repository_query_plan(args, config, include_ordering=True)
+    repository = OrgRepository(plan.files, plan.todo_states, plan.done_states)
+    results = repository.query(plan.stages, plan.context)
+    nodes = [value for value in results if isinstance(value, Heading)]
+    if args.max_results is not None:
+        nodes = nodes[args.offset : args.offset + args.max_results]
+    return nodes, repository.todo_states, repository.done_states
 
 
 def _board_views_configured() -> dict[str, org.config.app.BoardViewConfig]:
@@ -141,6 +156,7 @@ def _make_session(
         todo_states=["TODO"],
         done_states=["DONE"],
         app_config=app_config,
+        repository=cast("Any", object()),
         columns=_default_columns(nodes) if resolved_columns is None else resolved_columns,
         color_enabled=False,
         selected_column_index=0,
@@ -150,6 +166,8 @@ def _make_session(
         all_columns=[],
         search_text="",
     )
+    if args.files and all(Path(path).exists() for path in args.files):
+        session.repository = OrgRepository(args.files, ["TODO"], ["DONE"])
     session.all_columns = session.columns if resolved_all_columns is None else resolved_all_columns
     for key, value in overrides.items():
         setattr(session, key, value)
@@ -184,10 +202,7 @@ def _render_board_output_with_config(
         no_color=not color_enabled,
         force_terminal=color_enabled,
     )
-    nodes, discovered_todo_states, discovered_done_states = load_and_process_data(
-        args,
-        config,
-    )
+    nodes, discovered_todo_states, discovered_done_states = _load_processed_nodes(args, config)
     nodes = actions.filter_recent_completed_nodes(nodes, args.days)
     todo_states, done_states = actions.resolved_states(
         args,
@@ -539,7 +554,11 @@ def test_apply_state_move_steps_state_and_reloads(
     def _capture_save(document: Document) -> None:
         saved_documents.append(document)
 
-    monkeypatch.setattr(actions, "_save_document_changes", _capture_save)
+    monkeypatch.setattr(
+        actions,
+        "_save_document_changes",
+        lambda _session, document: _capture_save(document),
+    )
     monkeypatch.setattr(
         actions,
         "reload_session",
@@ -580,11 +599,30 @@ def test_reload_session_keeps_same_task_selected_after_priority_reshuffle(
 
     reloaded_nodes = node_from_org("* TODO [#A] Other\n* TODO [#A] Focus\n")
 
-    monkeypatch.setattr(
-        actions,
-        "load_and_process_data",
-        lambda _args, _config: (reloaded_nodes, ["TODO"], ["DONE"]),
-    )
+    class _FakeRepository:
+        todo_states: ClassVar[list[str]] = ["TODO"]
+        done_states: ClassVar[list[str]] = ["DONE"]
+
+        def query(self, _stages: object, _context: object) -> list[object]:
+            return list(reloaded_nodes)
+
+    session.repository = cast("Any", _FakeRepository())
+
+    def _fake_plan(
+        _args: object,
+        _config: object,
+        include_ordering: bool,
+    ) -> RepositoryQueryPlan:
+        del include_ordering
+        return RepositoryQueryPlan(
+            files=[],
+            stages=[],
+            context={},
+            todo_states=["TODO"],
+            done_states=["DONE"],
+        )
+
+    monkeypatch.setattr(actions, "build_repository_query_plan", _fake_plan)
 
     actions.reload_session(session, preserve_identity)
 
@@ -686,6 +724,7 @@ def test_archive_selected_task_archives_selected_heading(
     def _fake_archive(
         heading: Heading,
         _cache: dict[str, Document],
+        _repository: object,
     ) -> ArchiveMoveResult:
         location = ArchiveLocation(
             raw_spec="%s_archive::",
@@ -706,6 +745,7 @@ def test_archive_selected_task_archives_selected_heading(
 
     monkeypatch.setattr(actions, "archive_heading_subtree_and_save", _fake_archive)
     monkeypatch.setattr(actions, "reload_session", lambda _session, _identity: None)
+    session.repository = cast("Any", object())
 
     actions.archive_selected_task(session)
     assert session.status_message == "Task archived"
@@ -834,10 +874,7 @@ def test_run_board_uses_pager_when_render_exceeds_console_height(
     args = make_board_args([fixture_path], max_results=None)
     config = _app_config()
     args.max_results = board_command._resolve_tasks_limit(args.max_results)
-    nodes, discovered_todo_states, discovered_done_states = load_and_process_data(
-        args,
-        config,
-    )
+    nodes, discovered_todo_states, discovered_done_states = _load_processed_nodes(args, config)
     nodes = actions.filter_recent_completed_nodes(nodes, args.days)
     todo_states, done_states = actions.resolved_states(
         args,
@@ -1090,11 +1127,34 @@ def test_run_board_invalid_filter_or_order_by_runtime_error_has_context(
             ),
         },
     )
-    monkeypatch.setattr(
-        board_command,
-        "load_and_process_data",
-        lambda _args, _config: ([node_from_org("* TODO Task\n")[0]], ["TODO"], ["DONE"]),
-    )
+
+    class _FakeRepository:
+        todo_states: ClassVar[list[str]] = ["TODO"]
+        done_states: ClassVar[list[str]] = ["DONE"]
+
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def query(self, _stages: object, _context: object) -> list[object]:
+            return [node_from_org("* TODO Task\n")[0]]
+
+    monkeypatch.setattr(board_command, "OrgRepository", _FakeRepository)
+
+    def _fake_command_plan(
+        _args: object,
+        _config: object,
+        include_ordering: bool,
+    ) -> RepositoryQueryPlan:
+        del include_ordering
+        return RepositoryQueryPlan(
+            files=[],
+            stages=[],
+            context={},
+            todo_states=["TODO"],
+            done_states=["DONE"],
+        )
+
+    monkeypatch.setattr(board_command, "build_repository_query_plan", _fake_command_plan)
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     with pytest.raises(typer.BadParameter, match="view=kanban, column=Broken"):
@@ -1182,8 +1242,37 @@ def test_apply_state_move_reload_reassigns_task_across_selector_columns(
             )
         return ([source_node], ["TODO"], ["DONE"])
 
-    monkeypatch.setattr(actions, "_save_document_changes", _capture_save)
-    monkeypatch.setattr(actions, "load_and_process_data", _load_after_change)
+    monkeypatch.setattr(
+        actions,
+        "_save_document_changes",
+        lambda _session, document: _capture_save(document),
+    )
+
+    class _FakeRepository:
+        todo_states: ClassVar[list[str]] = ["TODO"]
+        done_states: ClassVar[list[str]] = ["DONE"]
+
+        def query(self, _stages: object, _context: object) -> list[object]:
+            results, _todo, _done = _load_after_change(args, _app_config())
+            return cast("list[object]", results)
+
+    session.repository = cast("Any", _FakeRepository())
+
+    def _fake_reload_plan(
+        _args: object,
+        _config: object,
+        include_ordering: bool,
+    ) -> RepositoryQueryPlan:
+        del include_ordering
+        return RepositoryQueryPlan(
+            files=[],
+            stages=[],
+            context={},
+            todo_states=["TODO"],
+            done_states=["DONE"],
+        )
+
+    monkeypatch.setattr(actions, "build_repository_query_plan", _fake_reload_plan)
 
     actions.apply_state_move(session, direction=1)
     assert saved_documents == [source_node.document]

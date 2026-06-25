@@ -8,14 +8,20 @@ from dataclasses import dataclass
 
 import click
 import typer
+from org_parser.document import Heading
 
 import org.config.app
 import org.logging
-from org.db.load import load_and_process_data
+from org.db.repository import (
+    OrgRepository,
+    build_repository_query_plan,
+    cli_error_from_repository_error,
+)
 from org.tui.bits import build_console, processing_status, setup_output
 from org.tui.help import interactive_help_command_text
 
 from . import ui
+from .actions import AgendaSessionData
 from .app import run_agenda_app
 from .views import resolve_view_context
 
@@ -97,7 +103,17 @@ def run_agenda(args: AgendaArgs, config: org.config.app.AppConfig) -> None:
     view_ctx = resolve_view_context(args, config.agenda.views)
 
     with processing_status(console, color_enabled):
-        nodes, todo_states, done_states = load_and_process_data(args, config)
+        try:
+            plan = build_repository_query_plan(args, config, include_ordering=True)
+            repository = OrgRepository(plan.files, plan.todo_states, plan.done_states)
+            results = repository.query(plan.stages, plan.context)
+        except Exception as err:
+            raise cli_error_from_repository_error(err) from err
+        nodes = [value for value in results if isinstance(value, Heading)]
+        if args.max_results is not None:
+            nodes = nodes[args.offset : args.offset + args.max_results]
+        todo_states = repository.todo_states
+        done_states = repository.done_states
 
     if not nodes:
         console.print("No results", markup=False)
@@ -109,13 +125,16 @@ def run_agenda(args: AgendaArgs, config: org.config.app.AppConfig) -> None:
     run_agenda_app(
         args,
         config,
-        nodes,
-        ui.RenderContext(
-            color_enabled=color_enabled,
-            done_states=done_states,
-            todo_states=todo_states,
+        AgendaSessionData(
+            repository=repository,
+            nodes=nodes,
+            render=ui.RenderContext(
+                color_enabled=color_enabled,
+                done_states=done_states,
+                todo_states=todo_states,
+            ),
+            view_ctx=view_ctx,
         ),
-        view_ctx,
     )
 
 

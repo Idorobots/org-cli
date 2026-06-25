@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 import click
 import typer
 
-from org.db.load import load_document_from_text
+from org.db.errors import DocumentParseError
+from org.db.repository import load_document_from_text
 
 
 if TYPE_CHECKING:
@@ -90,7 +91,10 @@ def edit_heading_subtree_in_external_editor(heading: Heading) -> DocumentEditRes
         edited_text = _read_document_text(path, filename)
         if edited_text == original_text:
             return DocumentEditResult(changed=False)
-        load_document_from_text(edited_text, filename)
+        try:
+            load_document_from_text(edited_text, filename)
+        except DocumentParseError as err:
+            raise typer.BadParameter(f"Edited document content is invalid: {err.detail}") from err
         return DocumentEditResult(changed=True)
 
     raise typer.BadParameter("Editor failed to open")

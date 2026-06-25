@@ -8,11 +8,16 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
 
 import typer
+from org_parser.document import Heading
 
 import org.config.app
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
-from org.commands.tasks.common import save_document
-from org.db.load import load_and_process_data
+from org.db.errors import RepositoryError
+from org.db.repository import (
+    OrgRepository,
+    build_repository_query_plan,
+    cli_error_from_repository_error,
+)
 from org.logic.archive import archive_heading_subtree_and_save
 from org.logic.edit import edit_heading_subtree_in_external_editor
 from org.logic.search import filter_nodes_by_search
@@ -31,7 +36,7 @@ from org.query.runner import build_filter_order_query_text, run_query
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from org_parser.document import Document, Heading
+    from org_parser.document import Document
 
     from org.config.app import AppConfig, BoardViewConfig
 
@@ -88,8 +93,19 @@ class BoardSession:
     scroll_offset: int
     status_message: str
     app_config: AppConfig
+    repository: OrgRepository
     all_columns: Sequence[BoardColumn] = field(default_factory=list)
     search_text: str = ""
+
+
+@dataclass(frozen=True)
+class BoardSessionData:
+    """Prepared board session inputs shared with the app layer."""
+
+    repository: OrgRepository
+    nodes: list[Heading]
+    state_lists: tuple[list[str], list[str]]
+    color_enabled: bool
 
 
 def _coerce_latest_timestamp_start(node: Heading) -> datetime | None:
@@ -317,10 +333,14 @@ def reload_session(
     preserve_identity: HeadingLocator | None,
 ) -> None:
     """Reload processed nodes and rebuild board columns."""
-    nodes, discovered_todo_states, discovered_done_states = load_and_process_data(
-        session.args,
-        session.app_config,
-    )
+    plan = build_repository_query_plan(session.args, session.app_config, include_ordering=True)
+    results = session.repository.query(plan.stages, plan.context)
+    nodes = [value for value in results if isinstance(value, Heading)]
+    limit = session.args.max_results
+    if limit is not None:
+        nodes = nodes[session.args.offset : session.args.offset + limit]
+    discovered_todo_states = session.repository.todo_states
+    discovered_done_states = session.repository.done_states
     todo_states, done_states = resolved_states(
         session.args,
         discovered_todo_states,
@@ -342,13 +362,14 @@ def reload_session(
 def create_board_session(
     args: BoardArgs,
     config: AppConfig,
-    nodes: list[Heading],
-    state_lists: tuple[list[str], list[str]],
-    color_enabled: bool,
+    data: BoardSessionData,
 ) -> BoardSession:
     """Create interactive board session state."""
-    todo_states, done_states = state_lists
-    columns = build_selector_board_columns(nodes, resolve_column_specs(args, config.board.views))
+    todo_states, done_states = data.state_lists
+    columns = build_selector_board_columns(
+        data.nodes,
+        resolve_column_specs(args, config.board.views),
+    )
     selected_column_index = 0
     for index, column in enumerate(columns):
         if column.nodes:
@@ -357,13 +378,14 @@ def create_board_session(
 
     session = BoardSession(
         args=args,
-        nodes=nodes,
+        nodes=data.nodes,
         todo_states=todo_states,
         done_states=done_states,
         app_config=config,
+        repository=data.repository,
         all_columns=columns,
         columns=columns,
-        color_enabled=color_enabled,
+        color_enabled=data.color_enabled,
         selected_column_index=selected_column_index,
         selected_row_index=0,
         scroll_offset=0,
@@ -374,10 +396,10 @@ def create_board_session(
     return session
 
 
-def _save_document_changes(document: Document) -> None:
+def _save_document_changes(session: BoardSession, document: Document) -> None:
     """Persist one mutated document to disk."""
     logger.info("Saving flow board edit file: %s", document.filename)
-    save_document(document)
+    session.repository.save_document(document.filename or "")
 
 
 def step_heading_state(heading: Heading, *, direction: int) -> tuple[str | None, str | None]:
@@ -480,12 +502,12 @@ def apply_state_move(session: BoardSession, *, direction: int) -> None:
         new_state,
     )
 
-    _save_document_changes(heading.document)
+    _save_document_changes(session, heading.document)
     preserve_identity = heading_locator(heading)
     try:
         reload_session(session, preserve_identity)
-    except typer.BadParameter as err:
-        session.status_message = str(err)
+    except (RepositoryError, QueryParseError, QueryRuntimeError, typer.BadParameter) as err:
+        session.status_message = str(cli_error_from_repository_error(err))
         return
     session.status_message = f"State updated: {old_state or '-'} -> {new_state or '-'}"
 
@@ -512,12 +534,12 @@ def apply_priority_shift(session: BoardSession, *, increase: bool) -> None:
         old_priority,
         new_priority,
     )
-    _save_document_changes(heading.document)
+    _save_document_changes(session, heading.document)
     preserve_identity = heading_locator(heading)
     try:
         reload_session(session, preserve_identity)
-    except typer.BadParameter as err:
-        session.status_message = str(err)
+    except (RepositoryError, QueryParseError, QueryRuntimeError, typer.BadParameter) as err:
+        session.status_message = str(cli_error_from_repository_error(err))
         return
     session.status_message = f"Priority updated: {old_priority or '-'} -> {new_priority or '-'}"
 
@@ -558,16 +580,16 @@ def archive_selected_task(session: BoardSession) -> None:
 
     session.status_message = ""
     try:
-        archive_result = archive_heading_subtree_and_save(heading, {})
-    except typer.BadParameter as err:
-        session.status_message = str(err)
+        archive_result = archive_heading_subtree_and_save(heading, {}, session.repository)
+    except (RepositoryError, typer.BadParameter) as err:
+        session.status_message = str(cli_error_from_repository_error(err))
         return
 
     preserve_identity = heading_locator(archive_result.heading)
     try:
         reload_session(session, preserve_identity)
-    except typer.BadParameter as err:
-        session.status_message = str(err)
+    except (RepositoryError, QueryParseError, QueryRuntimeError, typer.BadParameter) as err:
+        session.status_message = str(cli_error_from_repository_error(err))
         return
     session.status_message = "Task archived"
 
@@ -593,8 +615,8 @@ def apply_capture_task(session: BoardSession, template_name: str) -> None:
 
     try:
         reload_session(session, heading_locator(capture_result.heading))
-    except typer.BadParameter as err:
-        session.status_message = str(err)
+    except (RepositoryError, QueryParseError, QueryRuntimeError, typer.BadParameter) as err:
+        session.status_message = str(cli_error_from_repository_error(err))
         return
     session.status_message = "Task captured"
 

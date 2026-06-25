@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 import typer
 
-from org.db.load import resolve_input_paths
+from org.db.repository import resolve_input_paths
 from org.logic.stats import dedupe_values, normalize_show_value, resolve_group_values
 from org.logic.validation import parse_group_values
 

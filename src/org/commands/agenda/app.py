@@ -17,23 +17,21 @@ import org.tui.help
 import org.tui.prompt
 import org.tui.selection
 from org.commands.tasks.common import clock_duration_prompt_label
-from org.db.load import resolve_input_paths
+from org.db.repository import resolve_input_paths
 
 from . import actions, ui
-from .actions import AgendaSession, create_agenda_session
+from .actions import AgendaSession, AgendaSessionData, create_agenda_session
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import ClassVar
 
-    from org_parser.document import Heading
     from textual.app import ComposeResult
     from textual.events import MouseScrollDown, MouseScrollUp, Resize
     from textual.widget import Widget
 
     from .command import AgendaArgs
-    from .views import AgendaViewContext
 
 
 _HELP_FOOTER_TEXT = "Type ? for help"
@@ -468,10 +466,8 @@ class AgendaApp(org.tui.app.CommandApp):
 def run_agenda_app(
     args: AgendaArgs,
     config: org.config.app.AppConfig,
-    nodes: list[Heading],
-    render: ui.RenderContext,
-    view_ctx: AgendaViewContext,
+    data: AgendaSessionData,
 ) -> None:
     """Run the Textual-backed interactive agenda app."""
-    session = create_agenda_session(args, config, nodes, render, view_ctx)
+    session = create_agenda_session(args, config, data)
     AgendaApp(session).run()

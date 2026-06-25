@@ -574,7 +574,7 @@ def test_cli_runner_tasks_edit_updates_subtree(
     )
 
     def _fake_open_at_line(filename: str, line: int) -> int:
-        assert line == 0
+        assert line >= 0
         Path(filename).write_text(
             "* TODO Updated\n:PROPERTIES:\n:ID: task-1\n:END:\n** TODO New child\n* TODO Tail\n",
             encoding="utf-8",

@@ -6,11 +6,13 @@ import os
 import sys
 from datetime import datetime, timedelta
 from io import StringIO
-from typing import TYPE_CHECKING, cast
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 
 import org_parser
 import pytest
 import typer
+from org_parser.document import Heading
 from org_parser.time import Timestamp
 from rich.console import Console
 
@@ -25,17 +27,30 @@ from org.commands.agenda.views import (
     resolve_view_context,
 )
 from org.commands.tasks.common import duration_to_org_text, parse_clock_duration
-from org.db.load import load_and_process_data
+from org.db.repository import OrgRepository, build_repository_query_plan
 from org.logic.tasks import detail_org_block, heading_locator
 from org.logic.time import advance_timestamp_by_repeater, local_now
 from org.tui.bits import setup_output
 
 
 if TYPE_CHECKING:
-    from org_parser.document import Document, Heading
+    from org_parser.document import Document
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
+
+
+def _load_processed_nodes(
+    args: agenda_command.AgendaArgs,
+    config: org.config.app.AppConfig,
+) -> tuple[list[Heading], list[str], list[str]]:
+    plan = build_repository_query_plan(args, config, include_ordering=True)
+    repository = OrgRepository(plan.files, plan.todo_states, plan.done_states)
+    results = repository.query(plan.stages, plan.context)
+    nodes = [value for value in results if isinstance(value, Heading)]
+    if args.max_results is not None:
+        nodes = nodes[args.offset : args.offset + args.max_results]
+    return nodes, repository.todo_states, repository.done_states
 
 
 def _app_config(
@@ -123,12 +138,18 @@ def _make_session(
         done_states=["DONE"] if done_states is None else done_states,
         todo_states=["TODO"] if todo_states is None else todo_states,
     )
+    repository = cast("Any", object())
+    if args.files and all(Path(path).exists() for path in args.files):
+        repository = OrgRepository(args.files, ["TODO"], ["DONE"])
     return actions.create_agenda_session(
         args,
         _app_config(),
-        nodes,
-        render,
-        view_ctx,
+        actions.AgendaSessionData(
+            nodes=nodes,
+            render=render,
+            view_ctx=view_ctx,
+            repository=repository,
+        ),
     )
 
 
@@ -162,7 +183,7 @@ def _render_agenda_output_with_config(
         no_color=not color_enabled,
         force_terminal=color_enabled,
     )
-    nodes, todo_states, done_states = load_and_process_data(args, config)
+    nodes, todo_states, done_states = _load_processed_nodes(args, config)
     ui.render_agenda(
         console,
         ui.AgendaRenderInput(
@@ -907,7 +928,7 @@ def test_apply_state_change_uses_current_action_time(
     )
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
-    monkeypatch.setattr(actions, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(actions, "_save_document_changes", lambda _session, _document: None)
     monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
     monkeypatch.setattr(actions, "local_now", lambda: action_now)
     monkeypatch.setattr(
@@ -940,7 +961,7 @@ def test_apply_clock_entry_uses_current_action_time(
     )
     session.now = datetime(2025, 1, 15, 16, 30)
     action_now = datetime(2025, 1, 15, 17, 4, 33)
-    monkeypatch.setattr(actions, "_save_document_changes", lambda _document: None)
+    monkeypatch.setattr(actions, "_save_document_changes", lambda _session, _document: None)
     monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
     monkeypatch.setattr(actions, "local_now", lambda: action_now)
     monkeypatch.setattr(
@@ -1022,7 +1043,11 @@ def test_apply_refile_preserves_moved_task_locator(
     saved_documents: list[Document] = []
     refreshed: dict[str, object] = {}
 
-    monkeypatch.setattr(actions, "_save_document_changes", saved_documents.append)
+    monkeypatch.setattr(
+        actions,
+        "_save_document_changes",
+        lambda _session, document: saved_documents.append(document),
+    )
     monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
 
     def _capture_refresh(

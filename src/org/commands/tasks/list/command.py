@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import click
 import typer
+from org_parser.document import Heading
 from rich.syntax import Syntax
 
 import org.config.app
@@ -27,7 +28,11 @@ from org.db.format import (
     _prepare_output,
     print_prepared_output,
 )
-from org.db.load import load_and_process_data
+from org.db.repository import (
+    OrgRepository,
+    build_repository_query_plan,
+    cli_error_from_repository_error,
+)
 from org.tui.bits import (
     TaskLineConfig,
     build_console,
@@ -43,7 +48,6 @@ from .app import run_tasks_list_app
 
 
 if TYPE_CHECKING:
-    from org_parser.document import Heading
     from rich.console import Console
 
 
@@ -111,6 +115,7 @@ class _TasksListSessionData:
     todo_states: list[str]
     done_states: list[str]
     color_enabled: bool
+    repository: OrgRepository
 
 
 class TasksListOutputFormatter(Protocol):
@@ -374,12 +379,22 @@ def run_tasks_list(args: ListArgs, config: org.config.app.AppConfig) -> None:
     args.max_results = _resolve_tasks_limit(args.max_results, console.height)
 
     with processing_status(console, color_enabled):
-        nodes, todo_states, done_states = load_and_process_data(args, config)
+        try:
+            plan = build_repository_query_plan(args, config, include_ordering=True)
+            repository = OrgRepository(plan.files, plan.todo_states, plan.done_states)
+            results = repository.query(plan.stages, plan.context)
+        except Exception as err:
+            raise cli_error_from_repository_error(err) from err
+        nodes = [value for value in results if isinstance(value, Heading)]
+        nodes = nodes[args.offset : args.offset + args.max_results]
+        todo_states = repository.todo_states
+        done_states = repository.done_states
     session_data = _TasksListSessionData(
         nodes=nodes,
         todo_states=todo_states,
         done_states=done_states,
         color_enabled=color_enabled,
+        repository=repository,
     )
 
     if args.noninteractive:
