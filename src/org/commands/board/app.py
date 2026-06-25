@@ -20,14 +20,13 @@ import org.tui.prompt
 import org.tui.selection
 
 from . import actions, ui
-from .actions import BoardSession, create_board_session
+from .actions import BoardSession, BoardSessionData, create_board_session
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import ClassVar
 
-    from org_parser.document import Heading
     from textual.app import ComposeResult
     from textual.events import MouseScrollDown, MouseScrollUp, Resize
     from textual.widget import Widget
@@ -415,10 +414,8 @@ class BoardApp(org.tui.app.CommandApp):
 def run_board_app(
     args: BoardArgs,
     config: org.config.app.AppConfig,
-    nodes: list[Heading],
-    state_lists: tuple[list[str], list[str]],
-    color_enabled: bool,
+    data: BoardSessionData,
 ) -> None:
     """Run the Textual-backed interactive board app."""
-    session = create_board_session(args, config, nodes, state_lists, color_enabled)
+    session = create_board_session(args, config, data)
     BoardApp(session).run()

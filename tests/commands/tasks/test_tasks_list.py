@@ -7,7 +7,7 @@ import os
 import sys
 from contextlib import contextmanager
 from io import StringIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import click
 import pytest
@@ -18,11 +18,11 @@ import org.config.app
 from org.commands.tasks import capture as capture_command
 from org.commands.tasks.list import actions
 from org.commands.tasks.list import command as tasks_list
+from org.db.format import OutputFormat, OutputFormatError
 from org.logic.archive import ArchiveLocation, ArchiveMoveResult, ArchiveTarget
 from org.logic.edit import DocumentEditResult
 from org.logic.search import filter_nodes_by_search
 from org.logic.tasks import heading_locator
-from org.pipeline.format import OutputFormat, OutputFormatError
 from org.tui.bits import visual_len
 from tests.conftest import node_from_org
 
@@ -92,6 +92,7 @@ def _make_session_data(
         todo_states=["TODO"],
         done_states=["DONE"],
         color_enabled=color_enabled,
+        repository=cast("Any", object()),
     )
 
 
@@ -810,10 +811,12 @@ def test_archive_selected_task_archives_selected_task(
     """Archiving should use the shared archive helper and refresh status."""
     nodes = node_from_org("* TODO A\n")
     session = _make_session(nodes)
+    session.repository = cast("Any", object())
 
     def _fake_archive(
         heading: Heading,
         _cache: dict[str, Document],
+        _repository: object,
     ) -> ArchiveMoveResult:
         location = ArchiveLocation(
             raw_spec="%s_archive::",
@@ -998,7 +1001,7 @@ def test_persist_and_reload_selected_reports_save_failures(
     nodes = node_from_org("* TODO A\n")
     session = _make_session(nodes)
 
-    def _raise_save(_document: object) -> None:
+    def _raise_save(_session: object, _document: object) -> None:
         raise typer.BadParameter("Permission denied for 'dummy.org'")
 
     monkeypatch.setattr(actions, "save_document_changes", _raise_save)

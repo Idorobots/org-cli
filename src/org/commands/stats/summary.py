@@ -6,9 +6,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import typer
+from org_parser.document import Heading
 
 import org.config.app
 import org.logging
+from org.db.repository import (
+    OrgRepository,
+    build_repository_query_plan,
+    cli_error_from_repository_error,
+)
 from org.logic.stats import (
     AnalysisResult,
     Distribution,
@@ -22,7 +28,6 @@ from org.logic.stats import (
     compute_task_stats,
 )
 from org.logic.time import resolve_date_filters
-from org.pipeline.load import load_and_process_data
 from org.tui.bits import (
     apply_indent,
     build_console,
@@ -223,7 +228,15 @@ def run_stats_summary(args: SummaryArgs, config: org.config.app.AppConfig) -> No
     console = build_console(color_enabled, args.width)
     _validate_summary_arguments(args)
     with processing_status(console, color_enabled):
-        nodes, todo_states, done_states = load_and_process_data(args, config)
+        try:
+            plan = build_repository_query_plan(args, config, include_ordering=False)
+            repository = OrgRepository(plan.files, plan.todo_states, plan.done_states)
+            results = repository.query(plan.stages, plan.context)
+        except Exception as err:
+            raise cli_error_from_repository_error(err) from err
+        nodes = [value for value in results if isinstance(value, Heading)]
+        todo_states = repository.todo_states
+        done_states = repository.done_states
 
         if not nodes:
             output = None

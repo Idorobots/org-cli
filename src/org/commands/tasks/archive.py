@@ -12,13 +12,12 @@ import org.config.app
 import org.logging
 from org.commands.tasks.common import (
     resolve_task_selector_query,
-    save_document,
-    selected_heading_results,
+    selected_heading_query_results,
 )
+from org.db.errors import RepositoryError
+from org.db.repository import OrgRepository, cli_error_from_repository_error, resolve_input_paths
 from org.logic.archive import archive_heading_subtree, archive_result_documents_to_save
-from org.pipeline.load import load_documents, resolve_input_paths, resolve_loaded_state_context
 from org.query.engine.errors import QueryParseError, QueryRuntimeError
-from org.query.runner import run_query
 
 
 logger = logging.getLogger("org")
@@ -54,54 +53,41 @@ def _selected_archive_roots(headings: list[Heading]) -> list[Heading]:
 
 def run_tasks_archive(args: ArchiveArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks archive command."""
-    filenames = resolve_input_paths(args.files)
-    selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
-    documents = load_documents(filenames)
-    todo_states, done_states = resolve_loaded_state_context(
-        documents,
-        config.todo_states,
-        config.done_states,
-    )
-
-    logger.info("Task selector query: %s", selector_query)
     try:
-        results = run_query(
-            documents,
-            [selector_query],
-            {"todo_states": todo_states, "done_states": done_states},
-        )
-    except QueryParseError as exc:
-        raise typer.BadParameter(f"Invalid task selector query: {exc}") from exc
-    except QueryRuntimeError as exc:
-        raise typer.BadParameter(f"Task selector query failed: {exc}") from exc
+        filenames = resolve_input_paths(args.files)
+        selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
+        repository = OrgRepository(filenames, config.todo_states, config.done_states)
+        selected_headings = selected_heading_query_results(repository, selector_query)
+    except (RepositoryError, QueryParseError, QueryRuntimeError, typer.BadParameter) as err:
+        raise cli_error_from_repository_error(err) from err
 
-    selected_headings = selected_heading_results(results)
     if not selected_headings:
         raise typer.BadParameter("No task matches the provided selector")
     archive_roots = _selected_archive_roots(selected_headings)
     destination_cache: dict[str, Document] = {}
 
-    documents_to_save: dict[int, Document] = {}
-    for heading in archive_roots:
-        archive_result = archive_heading_subtree(heading, destination_cache)
-        logger.info(
-            "Archiving task: file=%s title=%s id=%s destination=%s parent=%s",
-            archive_result.source_document.filename,
-            archive_result.heading.title_text,
-            archive_result.heading.id,
-            archive_result.destination_document.filename,
-            (
-                archive_result.target.parent_heading.title_text
-                if archive_result.target.parent_heading is not None
-                else ""
-            ),
-        )
-        for document in archive_result_documents_to_save(archive_result):
-            documents_to_save[id(document)] = document
+    try:
+        documents_to_save: dict[int, Document] = {}
+        for heading in archive_roots:
+            archive_result = archive_heading_subtree(heading, destination_cache, repository)
+            logger.info(
+                "Archiving task: file=%s title=%s id=%s destination=%s parent=%s",
+                archive_result.source_document.filename,
+                archive_result.heading.title_text,
+                archive_result.heading.id,
+                archive_result.destination_document.filename,
+                (
+                    archive_result.target.parent_heading.title_text
+                    if archive_result.target.parent_heading is not None
+                    else ""
+                ),
+            )
+            for document in archive_result_documents_to_save(archive_result):
+                documents_to_save[id(document)] = document
 
-    for document in documents_to_save.values():
-        logger.info("Saving archived file: %s", document.filename)
-        save_document(document)
+        repository.save_documents(list(documents_to_save.values()))
+    except (RepositoryError, typer.BadParameter) as err:
+        raise cli_error_from_repository_error(err) from err
 
     typer.echo(f"Archived {len(archive_roots)} tasks.")
 

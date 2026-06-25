@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import typer
+from org_parser.document import Heading
 
 from org.commands.tasks.capture import TasksCaptureArgs, capture_task
 from org.commands.tasks.common import (
@@ -14,8 +15,13 @@ from org.commands.tasks.common import (
     planning_field_label,
     replace_heading_tags_from_csv,
     replace_planning_timestamp_from_raw,
-    save_document,
     todo_states_for_heading,
+)
+from org.db.errors import RepositoryError
+from org.db.repository import (
+    OrgRepository,
+    build_repository_query_plan,
+    cli_error_from_repository_error,
 )
 from org.logic.archive import archive_heading_subtree_and_save
 from org.logic.edit import edit_heading_subtree_in_external_editor
@@ -28,12 +34,12 @@ from org.logic.tasks import (
     shift_priority,
 )
 from org.logic.time import advance_timestamp_by_repeater, local_now
-from org.pipeline.load import load_and_process_data
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
 from org.tui.help import InteractiveHelpEntry
 
 
 if TYPE_CHECKING:
-    from org_parser.document import Document, Heading
+    from org_parser.document import Document
 
     from org.config.app import AppConfig
 
@@ -58,6 +64,7 @@ class TasksListSession:
     status_message: str
     search_text: str
     app_config: AppConfig
+    repository: OrgRepository
 
 
 TASKS_LIST_HELP_ENTRIES = [
@@ -147,22 +154,28 @@ def reload_session_nodes(
 ) -> bool:
     """Reload session nodes via standard processing pipeline."""
     try:
-        nodes, todo_states, done_states = load_and_process_data(session.args, session.app_config)
-    except typer.BadParameter as err:
-        session.status_message = str(err)
+        plan = build_repository_query_plan(session.args, session.app_config, include_ordering=True)
+        repository = session.repository
+        results = repository.query(plan.stages, plan.context)
+        nodes = [value for value in results if isinstance(value, Heading)]
+        limit = session.args.max_results
+        if limit is not None:
+            nodes = nodes[session.args.offset : session.args.offset + limit]
+    except (RepositoryError, QueryParseError, QueryRuntimeError, typer.BadParameter) as err:
+        session.status_message = str(cli_error_from_repository_error(err))
         return False
 
     session.all_nodes = nodes
-    session.todo_states = todo_states
-    session.done_states = done_states
+    session.todo_states = repository.todo_states
+    session.done_states = repository.done_states
     refresh_visible_nodes(session, preserve_identity)
     return True
 
 
-def save_document_changes(document: Document) -> None:
+def save_document_changes(session: TasksListSession, document: Document) -> None:
     """Persist one mutated document to disk."""
     logger.info("Saving tasks list edit file: %s", document.filename)
-    save_document(document)
+    session.repository.save_document(document.filename or "")
 
 
 def persist_and_reload_selected(
@@ -173,9 +186,9 @@ def persist_and_reload_selected(
     """Save selected heading document and refresh session state."""
     preserve_identity = heading_locator(node)
     try:
-        save_document_changes(node.document)
-    except typer.BadParameter as err:
-        session.status_message = str(err)
+        save_document_changes(session, node.document)
+    except (RepositoryError, typer.BadParameter) as err:
+        session.status_message = str(cli_error_from_repository_error(err))
         return
 
     if reload_session_nodes(session, preserve_identity):
@@ -214,9 +227,9 @@ def archive_selected_task(session: TasksListSession) -> None:
 
     session.status_message = ""
     try:
-        archive_result = archive_heading_subtree_and_save(node, {})
-    except typer.BadParameter as err:
-        session.status_message = str(err)
+        archive_result = archive_heading_subtree_and_save(node, {}, session.repository)
+    except (RepositoryError, typer.BadParameter) as err:
+        session.status_message = str(cli_error_from_repository_error(err))
         return
 
     preserve_identity = heading_locator(archive_result.heading)
@@ -412,6 +425,7 @@ def create_tasks_list_session(
         status_message="",
         search_text="",
         app_config=config,
+        repository=data.repository,
     )
     ensure_selection_bounds(session)
     return session

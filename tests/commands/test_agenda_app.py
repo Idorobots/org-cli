@@ -46,7 +46,18 @@ def _make_app(
         done_states=["DONE"],
         todo_states=["TODO"],
     )
-    return AgendaApp(actions.create_agenda_session(args, config, nodes, render, view_ctx))
+    return AgendaApp(
+        actions.create_agenda_session(
+            args,
+            config,
+            actions.AgendaSessionData(
+                nodes=nodes,
+                render=render,
+                view_ctx=view_ctx,
+                repository=cast("Any", object()),
+            ),
+        ),
+    )
 
 
 def _body_lines(app: AgendaApp) -> list[str]:
@@ -188,7 +199,7 @@ def test_agenda_app_capture_from_timed_row_schedules_task(
             )
 
         monkeypatch.setattr(actions, "capture_task", _fake_capture)
-        monkeypatch.setattr(actions, "_save_document_changes", lambda _document: None)
+        monkeypatch.setattr(actions, "_save_document_changes", lambda _session, _document: None)
         monkeypatch.setattr(actions, "_reload_session_nodes", lambda _session: None)
 
         app = _make_app(args, list(org_parser.load(fixture_path)))
@@ -305,15 +316,13 @@ def test_run_agenda_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch)
     def _fake_run(
         passed_args: agenda_command.AgendaArgs,
         _config: org.config.app.AppConfig,
-        nodes: list[Heading],
-        render: ui.RenderContext,
-        view_ctx: AgendaViewContext,
+        data: actions.AgendaSessionData,
     ) -> None:
         called["value"] = True
         assert passed_args.files == [fixture_path]
-        assert nodes
-        assert render.todo_states == ["TODO"]
-        assert view_ctx.name == "default"
+        assert data.nodes
+        assert data.render.todo_states == ["TODO"]
+        assert data.view_ctx.name == "default"
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)

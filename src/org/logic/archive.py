@@ -11,11 +11,13 @@ from typing import TYPE_CHECKING
 import typer
 from org_parser.document import Heading
 
-from org.commands.tasks.common import load_document, resolve_parent_heading, save_document
+from org.commands.tasks.common import resolve_parent_heading
 
 
 if TYPE_CHECKING:
     from org_parser.document import Document
+
+    from org.db.repository import OrgRepository
 
 
 _DEFAULT_ARCHIVE_BASE = "%s_archive::"
@@ -156,6 +158,7 @@ def _resolve_destination_document(
     source_document: Document,
     destination_path: str,
     destination_cache: dict[str, Document],
+    repository: OrgRepository,
 ) -> Document:
     """Resolve archive destination document from path with cache support."""
     source_filename = source_document.filename
@@ -171,7 +174,7 @@ def _resolve_destination_document(
     if cached is not None:
         return cached
 
-    destination_document = load_document(destination_path)
+    destination_document = repository.get_document(destination_path)
     destination_cache[cache_key] = destination_document
     return destination_document
 
@@ -237,6 +240,7 @@ def _validate_archive_parent_target(heading: Heading, parent_heading: Heading | 
 def resolve_archive_target(
     heading: Heading,
     destination_cache: dict[str, Document],
+    repository: OrgRepository,
 ) -> ArchiveTarget:
     """Resolve archive destination document and optional parent heading."""
     location = resolve_archive_location(heading)
@@ -244,6 +248,7 @@ def resolve_archive_target(
         heading.document,
         location.file_path,
         destination_cache,
+        repository,
     )
     parent_heading: Heading | None = None
     if location.parent_title is not None:
@@ -276,11 +281,12 @@ def move_heading_to_archive_target(heading: Heading, target: ArchiveTarget) -> N
 def archive_heading_subtree(
     heading: Heading,
     destination_cache: dict[str, Document],
+    repository: OrgRepository,
 ) -> ArchiveMoveResult:
     """Resolve archive target and move one heading subtree into it."""
     source_document = heading.document
     _apply_archive_metadata_properties(heading)
-    target = resolve_archive_target(heading, destination_cache)
+    target = resolve_archive_target(heading, destination_cache, repository)
     move_heading_to_archive_target(heading, target)
 
     return ArchiveMoveResult(
@@ -294,10 +300,9 @@ def archive_heading_subtree(
 def archive_heading_subtree_and_save(
     heading: Heading,
     destination_cache: dict[str, Document],
+    repository: OrgRepository,
 ) -> ArchiveMoveResult:
     """Archive one heading subtree and persist all affected documents once."""
-    archive_result = archive_heading_subtree(heading, destination_cache)
-    for document in archive_result_documents_to_save(archive_result):
-        logger.info("Saving archived file: %s", document.filename)
-        save_document(document)
+    archive_result = archive_heading_subtree(heading, destination_cache, repository)
+    repository.save_documents(list(archive_result_documents_to_save(archive_result)))
     return archive_result

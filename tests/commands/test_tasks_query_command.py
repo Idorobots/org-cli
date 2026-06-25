@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import click
 import pytest
@@ -16,7 +16,7 @@ from typer.testing import CliRunner
 import org.config.app
 from org import cli
 from org.commands.tasks.query import TasksQueryArgs, _is_org_object, run_tasks_query
-from org.pipeline.format import OutputFormat, OutputFormatError
+from org.db.format import OutputFormat, OutputFormatError
 
 
 if TYPE_CHECKING:
@@ -107,13 +107,16 @@ def test_run_query_default_org_uses_plain_formatter_for_string_results(
     def _fake_run_query(_inputs: object, _stages: object, _context: object) -> list[object]:
         return ["alpha", "beta"]
 
+    class _FakeRepository:
+        todo_states: ClassVar[list[str]] = ["TODO"]
+        done_states: ClassVar[list[str]] = ["DONE"]
+
+        def query(self, _stages: object, _context: object) -> list[object]:
+            return _fake_run_query(None, None, None)
+
     monkeypatch.setattr(
-        "org.commands.tasks.query.run_query",
-        _fake_run_query,
-    )
-    monkeypatch.setattr(
-        "org.commands.tasks.query.load_root_data",
-        lambda _args: ([], ["TODO"], ["DONE"]),
+        "org.commands.tasks.query.OrgRepository.from_args",
+        lambda _args: _FakeRepository(),
     )
 
     _run_tasks_query(args)
@@ -133,13 +136,16 @@ def test_run_query_default_org_uses_json_formatter_for_mixed_results(
     def _fake_run_query(_inputs: object, _stages: object, _context: object) -> list[object]:
         return ["alpha", 1, None]
 
+    class _FakeRepository:
+        todo_states: ClassVar[list[str]] = ["TODO"]
+        done_states: ClassVar[list[str]] = ["DONE"]
+
+        def query(self, _stages: object, _context: object) -> list[object]:
+            return _fake_run_query(None, None, None)
+
     monkeypatch.setattr(
-        "org.commands.tasks.query.run_query",
-        _fake_run_query,
-    )
-    monkeypatch.setattr(
-        "org.commands.tasks.query.load_root_data",
-        lambda _args: ([], ["TODO"], ["DONE"]),
+        "org.commands.tasks.query.OrgRepository.from_args",
+        lambda _args: _FakeRepository(),
     )
 
     _run_tasks_query(args)
@@ -159,13 +165,16 @@ def test_run_query_default_org_uses_json_formatter_for_none_result(
     def _fake_run_query(_inputs: object, _stages: object, _context: object) -> list[object]:
         return [None]
 
+    class _FakeRepository:
+        todo_states: ClassVar[list[str]] = ["TODO"]
+        done_states: ClassVar[list[str]] = ["DONE"]
+
+        def query(self, _stages: object, _context: object) -> list[object]:
+            return _fake_run_query(None, None, None)
+
     monkeypatch.setattr(
-        "org.commands.tasks.query.run_query",
-        _fake_run_query,
-    )
-    monkeypatch.setattr(
-        "org.commands.tasks.query.load_root_data",
-        lambda _args: ([], ["TODO"], ["DONE"]),
+        "org.commands.tasks.query.OrgRepository.from_args",
+        lambda _args: _FakeRepository(),
     )
 
     _run_tasks_query(args)

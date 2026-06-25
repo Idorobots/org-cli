@@ -11,12 +11,10 @@ import org.config.app
 import org.logging
 from org.commands.tasks.common import (
     resolve_task_selector_query,
-    selected_heading_results,
+    selected_heading_query_results,
 )
+from org.db.repository import OrgRepository, cli_error_from_repository_error, resolve_input_paths
 from org.logic.edit import edit_heading_subtree_in_external_editor
-from org.pipeline.load import load_documents, resolve_input_paths, resolve_loaded_state_context
-from org.query.engine.errors import QueryParseError, QueryRuntimeError
-from org.query.runner import run_query
 
 
 logger = logging.getLogger("org")
@@ -35,28 +33,14 @@ class EditArgs:
 
 def run_tasks_edit(args: EditArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks edit command."""
-    filenames = resolve_input_paths(args.files)
-    selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
-    documents = load_documents(filenames)
-    todo_states, done_states = resolve_loaded_state_context(
-        documents,
-        config.todo_states,
-        config.done_states,
-    )
-
-    logger.info("Task selector query: %s", selector_query)
     try:
-        results = run_query(
-            documents,
-            [selector_query],
-            {"todo_states": todo_states, "done_states": done_states},
-        )
-    except QueryParseError as exc:
-        raise typer.BadParameter(f"Invalid task selector query: {exc}") from exc
-    except QueryRuntimeError as exc:
-        raise typer.BadParameter(f"Task selector query failed: {exc}") from exc
+        filenames = resolve_input_paths(args.files)
+        selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
+        repository = OrgRepository(filenames, config.todo_states, config.done_states)
+        selected_headings = selected_heading_query_results(repository, selector_query)
+    except Exception as err:
+        raise cli_error_from_repository_error(err) from err
 
-    selected_headings = selected_heading_results(results)
     if not selected_headings:
         raise typer.BadParameter("No task matches the provided selector")
 
@@ -77,6 +61,11 @@ def run_tasks_edit(args: EditArgs, config: org.config.app.AppConfig) -> None:
         logger.info("Task edit produced no content change; skipping save")
         typer.echo("No changes.")
         return
+
+    try:
+        repository.reload_document(heading.document.filename or "", force=True)
+    except Exception as err:
+        raise cli_error_from_repository_error(err) from err
 
     typer.echo("Edited 1 task.")
 

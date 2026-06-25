@@ -10,6 +10,7 @@ import typer
 
 import org.config.app
 import org.logging
+from org.db.repository import cli_error_from_repository_error
 from org.tui.help import interactive_help_command_text
 
 from .app import run_capture_form_app, run_template_selection_app
@@ -80,7 +81,10 @@ def run_tasks_capture(args: TasksCaptureArgs, config: org.config.app.AppConfig) 
             "org tasks capture requires a TTY unless TEMPLATE_NAME and all values are provided",
         )
 
-    result = capture_task(args, config.tasks.capture.templates)
+    try:
+        result = capture_task(args, config.tasks.capture.templates)
+    except Exception as err:
+        raise cli_error_from_repository_error(err) from err
     if not result.interactive_used:
         typer.echo(result.heading.id or result.heading.title_text)
 

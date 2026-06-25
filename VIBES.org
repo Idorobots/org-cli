@@ -8944,20 +8944,128 @@ Add the query compilation cache.
 :context: 
 :END:
 
-Add a new package =org.db= that will store the org file repository abstraction.
-In that package, add a repository-pattern abstraction over one or more org files. The abstraction should:
-- automatically load all the documents from files maintaining their last modification time,
-- watch for external file changes and re-load a document as needed (file modification time more recent than currently stored one)
-- allow explicitly reloading a document from file,
-- allow saving the documents explicitly (dump file contents, reload and update the modification state),
-- allow overwriting potentially externally modified document contents without generating errors,
-- allow querying the repository using the query language: =repository.query(query_stages, context)=.
-- cache discovered todo and done states for other commands,
+1. Add a repository-pattern abstraction over one or more org files to the =org.db= package. The abstraction should:
+   - automatically load all the documents from files maintaining their last modification time,
+   - watch for external file changes and re-load a document as needed (file modification time more recent than currently stored one)
+   - allow explicitly reloading a document from file,
+   - allow saving the documents explicitly (dump file contents, reload and update the modification state),
+   - allow optionally overwriting potentially externally modified document contents without generating errors,
+   - cache discovered todo and done states for the commands,
+   - allow querying the repository using the query language: =repository.query(query_stages, context)=.
+   - provide the means to fetch headings by identity,
+   - provide the means to modify & save specific headings,
+   - provide the means to move headings between documents,
+   - provide the means to add & remove headings from a document.
 
-The abstraction should handle file conflicts with explicit errors (attempting to save a file that was modified outside of the CLI, file no longer exists, etc). These errors will be then handled by the commands in various ways (interactive commands should display a prompt asking for confirmation about overwriting or reloading and reapplying an action; non-interactive commands should print the error to the output).
+2. Most if not all functionality of the current =org.db.load= module should be moved to the repository implementation and made uniform.
 
-All commands should be updated to instantiate this repository and use its querying capabilities for all of their querying needs.
-All commands should be updated to handle the file errors more or less gracefully.
+3. The repository should:
+   - detect which documents have been modified by the commands (by way od the =document.dirty= flag) and which files have been modified outside of the CLI (stored & file modification times). This detection does not need to be done async, it's OK if the detection is carried out on all read & write operations.
+   - handle file conflicts with explicit errors (attempting to save a file that was modified outside of the CLI, file no longer exists, etc). These errors will then be handled by the commands in various ways (interactive commands should display a prompt asking for confirmation about overwriting or reloading and reapplying an action; non-interactive commands should print the error to the output).
+   - ideally, saving the files would be an explicit operation that automatically derives which documents to save (automatically detect which documents need saving and if their associated files were modified outside of the CLI). No implicit document saving should be performed by the respository, it should be an explicit operation that the commands run on the repository.
+   - ideally, when querying the repository data, outside-CLI modifications should be detected, and files that can be reloaded without conflicts (no in-app modifiations) should be automatically and implicitly reloaded.
+   - upon saving a modified document, reload the file contents of that document, so that the modification state is reset.
+
+4. All commands should be updated to instantiate this repository and use its querying capabilities for all of their querying needs. Ideally, the app would load the configuration file, pass it to the command, build the command arguments, create a repository based on the config and arguments, run the command logic using the config, arguments and the org repository, and finally use the repository to query for the data, modify it and save the files if needed. Interactive commands should maintain the repository in their state and rely on its saving & reloading features.
+
+5. All commands should be updated to handle the file errors more or less gracefully.
+**** DONE Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/commands/board/actions.py::repository: OrgRepository | None = None]]
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-25 Thu 19:25]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/commands/board/actions.py
+
+#+begin_example
+    repository: OrgRepository | None = None
+
+#+end_example
+
+Looks like this is always available and should never be a =None=. Please adjust that type and refactor the places that check for the existance of board session repository (=_require_repository= etc).
+**** DONE src/org/commands/agenda/actions.py
+:PROPERTIES:
+:context: 
+:END:
+:LOGBOOK:
+- State "DONE"       from "TODO"       [2026-06-25 Thu 19:25]
+:END:
+
+In file src/org/commands/agenda/actions.py around line 90, near the ~class AgendaSession:~
+
+#+begin_example
++    repository: OrgRepository | None = None
+
+#+end_example
+
+This also should always be available. Adjust that for all the commands that use this pattern and make sure that the associated =_require_repository= functions are not necessary.
+
+**** TODO Code review comment
+:PROPERTIES:
+:context: [[file:~/projects/software/org-cli/src/org/db/repository.py::raise HeadingAmbiguousError(
+ f"--parent is ambiguous, multiple headings with title '{selector}'",
+ )]]
+:END:
+
+Filename: /home/k/projects/software/org-cli/src/org/db/repository.py
+
+#+begin_example
+            raise HeadingAmbiguousError(
+                f"--parent is ambiguous, multiple headings with title '{selector}'",
+            )
+
+#+end_example
+
+There's no guarantee that this selector is a title and comes from =--parent=. Please reword to just say that multiple headings match selector.
+**** TODO src/org/commands/agenda/command.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/agenda/command.py around line 140, near the ~def run_agenda(args: AgendaArgs, config: org.config.app.AppConfig) -> None:~
+
+#+begin_example
++            render=ui.RenderContext(
++                color_enabled=color_enabled,
++                done_states=done_states,
++                todo_states=todo_states,
+
+#+end_example
+
+I think it makes more sense for the RenderContext to also take the repository and use the todo and done states from there. This way, if the files change outside of the app and additional states are configured, the render config will immediately pick it up without having to restart the CLI.
+**** TODO src/org/commands/agenda/command.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file src/org/commands/agenda/command.py around line 136, near the ~def run_agenda(args: AgendaArgs, config: org.config.app.AppConfig) -> None:~
+
+#+begin_example
++            nodes=nodes,
+
+#+end_example
+
+Both the Agenda and Board commands operate on subsets of all the nodes from the repository. Would it make sense to introduce a =RepositoryView= abstraction? I.e. a class that behaves exactly like a repository with file reloading logic, but it would also implicitly filter down the results based on a configured query. This way the agenda can receive a repository view of nodes filtered down by the CLI switches and then create further filtered-down views for the different days and sections of the agenda.
+
+**** TODO tests/cli_common/test_filter_construction.py
+:PROPERTIES:
+:context: 
+:END:
+
+In file tests/cli_common/test_filter_construction.py around line 389, near the ~def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixtu~
+
+#+begin_example
+-        load_and_process_data(args, AppConfig(config_path=".org-cli.yaml"))
++        build_repository_query_plan(
++            args,
++            AppConfig(config_path=".org-cli.yaml"),
++            include_ordering=True,
+
+#+end_example
+
+The test name no longer matches what it checks.
 
 *** CANCELLED Use Textual header & footer widgets in the interactive commands
 :LOGBOOK:

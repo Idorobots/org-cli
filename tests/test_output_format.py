@@ -16,8 +16,8 @@ from rich.syntax import Syntax
 
 from org.commands.tasks import query as query_command
 from org.commands.tasks.list import command as tasks_list_command
+from org.db import format as output_format
 from org.logic.stats import AnalysisResult, Distribution, Group, Tag, TimeRange
-from org.pipeline import format as output_format
 
 
 if TYPE_CHECKING:
@@ -47,7 +47,7 @@ def test_org_to_pandoc_format_suppresses_warning_and_logs_info(
         del kwargs
         return SimpleNamespace(returncode=0, stdout=b"# converted", stderr=b"pandoc warning text\n")
 
-    monkeypatch.setattr("org.pipeline.format.subprocess.run", _fake_run)
+    monkeypatch.setattr("org.db.format.subprocess.run", _fake_run)
     caplog.set_level(logging.INFO, logger="org")
 
     markdown_text = output_format._org_to_pandoc_format("* TODO test", "markdown", [])
@@ -67,7 +67,7 @@ def test_org_to_pandoc_format_forwards_pandoc_output_args(monkeypatch: pytest.Mo
         seen["kwargs"] = kwargs
         return SimpleNamespace(returncode=0, stdout=b"converted", stderr=b"")
 
-    monkeypatch.setattr("org.pipeline.format.subprocess.run", _fake_run)
+    monkeypatch.setattr("org.db.format.subprocess.run", _fake_run)
 
     rendered = output_format._org_to_pandoc_format(
         "* TODO test",
@@ -94,7 +94,7 @@ def test_org_to_pandoc_format_raises_output_error_on_nonzero_exit(
         del kwargs
         return SimpleNamespace(returncode=22, stdout=b"", stderr=b"Unknown output format\n")
 
-    monkeypatch.setattr("org.pipeline.format.subprocess.run", _fake_run)
+    monkeypatch.setattr("org.db.format.subprocess.run", _fake_run)
 
     with pytest.raises(output_format.OutputFormatError, match="Unknown output format"):
         output_format._org_to_pandoc_format("* TODO test", "invalid-format", [])
@@ -110,7 +110,7 @@ def test_org_to_pandoc_format_raises_output_error_when_pandoc_missing(
         del kwargs
         raise FileNotFoundError("pandoc not found")
 
-    monkeypatch.setattr("org.pipeline.format.subprocess.run", _fake_run)
+    monkeypatch.setattr("org.db.format.subprocess.run", _fake_run)
 
     with pytest.raises(output_format.OutputFormatError, match="pandoc not found"):
         output_format._org_to_pandoc_format("* TODO test", "gfm", [])

@@ -8,14 +8,20 @@ from dataclasses import dataclass
 
 import click
 import typer
+from org_parser.document import Heading
 
 import org.config.app
 import org.logging
-from org.pipeline.load import load_and_process_data
+from org.db.repository import (
+    OrgRepository,
+    build_repository_query_plan,
+    cli_error_from_repository_error,
+)
 from org.tui.bits import build_console, processing_status, setup_output
 from org.tui.help import interactive_help_command_text
 
 from . import actions, ui
+from .actions import BoardSessionData
 from .app import run_board_app
 
 
@@ -92,7 +98,17 @@ def run_board(args: BoardArgs, config: org.config.app.AppConfig) -> None:
     _validate_board_args(args, config)
 
     with processing_status(console, color_enabled):
-        nodes, discovered_todo_states, discovered_done_states = load_and_process_data(args, config)
+        try:
+            plan = build_repository_query_plan(args, config, include_ordering=True)
+            repository = OrgRepository(plan.files, plan.todo_states, plan.done_states)
+            results = repository.query(plan.stages, plan.context)
+        except Exception as err:
+            raise cli_error_from_repository_error(err) from err
+        nodes = [value for value in results if isinstance(value, Heading)]
+        if args.max_results is not None:
+            nodes = nodes[args.offset : args.offset + args.max_results]
+        discovered_todo_states = repository.todo_states
+        discovered_done_states = repository.done_states
         nodes = actions.filter_recent_completed_nodes(nodes, args.days)
         todo_states, done_states = actions.resolved_states(
             args,
@@ -107,7 +123,16 @@ def run_board(args: BoardArgs, config: org.config.app.AppConfig) -> None:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         raise click.UsageError("org board requires a TTY")
 
-    run_board_app(args, config, nodes, (todo_states, done_states), color_enabled)
+    run_board_app(
+        args,
+        config,
+        BoardSessionData(
+            repository=repository,
+            nodes=nodes,
+            state_lists=(todo_states, done_states),
+            color_enabled=color_enabled,
+        ),
+    )
 
 
 def register(app: typer.Typer, app_config: org.config.app.AppConfig) -> None:

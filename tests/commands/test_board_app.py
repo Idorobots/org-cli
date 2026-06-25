@@ -51,6 +51,7 @@ def _make_session(
         todo_states=["TODO"],
         done_states=["DONE"],
         app_config=app_config,
+        repository=cast("Any", object()),
         columns=[_col("TODO", nodes)] if resolved_columns is None else resolved_columns,
         color_enabled=False,
         selected_column_index=0,
@@ -279,17 +280,15 @@ def test_run_board_interactive_uses_app_runner(monkeypatch: pytest.MonkeyPatch) 
 
     def _fake_run(
         passed_args: board_command.BoardArgs,
-        nodes: list[Heading],
-        todo_states: list[str],
-        done_states: list[str],
-        color_enabled: bool,
+        _config: org.config.app.AppConfig,
+        data: actions.BoardSessionData,
     ) -> None:
         called["value"] = True
         assert passed_args.files == [fixture_path]
-        assert nodes
-        assert todo_states
-        assert done_states
-        assert color_enabled is False
+        assert data.nodes
+        assert data.state_lists[0]
+        assert data.state_lists[1]
+        assert data.color_enabled is False
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)

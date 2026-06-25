@@ -7,15 +7,18 @@ import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING, Literal
 
-import org_parser
 import typer
 from org_parser.document import Heading
 from org_parser.text import CompletionCounter
 from org_parser.time import Timestamp
 
+from org.query.engine.errors import QueryParseError, QueryRuntimeError
+
 
 if TYPE_CHECKING:
     from org_parser.document import Document
+
+    from org.db.repository import OrgRepository
 
 
 logger = logging.getLogger("org")
@@ -113,27 +116,6 @@ def resolve_task_selector_query(
     return f".[] | select(str(.id) == {json.dumps(normalized_id)})"
 
 
-def load_document(path: str) -> Document:
-    """Load org document from file for mutation."""
-    try:
-        return org_parser.load(path)
-    except FileNotFoundError as err:
-        raise typer.BadParameter(f"File '{path}' not found") from err
-    except PermissionError as err:
-        raise typer.BadParameter(f"Permission denied for '{path}'") from err
-    except ValueError as err:
-        raise typer.BadParameter(f"Unable to parse '{path}': {err}") from err
-
-
-def save_document(document: Document) -> None:
-    """Persist updated org document back to disk."""
-    try:
-        org_parser.dump(document)
-    except PermissionError as err:
-        filename = document.filename or "<unknown>"
-        raise typer.BadParameter(f"Permission denied for '{filename}'") from err
-
-
 def title_matches(document: Document, title: str | None) -> list[Heading]:
     """Return headings matching title selector in one document."""
     if title is None:
@@ -170,6 +152,21 @@ def resolve_parent_heading(document: Document, parent_value: str) -> Heading:
         return title_matches_list[0]
 
     raise typer.BadParameter(f"--parent '{selector}' was not found")
+
+
+def selected_heading_query_results(repository: OrgRepository, selector_query: str) -> list[Heading]:
+    """Run one selector query through the repository and validate heading results."""
+    logger.info("Task selector query: %s", selector_query)
+    try:
+        results = repository.query(
+            [selector_query],
+            {"todo_states": repository.todo_states, "done_states": repository.done_states},
+        )
+    except QueryParseError as exc:
+        raise typer.BadParameter(f"Invalid task selector query: {exc}") from exc
+    except QueryRuntimeError as exc:
+        raise typer.BadParameter(f"Task selector query failed: {exc}") from exc
+    return selected_heading_results(results)
 
 
 def selected_heading_results(results: list[object]) -> list[Heading]:

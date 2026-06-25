@@ -17,7 +17,7 @@ from rich.syntax import Syntax
 
 import org.config.app
 import org.logging
-from org.pipeline.format import (
+from org.db.format import (
     DEFAULT_OUTPUT_THEME,
     OutputFormat,
     OutputFormatError,
@@ -31,9 +31,7 @@ from org.pipeline.format import (
     _prepare_output,
     print_prepared_output,
 )
-from org.pipeline.load import load_root_data
-from org.query.engine.errors import QueryParseError, QueryRuntimeError
-from org.query.runner import run_query
+from org.db.repository import OrgRepository, cli_error_from_repository_error
 from org.tui.bits import build_console, processing_status, setup_output
 
 
@@ -235,18 +233,21 @@ def run_tasks_query(args: TasksQueryArgs, config: org.config.app.AppConfig) -> N
         raise click.UsageError(str(exc)) from exc
 
     with processing_status(console, color_enabled):
-        roots, todo_states, done_states = load_root_data(args)
-
-        context = {
-            "offset": args.offset,
-            "limit": args.max_results,
-            "todo_states": todo_states,
-            "done_states": done_states,
-        }
         try:
-            results = run_query(roots, [args.query], context)
-        except (QueryParseError, QueryRuntimeError) as exc:
-            raise click.UsageError(str(exc)) from exc
+            repository = OrgRepository.from_args(args)
+            todo_states = repository.todo_states
+            done_states = repository.done_states
+            results = repository.query(
+                [args.query],
+                {
+                    "offset": args.offset,
+                    "limit": args.max_results,
+                    "todo_states": todo_states,
+                    "done_states": done_states,
+                },
+            )
+        except Exception as exc:
+            raise click.UsageError(str(cli_error_from_repository_error(exc))) from exc
 
         first_result = results[0] if results else None
         if len(results) == 1 and isinstance(first_result, list | tuple | set):

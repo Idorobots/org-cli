@@ -14,12 +14,11 @@ from org_parser.document import Document, Heading
 from rich.syntax import Syntax
 
 from org.commands.tasks.common import (
-    load_document,
     resolve_parent_heading,
-    save_document,
     selected_heading_results,
 )
-from org.pipeline.format import DEFAULT_OUTPUT_THEME
+from org.db.format import DEFAULT_OUTPUT_THEME
+from org.db.repository import OrgRepository
 from org.query.engine.errors import QueryParseError, QueryRuntimeError
 from org.query.runner import run_query
 from org.tui.help import InteractiveHelpEntry
@@ -75,6 +74,7 @@ class CapturePlan:
     placeholders: list[str]
     values: dict[str, str]
     unresolved_placeholders: list[str]
+    repository: OrgRepository
 
 
 @dataclass(frozen=True)
@@ -338,7 +338,8 @@ def prepare_capture_plan(
     template = templates[template_name]
     target_file = template["file"] if args.file is None else args.file
     template_parent_selector = template.get("parent")
-    document = load_document(target_file)
+    repository = OrgRepository([target_file], ["TODO"], ["DONE"])
+    document = repository.get_document(target_file)
 
     parent_heading = None
     if args.parent is not None:
@@ -365,6 +366,7 @@ def prepare_capture_plan(
         args=args,
         template_name=template_name,
         template_content=template["content"],
+        repository=repository,
         document=document,
         parent_heading=parent_heading,
         placeholders=placeholders,
@@ -392,7 +394,7 @@ def finalize_capture_plan(
     rendered_content = _render_capture_content_with_values(plan.template_content, values)
     heading = _validate_rendered_heading(rendered_content)
     _attach_heading(plan.document, plan.parent_heading, heading)
-    save_document(plan.document)
+    plan.repository.save_document(plan.document.filename or "")
     return TasksCaptureResult(
         template_name=plan.template_name,
         heading=heading,

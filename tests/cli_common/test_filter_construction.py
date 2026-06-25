@@ -373,7 +373,7 @@ def test_build_query_text_custom_ordering_for_stats() -> None:
 
 def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixture) -> None:
     """Data loading should log the query execution context."""
-    from org.pipeline.load import load_and_process_data
+    from org.db.repository import build_repository_query_plan
 
     fixture_path = str((Path(__file__).resolve().parents[1] / "fixtures" / "simple.org").resolve())
     args = make_args(files=[fixture_path], offset=0, max_results=1)
@@ -381,7 +381,11 @@ def test_load_and_process_data_logs_query_context(caplog: pytest.LogCaptureFixtu
     org.logging.logger.setLevel(logging.INFO)
     org.logging.logger.propagate = True
     with caplog.at_level(logging.INFO, logger="org"):
-        load_and_process_data(args, AppConfig(config_path=".org-cli.yaml"))
+        build_repository_query_plan(
+            args,
+            AppConfig(config_path=".org-cli.yaml"),
+            include_ordering=True,
+        )
 
     assert "Query context:" in caplog.text
     assert "'todo_states': ['TODO']" in caplog.text

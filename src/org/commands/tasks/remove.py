@@ -14,12 +14,9 @@ import org.config.app
 import org.logging
 from org.commands.tasks.common import (
     resolve_task_selector_query,
-    save_document,
-    selected_heading_results,
+    selected_heading_query_results,
 )
-from org.pipeline.load import load_documents, resolve_input_paths, resolve_loaded_state_context
-from org.query.engine.errors import QueryParseError, QueryRuntimeError
-from org.query.runner import run_query
+from org.db.repository import OrgRepository, cli_error_from_repository_error, resolve_input_paths
 from org.tui.color import should_use_color
 
 
@@ -66,28 +63,14 @@ def _selected_delete_roots(headings: list[Heading]) -> list[Heading]:
 
 def run_tasks_remove(args: RemoveArgs, config: org.config.app.AppConfig) -> None:
     """Run the tasks remove command."""
-    filenames = resolve_input_paths(args.files)
-    selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
-    documents = load_documents(filenames)
-    todo_states, done_states = resolve_loaded_state_context(
-        documents,
-        config.todo_states,
-        config.done_states,
-    )
-
-    logger.info("Task selector query: %s", selector_query)
     try:
-        results = run_query(
-            documents,
-            [selector_query],
-            {"todo_states": todo_states, "done_states": done_states},
-        )
-    except QueryParseError as exc:
-        raise typer.BadParameter(f"Invalid task selector query: {exc}") from exc
-    except QueryRuntimeError as exc:
-        raise typer.BadParameter(f"Task selector query failed: {exc}") from exc
+        filenames = resolve_input_paths(args.files)
+        selector_query = resolve_task_selector_query(args.query_title, args.query_id, args.query)
+        repository = OrgRepository(filenames, config.todo_states, config.done_states)
+        selected_headings = selected_heading_query_results(repository, selector_query)
+    except Exception as err:
+        raise cli_error_from_repository_error(err) from err
 
-    selected_headings = selected_heading_results(results)
     if not selected_headings:
         raise typer.BadParameter("No task matches the provided selector")
     selected_count = len(selected_headings)
@@ -122,9 +105,10 @@ def run_tasks_remove(args: RemoveArgs, config: org.config.app.AppConfig) -> None
         document = heading.document
         affected_documents[id(document)] = document
 
-    for document in affected_documents.values():
-        logger.info("Saving file after delete: %s", document.filename)
-        save_document(document)
+    try:
+        repository.save_documents(list(affected_documents.values()))
+    except Exception as err:
+        raise cli_error_from_repository_error(err) from err
 
     typer.echo(f"Deleted {selected_count} tasks.")
 
